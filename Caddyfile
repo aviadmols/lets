@@ -1,0 +1,15 @@
+# FrankPHP / Caddy site config for the web service.
+# Railway provides $PORT; FrankPHP serves the Laravel public/ dir.
+{
+	frankenphp
+	# Trust Railway's proxy so APP_URL / HTTPS detection works.
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
+
+:{$PORT:8080} {
+	root * public/
+	encode zstd gzip
+	php_server
+}

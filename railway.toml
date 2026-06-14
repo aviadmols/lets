@@ -1,0 +1,18 @@
+# Railway deploy config. The web service builds the Dockerfile; worker and
+# scheduler services reuse the same image and override the start command
+# (see Procfile). Migrations + key checks run pre-deploy.
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Runs once before the new version takes traffic. Keep idempotent.
+preDeployCommand = "sh scripts/predeploy.sh"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+
+# Health check is intentionally relaxed: FrankPHP cold-boot on Nixpacks/Docker
+# can exceed Railway's edge timeout and cause false negatives. Verify with a
+# manual GET /up after deploy. (Workers/scheduler services: disable healthcheck.)
+healthcheckPath = "/up"
+healthcheckTimeout = 300
