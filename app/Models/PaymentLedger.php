@@ -31,7 +31,13 @@ class PaymentLedger extends Model
     public const STATUS_CANCELLED = 'cancelled';
     public const STATUS_RETRY_SCHEDULED = 'retry_scheduled';
 
-    protected $guarded = [];
+    /**
+     * Hardened mass-assignment: shop_id (auto-stamped) and status (advanced only
+     * via Ledger::transition, the canonical money machine) cannot be set by a raw
+     * create/update. A row is born `pending` (the column default); Ledger::open
+     * and Ledger::transition own every status write.
+     */
+    protected $guarded = ['shop_id', 'status'];
 
     protected function casts(): array
     {

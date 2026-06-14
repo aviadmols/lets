@@ -55,6 +55,28 @@ class Shop extends Model
         return $this->payplus_credentials[$key] ?? null;
     }
 
+    /**
+     * The decrypted PayPlus credential bag in the exact shape the reference
+     * engine read from config('payplus_installments.payplus.*'). The factory
+     * decrypts ONCE per job and hands this to the gateway as constructor state —
+     * never read from config() at call time, never shared across shops.
+     */
+    public function payplusConfig(): array
+    {
+        $bag = $this->payplus_credentials ?: [];
+
+        return [
+            'api_key' => $bag['api_key'] ?? null,
+            'secret_key' => $bag['secret_key'] ?? null,
+            'terminal_uid' => $bag['terminal_uid'] ?? null,
+            'cashier_uid' => $bag['cashier_uid'] ?? null,
+            'payment_page_uid' => $bag['payment_page_uid'] ?? null,
+            'webhook_secret' => $bag['webhook_secret'] ?? null,
+            // Per-shop base_url override; falls back to the platform default.
+            'base_url' => $bag['base_url'] ?: config('payplus.base_url'),
+        ];
+    }
+
     public function hasPayplusConnection(): bool
     {
         return ! empty($this->payplusCredential('api_key'))
@@ -66,6 +88,16 @@ class Shop extends Model
 
     public function ledgerEntries(): HasMany
     {
-        return $this->hasMany(\App\Models\PaymentLedger::class);
+        return $this->hasMany(PaymentLedger::class);
+    }
+
+    public function installmentPlans(): HasMany
+    {
+        return $this->hasMany(InstallmentPlan::class);
+    }
+
+    public function paymentMethods(): HasMany
+    {
+        return $this->hasMany(InstallmentPaymentMethod::class);
     }
 }

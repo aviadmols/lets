@@ -19,7 +19,9 @@ use Illuminate\Database\Eloquent\Model;
 trait BelongsToShop
 {
     // === CONSTANTS ===
-    public const SHOP_FOREIGN_KEY = 'shop_id';
+    // Canonical value lives on TenantScope (a class), because PHP forbids
+    // accessing a *trait* constant via the trait name — and TenantScope needs it.
+    public const SHOP_FOREIGN_KEY = TenantScope::SHOP_FOREIGN_KEY;
 
     public static function bootBelongsToShop(): void
     {
@@ -36,6 +38,19 @@ trait BelongsToShop
     {
         return $this->belongsTo(Shop::class, self::SHOP_FOREIGN_KEY);
     }
+
+    /**
+     * AUDITED cross-tenant query — the ONLY sanctioned bypass of the tenant
+     * global scope, for platform-level work that legitimately spans all shops
+     * (e.g. the scheduler fan-out, which then dispatches one shop-bound job per
+     * row). NEVER use this to render or return another shop's data to a request.
+     *
+     * Named explicitly so the isolation audit can grep every call site.
+     */
+    public static function acrossAllTenants(): Builder
+    {
+        return static::query()->withoutGlobalScope(TenantScope::class);
+    }
 }
 
 /**
@@ -44,10 +59,13 @@ trait BelongsToShop
  */
 final class TenantScope implements Scope
 {
+    // === CONSTANTS ===
+    public const SHOP_FOREIGN_KEY = 'shop_id';
+
     public function apply(Builder $builder, Model $model): void
     {
         $builder->where(
-            $model->qualifyColumn(BelongsToShop::SHOP_FOREIGN_KEY),
+            $model->qualifyColumn(self::SHOP_FOREIGN_KEY),
             Tenant::id()
         );
     }

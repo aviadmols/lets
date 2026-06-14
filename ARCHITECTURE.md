@@ -56,6 +56,13 @@ OAuth install, also encrypted. **No shop can ever touch another shop's account.*
 Any transition not listed is illegal and rejected by a guarded `transitionTo()`,
 which writes a ledger + Timeline event on every move.
 
+**InstallmentPayment (the payment slot)** has its own lifecycle state machine,
+distinct from the canonical PaymentLedgerStatus; the `payment_ledger` is the
+canonical money-truth machine. The slot machine may include states/transitions
+not present in the ledger machine (notably `failed → succeeded` when a later
+attempt against the same slot recovers). Ratified by code-review-gatekeeper at
+the Phase 2-3 gate.
+
 ## Idempotency keys (deterministic)
 
 - `deposit:{shop_id}:{checkout_id}`
