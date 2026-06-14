@@ -29,12 +29,24 @@ are listed in §9 of the plan and in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## The agent team (`.claude/agents/`)
 
-Work is driven by 7 expert agents. Invoke `recharge-orchestrator` first; it
+Work is driven by 8 expert agents. Invoke `recharge-orchestrator` first; it
 enforces the handoff order and phase gates.
 
 `recharge-orchestrator` → `railway-infra` → `laravel-backend` →
 `shopify-integration` → `saas-multitenancy-billing` →
 `product-ux-architect` (parallel from start) → `admin-design-system`.
+
+`code-review-gatekeeper` is the quality supervisor: it reviews **every** unit of
+code the specialists produce and runs at every phase gate. It only reports
+findings (BLOCKING / SUGGESTION) — the implementing agent applies the fix. A
+BLOCKING finding stops a phase from advancing. Append-only reviews live in
+`docs/reviews/`.
+
+## Local toolchain (this machine)
+
+PHP 8.4 (Herd): `C:\Users\user\.config\herd\bin\php84\php.exe`
+Composer: `<php84> C:\Users\user\.config\herd\bin\composer.phar`
+(PHP/Composer are NOT on PATH — use these absolute paths in Bash.)
 
 ## Non-negotiable conventions
 

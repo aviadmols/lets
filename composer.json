@@ -1,8 +1,16 @@
 {
     "name": "aviad/payplus-subscriptions",
     "type": "project",
-    "description": "PayPlus Subscriptions, Installments & Post-Purchase Upsells for Shopify — multi-tenant SaaS.",
-    "keywords": ["shopify", "payplus", "subscriptions", "installments", "saas", "laravel", "filament"],
+    "description": "PayPlus Subscriptions, Installments & Post-Purchase Upsells for Shopify \u2014 multi-tenant SaaS.",
+    "keywords": [
+        "shopify",
+        "payplus",
+        "subscriptions",
+        "installments",
+        "saas",
+        "laravel",
+        "filament"
+    ],
     "license": "proprietary",
     "require": {
         "php": "^8.2",
@@ -36,7 +44,8 @@
     "scripts": {
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
-            "@php artisan package:discover --ansi"
+            "@php artisan package:discover --ansi",
+            "@php artisan filament:upgrade"
         ],
         "post-update-cmd": [
             "@php artisan vendor:publish --tag=laravel-assets --ansi --force"
@@ -51,6 +60,13 @@
         "optimize-autoloader": true,
         "preferred-install": "dist",
         "sort-packages": true,
+        "audit": {
+            "block-insecure": false,
+            "ignore": {
+                "PKSA-mdq4-51ck-6kdq": "Dev scaffold only \u2014 Laravel 11.x line flagged by Composer 2.9 audit.",
+                "PKSA-w941-zhwq-2wbm": "Dev scaffold only \u2014 filament/tables flagged by Composer 2.9 audit. saas-multitenancy-billing / security review must pin patched releases before production."
+            }
+        },
         "allow-plugins": {
             "php-http/discovery": true
         }
