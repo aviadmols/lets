@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Concerns\ShopScopedScreen;
 use App\Models\ActivityEvent;
 use App\Models\InstallmentPlan;
 use App\Models\PaymentLedger;
@@ -23,6 +24,8 @@ use Illuminate\Support\Collection;
  */
 class CustomerDetail extends Page
 {
+    use ShopScopedScreen; // denied unless a tenant shop is bound (W2)
+
     // === CONSTANTS ===
     protected static string $view = 'filament.pages.customer-detail';
     protected static ?string $slug = 'customers/{customer}';

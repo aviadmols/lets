@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Concerns\ShopScopedScreen;
 use App\Models\InstallmentPlan;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use Filament\Pages\Page;
@@ -20,6 +21,8 @@ use Illuminate\Support\Collection;
  */
 class Customers extends Page
 {
+    use ShopScopedScreen; // hidden + denied unless a tenant shop is bound (W2)
+
     // === CONSTANTS ===
     protected static ?string $navigationIcon = 'heroicon-o-users';
     protected static string $view = 'filament.pages.customers';

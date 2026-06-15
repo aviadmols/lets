@@ -21,6 +21,7 @@ return [
     'actor' => [
         'system' => 'System',
         'admin' => 'Admin',
+        'platform_admin' => 'Platform admin',
         'customer' => 'Customer',
         'webhook' => 'Webhook',
     ],

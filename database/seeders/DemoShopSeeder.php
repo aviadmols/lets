@@ -38,6 +38,9 @@ class DemoShopSeeder extends Seeder
     // === CONSTANTS ===
     public const ADMIN_EMAIL = 'admin@payplus.test';
     public const ADMIN_PASSWORD = 'password';
+    /** Demo PLATFORM admin (app owner) — log in as this to test the Shops/Enter flow. */
+    public const PLATFORM_ADMIN_EMAIL = 'platform@payplus.test';
+    public const PLATFORM_ADMIN_PASSWORD = 'password';
     public const SHOP_DOMAIN = 'demo-shop.myshopify.com';
     public const CUSTOMER_A = 'cust_1001';
     public const CUSTOMER_B = 'cust_2002';
@@ -59,6 +62,16 @@ class DemoShopSeeder extends Seeder
         if ($admin->shop_id !== $shop->id) {
             $admin->forceFill(['shop_id' => $shop->id])->save();
         }
+
+        // A demo PLATFORM admin (app owner): no shop_id, is_platform_admin set via
+        // forceFill (it is GUARDED). Logging in as this user locally exercises the
+        // Shops list + "Enter shop" flow. DevAutoLogin still defaults to the demo
+        // MERCHANT above, so this user is only reached by an explicit login.
+        $platformAdmin = User::firstOrCreate(
+            ['email' => self::PLATFORM_ADMIN_EMAIL],
+            ['name' => 'Platform Owner', 'password' => Hash::make(self::PLATFORM_ADMIN_PASSWORD)],
+        );
+        $platformAdmin->forceFill(['is_platform_admin' => true, 'shop_id' => null])->save();
 
         // Give the demo shop PayPlus creds so the connection badge reads "connected"
         // and the dashboard leaves first-run. (Fake values — never charges.)

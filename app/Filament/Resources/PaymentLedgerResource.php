@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Concerns\ShopScopedScreen;
 use App\Filament\Resources\PaymentLedgerResource\Pages;
 use App\Models\PaymentLedger;
 use App\Support\Ui\Money;
@@ -19,6 +20,8 @@ use Illuminate\Support\Str;
  */
 class PaymentLedgerResource extends Resource
 {
+    use ShopScopedScreen; // hidden + denied unless a tenant shop is bound (W2)
+
     // === CONSTANTS ===
     protected static ?string $model = PaymentLedger::class;
     protected static ?string $slug = 'payments';

@@ -28,6 +28,7 @@ return [
 
     // כותרות קבוצה
     'group' => [
+        'platform' => 'פלטפורמה',
         'customers' => 'לקוחות',
         'products' => 'מוצרים',
         'payments' => 'תשלומים',

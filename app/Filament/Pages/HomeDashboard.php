@@ -3,6 +3,7 @@
 namespace App\Filament\Pages;
 
 use App\Domain\Dashboard\DashboardMetrics;
+use App\Filament\Concerns\ShopScopedScreen;
 use App\Models\ActivityEvent;
 use App\Support\Tenant;
 use App\Support\Ui\Money;
@@ -24,6 +25,8 @@ use Illuminate\Contracts\Support\Htmlable;
  */
 class HomeDashboard extends Page
 {
+    use ShopScopedScreen; // hidden + denied unless a tenant shop is bound (W2)
+
     // === CONSTANTS ===
     protected static ?string $navigationIcon = 'heroicon-o-home';
     protected static string $view = 'filament.pages.home-dashboard';

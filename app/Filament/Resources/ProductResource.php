@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Concerns\ShopScopedScreen;
 use App\Filament\Pages\ProductDetail;
 use App\Filament\Resources\ProductResource\Pages;
 use App\Models\Product;
@@ -29,6 +30,8 @@ use Illuminate\Database\Eloquent\Builder;
  */
 class ProductResource extends Resource
 {
+    use ShopScopedScreen; // hidden + denied unless a tenant shop is bound (W2)
+
     // === CONSTANTS ===
     protected static ?string $model = Product::class;
     protected static ?string $slug = 'products';

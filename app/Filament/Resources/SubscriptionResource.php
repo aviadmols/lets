@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Concerns\ShopScopedScreen;
 use App\Filament\Resources\SubscriptionResource\Pages;
 use App\Models\InstallmentPlan;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
@@ -25,6 +26,8 @@ use Illuminate\Database\Eloquent\Builder;
  */
 class SubscriptionResource extends Resource
 {
+    use ShopScopedScreen; // hidden + denied unless a tenant shop is bound (W2)
+
     // === CONSTANTS ===
     protected static ?string $model = InstallmentPlan::class;
     protected static ?string $slug = 'subscriptions';

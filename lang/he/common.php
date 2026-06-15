@@ -21,6 +21,7 @@ return [
     'actor' => [
         'system' => 'מערכת',
         'admin' => 'מנהל',
+        'platform_admin' => 'מנהל פלטפורמה',
         'customer' => 'לקוח',
         'webhook' => 'Webhook',
     ],

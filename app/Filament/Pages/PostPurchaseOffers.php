@@ -4,6 +4,7 @@ namespace App\Filament\Pages;
 
 use App\Domain\Upsell\Enums\UpsellFlowStatus;
 use App\Domain\Upsell\Models\UpsellFlow;
+use App\Filament\Concerns\ShopScopedScreen;
 use App\Domain\Upsell\Models\UpsellFlowOffer;
 use App\Domain\Upsell\Models\UpsellFlowTrigger;
 use App\Domain\Upsell\Models\UpsellOfferEvent;
@@ -29,6 +30,8 @@ use Illuminate\Support\Carbon;
  */
 class PostPurchaseOffers extends Page
 {
+    use ShopScopedScreen; // hidden + denied unless a tenant shop is bound (W2)
+
     // === CONSTANTS ===
     protected static ?string $navigationIcon = 'heroicon-o-sparkles';
     protected static string $view = 'filament.pages.post-purchase-offers';

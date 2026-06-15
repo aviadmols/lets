@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Concerns\ShopScopedScreen;
 use App\Filament\Resources\ProductResource;
 use App\Models\Product;
 use App\Models\ProductSubscriptionPlan;
@@ -34,6 +35,8 @@ use Illuminate\Contracts\Support\Htmlable;
  */
 class ProductDetail extends Page
 {
+    use ShopScopedScreen; // denied unless a tenant shop is bound (W2)
+
     // === CONSTANTS ===
     protected static ?string $navigationIcon = 'heroicon-o-cube';
     protected static string $view = 'filament.pages.product-detail';

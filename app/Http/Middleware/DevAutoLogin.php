@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\User;
 use Closure;
+use Database\Seeders\DemoShopSeeder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
@@ -14,7 +15,10 @@ use Symfony\Component\HttpFoundation\Response;
  * In production the merchant is authenticated by the embedded-app session-token
  * bridge (shopify-integration) — NEVER auto-signed-in. Locally there is no
  * Shopify session and no human at the keyboard during a screenshot run, so this
- * signs in the demo admin (lowest-id User) when no one is authenticated.
+ * signs in the demo MERCHANT (matched by DemoShopSeeder::ADMIN_EMAIL, NOT the
+ * lowest id — the demo platform admin must never become the default local user)
+ * when no one is authenticated. To test the platform-admin Shops flow locally,
+ * log in explicitly as DemoShopSeeder::PLATFORM_ADMIN_EMAIL.
  *
  * HARD GUARD: a no-op unless app()->isLocal() AND config('app.dev_tenant') is
  * true (the exact gates BindDevTenant uses). It can never run on a production
@@ -29,7 +33,12 @@ class DevAutoLogin
     public function handle(Request $request, Closure $next): Response
     {
         if (app()->isLocal() && config(self::CONFIG_FLAG, false) && Auth::guard('web')->guest()) {
-            $user = User::query()->orderBy('id')->first();
+            // Deterministic: the demo merchant, never whichever row has the lowest
+            // id (the platform admin may seed first/last). Falls back to the first
+            // user only if the demo seed hasn't run.
+            $user = User::query()->where('email', DemoShopSeeder::ADMIN_EMAIL)->first()
+                ?? User::query()->orderBy('id')->first();
+
             if ($user) {
                 Auth::guard('web')->login($user);
             }

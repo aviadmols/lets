@@ -3,6 +3,7 @@
 namespace App\Modules\PayPlusShopifyInstallments\Support;
 
 use App\Models\ActivityEvent;
+use App\Support\PlatformContext;
 use App\Support\Tenant;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -32,6 +33,12 @@ final class Timeline
     /**
      * Record a Timeline event. Never throws.
      *
+     * ACTOR ATTRIBUTION (W2): when the caller does NOT pass an explicit actor, the
+     * actor is resolved to "platform_admin:{id}" if a platform admin is currently
+     * ENTERED into this shop (acting on the merchant's behalf), else 'system'. An
+     * explicit $actor (e.g. ACTOR_CUSTOMER / ACTOR_WEBHOOK from the engine) always
+     * wins — we never silently overwrite a known actor with the platform admin.
+     *
      * @param array<string, mixed> $details
      */
     public static function record(
@@ -39,7 +46,7 @@ final class Timeline
         array $details = [],
         ?int $planId = null,
         ?int $paymentId = null,
-        string $actor = ActivityEvent::ACTOR_SYSTEM,
+        ?string $actor = null,
         ?int $shopId = null,
     ): void {
         try {
@@ -47,7 +54,7 @@ final class Timeline
                 'shop_id' => $shopId ?? Tenant::id(),
                 'plan_id' => $planId,
                 'payment_id' => $paymentId,
-                'actor' => $actor,
+                'actor' => $actor ?? PlatformContext::actingActor() ?? ActivityEvent::ACTOR_SYSTEM,
                 'kind' => $kind,
                 'details' => $details,
                 'created_at' => now(),

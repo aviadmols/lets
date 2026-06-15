@@ -65,6 +65,13 @@ final class EventPresenter
     {
         $actor = (string) ($event->actor ?? ActivityEvent::ACTOR_SYSTEM);
 
+        // A platform admin acting on the merchant's behalf (W2): actor is
+        // "platform_admin:{id}". Surfaced distinctly so the merchant Timeline shows
+        // WHO touched their data — the app owner, not "system".
+        if (str_starts_with($actor, \App\Support\PlatformContext::ACTOR_PREFIX)) {
+            return __('common.actor.platform_admin');
+        }
+
         if (str_starts_with($actor, 'admin:')) {
             return __('common.actor.admin');
         }

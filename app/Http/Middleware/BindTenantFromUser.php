@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Shop;
+use App\Support\PlatformContext;
 use App\Support\Tenant;
 use Closure;
 use Illuminate\Http\Request;
@@ -18,10 +19,14 @@ use Symfony\Component\HttpFoundation\Response;
  *      Shopify-Admin iframe load), respect it — never override the verified shop.
  *   2. Else, for an authenticated NON-platform user, bind Tenant from
  *      auth()->user()->shop_id.
- *   3. A platform-admin user is intentionally left UNBOUND — they must use the
+ *   3. A platform-admin user is, by default, left UNBOUND — they must use the
  *      explicit, audited acrossAllTenants() path, never ambient panel state. With
  *      no tenant bound, the BelongsToShop global scope returns ZERO rows, so the
- *      panel cannot leak any single shop's data to the owner by accident.
+ *      panel cannot leak any single shop's data to the owner by accident. The ONE
+ *      deliberate exception is "Enter shop" (W2): when the platform admin has
+ *      explicitly entered a shop (PlatformContext::enteredShopId), we bind exactly
+ *      that shop for the request — the SAME Tenant::set + global scope a merchant
+ *      uses, so entering shop A scopes them to A only and never leaks B.
  *
  * FAIL CLOSED: a merchant user whose shop_id is null, or whose shop row is
  * missing / not live, is DENIED (403) and no tenant is bound. We never guess a
@@ -48,10 +53,41 @@ final class BindTenantFromUser
             return $next($request);
         }
 
-        // 3. Platform owner: deliberately UNBOUND. They reach cross-tenant data
-        //    only through the audited acrossAllTenants() seam, never here.
+        // 3. Platform owner. Default = UNBOUND (platform mode → the Shops list,
+        //    per-shop screens hidden). If they have explicitly ENTERED a shop, bind
+        //    exactly that one for the request. We allow entering ANY existing shop —
+        //    including an uninstalled one — so the owner can inspect/remediate a shop
+        //    post-uninstall (read its ledger, resume a paused plan, see why it
+        //    churned). The merchant path below stays fail-closed on isLive(); the
+        //    platform admin deliberately does not, because oversight needs the
+        //    uninstalled rows. Either way it is ONE shop, scoped by the same global
+        //    scope — entering A never exposes B.
         if ($user->isPlatformAdmin()) {
-            return $next($request);
+            $enteredShopId = PlatformContext::enteredShopId();
+
+            if ($enteredShopId === null) {
+                return $next($request); // platform mode: unbound, scope fails closed.
+            }
+
+            $shop = Shop::query()->whereKey($enteredShopId)->first();
+
+            if ($shop === null) {
+                // Stale selection (e.g. the shop was hard-deleted by shop/redact).
+                // Drop it and fall back to platform mode rather than 403 the owner.
+                PlatformContext::exit();
+
+                return $next($request);
+            }
+
+            Tenant::set($shop);
+
+            try {
+                return $next($request);
+            } finally {
+                // Long-lived workers (Octane/FrankPHP) share a process — clear so the
+                // next request never inherits this entered shop.
+                Tenant::clear();
+            }
         }
 
         // 2. Merchant user: must be bound to exactly one live shop. Fail closed.

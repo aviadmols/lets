@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Concerns\ShopScopedScreen;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
 use App\Support\Tenant;
@@ -29,6 +30,7 @@ use Throwable;
 class ManagePayPlusConnection extends Page implements HasForms
 {
     use InteractsWithForms;
+    use ShopScopedScreen; // hidden + denied unless a tenant shop is bound (W2)
 
     // === CONSTANTS ===
     protected static ?string $navigationIcon = 'heroicon-o-link';

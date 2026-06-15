@@ -17,6 +17,9 @@ use Filament\PanelProvider;
 use Filament\Support\Assets\Css;
 use Filament\Support\Colors\Color;
 use Filament\Support\Facades\FilamentAsset;
+use Filament\View\PanelsRenderHook;
+use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\View as ViewFacade;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -48,6 +51,10 @@ class AdminPanelProvider extends PanelProvider
      * order. Keys are nav.group.* translation keys.
      */
     public const NAV_GROUP_ORDER = [
+        // Platform group: ONLY ever visible to a platform admin (ShopResource gates
+        // its own nav registration on the role). Listed first so the owner's Shops
+        // list sits at the top; merchants never see this group at all.
+        'nav.group.platform',
         'nav.group.customers',
         'nav.group.products',
         'nav.group.payments',
@@ -91,6 +98,14 @@ class AdminPanelProvider extends PanelProvider
                 'gray' => Color::Slate,
             ])
             ->font('Inter')
+            // Persistent "Viewing as {shop} — Exit" banner: rendered at the top of
+            // the panel body ONLY while a platform admin is entered into a shop
+            // (PlatformContext). The Blade renders nothing otherwise, so a merchant
+            // never sees it. rc-token classes only — zero inline CSS.
+            ->renderHook(
+                PanelsRenderHook::BODY_START,
+                fn (): View => ViewFacade::make('filament.platform.viewing-as-banner'),
+            )
             ->navigationGroups($this->navigationGroups())
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')

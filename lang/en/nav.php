@@ -28,6 +28,7 @@ return [
 
     // group headers
     'group' => [
+        'platform' => 'Platform',
         'customers' => 'Customers',
         'products' => 'Products',
         'payments' => 'Payments',

@@ -1,0 +1,56 @@
+/* platform.css — the platform-admin "Viewing as {shop}" banner (W2).
+   TOKENS: --rc-amber --rc-amber-bg --rc-ink-muted --rc-space-* --rc-radius-control
+           --rc-border-strong --rc-type-body-strong --rc-type-caption --rc-type-label.
+   One amber attention bar shown ONLY while a platform admin is entered into a shop;
+   logical properties so it mirrors cleanly in RTL. ZERO inline CSS in the Blade. */
+
+.rc-platform-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--rc-space-4);
+    flex-wrap: wrap;
+    margin-block-end: var(--rc-space-5);
+    padding-block: var(--rc-space-3);
+    padding-inline: var(--rc-space-5);
+    background: var(--rc-amber-bg);
+    border: 1px solid var(--rc-amber);
+    border-radius: var(--rc-radius-control);
+    color: var(--rc-amber);
+}
+
+.rc-platform-banner__text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.rc-platform-banner__title {
+    font: var(--rc-type-body-strong);
+    color: var(--rc-amber);
+}
+
+.rc-platform-banner__note {
+    font: var(--rc-type-caption);
+    color: var(--rc-ink-muted);
+}
+
+.rc-platform-banner__form {
+    margin: 0;
+}
+
+.rc-platform-banner__exit {
+    font: var(--rc-type-label);
+    color: var(--rc-amber);
+    background: transparent;
+    border: 1px solid var(--rc-amber);
+    border-radius: var(--rc-radius-pill);
+    padding-block: var(--rc-space-1);
+    padding-inline: var(--rc-space-4);
+    cursor: pointer;
+}
+
+.rc-platform-banner__exit:hover {
+    background: var(--rc-amber);
+    color: var(--rc-ink-on-primary);
+}

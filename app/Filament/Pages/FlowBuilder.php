@@ -6,6 +6,7 @@ use App\Domain\Upsell\Enums\UpsellFlowStatus;
 use App\Domain\Upsell\Models\UpsellFlow;
 use App\Domain\Upsell\Models\UpsellFlowOffer;
 use App\Domain\Upsell\Models\UpsellFlowTrigger;
+use App\Filament\Concerns\ShopScopedScreen;
 use App\Support\Ui\Money;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
@@ -34,6 +35,8 @@ use Illuminate\Contracts\Support\Htmlable;
  */
 class FlowBuilder extends Page
 {
+    use ShopScopedScreen; // denied unless a tenant shop is bound (W2)
+
     // === CONSTANTS ===
     protected static ?string $navigationIcon = 'heroicon-o-share';
     protected static string $view = 'filament.pages.flow-builder';
