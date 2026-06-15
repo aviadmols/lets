@@ -17,6 +17,12 @@ return Application::configure(basePath: dirname(__DIR__))
             // (state is cached, not sessioned) but inherits standard middleware.
             \Illuminate\Support\Facades\Route::middleware('web')
                 ->group(base_path('routes/shopify.php'));
+
+            // Post-purchase / thank-you-page UPSELL storefront routes (Phase 6).
+            // SIGNED links are the auth; each controller binds the tenant from the
+            // signed shop id (no admin session on the storefront).
+            \Illuminate\Support\Facades\Route::middleware('web')
+                ->group(base_path('routes/upsell.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware) {

@@ -1,0 +1,159 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - navigation [ref=e5]:
+        - generic [ref=e6]:
+          - generic [ref=e11] [cursor=pointer]: EN
+          - button "User menu" [ref=e14] [cursor=pointer]:
+            - img "Avatar of Demo Admin" [ref=e15]
+      - main [ref=e16]:
+        - generic [ref=e17]:
+          - generic [ref=e18]:
+            - heading "Post-Purchase Offers" [level=1] [ref=e21]
+            - generic [ref=e23]:
+              - tablist [ref=e24]:
+                - tab "Overview" [ref=e25] [cursor=pointer]
+                - tab "Performance" [ref=e26] [cursor=pointer]
+                - tab "Activity" [ref=e27] [cursor=pointer]
+                - tab "Settings New" [ref=e28] [cursor=pointer]:
+                  - text: Settings
+                  - generic [ref=e29]: New
+              - generic [ref=e30]:
+                - generic [ref=e31]:
+                  - img [ref=e32]
+                  - generic [ref=e34]: Analytics for post-purchase upsell swaps are coming soon. Revenue, impressions and conversion below reflect your token-based one-click offers.
+                - generic [ref=e35]:
+                  - generic [ref=e36]:
+                    - generic [ref=e37]: Total post-purchase revenue
+                    - generic [ref=e38]: ₪5,916.80
+                    - generic [ref=e39]: 0%
+                    - generic [ref=e40]: Last 30 days
+                  - generic [ref=e41]:
+                    - generic [ref=e42]: Impressions
+                    - generic [ref=e43]: "424"
+                    - generic [ref=e44]: 0%
+                    - generic [ref=e45]: Last 30 days
+                  - generic [ref=e46]:
+                    - generic [ref=e47]: Post-purchase conversion rate
+                    - generic [ref=e48]: 29.0%
+                    - generic [ref=e49]: 0%
+                    - generic [ref=e50]: Last 30 days
+                  - generic [ref=e51]:
+                    - generic [ref=e52]: "# of post-purchase orders"
+                    - generic [ref=e53]: "112"
+                    - generic [ref=e54]: 0%
+                    - generic [ref=e55]: Last 30 days
+                - generic [ref=e56]:
+                  - generic [ref=e57]:
+                    - generic [ref=e58]: Your flows
+                    - link "Create new" [ref=e59] [cursor=pointer]:
+                      - /url: http://127.0.0.1:8123/admin/post-purchase-offers/flow/0
+                  - generic [ref=e60]:
+                    - tablist [ref=e61]:
+                      - button "Active" [ref=e62] [cursor=pointer]
+                      - button "Inactive" [ref=e63] [cursor=pointer]
+                    - button "Reorder priority" [ref=e64] [cursor=pointer]:
+                      - img [ref=e65]
+                      - text: Reorder priority
+                  - table [ref=e67]:
+                    - rowgroup [ref=e68]:
+                      - row "Priority order Name Created on Status" [ref=e69]:
+                        - columnheader "Priority order" [ref=e70]
+                        - columnheader "Name" [ref=e71]
+                        - columnheader "Created on" [ref=e72]
+                        - columnheader "Status" [ref=e73]
+                    - rowgroup [ref=e74]:
+                      - row "1 Summer add-on boost 2 offers June 15, 2026 Active" [ref=e75] [cursor=pointer]:
+                        - cell "1" [ref=e76]:
+                          - generic [ref=e77]: "1"
+                        - cell "Summer add-on boost 2 offers" [ref=e78]:
+                          - link "Summer add-on boost" [ref=e79]:
+                            - /url: http://127.0.0.1:8123/admin/post-purchase-offers/flow/1
+                          - generic [ref=e80]: 2 offers
+                        - cell "June 15, 2026" [ref=e81]
+                        - cell "Active" [ref=e82]:
+                          - generic [ref=e83]: Active
+                      - row "2 Coffee lovers cross-sell 1 offer June 15, 2026 Active" [ref=e85] [cursor=pointer]:
+                        - cell "2" [ref=e86]:
+                          - generic [ref=e87]: "2"
+                        - cell "Coffee lovers cross-sell 1 offer" [ref=e88]:
+                          - link "Coffee lovers cross-sell" [ref=e89]:
+                            - /url: http://127.0.0.1:8123/admin/post-purchase-offers/flow/2
+                          - generic [ref=e90]: 1 offer
+                        - cell "June 15, 2026" [ref=e91]
+                        - cell "Active" [ref=e92]:
+                          - generic [ref=e93]: Active
+          - generic:
+            - dialog
+          - generic:
+            - dialog
+          - generic:
+            - dialog
+    - complementary [ref=e95]:
+      - link "PayPlus Subscriptions" [ref=e99] [cursor=pointer]:
+        - /url: http://127.0.0.1:8123/admin
+        - generic [ref=e100]: PayPlus Subscriptions
+      - navigation [ref=e101]:
+        - list [ref=e102]:
+          - listitem [ref=e103]:
+            - list [ref=e104]:
+              - listitem [ref=e105]:
+                - link "Home" [ref=e106] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin
+                  - img [ref=e107]
+                  - generic [ref=e109]: Home
+          - listitem [ref=e110]:
+            - generic [ref=e111] [cursor=pointer]:
+              - generic [ref=e112]: Customers
+              - button "Customers" [expanded] [ref=e113]:
+                - generic [ref=e114]: Customers
+                - img [ref=e115]
+            - list [ref=e117]:
+              - listitem [ref=e118]:
+                - link "Customers" [ref=e119] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/customers
+                  - img [ref=e120]
+                  - generic [ref=e122]: Customers
+              - listitem [ref=e123]:
+                - link "Subscriptions" [ref=e124] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/subscriptions
+                  - img [ref=e125]
+                  - generic [ref=e127]: Subscriptions
+          - listitem [ref=e128]:
+            - generic [ref=e129] [cursor=pointer]:
+              - generic [ref=e130]: Payments
+              - button "Payments" [expanded] [ref=e131]:
+                - generic [ref=e132]: Payments
+                - img [ref=e133]
+            - list [ref=e135]:
+              - listitem [ref=e136]:
+                - link "Payments" [ref=e137] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/payments
+                  - img [ref=e138]
+                  - generic [ref=e140]: Payments
+          - listitem [ref=e141]:
+            - generic [ref=e142] [cursor=pointer]:
+              - generic [ref=e143]: Cross-Sell & Upsell
+              - button "Cross-Sell & Upsell" [expanded] [ref=e144]:
+                - generic [ref=e145]: Cross-Sell & Upsell
+                - img [ref=e146]
+            - list [ref=e148]:
+              - listitem [ref=e149]:
+                - link "Post-Purchase Offers" [ref=e150] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/post-purchase-offers
+                  - img [ref=e151]
+                  - generic [ref=e153]: Post-Purchase Offers
+          - listitem [ref=e154]:
+            - generic [ref=e155] [cursor=pointer]:
+              - generic [ref=e156]: Settings
+              - button "Settings" [expanded] [ref=e157]:
+                - generic [ref=e158]: Settings
+                - img [ref=e159]
+            - list [ref=e161]:
+              - listitem [ref=e162]:
+                - link "PayPlus Connection" [ref=e163] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/settings/payplus
+                  - img [ref=e164]
+                  - generic [ref=e166]: PayPlus Connection
+  - generic:
+    - status

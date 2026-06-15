@@ -1,0 +1,121 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - navigation [ref=e5]:
+        - generic [ref=e6]:
+          - generic [ref=e11] [cursor=pointer]: EN
+          - button "User menu" [ref=e14] [cursor=pointer]:
+            - img "Avatar of Demo Admin" [ref=e15]
+      - main [ref=e16]:
+        - generic [ref=e17]:
+          - generic [ref=e18]:
+            - heading "Post-Purchase Offers" [level=1] [ref=e21]
+            - generic [ref=e23]:
+              - tablist [ref=e24]:
+                - tab "Overview" [ref=e25] [cursor=pointer]
+                - tab "Performance" [ref=e26] [cursor=pointer]
+                - tab "Activity" [ref=e27] [cursor=pointer]
+                - tab "Settings New" [ref=e28] [cursor=pointer]:
+                  - text: Settings
+                  - generic [ref=e29]: New
+              - generic [ref=e30]:
+                - generic [ref=e31]:
+                  - generic [ref=e32]:
+                    - generic [ref=e33]: Total revenue
+                    - generic [ref=e34]: ₪5,916.80
+                  - generic [ref=e35]:
+                    - generic [ref=e36]: Impressions
+                    - generic [ref=e37]: "424"
+                  - generic [ref=e38]:
+                    - generic [ref=e39]: Total post-purchase orders
+                    - generic [ref=e40]: "112"
+                  - generic [ref=e41]:
+                    - generic [ref=e42]: Conversion rate
+                    - generic [ref=e43]: 29.0%
+                  - generic [ref=e44]:
+                    - generic [ref=e45]: Charge-success rate
+                    - generic [ref=e46]: 91.1%
+                  - generic [ref=e47]:
+                    - generic [ref=e48]: Avg post-purchase value
+                    - generic [ref=e49]: ₪52.83
+                - generic [ref=e50]:
+                  - generic [ref=e51]: Total revenue over time
+                  - generic [ref=e52]:
+                    - img [ref=e53]
+                    - generic [ref=e56]:
+                      - generic [ref=e57]: 29 days with revenue
+                      - generic [ref=e58]: Peak day ₪433.00
+          - generic:
+            - dialog
+          - generic:
+            - dialog
+          - generic:
+            - dialog
+    - complementary [ref=e59]:
+      - link "PayPlus Subscriptions" [ref=e63] [cursor=pointer]:
+        - /url: http://127.0.0.1:8123/admin
+        - generic [ref=e64]: PayPlus Subscriptions
+      - navigation [ref=e65]:
+        - list [ref=e66]:
+          - listitem [ref=e67]:
+            - list [ref=e68]:
+              - listitem [ref=e69]:
+                - link "Home" [ref=e70] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin
+                  - img [ref=e71]
+                  - generic [ref=e73]: Home
+          - listitem [ref=e74]:
+            - generic [ref=e75] [cursor=pointer]:
+              - generic [ref=e76]: Customers
+              - button "Customers" [expanded] [ref=e77]:
+                - generic [ref=e78]: Customers
+                - img [ref=e79]
+            - list [ref=e81]:
+              - listitem [ref=e82]:
+                - link "Customers" [ref=e83] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/customers
+                  - img [ref=e84]
+                  - generic [ref=e86]: Customers
+              - listitem [ref=e87]:
+                - link "Subscriptions" [ref=e88] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/subscriptions
+                  - img [ref=e89]
+                  - generic [ref=e91]: Subscriptions
+          - listitem [ref=e92]:
+            - generic [ref=e93] [cursor=pointer]:
+              - generic [ref=e94]: Payments
+              - button "Payments" [expanded] [ref=e95]:
+                - generic [ref=e96]: Payments
+                - img [ref=e97]
+            - list [ref=e99]:
+              - listitem [ref=e100]:
+                - link "Payments" [ref=e101] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/payments
+                  - img [ref=e102]
+                  - generic [ref=e104]: Payments
+          - listitem [ref=e105]:
+            - generic [ref=e106] [cursor=pointer]:
+              - generic [ref=e107]: Cross-Sell & Upsell
+              - button "Cross-Sell & Upsell" [expanded] [ref=e108]:
+                - generic [ref=e109]: Cross-Sell & Upsell
+                - img [ref=e110]
+            - list [ref=e112]:
+              - listitem [ref=e113]:
+                - link "Post-Purchase Offers" [ref=e114] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/post-purchase-offers
+                  - img [ref=e115]
+                  - generic [ref=e117]: Post-Purchase Offers
+          - listitem [ref=e118]:
+            - generic [ref=e119] [cursor=pointer]:
+              - generic [ref=e120]: Settings
+              - button "Settings" [expanded] [ref=e121]:
+                - generic [ref=e122]: Settings
+                - img [ref=e123]
+            - list [ref=e125]:
+              - listitem [ref=e126]:
+                - link "PayPlus Connection" [ref=e127] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/settings/payplus
+                  - img [ref=e128]
+                  - generic [ref=e130]: PayPlus Connection
+  - generic:
+    - status

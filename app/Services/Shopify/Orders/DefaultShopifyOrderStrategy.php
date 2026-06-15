@@ -95,19 +95,19 @@ final class DefaultShopifyOrderStrategy implements ShopifyOrderStrategy
     }
 
     /**
-     * upsell: PHASE 6. A separate linked child order via draft-order-completed-as-
-     * paid (ARCHITECTURE.md), linked to the parent by pps_main_order_id +
-     * pps_order_role=upsell_child. Reuses ShopifyDraftOrderService's two-order
-     * pattern. NOT built in this run.
+     * upsell: handled OUT-OF-BAND by the Phase-6 upsell engine, NOT through this
+     * plan-keyed strategy. The post-purchase upsell is a charge CONTEXT, not a
+     * plan, so it never reaches materialize(ChargeContext::UPSELL). The real path:
+     *   App\Domain\Upsell\UpsellChargeService::accept() charges the saved token
+     *   (idempotency key upsell:{shop}:{flow}:{offer}:{parent}:{customer}) then
+     *   builds the linked child order via
+     *   ShopifyDraftOrderService::createUpsellChildOrderForCustomer(...).
+     *
+     * This branch is defensive only — if an upsell context is ever routed here we
+     * log and no-op rather than create a duplicate child order.
      */
     private function onUpsell(InstallmentPlan $plan): void
     {
-        // TODO(phase 6 — upsell engine): resolve the upsell flow/offer + saved
-        //   token, charge via laravel-backend (idempotency key
-        //   upsell:{shop}:{flow}:{offer}:{parent_order}:{customer}), then build the
-        //   child order with ShopifyDraftOrderService::createForUpsell(...) and the
-        //   inline sale transaction. Guard on the idempotency key so a
-        //   double-clicked accept creates exactly ONE child order.
-        Log::info('shopify.order_strategy.upsell_todo_phase6', ['plan_id' => $plan->id]);
+        Log::info('shopify.order_strategy.upsell_handled_by_charge_service', ['plan_id' => $plan->id]);
     }
 }

@@ -1,0 +1,196 @@
+<?php
+
+// Post-purchase / thank-you-page upsell strings (Phase 6). Storefront-facing +
+// admin (Post-Purchase Offers hub + Flow Builder). Mirror EVERY key 1:1 in
+// lang/he/upsell.php.
+return [
+    // Widget headline + default copy (used when an offer leaves a field blank).
+    'widget_eyebrow' => 'One-time offer',
+    'default_headline' => 'Add this to your order',
+    'default_subcopy' => 'A special add-on, just for you — added to the order you just placed.',
+    'offer_default_title' => 'Special offer',
+
+    // Pricing
+    'price_now' => 'Now :price',
+    'was_price' => 'was :price',
+    'you_save' => 'You save :amount',
+
+    // CTAs
+    'accept_cta' => 'Add to my order',
+    'decline_cta' => 'No thanks',
+
+    // Consent disclosure — REQUIRED. States what is charged, how, and that it
+    // uses the already-saved payment method (no new card entry).
+    'consent_disclosure' => 'By clicking "Add to my order", :amount will be charged to the payment method you just used — no need to re-enter your card. This is a one-time charge.',
+    'no_card_reentry' => 'Charged to your saved payment method. No card re-entry.',
+
+    // Result states
+    'success_title' => 'Added to your order',
+    'success_body' => 'Thank you! :amount was charged to your saved payment method and added to your order.',
+    'declined_title' => 'No problem',
+    'declined_body' => 'No changes were made to your order.',
+    'next_offer_cta' => 'See one more offer',
+    'failed_title' => 'We could not complete that',
+    'failed_body' => 'Your saved payment method could not be charged. Your original order is unaffected.',
+    'no_consent_title' => 'We could not add that',
+    'no_consent_body' => 'We do not have permission to charge your saved payment method for this offer. Your original order is unaffected.',
+    'done' => 'You are all set.',
+
+    // Funnel event-type labels (Activity tab badges).
+    'event' => [
+        'impression' => 'Impression',
+        'accepted' => 'Accepted',
+        'declined' => 'Declined',
+        'charge_succeeded' => 'Charge succeeded',
+        'charge_failed' => 'Charge failed',
+    ],
+
+    // ===================================================================
+    // Admin — the Post-Purchase Offers hub + Flow Builder.
+    // ===================================================================
+    'admin' => [
+        // Legacy data-contract labels (kept for compatibility).
+        'impressions' => 'Impressions',
+        'accepted' => 'Accepted',
+        'declined' => 'Declined',
+        'conversion_rate' => 'Conversion rate',
+        'charge_success_rate' => 'Charge success rate',
+        'total_revenue' => 'Upsell revenue',
+        'aov_uplift' => 'AOV uplift',
+
+        'title' => 'Post-Purchase Offers',
+        'badge_new' => 'New',
+
+        'tab' => [
+            'overview' => 'Overview',
+            'performance' => 'Performance',
+            'activity' => 'Activity',
+            'settings' => 'Settings',
+        ],
+
+        'overview' => [
+            'coming_soon' => 'Analytics for post-purchase upsell swaps are coming soon. Revenue, impressions and conversion below reflect your token-based one-click offers.',
+        ],
+
+        'kpi' => [
+            'revenue' => 'Total post-purchase revenue',
+            'impressions' => 'Impressions',
+            'conversion' => 'Post-purchase conversion rate',
+            'orders' => '# of post-purchase orders',
+            'last_30_days' => 'Last 30 days',
+        ],
+
+        'flows' => [
+            'title' => 'Your flows',
+            'create' => 'Create new',
+            'active' => 'Active',
+            'inactive' => 'Inactive',
+            'reorder' => 'Reorder priority',
+            'offer_count' => '{0}No offers|{1}:count offer|[2,*]:count offers',
+            'col' => [
+                'priority' => 'Priority order',
+                'name' => 'Name',
+                'created' => 'Created on',
+                'status' => 'Status',
+            ],
+            'empty' => [
+                'title' => 'Create your first post-purchase offer',
+                'body' => 'Build a one-click upsell that charges the card your customer just used — no re-entry.',
+            ],
+        ],
+
+        'flow_status' => [
+            'active' => 'Active',
+            'inactive' => 'Inactive',
+            'draft' => 'Draft',
+        ],
+
+        'perf' => [
+            'revenue' => 'Total revenue',
+            'impressions' => 'Impressions',
+            'orders' => 'Total post-purchase orders',
+            'conversion' => 'Conversion rate',
+            'charge_success' => 'Charge-success rate',
+            'aov' => 'Avg post-purchase value',
+            'chart_title' => 'Total revenue over time',
+            'chart_days' => '{1}:count day with revenue|[2,*]:count days with revenue',
+            'chart_peak' => 'Peak day :amount',
+            'empty' => [
+                'title' => 'No offer activity in this range yet',
+                'body' => 'Once customers see and accept your offers, the funnel and revenue chart fill in here.',
+            ],
+        ],
+
+        'activity' => [
+            'title' => 'Activity',
+            'col' => [
+                'time' => 'Time',
+                'event' => 'Event',
+                'flow' => 'Flow / Offer',
+                'customer' => 'Customer',
+                'amount' => 'Amount',
+                'order' => 'Parent order',
+            ],
+            'empty' => [
+                'title' => 'No offer events yet',
+                'body' => 'Impressions, accepts, declines and charges will appear here as customers interact with your offers.',
+            ],
+        ],
+
+        'settings' => [
+            'saved' => 'Settings saved.',
+            'save' => 'Save',
+            'partial_paid' => [
+                'title' => 'Partial-paid order handling',
+                'intro' => 'Choose what happens to a post-purchase upsell when the parent order is not yet fully paid (for example, an installment order that is still collecting payments).',
+                'do_nothing' => 'Do nothing',
+                'do_nothing_hint' => 'Keep the upsell — its child order is independent and fully paid on the saved card.',
+                'remove_item' => 'Remove the upsell item',
+                'remove_item_hint' => 'Remove the upsell from the order if the parent is not fully paid within the window below.',
+                'default' => 'Default',
+                'window' => 'Removal window',
+                'window_hours' => '{1}:count hour|[2,*]:count hours',
+            ],
+        ],
+
+        'builder' => [
+            'title' => 'Flow Builder',
+            'untitled' => 'Untitled flow',
+            'back' => 'Back to Post-Purchase Offers',
+            'activate' => 'Activate',
+            'pause' => 'Pause',
+            'activate_blocked' => 'Fix the issues below before activating this flow.',
+            'activated' => 'Flow activated — it will now show on the thank-you page.',
+            'paused' => 'Flow paused — it no longer shows to customers.',
+            'issues' => '{1}:count issue|[2,*]:count issues',
+            'empty' => 'Add your first offer to start this flow.',
+            'zoom_in' => 'Zoom in',
+            'zoom_out' => 'Zoom out',
+            'zoom_reset' => 'Reset view',
+            'node' => [
+                'trigger' => 'Trigger',
+                'offer' => 'Offer',
+                'end' => 'End flow',
+                'next_offer' => 'Next offer',
+            ],
+            'trigger' => [
+                'headline' => 'After the customer completes a checkout',
+                'any_product' => 'Any product purchased',
+                'specific_product' => 'A specific product purchased',
+                'collection' => 'A product from a collection',
+                'tag' => 'Tagged ":tag"',
+                'min_order' => 'Order value over :amount',
+            ],
+            'branch' => [
+                'accept' => 'Accept',
+                'decline' => 'Decline',
+            ],
+            'error' => [
+                'no_trigger' => 'Add a trigger so this flow knows when to show.',
+                'no_offer' => 'Add at least one offer.',
+                'missing_copy' => '":offer" needs a headline and a button label.',
+                'dangling_branch' => 'This branch does not lead anywhere.',
+            ],
+        ],
+    ],
+];

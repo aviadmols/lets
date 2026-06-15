@@ -1,0 +1,168 @@
+/* upsell-widget.css — post-purchase / thank-you-page upsell widget (Phase 6).
+   Storefront UI: tokens → component classes only. NO inline CSS (the email
+   exemption does NOT apply to the storefront widget). RTL-aware via [dir=rtl].
+
+   TOKENS (scoped to the widget root so we never collide with a merchant theme):
+     --ppu-bg --ppu-card --ppu-border --ppu-ink --ppu-ink-muted
+     --ppu-accent --ppu-accent-ink --ppu-radius --ppu-shadow
+     --ppu-space-1..5 --ppu-success --ppu-danger
+*/
+
+.ppu {
+    --ppu-bg: #ffffff;
+    --ppu-card: #ffffff;
+    --ppu-border: #e5e7eb;
+    --ppu-ink: #111827;
+    --ppu-ink-muted: #6b7280;
+    --ppu-accent: #4f46e5;
+    --ppu-accent-ink: #ffffff;
+    --ppu-success: #047857;
+    --ppu-danger: #b91c1c;
+    --ppu-radius: 12px;
+    --ppu-shadow: 0 1px 3px rgba(17, 24, 39, .08), 0 1px 2px rgba(17, 24, 39, .04);
+    --ppu-space-1: 4px;
+    --ppu-space-2: 8px;
+    --ppu-space-3: 12px;
+    --ppu-space-4: 16px;
+    --ppu-space-5: 24px;
+
+    box-sizing: border-box;
+    max-width: 480px;
+    margin: var(--ppu-space-5) auto;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ppu-ink);
+}
+
+.ppu *,
+.ppu *::before,
+.ppu *::after {
+    box-sizing: border-box;
+}
+
+.ppu__card {
+    background: var(--ppu-card);
+    border: 1px solid var(--ppu-border);
+    border-radius: var(--ppu-radius);
+    box-shadow: var(--ppu-shadow);
+    padding: var(--ppu-space-5);
+}
+
+.ppu__eyebrow {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--ppu-accent);
+    margin-bottom: var(--ppu-space-2);
+}
+
+.ppu__headline {
+    margin: 0 0 var(--ppu-space-2);
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+.ppu__subcopy {
+    margin: 0 0 var(--ppu-space-4);
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--ppu-ink-muted);
+}
+
+.ppu__media {
+    width: 100%;
+    border-radius: var(--ppu-radius);
+    margin-bottom: var(--ppu-space-4);
+    display: block;
+}
+
+.ppu__price {
+    display: flex;
+    align-items: baseline;
+    gap: var(--ppu-space-2);
+    margin-bottom: var(--ppu-space-4);
+}
+
+.ppu__price-now {
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.ppu__price-was {
+    font-size: 15px;
+    color: var(--ppu-ink-muted);
+    text-decoration: line-through;
+}
+
+.ppu__save {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ppu-success);
+}
+
+.ppu__actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ppu-space-2);
+    margin-bottom: var(--ppu-space-4);
+}
+
+.ppu__btn {
+    display: inline-block;
+    width: 100%;
+    text-align: center;
+    padding: var(--ppu-space-3) var(--ppu-space-4);
+    border-radius: var(--ppu-radius);
+    font-size: 15px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: filter .15s ease, opacity .15s ease;
+}
+
+.ppu__btn--accept {
+    background: var(--ppu-accent);
+    color: var(--ppu-accent-ink);
+}
+.ppu__btn--accept:hover {
+    filter: brightness(.95);
+}
+
+.ppu__btn--decline {
+    background: transparent;
+    color: var(--ppu-ink-muted);
+    border-color: var(--ppu-border);
+}
+.ppu__btn--decline:hover {
+    opacity: .8;
+}
+
+.ppu__disclosure {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--ppu-ink-muted);
+    border-top: 1px solid var(--ppu-border);
+    padding-top: var(--ppu-space-3);
+}
+
+/* Result states */
+.ppu__result-icon {
+    font-size: 28px;
+    margin-bottom: var(--ppu-space-2);
+}
+.ppu--success .ppu__headline {
+    color: var(--ppu-success);
+}
+.ppu--failed .ppu__headline {
+    color: var(--ppu-danger);
+}
+
+/* RTL: the widget mirrors naturally; the price row reverses so currency reads
+   right-to-left, and the strike/now order flips. */
+[dir="rtl"] .ppu__price {
+    flex-direction: row-reverse;
+    justify-content: flex-end;
+}

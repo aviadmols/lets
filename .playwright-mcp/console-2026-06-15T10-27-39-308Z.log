@@ -1,0 +1,61 @@
+[  116237ms] [WARNING] Alpine Expression Error: rcFlowBuilder is not defined
+
+Expression: "rcFlowBuilder()"
+
+ JSHandle@node @ http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:1176
+[  116237ms] [WARNING] Alpine Expression Error: scale is not defined
+
+Expression: "Math.round(scale * 100) + '%'"
+
+ JSHandle@node @ http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:1176
+[  116237ms] [WARNING] Alpine Expression Error: stageStyle is not defined
+
+Expression: "stageStyle"
+
+ JSHandle@node @ http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:1176
+[  116251ms] ReferenceError: rcFlowBuilder is not defined
+    at [Alpine] rcFlowBuilder() (eval at safeAsyncFunction (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:1237:21), <anonymous>:3:16)
+    at http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:1259:28
+    at tryCatch (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:1163:14)
+    at evaluate (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:1194:34)
+    at Function.<anonymous> (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:3726:17)
+    at flushHandlers (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:1370:48)
+    at stopDeferring (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:1375:7)
+    at deferHandlingDirectives (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:1378:5)
+    at Object.initTree (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:1574:5)
+    at nowInitializeAlpineOnTheNewPage (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:8924:13)
+[  116251ms] ReferenceError: scale is not defined
+    at [Alpine] Math.round(scale * 100) + '%' (eval at safeAsyncFunction (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:1237:21), <anonymous>:3:43)
+    at http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:1259:28
+    at tryCatch (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:1163:14)
+    at http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:3658:7
+    at reactiveEffect (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:2529:18)
+    at Object.effect2 [as effect] (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:2504:7)
+    at effect (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:785:35)
+    at wrappedEffect (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:801:29)
+    at Function.<anonymous> (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:3657:5)
+    at flushHandlers (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:1370:48)
+[  116251ms] ReferenceError: stageStyle is not defined
+    at [Alpine] stageStyle (eval at safeAsyncFunction (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:1237:21), <anonymous>:3:32)
+    at http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:1259:28
+    at tryCatch (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:1163:14)
+    at http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:3695:19
+    at reactiveEffect (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:2529:18)
+    at Object.effect2 [as effect] (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:2504:7)
+    at effect (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:785:35)
+    at wrappedEffect (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:801:29)
+    at handler2 (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:3695:5)
+    at flushHandlers (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:1370:48)
+[  116252ms] [WARNING] Alpine Expression Error: onPan is not defined
+
+Expression: "onPan($event)"
+
+ JSHandle@node @ http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:1176
+[  116254ms] ReferenceError: onPan is not defined
+    at [Alpine] onPan($event) (eval at safeAsyncFunction (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:1237:21), <anonymous>:3:16)
+    at http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:1259:28
+    at tryCatch (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:1163:14)
+    at http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:4003:7
+    at HTMLDivElement.handler4 (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:3280:27)
+[  120892ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8123/livewire/update:0
+[  165084ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8123/livewire/update:0

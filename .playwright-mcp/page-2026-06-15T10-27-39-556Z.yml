@@ -1,0 +1,606 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - navigation [ref=e5]:
+        - generic [ref=e6]:
+          - generic [ref=e11] [cursor=pointer]: EN
+          - button "User menu" [ref=e14] [cursor=pointer]:
+            - img "Avatar of Demo Admin" [ref=e15]
+      - main [ref=e16]:
+        - generic [ref=e17]:
+          - generic [ref=e18]:
+            - heading "Post-Purchase Offers" [level=1] [ref=e21]
+            - generic [ref=e23]:
+              - tablist [ref=e24]:
+                - tab "Overview" [ref=e25] [cursor=pointer]
+                - tab "Performance" [ref=e26] [cursor=pointer]
+                - tab "Activity" [ref=e27] [cursor=pointer]
+                - tab "Settings New" [ref=e28] [cursor=pointer]:
+                  - text: Settings
+                  - generic [ref=e29]: New
+              - generic [ref=e30]:
+                - generic [ref=e31]: Activity
+                - table [ref=e32]:
+                  - rowgroup [ref=e33]:
+                    - row "Time Event Flow / Offer Customer Amount Parent order" [ref=e34]:
+                      - columnheader "Time" [ref=e35]
+                      - columnheader "Event" [ref=e36]
+                      - columnheader "Flow / Offer" [ref=e37]
+                      - columnheader "Customer" [ref=e38]
+                      - columnheader "Amount" [ref=e39]
+                      - columnheader "Parent order" [ref=e40]
+                  - rowgroup [ref=e41]:
+                    - row "June 15, 2026 10:06 AM Accepted Coffee lovers cross-sell Reusable cup — — —" [ref=e42]:
+                      - cell "June 15, 2026 10:06 AM" [ref=e43]
+                      - cell "Accepted" [ref=e44]:
+                        - generic [ref=e45]: Accepted
+                      - cell "Coffee lovers cross-sell Reusable cup" [ref=e46]:
+                        - text: Coffee lovers cross-sell
+                        - generic [ref=e47]: Reusable cup
+                      - cell "—" [ref=e48]
+                      - cell "—" [ref=e49]
+                      - cell "—" [ref=e50]
+                    - row "June 15, 2026 10:06 AM Accepted Summer add-on boost Travel pouch — — —" [ref=e51]:
+                      - cell "June 15, 2026 10:06 AM" [ref=e52]
+                      - cell "Accepted" [ref=e53]:
+                        - generic [ref=e54]: Accepted
+                      - cell "Summer add-on boost Travel pouch" [ref=e55]:
+                        - text: Summer add-on boost
+                        - generic [ref=e56]: Travel pouch
+                      - cell "—" [ref=e57]
+                      - cell "—" [ref=e58]
+                      - cell "—" [ref=e59]
+                    - row "June 15, 2026 10:06 AM Accepted Summer add-on boost Travel pouch — — —" [ref=e60]:
+                      - cell "June 15, 2026 10:06 AM" [ref=e61]
+                      - cell "Accepted" [ref=e62]:
+                        - generic [ref=e63]: Accepted
+                      - cell "Summer add-on boost Travel pouch" [ref=e64]:
+                        - text: Summer add-on boost
+                        - generic [ref=e65]: Travel pouch
+                      - cell "—" [ref=e66]
+                      - cell "—" [ref=e67]
+                      - cell "—" [ref=e68]
+                    - row "June 15, 2026 10:06 AM Accepted Summer add-on boost Travel pouch — — —" [ref=e69]:
+                      - cell "June 15, 2026 10:06 AM" [ref=e70]
+                      - cell "Accepted" [ref=e71]:
+                        - generic [ref=e72]: Accepted
+                      - cell "Summer add-on boost Travel pouch" [ref=e73]:
+                        - text: Summer add-on boost
+                        - generic [ref=e74]: Travel pouch
+                      - cell "—" [ref=e75]
+                      - cell "—" [ref=e76]
+                      - cell "—" [ref=e77]
+                    - row "June 15, 2026 10:06 AM Accepted Summer add-on boost Travel pouch — — —" [ref=e78]:
+                      - cell "June 15, 2026 10:06 AM" [ref=e79]
+                      - cell "Accepted" [ref=e80]:
+                        - generic [ref=e81]: Accepted
+                      - cell "Summer add-on boost Travel pouch" [ref=e82]:
+                        - text: Summer add-on boost
+                        - generic [ref=e83]: Travel pouch
+                      - cell "—" [ref=e84]
+                      - cell "—" [ref=e85]
+                      - cell "—" [ref=e86]
+                    - row "June 15, 2026 10:06 AM Charge failed Summer add-on boost Travel pouch cust_7348 — ord_46252" [ref=e87]:
+                      - cell "June 15, 2026 10:06 AM" [ref=e88]
+                      - cell "Charge failed" [ref=e89]:
+                        - generic [ref=e90]: Charge failed
+                      - cell "Summer add-on boost Travel pouch" [ref=e91]:
+                        - text: Summer add-on boost
+                        - generic [ref=e92]: Travel pouch
+                      - cell "cust_7348" [ref=e93]
+                      - cell "—" [ref=e94]
+                      - cell "ord_46252" [ref=e95]
+                    - row "June 15, 2026 10:06 AM Charge succeeded Summer add-on boost Travel pouch cust_3124 ₪63.20 ord_42505" [ref=e96]:
+                      - cell "June 15, 2026 10:06 AM" [ref=e97]
+                      - cell "Charge succeeded" [ref=e98]:
+                        - generic [ref=e99]: Charge succeeded
+                      - cell "Summer add-on boost Travel pouch" [ref=e100]:
+                        - text: Summer add-on boost
+                        - generic [ref=e101]: Travel pouch
+                      - cell "cust_3124" [ref=e102]
+                      - cell "₪63.20" [ref=e103]
+                      - cell "ord_42505" [ref=e104]
+                    - row "June 15, 2026 10:04 AM Impression Summer add-on boost Care bundle — — —" [ref=e105]:
+                      - cell "June 15, 2026 10:04 AM" [ref=e106]
+                      - cell "Impression" [ref=e107]:
+                        - generic [ref=e108]: Impression
+                      - cell "Summer add-on boost Care bundle" [ref=e109]:
+                        - text: Summer add-on boost
+                        - generic [ref=e110]: Care bundle
+                      - cell "—" [ref=e111]
+                      - cell "—" [ref=e112]
+                      - cell "—" [ref=e113]
+                    - row "June 15, 2026 8:25 AM Impression Summer add-on boost Travel pouch — — —" [ref=e114]:
+                      - cell "June 15, 2026 8:25 AM" [ref=e115]
+                      - cell "Impression" [ref=e116]:
+                        - generic [ref=e117]: Impression
+                      - cell "Summer add-on boost Travel pouch" [ref=e118]:
+                        - text: Summer add-on boost
+                        - generic [ref=e119]: Travel pouch
+                      - cell "—" [ref=e120]
+                      - cell "—" [ref=e121]
+                      - cell "—" [ref=e122]
+                    - row "June 15, 2026 7:27 AM Impression Summer add-on boost Care bundle — — —" [ref=e123]:
+                      - cell "June 15, 2026 7:27 AM" [ref=e124]
+                      - cell "Impression" [ref=e125]:
+                        - generic [ref=e126]: Impression
+                      - cell "Summer add-on boost Care bundle" [ref=e127]:
+                        - text: Summer add-on boost
+                        - generic [ref=e128]: Care bundle
+                      - cell "—" [ref=e129]
+                      - cell "—" [ref=e130]
+                      - cell "—" [ref=e131]
+                    - row "June 15, 2026 6:47 AM Impression Summer add-on boost Travel pouch — — —" [ref=e132]:
+                      - cell "June 15, 2026 6:47 AM" [ref=e133]
+                      - cell "Impression" [ref=e134]:
+                        - generic [ref=e135]: Impression
+                      - cell "Summer add-on boost Travel pouch" [ref=e136]:
+                        - text: Summer add-on boost
+                        - generic [ref=e137]: Travel pouch
+                      - cell "—" [ref=e138]
+                      - cell "—" [ref=e139]
+                      - cell "—" [ref=e140]
+                    - row "June 15, 2026 6:38 AM Impression Summer add-on boost Travel pouch — — —" [ref=e141]:
+                      - cell "June 15, 2026 6:38 AM" [ref=e142]
+                      - cell "Impression" [ref=e143]:
+                        - generic [ref=e144]: Impression
+                      - cell "Summer add-on boost Travel pouch" [ref=e145]:
+                        - text: Summer add-on boost
+                        - generic [ref=e146]: Travel pouch
+                      - cell "—" [ref=e147]
+                      - cell "—" [ref=e148]
+                      - cell "—" [ref=e149]
+                    - row "June 15, 2026 5:55 AM Impression Summer add-on boost Travel pouch — — —" [ref=e150]:
+                      - cell "June 15, 2026 5:55 AM" [ref=e151]
+                      - cell "Impression" [ref=e152]:
+                        - generic [ref=e153]: Impression
+                      - cell "Summer add-on boost Travel pouch" [ref=e154]:
+                        - text: Summer add-on boost
+                        - generic [ref=e155]: Travel pouch
+                      - cell "—" [ref=e156]
+                      - cell "—" [ref=e157]
+                      - cell "—" [ref=e158]
+                    - row "June 15, 2026 4:19 AM Impression Summer add-on boost Travel pouch — — —" [ref=e159]:
+                      - cell "June 15, 2026 4:19 AM" [ref=e160]
+                      - cell "Impression" [ref=e161]:
+                        - generic [ref=e162]: Impression
+                      - cell "Summer add-on boost Travel pouch" [ref=e163]:
+                        - text: Summer add-on boost
+                        - generic [ref=e164]: Travel pouch
+                      - cell "—" [ref=e165]
+                      - cell "—" [ref=e166]
+                      - cell "—" [ref=e167]
+                    - row "June 15, 2026 3:20 AM Impression Coffee lovers cross-sell Reusable cup — — —" [ref=e168]:
+                      - cell "June 15, 2026 3:20 AM" [ref=e169]
+                      - cell "Impression" [ref=e170]:
+                        - generic [ref=e171]: Impression
+                      - cell "Coffee lovers cross-sell Reusable cup" [ref=e172]:
+                        - text: Coffee lovers cross-sell
+                        - generic [ref=e173]: Reusable cup
+                      - cell "—" [ref=e174]
+                      - cell "—" [ref=e175]
+                      - cell "—" [ref=e176]
+                    - row "June 15, 2026 3:06 AM Impression Summer add-on boost Care bundle — — —" [ref=e177]:
+                      - cell "June 15, 2026 3:06 AM" [ref=e178]
+                      - cell "Impression" [ref=e179]:
+                        - generic [ref=e180]: Impression
+                      - cell "Summer add-on boost Care bundle" [ref=e181]:
+                        - text: Summer add-on boost
+                        - generic [ref=e182]: Care bundle
+                      - cell "—" [ref=e183]
+                      - cell "—" [ref=e184]
+                      - cell "—" [ref=e185]
+                    - row "June 15, 2026 1:13 AM Impression Summer add-on boost Care bundle — — —" [ref=e186]:
+                      - cell "June 15, 2026 1:13 AM" [ref=e187]
+                      - cell "Impression" [ref=e188]:
+                        - generic [ref=e189]: Impression
+                      - cell "Summer add-on boost Care bundle" [ref=e190]:
+                        - text: Summer add-on boost
+                        - generic [ref=e191]: Care bundle
+                      - cell "—" [ref=e192]
+                      - cell "—" [ref=e193]
+                      - cell "—" [ref=e194]
+                    - row "June 14, 2026 8:51 PM Impression Summer add-on boost Travel pouch — — —" [ref=e195]:
+                      - cell "June 14, 2026 8:51 PM" [ref=e196]
+                      - cell "Impression" [ref=e197]:
+                        - generic [ref=e198]: Impression
+                      - cell "Summer add-on boost Travel pouch" [ref=e199]:
+                        - text: Summer add-on boost
+                        - generic [ref=e200]: Travel pouch
+                      - cell "—" [ref=e201]
+                      - cell "—" [ref=e202]
+                      - cell "—" [ref=e203]
+                    - row "June 14, 2026 5:28 PM Impression Coffee lovers cross-sell Reusable cup — — —" [ref=e204]:
+                      - cell "June 14, 2026 5:28 PM" [ref=e205]
+                      - cell "Impression" [ref=e206]:
+                        - generic [ref=e207]: Impression
+                      - cell "Coffee lovers cross-sell Reusable cup" [ref=e208]:
+                        - text: Coffee lovers cross-sell
+                        - generic [ref=e209]: Reusable cup
+                      - cell "—" [ref=e210]
+                      - cell "—" [ref=e211]
+                      - cell "—" [ref=e212]
+                    - row "June 14, 2026 4:58 PM Impression Coffee lovers cross-sell Reusable cup — — —" [ref=e213]:
+                      - cell "June 14, 2026 4:58 PM" [ref=e214]
+                      - cell "Impression" [ref=e215]:
+                        - generic [ref=e216]: Impression
+                      - cell "Coffee lovers cross-sell Reusable cup" [ref=e217]:
+                        - text: Coffee lovers cross-sell
+                        - generic [ref=e218]: Reusable cup
+                      - cell "—" [ref=e219]
+                      - cell "—" [ref=e220]
+                      - cell "—" [ref=e221]
+                    - row "June 14, 2026 12:51 PM Impression Summer add-on boost Travel pouch — — —" [ref=e222]:
+                      - cell "June 14, 2026 12:51 PM" [ref=e223]
+                      - cell "Impression" [ref=e224]:
+                        - generic [ref=e225]: Impression
+                      - cell "Summer add-on boost Travel pouch" [ref=e226]:
+                        - text: Summer add-on boost
+                        - generic [ref=e227]: Travel pouch
+                      - cell "—" [ref=e228]
+                      - cell "—" [ref=e229]
+                      - cell "—" [ref=e230]
+                    - row "June 14, 2026 10:06 AM Accepted Coffee lovers cross-sell Reusable cup — — —" [ref=e231]:
+                      - cell "June 14, 2026 10:06 AM" [ref=e232]
+                      - cell "Accepted" [ref=e233]:
+                        - generic [ref=e234]: Accepted
+                      - cell "Coffee lovers cross-sell Reusable cup" [ref=e235]:
+                        - text: Coffee lovers cross-sell
+                        - generic [ref=e236]: Reusable cup
+                      - cell "—" [ref=e237]
+                      - cell "—" [ref=e238]
+                      - cell "—" [ref=e239]
+                    - row "June 14, 2026 10:06 AM Charge failed Summer add-on boost Travel pouch cust_3091 — ord_41557" [ref=e240]:
+                      - cell "June 14, 2026 10:06 AM" [ref=e241]
+                      - cell "Charge failed" [ref=e242]:
+                        - generic [ref=e243]: Charge failed
+                      - cell "Summer add-on boost Travel pouch" [ref=e244]:
+                        - text: Summer add-on boost
+                        - generic [ref=e245]: Travel pouch
+                      - cell "cust_3091" [ref=e246]
+                      - cell "—" [ref=e247]
+                      - cell "ord_41557" [ref=e248]
+                    - row "June 14, 2026 10:06 AM Charge succeeded Summer add-on boost Travel pouch cust_8240 ₪63.20 ord_43151" [ref=e249]:
+                      - cell "June 14, 2026 10:06 AM" [ref=e250]
+                      - cell "Charge succeeded" [ref=e251]:
+                        - generic [ref=e252]: Charge succeeded
+                      - cell "Summer add-on boost Travel pouch" [ref=e253]:
+                        - text: Summer add-on boost
+                        - generic [ref=e254]: Travel pouch
+                      - cell "cust_8240" [ref=e255]
+                      - cell "₪63.20" [ref=e256]
+                      - cell "ord_43151" [ref=e257]
+                    - row "June 14, 2026 10:06 AM Charge succeeded Summer add-on boost Travel pouch cust_2248 ₪63.20 ord_48067" [ref=e258]:
+                      - cell "June 14, 2026 10:06 AM" [ref=e259]
+                      - cell "Charge succeeded" [ref=e260]:
+                        - generic [ref=e261]: Charge succeeded
+                      - cell "Summer add-on boost Travel pouch" [ref=e262]:
+                        - text: Summer add-on boost
+                        - generic [ref=e263]: Travel pouch
+                      - cell "cust_2248" [ref=e264]
+                      - cell "₪63.20" [ref=e265]
+                      - cell "ord_48067" [ref=e266]
+                    - row "June 14, 2026 10:06 AM Charge succeeded Summer add-on boost Care bundle cust_6327 ₪39.00 ord_44403" [ref=e267]:
+                      - cell "June 14, 2026 10:06 AM" [ref=e268]
+                      - cell "Charge succeeded" [ref=e269]:
+                        - generic [ref=e270]: Charge succeeded
+                      - cell "Summer add-on boost Care bundle" [ref=e271]:
+                        - text: Summer add-on boost
+                        - generic [ref=e272]: Care bundle
+                      - cell "cust_6327" [ref=e273]
+                      - cell "₪39.00" [ref=e274]
+                      - cell "ord_44403" [ref=e275]
+                    - row "June 14, 2026 7:50 AM Impression Summer add-on boost Travel pouch — — —" [ref=e276]:
+                      - cell "June 14, 2026 7:50 AM" [ref=e277]
+                      - cell "Impression" [ref=e278]:
+                        - generic [ref=e279]: Impression
+                      - cell "Summer add-on boost Travel pouch" [ref=e280]:
+                        - text: Summer add-on boost
+                        - generic [ref=e281]: Travel pouch
+                      - cell "—" [ref=e282]
+                      - cell "—" [ref=e283]
+                      - cell "—" [ref=e284]
+                    - row "June 14, 2026 7:03 AM Impression Summer add-on boost Travel pouch — — —" [ref=e285]:
+                      - cell "June 14, 2026 7:03 AM" [ref=e286]
+                      - cell "Impression" [ref=e287]:
+                        - generic [ref=e288]: Impression
+                      - cell "Summer add-on boost Travel pouch" [ref=e289]:
+                        - text: Summer add-on boost
+                        - generic [ref=e290]: Travel pouch
+                      - cell "—" [ref=e291]
+                      - cell "—" [ref=e292]
+                      - cell "—" [ref=e293]
+                    - row "June 14, 2026 2:00 AM Impression Summer add-on boost Care bundle — — —" [ref=e294]:
+                      - cell "June 14, 2026 2:00 AM" [ref=e295]
+                      - cell "Impression" [ref=e296]:
+                        - generic [ref=e297]: Impression
+                      - cell "Summer add-on boost Care bundle" [ref=e298]:
+                        - text: Summer add-on boost
+                        - generic [ref=e299]: Care bundle
+                      - cell "—" [ref=e300]
+                      - cell "—" [ref=e301]
+                      - cell "—" [ref=e302]
+                    - row "June 14, 2026 1:56 AM Impression Summer add-on boost Travel pouch — — —" [ref=e303]:
+                      - cell "June 14, 2026 1:56 AM" [ref=e304]
+                      - cell "Impression" [ref=e305]:
+                        - generic [ref=e306]: Impression
+                      - cell "Summer add-on boost Travel pouch" [ref=e307]:
+                        - text: Summer add-on boost
+                        - generic [ref=e308]: Travel pouch
+                      - cell "—" [ref=e309]
+                      - cell "—" [ref=e310]
+                      - cell "—" [ref=e311]
+                    - row "June 13, 2026 10:52 PM Impression Summer add-on boost Travel pouch — — —" [ref=e312]:
+                      - cell "June 13, 2026 10:52 PM" [ref=e313]
+                      - cell "Impression" [ref=e314]:
+                        - generic [ref=e315]: Impression
+                      - cell "Summer add-on boost Travel pouch" [ref=e316]:
+                        - text: Summer add-on boost
+                        - generic [ref=e317]: Travel pouch
+                      - cell "—" [ref=e318]
+                      - cell "—" [ref=e319]
+                      - cell "—" [ref=e320]
+                    - row "June 13, 2026 10:12 PM Impression Summer add-on boost Travel pouch — — —" [ref=e321]:
+                      - cell "June 13, 2026 10:12 PM" [ref=e322]
+                      - cell "Impression" [ref=e323]:
+                        - generic [ref=e324]: Impression
+                      - cell "Summer add-on boost Travel pouch" [ref=e325]:
+                        - text: Summer add-on boost
+                        - generic [ref=e326]: Travel pouch
+                      - cell "—" [ref=e327]
+                      - cell "—" [ref=e328]
+                      - cell "—" [ref=e329]
+                    - row "June 13, 2026 5:48 PM Impression Coffee lovers cross-sell Reusable cup — — —" [ref=e330]:
+                      - cell "June 13, 2026 5:48 PM" [ref=e331]
+                      - cell "Impression" [ref=e332]:
+                        - generic [ref=e333]: Impression
+                      - cell "Coffee lovers cross-sell Reusable cup" [ref=e334]:
+                        - text: Coffee lovers cross-sell
+                        - generic [ref=e335]: Reusable cup
+                      - cell "—" [ref=e336]
+                      - cell "—" [ref=e337]
+                      - cell "—" [ref=e338]
+                    - row "June 13, 2026 4:34 PM Impression Coffee lovers cross-sell Reusable cup — — —" [ref=e339]:
+                      - cell "June 13, 2026 4:34 PM" [ref=e340]
+                      - cell "Impression" [ref=e341]:
+                        - generic [ref=e342]: Impression
+                      - cell "Coffee lovers cross-sell Reusable cup" [ref=e343]:
+                        - text: Coffee lovers cross-sell
+                        - generic [ref=e344]: Reusable cup
+                      - cell "—" [ref=e345]
+                      - cell "—" [ref=e346]
+                      - cell "—" [ref=e347]
+                    - row "June 13, 2026 2:18 PM Impression Coffee lovers cross-sell Reusable cup — — —" [ref=e348]:
+                      - cell "June 13, 2026 2:18 PM" [ref=e349]
+                      - cell "Impression" [ref=e350]:
+                        - generic [ref=e351]: Impression
+                      - cell "Coffee lovers cross-sell Reusable cup" [ref=e352]:
+                        - text: Coffee lovers cross-sell
+                        - generic [ref=e353]: Reusable cup
+                      - cell "—" [ref=e354]
+                      - cell "—" [ref=e355]
+                      - cell "—" [ref=e356]
+                    - row "June 13, 2026 2:05 PM Impression Summer add-on boost Travel pouch — — —" [ref=e357]:
+                      - cell "June 13, 2026 2:05 PM" [ref=e358]
+                      - cell "Impression" [ref=e359]:
+                        - generic [ref=e360]: Impression
+                      - cell "Summer add-on boost Travel pouch" [ref=e361]:
+                        - text: Summer add-on boost
+                        - generic [ref=e362]: Travel pouch
+                      - cell "—" [ref=e363]
+                      - cell "—" [ref=e364]
+                      - cell "—" [ref=e365]
+                    - row "June 13, 2026 12:56 PM Impression Summer add-on boost Care bundle — — —" [ref=e366]:
+                      - cell "June 13, 2026 12:56 PM" [ref=e367]
+                      - cell "Impression" [ref=e368]:
+                        - generic [ref=e369]: Impression
+                      - cell "Summer add-on boost Care bundle" [ref=e370]:
+                        - text: Summer add-on boost
+                        - generic [ref=e371]: Care bundle
+                      - cell "—" [ref=e372]
+                      - cell "—" [ref=e373]
+                      - cell "—" [ref=e374]
+                    - row "June 13, 2026 11:48 AM Impression Summer add-on boost Travel pouch — — —" [ref=e375]:
+                      - cell "June 13, 2026 11:48 AM" [ref=e376]
+                      - cell "Impression" [ref=e377]:
+                        - generic [ref=e378]: Impression
+                      - cell "Summer add-on boost Travel pouch" [ref=e379]:
+                        - text: Summer add-on boost
+                        - generic [ref=e380]: Travel pouch
+                      - cell "—" [ref=e381]
+                      - cell "—" [ref=e382]
+                      - cell "—" [ref=e383]
+                    - row "June 13, 2026 10:34 AM Impression Coffee lovers cross-sell Reusable cup — — —" [ref=e384]:
+                      - cell "June 13, 2026 10:34 AM" [ref=e385]
+                      - cell "Impression" [ref=e386]:
+                        - generic [ref=e387]: Impression
+                      - cell "Coffee lovers cross-sell Reusable cup" [ref=e388]:
+                        - text: Coffee lovers cross-sell
+                        - generic [ref=e389]: Reusable cup
+                      - cell "—" [ref=e390]
+                      - cell "—" [ref=e391]
+                      - cell "—" [ref=e392]
+                    - row "June 13, 2026 10:06 AM Accepted Coffee lovers cross-sell Reusable cup — — —" [ref=e393]:
+                      - cell "June 13, 2026 10:06 AM" [ref=e394]
+                      - cell "Accepted" [ref=e395]:
+                        - generic [ref=e396]: Accepted
+                      - cell "Coffee lovers cross-sell Reusable cup" [ref=e397]:
+                        - text: Coffee lovers cross-sell
+                        - generic [ref=e398]: Reusable cup
+                      - cell "—" [ref=e399]
+                      - cell "—" [ref=e400]
+                      - cell "—" [ref=e401]
+                    - row "June 13, 2026 10:06 AM Accepted Coffee lovers cross-sell Reusable cup — — —" [ref=e402]:
+                      - cell "June 13, 2026 10:06 AM" [ref=e403]
+                      - cell "Accepted" [ref=e404]:
+                        - generic [ref=e405]: Accepted
+                      - cell "Coffee lovers cross-sell Reusable cup" [ref=e406]:
+                        - text: Coffee lovers cross-sell
+                        - generic [ref=e407]: Reusable cup
+                      - cell "—" [ref=e408]
+                      - cell "—" [ref=e409]
+                      - cell "—" [ref=e410]
+                    - row "June 13, 2026 10:06 AM Charge failed Coffee lovers cross-sell Reusable cup cust_3486 — ord_43110" [ref=e411]:
+                      - cell "June 13, 2026 10:06 AM" [ref=e412]
+                      - cell "Charge failed" [ref=e413]:
+                        - generic [ref=e414]: Charge failed
+                      - cell "Coffee lovers cross-sell Reusable cup" [ref=e415]:
+                        - text: Coffee lovers cross-sell
+                        - generic [ref=e416]: Reusable cup
+                      - cell "cust_3486" [ref=e417]
+                      - cell "—" [ref=e418]
+                      - cell "ord_43110" [ref=e419]
+                    - row "June 13, 2026 10:06 AM Charge succeeded Coffee lovers cross-sell Reusable cup cust_9802 ₪39.00 ord_45612" [ref=e420]:
+                      - cell "June 13, 2026 10:06 AM" [ref=e421]
+                      - cell "Charge succeeded" [ref=e422]:
+                        - generic [ref=e423]: Charge succeeded
+                      - cell "Coffee lovers cross-sell Reusable cup" [ref=e424]:
+                        - text: Coffee lovers cross-sell
+                        - generic [ref=e425]: Reusable cup
+                      - cell "cust_9802" [ref=e426]
+                      - cell "₪39.00" [ref=e427]
+                      - cell "ord_45612" [ref=e428]
+                    - row "June 13, 2026 10:06 AM Charge succeeded Coffee lovers cross-sell Reusable cup cust_6143 ₪39.00 ord_41474" [ref=e429]:
+                      - cell "June 13, 2026 10:06 AM" [ref=e430]
+                      - cell "Charge succeeded" [ref=e431]:
+                        - generic [ref=e432]: Charge succeeded
+                      - cell "Coffee lovers cross-sell Reusable cup" [ref=e433]:
+                        - text: Coffee lovers cross-sell
+                        - generic [ref=e434]: Reusable cup
+                      - cell "cust_6143" [ref=e435]
+                      - cell "₪39.00" [ref=e436]
+                      - cell "ord_41474" [ref=e437]
+                    - row "June 13, 2026 10:06 AM Charge succeeded Coffee lovers cross-sell Reusable cup cust_6508 ₪39.00 ord_40074" [ref=e438]:
+                      - cell "June 13, 2026 10:06 AM" [ref=e439]
+                      - cell "Charge succeeded" [ref=e440]:
+                        - generic [ref=e441]: Charge succeeded
+                      - cell "Coffee lovers cross-sell Reusable cup" [ref=e442]:
+                        - text: Coffee lovers cross-sell
+                        - generic [ref=e443]: Reusable cup
+                      - cell "cust_6508" [ref=e444]
+                      - cell "₪39.00" [ref=e445]
+                      - cell "ord_40074" [ref=e446]
+                    - row "June 13, 2026 10:06 AM Accepted Summer add-on boost Travel pouch — — —" [ref=e447]:
+                      - cell "June 13, 2026 10:06 AM" [ref=e448]
+                      - cell "Accepted" [ref=e449]:
+                        - generic [ref=e450]: Accepted
+                      - cell "Summer add-on boost Travel pouch" [ref=e451]:
+                        - text: Summer add-on boost
+                        - generic [ref=e452]: Travel pouch
+                      - cell "—" [ref=e453]
+                      - cell "—" [ref=e454]
+                      - cell "—" [ref=e455]
+                    - row "June 13, 2026 10:06 AM Charge succeeded Summer add-on boost Travel pouch cust_5103 ₪63.20 ord_46446" [ref=e456]:
+                      - cell "June 13, 2026 10:06 AM" [ref=e457]
+                      - cell "Charge succeeded" [ref=e458]:
+                        - generic [ref=e459]: Charge succeeded
+                      - cell "Summer add-on boost Travel pouch" [ref=e460]:
+                        - text: Summer add-on boost
+                        - generic [ref=e461]: Travel pouch
+                      - cell "cust_5103" [ref=e462]
+                      - cell "₪63.20" [ref=e463]
+                      - cell "ord_46446" [ref=e464]
+                    - row "June 13, 2026 10:06 AM Charge succeeded Summer add-on boost Travel pouch cust_9224 ₪63.20 ord_47174" [ref=e465]:
+                      - cell "June 13, 2026 10:06 AM" [ref=e466]
+                      - cell "Charge succeeded" [ref=e467]:
+                        - generic [ref=e468]: Charge succeeded
+                      - cell "Summer add-on boost Travel pouch" [ref=e469]:
+                        - text: Summer add-on boost
+                        - generic [ref=e470]: Travel pouch
+                      - cell "cust_9224" [ref=e471]
+                      - cell "₪63.20" [ref=e472]
+                      - cell "ord_47174" [ref=e473]
+                    - row "June 13, 2026 10:06 AM Charge succeeded Summer add-on boost Travel pouch cust_9520 ₪63.20 ord_46909" [ref=e474]:
+                      - cell "June 13, 2026 10:06 AM" [ref=e475]
+                      - cell "Charge succeeded" [ref=e476]:
+                        - generic [ref=e477]: Charge succeeded
+                      - cell "Summer add-on boost Travel pouch" [ref=e478]:
+                        - text: Summer add-on boost
+                        - generic [ref=e479]: Travel pouch
+                      - cell "cust_9520" [ref=e480]
+                      - cell "₪63.20" [ref=e481]
+                      - cell "ord_46909" [ref=e482]
+                    - row "June 13, 2026 10:06 AM Accepted Summer add-on boost Care bundle — — —" [ref=e483]:
+                      - cell "June 13, 2026 10:06 AM" [ref=e484]
+                      - cell "Accepted" [ref=e485]:
+                        - generic [ref=e486]: Accepted
+                      - cell "Summer add-on boost Care bundle" [ref=e487]:
+                        - text: Summer add-on boost
+                        - generic [ref=e488]: Care bundle
+                      - cell "—" [ref=e489]
+                      - cell "—" [ref=e490]
+                      - cell "—" [ref=e491]
+          - generic:
+            - dialog
+          - generic:
+            - dialog
+          - generic:
+            - dialog
+    - complementary [ref=e492]:
+      - link "PayPlus Subscriptions" [ref=e496] [cursor=pointer]:
+        - /url: http://127.0.0.1:8123/admin
+        - generic [ref=e497]: PayPlus Subscriptions
+      - navigation [ref=e498]:
+        - list [ref=e499]:
+          - listitem [ref=e500]:
+            - list [ref=e501]:
+              - listitem [ref=e502]:
+                - link "Home" [ref=e503] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin
+                  - img [ref=e504]
+                  - generic [ref=e506]: Home
+          - listitem [ref=e507]:
+            - generic [ref=e508] [cursor=pointer]:
+              - generic [ref=e509]: Customers
+              - button "Customers" [expanded] [ref=e510]:
+                - generic [ref=e511]: Customers
+                - img [ref=e512]
+            - list [ref=e514]:
+              - listitem [ref=e515]:
+                - link "Customers" [ref=e516] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/customers
+                  - img [ref=e517]
+                  - generic [ref=e519]: Customers
+              - listitem [ref=e520]:
+                - link "Subscriptions" [ref=e521] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/subscriptions
+                  - img [ref=e522]
+                  - generic [ref=e524]: Subscriptions
+          - listitem [ref=e525]:
+            - generic [ref=e526] [cursor=pointer]:
+              - generic [ref=e527]: Payments
+              - button "Payments" [expanded] [ref=e528]:
+                - generic [ref=e529]: Payments
+                - img [ref=e530]
+            - list [ref=e532]:
+              - listitem [ref=e533]:
+                - link "Payments" [ref=e534] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/payments
+                  - img [ref=e535]
+                  - generic [ref=e537]: Payments
+          - listitem [ref=e538]:
+            - generic [ref=e539] [cursor=pointer]:
+              - generic [ref=e540]: Cross-Sell & Upsell
+              - button "Cross-Sell & Upsell" [expanded] [ref=e541]:
+                - generic [ref=e542]: Cross-Sell & Upsell
+                - img [ref=e543]
+            - list [ref=e545]:
+              - listitem [ref=e546]:
+                - link "Post-Purchase Offers" [ref=e547] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/post-purchase-offers
+                  - img [ref=e548]
+                  - generic [ref=e550]: Post-Purchase Offers
+          - listitem [ref=e551]:
+            - generic [ref=e552] [cursor=pointer]:
+              - generic [ref=e553]: Settings
+              - button "Settings" [expanded] [ref=e554]:
+                - generic [ref=e555]: Settings
+                - img [ref=e556]
+            - list [ref=e558]:
+              - listitem [ref=e559]:
+                - link "PayPlus Connection" [ref=e560] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/settings/payplus
+                  - img [ref=e561]
+                  - generic [ref=e563]: PayPlus Connection
+  - generic:
+    - status

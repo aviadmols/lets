@@ -1,0 +1,4 @@
+[    2072ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8123/livewire/update:0
+[   20446ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8123/admin/subscriptions/3:0
+[   34956ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8123/admin/subscriptions/1:0
+[   52633ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8123/admin/post-purchase-offers/flow/0:0

@@ -4,6 +4,7 @@ namespace App\Providers\Filament;
 
 use App\Http\Middleware\BindDevTenant;
 use App\Http\Middleware\BindTenantFromUser;
+use App\Http\Middleware\DevAutoLogin;
 use App\Http\Middleware\SetAdminLocale;
 use BezhanSalleh\FilamentLanguageSwitch\LanguageSwitch;
 use Filament\Http\Middleware\Authenticate;
@@ -104,6 +105,7 @@ class AdminPanelProvider extends PanelProvider
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
                 SetAdminLocale::class,   // resolves en/he + ?locale override
+                DevAutoLogin::class,     // DEV-ONLY: sign in the demo admin (gated by isLocal + dev_tenant)
             ])
             ->authMiddleware([
                 // 1. Require an authenticated user (redirects to login otherwise).

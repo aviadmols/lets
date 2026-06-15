@@ -59,4 +59,46 @@ final class ShopifyDraftOrderService
             'shopify_order_gid' => (string) ($order['admin_graphql_api_id'] ?? '') ?: null,
         ];
     }
+
+    /**
+     * PLAN-LESS variant for the Phase-6 post-purchase upsell. The upsell is a
+     * charge CONTEXT, not necessarily a plan, so the child order is built from a
+     * plain customer + line descriptor (the resolved offer + parent order). Same
+     * draft-completed-as-paid shape, same parent linkage attributes, so the
+     * merchant sees one linked child order. The money already moved on the saved
+     * PayPlus token before this is ever called.
+     *
+     * @param  array{email?: string, currency?: string}  $customer
+     * @param  array{title: string, price: float, quantity?: int, variant_gid?: string}  $lineItem
+     * @return array{shopify_order_id: string, shopify_order_gid: ?string}
+     */
+    public function createUpsellChildOrderForCustomer(string $parentOrderId, array $customer, array $lineItem): array
+    {
+        $tags = (array) config('shopify.tags');
+
+        $draft = $this->client->createDraftOrder([
+            'email' => (string) ($customer['email'] ?? ''),
+            'currency' => (string) ($customer['currency'] ?? config('payplus.currency', 'ILS')),
+            'tags' => (string) ($tags['upsell_child'] ?? 'upsell-child'),
+            'note_attributes' => [
+                ['name' => 'pps_main_order_id', 'value' => $parentOrderId],
+                ['name' => 'pps_order_role', 'value' => 'upsell_child'],
+            ],
+            'line_items' => [array_filter([
+                'title' => (string) $lineItem['title'],
+                'price' => number_format((float) $lineItem['price'], 2, '.', ''),
+                'quantity' => (int) ($lineItem['quantity'] ?? 1),
+                'variant_id' => $lineItem['variant_gid'] ?? null,
+            ], static fn ($v): bool => $v !== null)],
+        ]);
+
+        $draftId = (string) ($draft['id'] ?? '');
+
+        $order = $this->client->completeDraftOrder($draftId, paymentPending: false);
+
+        return [
+            'shopify_order_id' => (string) ($order['order_id'] ?? $order['id'] ?? ''),
+            'shopify_order_gid' => (string) ($order['admin_graphql_api_id'] ?? '') ?: null,
+        ];
+    }
 }

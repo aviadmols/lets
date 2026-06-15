@@ -1,0 +1,118 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - navigation [ref=e5]:
+        - generic [ref=e6]:
+          - generic [ref=e11] [cursor=pointer]: EN
+          - button "User menu" [ref=e14] [cursor=pointer]:
+            - img "Avatar of Demo Admin" [ref=e15]
+      - main [ref=e16]:
+        - generic [ref=e17]:
+          - generic [ref=e18]:
+            - heading "Post-Purchase Offers" [level=1] [ref=e21]
+            - generic [ref=e23]:
+              - tablist [ref=e24]:
+                - tab "Overview" [ref=e25] [cursor=pointer]
+                - tab "Performance" [ref=e26] [cursor=pointer]
+                - tab "Activity" [ref=e27] [cursor=pointer]
+                - tab "Settings New" [ref=e28] [cursor=pointer]:
+                  - text: Settings
+                  - generic [ref=e29]: New
+              - generic [ref=e30]:
+                - generic [ref=e31]: Partial-paid order handling
+                - paragraph [ref=e32]: Choose what happens to a post-purchase upsell when the parent order is not yet fully paid (for example, an installment order that is still collecting payments).
+                - generic [ref=e33]:
+                  - generic [ref=e34] [cursor=pointer]:
+                    - radio "Do nothing Keep the upsell — its child order is independent and fully paid on the saved card." [ref=e35]
+                    - generic [ref=e36]:
+                      - generic [ref=e37]: Do nothing
+                      - generic [ref=e38]: Keep the upsell — its child order is independent and fully paid on the saved card.
+                  - generic [ref=e39] [cursor=pointer]:
+                    - radio "Remove the upsell item Default Remove the upsell from the order if the parent is not fully paid within the window below." [checked] [ref=e40]
+                    - generic [ref=e41]:
+                      - generic [ref=e42]:
+                        - text: Remove the upsell item
+                        - generic [ref=e43]: Default
+                      - generic [ref=e44]: Remove the upsell from the order if the parent is not fully paid within the window below.
+                - generic [ref=e45]:
+                  - generic [ref=e46]: Removal window
+                  - combobox "Removal window" [ref=e47]:
+                    - option "12 hours"
+                    - option "24 hours" [selected]
+                    - option "48 hours"
+                    - option "72 hours"
+                - button "Save" [ref=e49] [cursor=pointer]
+          - generic:
+            - dialog
+          - generic:
+            - dialog
+          - generic:
+            - dialog
+    - complementary [ref=e50]:
+      - link "PayPlus Subscriptions" [ref=e54] [cursor=pointer]:
+        - /url: http://127.0.0.1:8123/admin
+        - generic [ref=e55]: PayPlus Subscriptions
+      - navigation [ref=e56]:
+        - list [ref=e57]:
+          - listitem [ref=e58]:
+            - list [ref=e59]:
+              - listitem [ref=e60]:
+                - link "Home" [ref=e61] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin
+                  - img [ref=e62]
+                  - generic [ref=e64]: Home
+          - listitem [ref=e65]:
+            - generic [ref=e66] [cursor=pointer]:
+              - generic [ref=e67]: Customers
+              - button "Customers" [expanded] [ref=e68]:
+                - generic [ref=e69]: Customers
+                - img [ref=e70]
+            - list [ref=e72]:
+              - listitem [ref=e73]:
+                - link "Customers" [ref=e74] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/customers
+                  - img [ref=e75]
+                  - generic [ref=e77]: Customers
+              - listitem [ref=e78]:
+                - link "Subscriptions" [ref=e79] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/subscriptions
+                  - img [ref=e80]
+                  - generic [ref=e82]: Subscriptions
+          - listitem [ref=e83]:
+            - generic [ref=e84] [cursor=pointer]:
+              - generic [ref=e85]: Payments
+              - button "Payments" [expanded] [ref=e86]:
+                - generic [ref=e87]: Payments
+                - img [ref=e88]
+            - list [ref=e90]:
+              - listitem [ref=e91]:
+                - link "Payments" [ref=e92] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/payments
+                  - img [ref=e93]
+                  - generic [ref=e95]: Payments
+          - listitem [ref=e96]:
+            - generic [ref=e97] [cursor=pointer]:
+              - generic [ref=e98]: Cross-Sell & Upsell
+              - button "Cross-Sell & Upsell" [expanded] [ref=e99]:
+                - generic [ref=e100]: Cross-Sell & Upsell
+                - img [ref=e101]
+            - list [ref=e103]:
+              - listitem [ref=e104]:
+                - link "Post-Purchase Offers" [ref=e105] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/post-purchase-offers
+                  - img [ref=e106]
+                  - generic [ref=e108]: Post-Purchase Offers
+          - listitem [ref=e109]:
+            - generic [ref=e110] [cursor=pointer]:
+              - generic [ref=e111]: Settings
+              - button "Settings" [expanded] [ref=e112]:
+                - generic [ref=e113]: Settings
+                - img [ref=e114]
+            - list [ref=e116]:
+              - listitem [ref=e117]:
+                - link "PayPlus Connection" [ref=e118] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/settings/payplus
+                  - img [ref=e119]
+                  - generic [ref=e121]: PayPlus Connection
+  - generic:
+    - status
