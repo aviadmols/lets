@@ -20,8 +20,10 @@ use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\GatewayResult;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
 use App\Modules\PayPlusShopifyInstallments\Support\ResponseMasker;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
+use App\Services\Shopify\Orders\ShopifyOrderStrategy;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * The charge pipeline (the spine). Ported + multi-tenant-refactored from the
@@ -51,8 +53,16 @@ final class ChargeOrchestrator
     /** Max charge attempts before a terminal `failed`. Mirrors retry_backoff_hours length. */
     private const MAX_ATTEMPTS_FALLBACK = 3;
 
+    /**
+     * The Shopify order strategy is OPTIONAL + nullable so the billing engine
+     * stays decoupled from the Shopify boundary (and unit tests can run the money
+     * pipeline without any Shopify wiring). When bound (by the shopify-integration
+     * service provider), onSuccess() materializes Shopify state AFTER the ledger
+     * is succeeded — a Shopify hiccup never rolls back the money truth.
+     */
     public function __construct(
         private readonly DocumentPolicy $documentPolicy,
+        private readonly ?ShopifyOrderStrategy $shopifyOrders = null,
     ) {}
 
     /**
@@ -178,21 +188,26 @@ final class ChargeOrchestrator
             $this->ensureActiveThen($plan, PlanStatus::COMPLETED);
 
             Timeline::record(Timeline::KIND_PLAN_COMPLETED, ['plan_id' => $plan->getKey()], $plan->getKey(), shopId: $plan->shop_id);
-
-            // TODO(phase 4): ReleaseFulfillmentIfFullyPaidJob::dispatch($plan->shop_id, $plan->id).
         } elseif ($plan->plan_kind === PlanKind::RECURRING) {
             // Recurring never completes — advance the clock by one cycle.
             $plan->next_charge_at = $this->advanceNextChargeAt($plan);
             $plan->save();
-            // TODO(phase 4): shopifyOrderStrategy->createFulfillableOrder($plan).
         } else {
-            // Installments, not final — schedule the next slot.
+            // Installments, not final — schedule the next slot + update parent.
             $plan->next_charge_at = $this->advanceNextChargeAt($plan);
             $plan->save();
         }
 
         // Documents — ONLY via the policy. The orchestrator never names a type.
         $this->maybeIssueDocument($plan, $type, $isFinal, $ledger);
+
+        // Materialize Shopify state — AFTER the ledger is succeeded + the plan
+        // advanced. Owned by shopify-integration's ShopifyOrderStrategy; the
+        // orchestrator only knows the interface. Installments-final releases
+        // fulfillment; recurring creates a new fulfillable order; deposit/first
+        // installment update the parent. A Shopify failure is logged, never
+        // unwound (the money already moved and is recorded in the ledger).
+        $this->materializeShopify($plan, $type->toChargeContext(), $isFinal);
 
         Timeline::record(
             kind: Timeline::KIND_CHARGE_SUCCEEDED,
@@ -276,6 +291,33 @@ final class ChargeOrchestrator
     }
 
     // === Helpers ===
+
+    /**
+     * Hand off to the Shopify order strategy when one is bound. Wrapped so a
+     * Shopify-side error never propagates into the money pipeline — the ledger row
+     * is already succeeded and is the source of truth. In production the strategy
+     * implementation should itself enqueue the heavy Shopify work on the `sync`
+     * queue rather than block the charge path; here the call is synchronous and
+     * defensive (the scaffold strategy is fast/idempotent).
+     */
+    private function materializeShopify(InstallmentPlan $plan, ChargeContext $context, bool $isFinal): void
+    {
+        if ($this->shopifyOrders === null) {
+            return; // engine runs decoupled when the Shopify boundary isn't bound
+        }
+
+        try {
+            $this->shopifyOrders->materialize($plan, $context, $isFinal);
+        } catch (\Throwable $e) {
+            Log::error('shopify.order_strategy.materialize_failed', [
+                'plan_id' => $plan->getKey(),
+                'shop_id' => $plan->shop_id,
+                'context' => $context->value,
+                'is_final' => $isFinal,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
 
     /**
      * Manual-payment mode: no saved token. The reference engine emails a draft

@@ -19,7 +19,11 @@ class Shop extends Model
 {
     // === CONSTANTS ===
     public const STATUS_INSTALLED = 'installed';
+    public const STATUS_ACTIVE = 'active';
     public const STATUS_UNINSTALLED = 'uninstalled';
+
+    /** Statuses for which background charge dispatch + Shopify API calls are allowed. */
+    public const LIVE_STATUSES = [self::STATUS_INSTALLED, self::STATUS_ACTIVE];
 
     /** PayPlus credential keys expected inside the encrypted bag. */
     public const PAYPLUS_KEYS = [
@@ -33,6 +37,10 @@ class Shop extends Model
         'status',
         'plan',
         'trial_ends_at',
+        'shopify_access_token',
+        'shopify_scopes',
+        'installed_at',
+        'uninstalled_at',
     ];
 
     protected $hidden = [
@@ -46,7 +54,67 @@ class Shop extends Model
             'payplus_credentials' => EncryptedCredentials::class,
             'shopify_access_token' => 'encrypted',
             'trial_ends_at' => 'datetime',
+            'installed_at' => 'datetime',
+            'uninstalled_at' => 'datetime',
         ];
+    }
+
+    // === Shopify credentials + lifecycle ===
+
+    /**
+     * The decrypted Shopify offline access token. Read ONCE per job by
+     * ShopifyClientFactory::for($shop) and held as in-process client state —
+     * never read from config(), never logged, never shared across shops. Returns
+     * null after uninstall (the token is revoked + nulled by AppUninstalledHandler).
+     */
+    public function shopifyAccessToken(): ?string
+    {
+        $token = $this->shopify_access_token; // 'encrypted' cast decrypts on read
+
+        return ($token === null || $token === '') ? null : (string) $token;
+    }
+
+    public function hasShopifyConnection(): bool
+    {
+        return $this->shopifyAccessToken() !== null
+            && in_array($this->status, self::LIVE_STATUSES, true);
+    }
+
+    /** Is this shop allowed to receive background charges + Shopify API calls? */
+    public function isLive(): bool
+    {
+        return in_array($this->status, self::LIVE_STATUSES, true)
+            && $this->uninstalled_at === null;
+    }
+
+    /**
+     * Mark the shop uninstalled and revoke its now-dead token. After uninstall the
+     * Shopify token is invalid — every API call would 401 — so we null it and gate
+     * the scheduler's due-charge query on shop.status (see AppUninstalledHandler).
+     * Plans + ledger are PRESERVED (shop-scoped) for a possible reinstall.
+     */
+    public function markUninstalled(): void
+    {
+        $this->forceFill([
+            'status' => self::STATUS_UNINSTALLED,
+            'uninstalled_at' => now(),
+            'shopify_access_token' => null,
+        ])->save();
+    }
+
+    /**
+     * Capture (or re-capture on reinstall) the offline OAuth token. Matched by
+     * shopify_domain upstream so reinstall never duplicates the Shop row.
+     */
+    public function captureShopifyInstall(string $accessToken, ?string $scopes): void
+    {
+        $this->forceFill([
+            'shopify_access_token' => $accessToken,   // 'encrypted' cast encrypts on write
+            'shopify_scopes' => $scopes,
+            'status' => self::STATUS_INSTALLED,
+            'installed_at' => now(),
+            'uninstalled_at' => null,
+        ])->save();
     }
 
     /** Read a single PayPlus credential from the encrypted bag. */

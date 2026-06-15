@@ -1,0 +1,60 @@
+# Shopify app configuration (public, App-Store-distributed).
+#
+# `shopify app config push` validates this; the mandatory privacy webhooks
+# declared here are validated at config-push time, AND we register them via the
+# Admin API on install (belt-and-suspenders). The scopes here MUST match
+# config('shopify.oauth_scopes') / SHOPIFY_OAUTH_SCOPES — every scope maps to a
+# real call in this codebase (App Store reviewers check unused scopes).
+#
+# Replace the placeholder client_id + application_url at deploy time (or let the
+# CLI manage them); secrets live in env, never here.
+
+name = "PayPlus Subscriptions"
+handle = "payplus-subscriptions"
+client_id = "REPLACE_WITH_SHOPIFY_API_KEY"
+application_url = "https://REPLACE_WITH_APP_URL"
+embedded = true
+
+[access_scopes]
+# Keep in sync with SHOPIFY_OAUTH_SCOPES in .env / config/shopify.php.
+scopes = "read_products,read_orders,write_orders,read_draft_orders,write_draft_orders,read_customers,read_fulfillments,write_fulfillments,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders"
+
+[auth]
+redirect_urls = [
+  "https://REPLACE_WITH_APP_URL/shopify/callback",
+]
+
+[webhooks]
+api_version = "2025-10"
+
+# Mandatory privacy / GDPR webhooks — App Store rejection if missing.
+[[webhooks.subscriptions]]
+topics = ["customers/data_request"]
+uri = "/shopify/webhooks"
+
+[[webhooks.subscriptions]]
+topics = ["customers/redact"]
+uri = "/shopify/webhooks"
+
+[[webhooks.subscriptions]]
+topics = ["shop/redact"]
+uri = "/shopify/webhooks"
+
+# Operational webhooks (also registered per-shop via the Admin API on install).
+[[webhooks.subscriptions]]
+topics = ["app/uninstalled"]
+uri = "/shopify/webhooks"
+
+[[webhooks.subscriptions]]
+topics = ["orders/paid", "orders/create", "orders/cancelled", "orders/fulfilled", "refunds/create"]
+uri = "/shopify/webhooks"
+
+[app_proxy]
+# Storefront → backend trust boundary for the installment button + thank-you
+# upsell widget (Phase 6 wires the controllers; the proxy subpath is reserved).
+url = "https://REPLACE_WITH_APP_URL/proxy"
+subpath = "payplus"
+prefix = "apps"
+
+[pos]
+embedded = false
