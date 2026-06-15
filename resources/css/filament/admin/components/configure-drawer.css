@@ -1,0 +1,204 @@
+/* =============================================================================
+   configure-drawer.css — the "Configure cross-sell" slide-over (docs/ux/40,
+   Recharge post-purchase reference). A right-side drawer + scrim opened from an
+   Offer node in the Flow Builder. Sectioned body, radios-with-descriptions,
+   blue/yellow callouts (reusing .rc-pp-info / .rc-pp-radio-group), a sticky
+   footer with "View post-purchase" + a primary "Close".
+   TOKENS: --rc-card --rc-bg --rc-border --rc-border-strong --rc-blue --rc-blue-bg
+           --rc-ink --rc-ink-muted --rc-radius-card --rc-radius-control
+           --rc-radius-pill --rc-shadow-pop --rc-ring --rc-space-* --rc-type-*
+           --rc-teal --rc-teal-bg
+   RTL: drawer docks to inline-end; logical properties only. No left/right, no raw
+        values, no inline CSS.
+   ========================================================================== */
+
+/* Overlay container (covers the viewport; the panel docks inline-end) */
+.rc-drawer {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    justify-content: flex-end;
+}
+[dir="rtl"] .rc-drawer { justify-content: flex-start; }
+
+.rc-drawer__scrim {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    padding: 0;
+    background: var(--rc-scrim);
+    cursor: pointer;
+}
+
+/* The panel itself */
+.rc-drawer__panel {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    inline-size: 460px;
+    max-inline-size: 92vw;
+    block-size: 100%;
+    background: var(--rc-card);
+    box-shadow: var(--rc-shadow-pop);
+    border-inline-start: 1px solid var(--rc-border);
+}
+
+/* Header */
+.rc-drawer__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--rc-space-3);
+    padding: var(--rc-space-5);
+    border-block-end: 1px solid var(--rc-border);
+}
+.rc-drawer__title { font: var(--rc-type-h); color: var(--rc-ink); margin: 0; }
+.rc-drawer__close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 32px;
+    block-size: 32px;
+    border-radius: var(--rc-radius-pill);
+    border: 1px solid var(--rc-border);
+    background: var(--rc-card);
+    color: var(--rc-ink-muted);
+    cursor: pointer;
+}
+.rc-drawer__close:hover { border-color: var(--rc-border-strong); color: var(--rc-ink); }
+.rc-drawer__close-icon { inline-size: 16px; block-size: 16px; }
+
+/* Scrollable body */
+.rc-drawer__body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: var(--rc-space-5);
+    display: flex;
+    flex-direction: column;
+    gap: var(--rc-space-5);
+}
+.rc-drawer__subtitle { font: var(--rc-type-body); color: var(--rc-ink-muted); margin: 0; }
+
+/* DEV-ONLY screenshot mode (?shot=1): expand to full content height so the
+   harness captures the whole drawer in one fullPage image. Never reached in
+   production (hard-gated in the Blade). */
+.rc-drawer--shot { position: absolute; block-size: auto; }
+.rc-drawer--shot .rc-drawer__panel { block-size: auto; }
+.rc-drawer--shot .rc-drawer__body { overflow-y: visible; }
+
+/* Selected-product card inside the "Specific products" radio */
+.rc-drawer__product {
+    display: flex;
+    align-items: center;
+    gap: var(--rc-space-3);
+    margin-block-start: var(--rc-space-3);
+    padding: var(--rc-space-3);
+    background: var(--rc-bg);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+}
+.rc-drawer__product-info { display: flex; flex-direction: column; gap: 1px; }
+
+/* Sticky footer */
+.rc-drawer__foot {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--rc-space-3);
+    padding: var(--rc-space-4) var(--rc-space-5);
+    border-block-start: 1px solid var(--rc-border);
+    background: var(--rc-card);
+}
+
+/* ---------------------------------------------- Shared form primitives --- */
+
+.rc-field { display: flex; flex-direction: column; gap: var(--rc-space-3); border: 0; padding: 0; margin: 0; }
+.rc-field__label {
+    font: var(--rc-type-body-strong);
+    color: var(--rc-ink);
+    padding: 0;
+}
+.rc-field__control { align-self: stretch; }
+
+/* Radio title/hint (extends the existing .rc-pp-radio layout) */
+.rc-pp-radio__title { font: var(--rc-type-body-strong); color: var(--rc-ink); }
+.rc-pp-radio__hint { font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+
+/* Checkbox row (Apply discount on top / Show timer) */
+.rc-check {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--rc-space-3);
+    cursor: pointer;
+}
+.rc-check input { margin-block-start: 3px; accent-color: var(--rc-blue); }
+.rc-check__body { display: flex; flex-direction: column; gap: var(--rc-space-1); }
+.rc-check__title { font: var(--rc-type-body-strong); color: var(--rc-ink); }
+.rc-check__hint { font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+
+/* Info pill (e.g. "This product only has 1 variant") */
+.rc-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--rc-space-2);
+    align-self: flex-start;
+    padding-block: var(--rc-space-1);
+    padding-inline: var(--rc-space-3);
+    border-radius: var(--rc-radius-pill);
+    font: var(--rc-type-caption);
+}
+.rc-pill--info { background: var(--rc-blue-bg); color: var(--rc-blue); }
+.rc-pill__icon { inline-size: 14px; block-size: 14px; }
+
+/* Plain number/text input + a suffix unit (the "%" discount input) */
+.rc-input {
+    inline-size: 100%;
+    padding-block: var(--rc-space-2);
+    padding-inline: var(--rc-space-3);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    background: var(--rc-card);
+    font: var(--rc-type-body);
+    color: var(--rc-ink);
+}
+.rc-input:focus-visible { outline: none; border-color: var(--rc-blue); box-shadow: var(--rc-ring); }
+.rc-input-suffix {
+    display: flex;
+    align-items: stretch;
+    max-inline-size: 160px;
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    overflow: hidden;
+    background: var(--rc-card);
+}
+.rc-input-suffix .rc-input {
+    border: 0;
+    border-radius: 0;
+}
+.rc-input-suffix .rc-input:focus-visible { box-shadow: none; }
+.rc-input-suffix:focus-within { border-color: var(--rc-blue); box-shadow: var(--rc-ring); }
+.rc-input-suffix__unit {
+    display: inline-flex;
+    align-items: center;
+    padding-inline: var(--rc-space-3);
+    background: var(--rc-bg);
+    border-inline-start: 1px solid var(--rc-border);
+    font: var(--rc-type-body-strong);
+    color: var(--rc-ink-muted);
+}
+
+/* Inline link (e.g. "store's settings") */
+.rc-link { color: var(--rc-link); text-decoration: none; }
+.rc-link:hover { text-decoration: underline; }
+
+/* CTA leading icon + ghost-disabled state (footer "View post-purchase") */
+.rc-cta__icon { inline-size: 16px; block-size: 16px; }
+.rc-cta--ghost {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--rc-space-2);
+}
+.rc-cta--ghost[disabled] { opacity: .5; cursor: not-allowed; }

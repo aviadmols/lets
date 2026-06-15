@@ -1,0 +1,9 @@
+[   74797ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8123/livewire/update:0
+[   74849ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8123/livewire/update:0
+[   74863ms] InvalidStateError: Failed to execute 'showModal' on 'HTMLDialogElement': The dialog is already open as a non-modal dialog, and therefore cannot be opened as a modal dialog.
+    at showHtmlModal (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:4143:11)
+    at showFailureModal (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:4486:5)
+    at sendRequest (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:4463:14)
+    at async RequestPool.send (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:4183:7)
+[   85175ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8123/livewire/update:0
+[   88803ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8123/livewire/update:0

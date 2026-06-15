@@ -152,6 +152,66 @@ final class PostPurchaseOffersPageTest extends TestCase
         $this->assertFalse($component->instance()->isActivatable());
     }
 
+    public function test_offer_node_opens_configure_drawer_with_its_sections(): void
+    {
+        $flow = $this->makeFlow('Config flow', UpsellFlowStatus::DRAFT->value, 1);
+        $offerId = $flow->offers()->first()->id;
+
+        Livewire::test(FlowBuilder::class, ['flow' => $flow->id])
+            // Node renders as the Recharge "Cross-sell" card.
+            ->assertSee(__('upsell.admin.configure.crosssell'))
+            ->assertSee(__('upsell.admin.configure.single_product'))
+            // Clicking the node opens the drawer with its section headings.
+            ->call('openOfferConfig', $offerId)
+            ->assertSet('drawerOpen', true)
+            ->assertSet('configOfferId', $offerId)
+            ->assertSee(__('upsell.admin.configure.title'))
+            ->assertSee(__('upsell.admin.configure.what_product'))
+            ->assertSee(__('upsell.admin.configure.how_variants'))
+            ->assertSee(__('upsell.admin.configure.purchase_options'))
+            ->assertSee(__('upsell.admin.configure.subscription_warning'))
+            ->assertSee(__('upsell.admin.configure.discount_label'))
+            ->assertSee(__('upsell.admin.configure.shipping_label'))
+            ->assertSee(__('upsell.admin.configure.display_options'))
+            ->assertSee(__('upsell.admin.configure.view_post_purchase'));
+    }
+
+    public function test_configure_drawer_persists_new_offer_config_columns(): void
+    {
+        $flow = $this->makeFlow('Persist flow', UpsellFlowStatus::DRAFT->value, 1);
+        $offerId = $flow->offers()->first()->id;
+
+        Livewire::test(FlowBuilder::class, ['flow' => $flow->id])
+            ->call('openOfferConfig', $offerId)
+            ->set('productSelectionMode', UpsellFlowOffer::PRODUCT_SMART)
+            ->set('variantSelectionMode', UpsellFlowOffer::VARIANT_MERCHANT)
+            ->set('purchaseOption', UpsellFlowOffer::PURCHASE_SUBSCRIPTION_ONLY)
+            ->set('discountPercent', 15)
+            ->set('applyDiscountOnTop', true)
+            ->set('shippingFeeMode', UpsellFlowOffer::SHIPPING_CHARGE)
+            ->set('showTimer', false)
+            ->call('saveOfferConfig')
+            ->assertSet('drawerOpen', false);
+
+        $offer = UpsellFlowOffer::findOrFail($offerId);
+
+        $this->assertSame(UpsellFlowOffer::PRODUCT_SMART, $offer->product_selection_mode);
+        $this->assertSame(UpsellFlowOffer::VARIANT_MERCHANT, $offer->variant_selection_mode);
+        $this->assertSame(UpsellFlowOffer::PURCHASE_SUBSCRIPTION_ONLY, $offer->purchase_option);
+        $this->assertTrue($offer->apply_discount_on_top);
+        $this->assertSame(UpsellFlowOffer::SHIPPING_CHARGE, $offer->shipping_fee_mode);
+        $this->assertFalse($offer->show_timer);
+        // The "%" input maps to discount_type=percent + discount_value (money truth).
+        $this->assertSame(UpsellFlowOffer::DISCOUNT_PERCENT, $offer->discount_type);
+        $this->assertSame(15, (int) round((float) $offer->discount_value));
+        // Zero percent clears the discount back to none.
+        Livewire::test(FlowBuilder::class, ['flow' => $flow->id])
+            ->call('openOfferConfig', $offerId)
+            ->set('discountPercent', 0)
+            ->call('saveOfferConfig');
+        $this->assertSame(UpsellFlowOffer::DISCOUNT_NONE, UpsellFlowOffer::findOrFail($offerId)->discount_type);
+    }
+
     private function makeFlow(string $name, string $status, int $priority): UpsellFlow
     {
         $flow = new UpsellFlow(['name' => $name, 'priority' => $priority]);

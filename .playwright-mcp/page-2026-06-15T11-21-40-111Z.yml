@@ -1,0 +1,172 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - navigation [ref=e5]:
+        - button "Collapse sidebar" [ref=e6] [cursor=pointer]:
+          - generic [ref=e7]: Collapse sidebar
+          - img [ref=e8]
+        - generic [ref=e10]:
+          - generic [ref=e15] [cursor=pointer]: EN
+          - button "User menu" [ref=e18] [cursor=pointer]:
+            - img "Avatar of Demo Admin" [ref=e19]
+      - main [ref=e20]:
+        - generic [ref=e21]:
+          - generic [ref=e22]:
+            - generic [ref=e24]:
+              - navigation [ref=e25]:
+                - list [ref=e26]:
+                  - listitem [ref=e27]:
+                    - link "Post-Purchase Offers" [ref=e28] [cursor=pointer]:
+                      - /url: http://127.0.0.1:8123/admin/post-purchase-offers
+                  - listitem [ref=e29]:
+                    - img [ref=e30]
+                    - generic [ref=e32]: Flow Builder
+              - heading "Summer add-on boost" [level=1] [ref=e33]
+            - generic [ref=e35]:
+              - generic [ref=e36]:
+                - generic [ref=e37]:
+                  - link "Back to Post-Purchase Offers" [ref=e38] [cursor=pointer]:
+                    - /url: http://127.0.0.1:8123/admin/post-purchase-offers
+                    - img [ref=e39]
+                  - generic [ref=e41]: Summer add-on boost
+                  - generic [ref=e42]: Active
+                - button "Pause" [ref=e45] [cursor=pointer]
+              - generic [ref=e46]:
+                - generic [ref=e47]:
+                  - button "Zoom in" [ref=e48] [cursor=pointer]: +
+                  - generic [ref=e49]: 100%
+                  - button "Zoom out" [ref=e50] [cursor=pointer]: −
+                  - button "Reset view" [ref=e51] [cursor=pointer]:
+                    - img [ref=e52]
+                - generic [ref=e55]:
+                  - generic [ref=e56]:
+                    - generic [ref=e57]:
+                      - img [ref=e58]
+                      - text: Trigger
+                    - generic [ref=e60]: After the customer completes a checkout
+                    - generic [ref=e61]:
+                      - generic [ref=e62]: Any product purchased
+                      - generic [ref=e63]: Order value over ₪150.00
+                  - generic [ref=e65]:
+                    - img [ref=e66]
+                    - generic [ref=e67]: ▶
+                  - button "Configure \"Travel pouch\"" [ref=e68] [cursor=pointer]:
+                    - generic [ref=e69]:
+                      - img [ref=e71]
+                      - generic [ref=e73]:
+                        - generic [ref=e74]: Cross-sell
+                        - generic [ref=e75]: A single product
+                    - generic [ref=e76]:
+                      - generic [ref=e77]: Product
+                      - generic [ref=e78]:
+                        - img [ref=e80]
+                        - generic [ref=e82]:
+                          - generic [ref=e83]: Travel pouch
+                          - generic [ref=e84]: "Variants: All"
+                          - generic [ref=e85]: "Price: ₪63.20 ₪79.00"
+                    - generic [ref=e86]:
+                      - generic [ref=e87]:
+                        - generic [ref=e88]: Accept
+                        - generic [ref=e89]: →
+                        - generic [ref=e90]: Care bundle
+                      - generic [ref=e91]:
+                        - generic [ref=e92]: Decline
+                        - generic [ref=e93]: →
+                        - generic [ref=e94]: End flow
+                  - button "Configure \"Care bundle\"" [ref=e95] [cursor=pointer]:
+                    - generic [ref=e96]:
+                      - img [ref=e98]
+                      - generic [ref=e100]:
+                        - generic [ref=e101]: Cross-sell
+                        - generic [ref=e102]: A single product
+                    - generic [ref=e103]:
+                      - generic [ref=e104]: Product
+                      - generic [ref=e105]:
+                        - img [ref=e107]
+                        - generic [ref=e109]:
+                          - generic [ref=e110]: Care bundle
+                          - generic [ref=e111]: "Variants: All"
+                          - generic [ref=e112]: "Price: ₪39.00 ₪49.00"
+                    - generic [ref=e113]:
+                      - generic [ref=e114]:
+                        - generic [ref=e115]: Accept
+                        - generic [ref=e116]: →
+                        - generic [ref=e117]: End flow
+                      - generic [ref=e118]:
+                        - generic [ref=e119]: Decline
+                        - generic [ref=e120]: →
+                        - generic [ref=e121]: End flow
+          - generic:
+            - dialog
+          - generic:
+            - dialog
+          - generic:
+            - dialog
+    - complementary [ref=e127]:
+      - link "PayPlus Subscriptions" [ref=e131] [cursor=pointer]:
+        - /url: http://127.0.0.1:8123/admin
+        - generic [ref=e132]: PayPlus Subscriptions
+      - navigation [ref=e133]:
+        - list [ref=e134]:
+          - listitem [ref=e135]:
+            - list [ref=e136]:
+              - listitem [ref=e137]:
+                - link "Home" [ref=e138] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin
+                  - img [ref=e139]
+                  - generic [ref=e141]: Home
+          - listitem [ref=e142]:
+            - generic [ref=e143] [cursor=pointer]:
+              - generic [ref=e144]: Customers
+              - button "Customers" [expanded] [ref=e145]:
+                - generic [ref=e146]: Customers
+                - img [ref=e147]
+            - list [ref=e149]:
+              - listitem [ref=e150]:
+                - link "Customers" [ref=e151] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/customers
+                  - img [ref=e152]
+                  - generic [ref=e154]: Customers
+              - listitem [ref=e155]:
+                - link "Subscriptions" [ref=e156] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/subscriptions
+                  - img [ref=e157]
+                  - generic [ref=e159]: Subscriptions
+          - listitem [ref=e160]:
+            - generic [ref=e161] [cursor=pointer]:
+              - generic [ref=e162]: Payments
+              - button "Payments" [expanded] [ref=e163]:
+                - generic [ref=e164]: Payments
+                - img [ref=e165]
+            - list [ref=e167]:
+              - listitem [ref=e168]:
+                - link "Payments" [ref=e169] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/payments
+                  - img [ref=e170]
+                  - generic [ref=e172]: Payments
+          - listitem [ref=e173]:
+            - generic [ref=e174] [cursor=pointer]:
+              - generic [ref=e175]: Cross-Sell & Upsell
+              - button "Cross-Sell & Upsell" [expanded] [ref=e176]:
+                - generic [ref=e177]: Cross-Sell & Upsell
+                - img [ref=e178]
+            - list [ref=e180]:
+              - listitem [ref=e181]:
+                - link "Post-Purchase Offers" [ref=e182] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/post-purchase-offers
+                  - img [ref=e183]
+                  - generic [ref=e185]: Post-Purchase Offers
+          - listitem [ref=e186]:
+            - generic [ref=e187] [cursor=pointer]:
+              - generic [ref=e188]: Settings
+              - button "Settings" [expanded] [ref=e189]:
+                - generic [ref=e190]: Settings
+                - img [ref=e191]
+            - list [ref=e193]:
+              - listitem [ref=e194]:
+                - link "PayPlus Connection" [ref=e195] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/settings/payplus
+                  - img [ref=e196]
+                  - generic [ref=e198]: PayPlus Connection
+  - generic:
+    - status

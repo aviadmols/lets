@@ -2,6 +2,7 @@
 
 use App\Domain\Upsell\Http\Controllers\AcceptUpsellController;
 use App\Domain\Upsell\Http\Controllers\DeclineUpsellController;
+use App\Domain\Upsell\Http\Controllers\DevPreviewUpsellController;
 use App\Domain\Upsell\Http\Controllers\ThankYouUpsellController;
 use App\Domain\Upsell\UpsellSignedUrlService;
 use Illuminate\Support\Facades\Route;
@@ -24,3 +25,15 @@ Route::middleware(['signed'])->prefix('upsell')->group(function () {
     Route::get('/accept', AcceptUpsellController::class)->name(UpsellSignedUrlService::ROUTE_ACCEPT);
     Route::get('/decline', DeclineUpsellController::class)->name(UpsellSignedUrlService::ROUTE_DECLINE);
 });
+
+/*
+ * DEV-ONLY widget preview for the "View post-purchase" drawer button. NOT signed
+ * — gated hard by app()->isLocal() AND config('app.dev_tenant'), the same gate as
+ * DevAutoLogin, so it can never exist on a production deploy. Renders the live
+ * thank-you widget for one tenant-scoped offer (no charge, no event recorded).
+ */
+if (app()->isLocal() && config('app.dev_tenant', false)) {
+    Route::get('/upsell/preview/{offer}', DevPreviewUpsellController::class)
+        ->whereNumber('offer')
+        ->name('upsell.dev_preview');
+}

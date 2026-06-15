@@ -39,7 +39,7 @@ class FlowBuilder extends Page
     public const NODE_OFFER = 'offer';
     public const NODE_END = 'end';
 
-    /** The ONLY Livewire-persisted state. */
+    /** The ONLY Livewire-persisted graph state. */
     public int $flowId = 0;
 
     /** @var array<int, array<string, mixed>> derived each render (not persisted). */
@@ -48,12 +48,44 @@ class FlowBuilder extends Page
     /** @var array<int, array<string, mixed>> */
     public array $triggers = [];
 
+    // === "Configure cross-sell" drawer state ===
+    /** The offer being configured, or 0 when the drawer is closed. */
+    public int $configOfferId = 0;
+
+    public bool $drawerOpen = false;
+
+    /** Form fields bound to the drawer — persisted to the offer on save. */
+    public string $productSelectionMode = UpsellFlowOffer::PRODUCT_SPECIFIC;
+
+    public string $variantSelectionMode = UpsellFlowOffer::VARIANT_CUSTOMER;
+
+    public string $purchaseOption = UpsellFlowOffer::PURCHASE_ONE_TIME;
+
+    public int $discountPercent = 0;
+
+    public bool $applyDiscountOnTop = false;
+
+    public string $shippingFeeMode = UpsellFlowOffer::SHIPPING_FREE;
+
+    public bool $showTimer = true;
+
     private ?UpsellFlow $resolved = null;
 
     public function mount(int|string $flow): void
     {
         $this->flowId = (int) $flow;
         $this->hydrateGraph();
+
+        // DEV-ONLY deep-link to open the Configure drawer for an offer (used by
+        // the screenshot harness). Hard-gated like DevAutoLogin so it can never
+        // act on a production deploy; the openOfferConfig() lookup is itself
+        // tenant-scoped, so a foreign id is a no-op.
+        if (app()->isLocal() && config('app.dev_tenant', false)) {
+            $config = request()->query('config');
+            if (is_string($config) && ctype_digit($config)) {
+                $this->openOfferConfig((int) $config);
+            }
+        }
     }
 
     /** Re-load the flow + rebuild the derived node arrays (called on mount + after a transition). */
@@ -86,6 +118,7 @@ class FlowBuilder extends Page
                     'accept_next' => $this->nextLabel($flow, $branch?->on_accept_next_offer_id),
                     'decline_next' => $this->nextLabel($flow, $branch?->on_decline_next_offer_id),
                     'valid' => $this->offerIsValid($offer),
+                    'product_id' => $offer->productNumericId(),
                 ];
             })->all();
     }
@@ -184,7 +217,116 @@ class FlowBuilder extends Page
         return PostPurchaseOffers::getUrl();
     }
 
+    // === "Configure cross-sell" drawer (UI config — no charge-engine change) ===
+
+    /**
+     * Open the drawer for a clicked Offer node. Loads the offer's stored config
+     * into the bound form props. Tenant-scoped: a foreign offer id resolves to
+     * null (global scope) and the drawer simply stays closed.
+     */
+    public function openOfferConfig(int $offerId): void
+    {
+        $offer = $this->offerModel($offerId);
+
+        if ($offer === null) {
+            return;
+        }
+
+        $this->configOfferId = $offer->id;
+        $this->productSelectionMode = $offer->product_selection_mode ?: UpsellFlowOffer::PRODUCT_SPECIFIC;
+        $this->variantSelectionMode = $offer->variant_selection_mode ?: UpsellFlowOffer::VARIANT_CUSTOMER;
+        $this->purchaseOption = $offer->purchase_option ?: UpsellFlowOffer::PURCHASE_ONE_TIME;
+        $this->discountPercent = $offer->percentDiscountValue();
+        $this->applyDiscountOnTop = (bool) $offer->apply_discount_on_top;
+        $this->shippingFeeMode = $offer->shipping_fee_mode ?: UpsellFlowOffer::SHIPPING_FREE;
+        $this->showTimer = (bool) $offer->show_timer;
+        $this->drawerOpen = true;
+    }
+
+    public function closeOfferConfig(): void
+    {
+        $this->drawerOpen = false;
+        $this->configOfferId = 0;
+    }
+
+    /**
+     * Persist the drawer's config to the offer (tenant-scoped). UI/display config
+     * only — the discount is written back to the existing discount_type/value
+     * (0% = none) so UpsellChargeService::discountedPrice() stays the money truth.
+     */
+    public function saveOfferConfig(): void
+    {
+        $offer = $this->offerModel($this->configOfferId);
+
+        if ($offer === null) {
+            return;
+        }
+
+        $percent = max(0, min(100, (int) $this->discountPercent));
+
+        $offer->product_selection_mode = $this->sanitize($this->productSelectionMode, UpsellFlowOffer::PRODUCT_MODES, UpsellFlowOffer::PRODUCT_SPECIFIC);
+        $offer->variant_selection_mode = $this->sanitize($this->variantSelectionMode, UpsellFlowOffer::VARIANT_MODES, UpsellFlowOffer::VARIANT_CUSTOMER);
+        $offer->purchase_option = $this->sanitize($this->purchaseOption, UpsellFlowOffer::PURCHASE_OPTIONS, UpsellFlowOffer::PURCHASE_ONE_TIME);
+        $offer->apply_discount_on_top = $this->applyDiscountOnTop;
+        $offer->shipping_fee_mode = $this->sanitize($this->shippingFeeMode, UpsellFlowOffer::SHIPPING_MODES, UpsellFlowOffer::SHIPPING_FREE);
+        $offer->show_timer = $this->showTimer;
+
+        // The "%" input is the single discount control in the drawer: 0 ⇒ no
+        // discount; >0 ⇒ a percent discount. We never touch base_price here.
+        $offer->discount_type = $percent > 0 ? UpsellFlowOffer::DISCOUNT_PERCENT : UpsellFlowOffer::DISCOUNT_NONE;
+        $offer->discount_value = $percent;
+
+        $offer->save();
+
+        $this->resolved = null;
+        $this->hydrateGraph();
+        $this->drawerOpen = false;
+        $this->configOfferId = 0;
+
+        Notification::make()->title(__('upsell.admin.configure.saved'))->success()->send();
+    }
+
+    /** The currently-configured offer model (tenant-scoped), or null. */
+    public function configuredOffer(): ?UpsellFlowOffer
+    {
+        return $this->configOfferId > 0 ? $this->offerModel($this->configOfferId) : null;
+    }
+
+    /** Signed dev-only preview URL for the configured offer ("View post-purchase"). */
+    public function previewUrl(): ?string
+    {
+        if ($this->configOfferId <= 0) {
+            return null;
+        }
+
+        if (! (app()->isLocal() && config('app.dev_tenant', false))) {
+            return null;
+        }
+
+        return route('upsell.dev_preview', ['offer' => $this->configOfferId]);
+    }
+
     // === Internals (presentation only) ===
+
+    /** Tenant-scoped lookup of an offer that belongs to THIS flow. */
+    private function offerModel(int $offerId): ?UpsellFlowOffer
+    {
+        if ($offerId <= 0) {
+            return null;
+        }
+
+        return UpsellFlowOffer::query()
+            ->where('flow_id', $this->flowId)
+            ->find($offerId);
+    }
+
+    /**
+     * @param  list<string>  $allowed
+     */
+    private function sanitize(string $value, array $allowed, string $fallback): string
+    {
+        return in_array($value, $allowed, true) ? $value : $fallback;
+    }
 
     private function triggerSummary(UpsellFlowTrigger $t): string
     {

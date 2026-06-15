@@ -193,14 +193,23 @@
     max-inline-size: 280px;
 }
 .rc-pp-select {
+    /* Filament forms.css sets `select{background-image:<chevron svg>}` but lets it
+       TILE; pin it to a single inline-end chevron + our surface color. We keep
+       Filament's SVG (its stroke is the muted ink) instead of re-declaring one. */
+    background-repeat: no-repeat;
+    background-position: right var(--rc-space-3) center;
+    background-size: 16px 16px;
     padding-block: var(--rc-space-2);
-    padding-inline: var(--rc-space-3);
+    padding-inline-start: var(--rc-space-3);
+    padding-inline-end: var(--rc-space-6);
     border: 1px solid var(--rc-border);
     border-radius: var(--rc-radius-control);
-    background: var(--rc-card);
+    background-color: var(--rc-card);
     font: var(--rc-type-body);
     color: var(--rc-ink);
 }
+[dir="rtl"] .rc-pp-select { background-position: left var(--rc-space-3) center; }
+.rc-pp-select:focus-visible { outline: none; border-color: var(--rc-blue); box-shadow: var(--rc-ring); }
 .rc-pp-settings__actions {
     margin-block-start: var(--rc-space-5);
 }
@@ -320,6 +329,63 @@
     padding: var(--rc-space-4);
     position: relative;
 }
+/* Offer node is a <button> (clickable → opens the drawer): reset button chrome,
+   keep the card look + a clear pointer/hover affordance. */
+button.rc-fb-node {
+    appearance: none;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+    transition: box-shadow .12s ease, border-color .12s ease, transform .12s ease;
+}
+button.rc-fb-node--offer:hover {
+    box-shadow: var(--rc-shadow-hover);
+    border-inline-start-color: var(--rc-blue-600);
+    transform: translateY(-1px);
+}
+button.rc-fb-node:focus-visible {
+    outline: none;
+    box-shadow: var(--rc-ring);
+}
+
+/* Offer-node header: blue cart-plus chip + "Cross-sell / A single product". */
+.rc-fb-node__head {
+    display: flex;
+    align-items: center;
+    gap: var(--rc-space-3);
+    margin-block-end: var(--rc-space-3);
+}
+.rc-fb-node__cart {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 32px;
+    block-size: 32px;
+    border-radius: var(--rc-radius-control);
+    background: var(--rc-blue-bg);
+    color: var(--rc-blue);
+}
+.rc-fb-node__cart-icon { inline-size: 18px; block-size: 18px; }
+.rc-fb-node__heading { display: flex; flex-direction: column; gap: 1px; }
+.rc-fb-node__subtitle { font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+
+/* "Product" subsection inside the offer node */
+.rc-fb-section {
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    padding: var(--rc-space-3);
+}
+.rc-fb-section__label {
+    display: block;
+    font: var(--rc-type-label);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--rc-ink-muted);
+    margin-block-end: var(--rc-space-2);
+}
+[dir="rtl"] .rc-fb-section__label { text-transform: none; letter-spacing: normal; }
+.rc-fb-offer__meta { font: var(--rc-type-caption); color: var(--rc-ink-muted); }
 .rc-fb-node--trigger {
     border-color: var(--rc-green);
     border-inline-start: 4px solid var(--rc-green);

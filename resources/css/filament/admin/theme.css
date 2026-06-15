@@ -69,6 +69,8 @@
     --rc-shadow-hover: 0 4px 12px rgba(16, 24, 40, .10);
     --rc-shadow-pop: 0 8px 24px rgba(16, 24, 40, .12);
     --rc-ring: 0 0 0 3px rgba(59, 91, 219, .30);
+    /* Modal/drawer scrim (same ink base as the shadow tokens). */
+    --rc-scrim: rgba(16, 24, 40, .35);
 
     /* --- 3.4 Layout --- */
     --rc-sidebar-w: 248px;

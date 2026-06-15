@@ -2,8 +2,11 @@
     Flow Builder canvas (docs/ux/40). A green Trigger node → blue Offer node(s) →
     Accept(END) / Decline branches, on the rc-token canvas. Alpine drives pan +
     zoom (+/- + minimap); SVG connectors use rc tokens. Flows LTR; mirrors to RTL
-    (connector arrowheads point start-ward) via [dir="rtl"] CSS.
-    TOKENS: .rc-fb-* + .rc-badge/.rc-cta (published theme). ZERO inline CSS.
+    (connector arrowheads point start-ward) via [dir="rtl"] CSS. Clicking an Offer
+    node opens the "Configure cross-sell" slide-over drawer (.rc-drawer*); each
+    field persists to a UpsellFlowOffer column via wire:model + saveOfferConfig().
+    TOKENS: .rc-fb-* .rc-drawer-* .rc-field .rc-check .rc-pill .rc-input* +
+            .rc-badge/.rc-cta/.rc-pp-* (published theme). ZERO inline CSS.
     Renders only — graph precomputed by FlowBuilder from the tenant-scoped flow.
 --}}
 <x-filament-panels::page>
@@ -107,32 +110,42 @@
                     </div>
                 @endif
 
-                {{-- Offer nodes --}}
+                {{-- Offer nodes — a clickable "Cross-sell" card; click opens the drawer --}}
                 @foreach($this->offers as $offer)
-                    <div @class(['rc-fb-node', 'rc-fb-node--offer', 'rc-fb-node--invalid' => ! $offer['valid']])>
-                        <div class="rc-fb-node__type rc-fb-node__type--offer">
-                            <x-filament::icon icon="heroicon-o-gift" class="rc-fb-node__icon" />
-                            {{ __('upsell.admin.builder.node.offer') }}
+                    <button
+                        type="button"
+                        wire:click="openOfferConfig({{ $offer['id'] }})"
+                        @class(['rc-fb-node', 'rc-fb-node--offer', 'rc-fb-node--invalid' => ! $offer['valid']])
+                        aria-label="{{ __('upsell.admin.configure.open', ['offer' => $offer['title']]) }}"
+                    >
+                        <div class="rc-fb-node__head">
+                            <span class="rc-fb-node__cart">
+                                <x-filament::icon icon="heroicon-o-shopping-cart" class="rc-fb-node__cart-icon" />
+                            </span>
+                            <span class="rc-fb-node__heading">
+                                <span class="rc-fb-node__title">{{ __('upsell.admin.configure.crosssell') }}</span>
+                                <span class="rc-fb-node__subtitle">{{ __('upsell.admin.configure.single_product') }}</span>
+                            </span>
                         </div>
-                        <div class="rc-fb-offer">
-                            <div class="rc-fb-offer__thumb">
-                                <x-filament::icon icon="heroicon-o-cube" class="rc-fb-offer__thumb-icon" />
-                            </div>
-                            <div class="rc-fb-offer__info">
-                                <span class="rc-fb-offer__name">{{ $offer['title'] }}</span>
-                                @if($offer['headline'])
-                                    <span class="rc-fb-offer__headline">{{ $offer['headline'] }}</span>
-                                @endif
-                                <span class="rc-fb-offer__price rc-ltr">
-                                    {{ $offer['price'] }}
-                                    @if($offer['has_discount'])
-                                        <span class="rc-fb-offer__was">{{ $offer['base_price'] }}</span>
-                                    @endif
-                                </span>
+
+                        <div class="rc-fb-section">
+                            <span class="rc-fb-section__label">{{ __('upsell.admin.configure.product') }}</span>
+                            <div class="rc-fb-offer">
+                                <div class="rc-fb-offer__thumb">
+                                    <x-filament::icon icon="heroicon-o-cube" class="rc-fb-offer__thumb-icon" />
+                                </div>
+                                <div class="rc-fb-offer__info">
+                                    <span class="rc-fb-offer__name">{{ $offer['title'] }}</span>
+                                    <span class="rc-fb-offer__meta">{{ __('upsell.admin.configure.variants_all') }}</span>
+                                    <span class="rc-fb-offer__price rc-ltr">
+                                        {{ __('upsell.admin.configure.price', ['price' => $offer['price']]) }}
+                                        @if($offer['has_discount'])
+                                            <span class="rc-fb-offer__was">{{ $offer['base_price'] }}</span>
+                                        @endif
+                                    </span>
+                                </div>
                             </div>
                         </div>
-                        {{-- Consent clarity: this is an ADDITIONAL charge to the saved card --}}
-                        <div class="rc-fb-offer__consent">{{ __('upsell.no_card_reentry') }}</div>
 
                         {{-- Accept / Decline branch ports --}}
                         <div class="rc-fb-branches">
@@ -151,7 +164,7 @@
                         @if(! $offer['valid'])
                             <div class="rc-fb-node__reason">{{ __('upsell.admin.builder.error.missing_copy', ['offer' => $offer['title']]) }}</div>
                         @endif
-                    </div>
+                    </button>
                 @endforeach
 
                 {{-- Empty canvas prompt --}}
@@ -172,6 +185,186 @@
             @endforeach
         </div>
     </div>
+
+    {{-- =====================================================================
+         "Configure cross-sell" slide-over drawer (docs/ux/40, Recharge ref).
+         Renders only when an Offer node is clicked. Each field maps 1:1 to a
+         persisted column on UpsellFlowOffer; saving calls saveOfferConfig().
+         Tenant-scoped; ZERO inline CSS. Right side (start-end mirrors in RTL).
+    ===================================================================== --}}
+    @if($drawerOpen)
+        @php
+            $cfg = $this->configuredOffer();
+            // DEV-ONLY: ?shot=1 (local+dev) lets the drawer grow to full content so
+            // the screenshot harness can capture every section in one image.
+            $shotMode = app()->isLocal() && config('app.dev_tenant', false) && request()->query('shot');
+        @endphp
+        @if($cfg)
+            <div @class(['rc-drawer', 'rc-drawer--shot' => $shotMode]) role="dialog" aria-modal="true" aria-labelledby="rc-drawer-title">
+                <button type="button" class="rc-drawer__scrim" wire:click="closeOfferConfig" aria-label="{{ __('upsell.admin.configure.close') }}"></button>
+
+                <div class="rc-drawer__panel">
+                    {{-- Header --}}
+                    <div class="rc-drawer__head">
+                        <h2 id="rc-drawer-title" class="rc-drawer__title">{{ __('upsell.admin.configure.title') }}</h2>
+                        <button type="button" class="rc-drawer__close" wire:click="closeOfferConfig" aria-label="{{ __('upsell.admin.configure.close') }}">
+                            <x-filament::icon icon="heroicon-o-x-mark" class="rc-drawer__close-icon" />
+                        </button>
+                    </div>
+
+                    {{-- Scrollable body --}}
+                    <div class="rc-drawer__body">
+                        <p class="rc-drawer__subtitle">{{ __('upsell.admin.configure.subtitle') }}</p>
+
+                        {{-- What product to offer --}}
+                        <fieldset class="rc-field">
+                            <legend class="rc-field__label">{{ __('upsell.admin.configure.what_product') }}</legend>
+                            <div class="rc-pp-radio-group">
+                                <label class="rc-pp-radio">
+                                    <input type="radio" wire:model="productSelectionMode" value="smart_select">
+                                    <span class="rc-pp-radio__body">
+                                        <span class="rc-pp-radio__title">{{ __('upsell.admin.configure.smart_select') }}</span>
+                                        <span class="rc-pp-radio__hint">{{ __('upsell.admin.configure.smart_select_hint') }}</span>
+                                    </span>
+                                </label>
+                                <label class="rc-pp-radio">
+                                    <input type="radio" wire:model="productSelectionMode" value="specific">
+                                    <span class="rc-pp-radio__body">
+                                        <span class="rc-pp-radio__title">{{ __('upsell.admin.configure.specific_products') }}</span>
+                                        @if($productSelectionMode === 'specific')
+                                            <span class="rc-drawer__product">
+                                                <span class="rc-fb-offer__thumb">
+                                                    <x-filament::icon icon="heroicon-o-cube" class="rc-fb-offer__thumb-icon" />
+                                                </span>
+                                                <span class="rc-drawer__product-info">
+                                                    <span class="rc-fb-offer__name">{{ $cfg->offer_title ?: __('upsell.offer_default_title') }}</span>
+                                                    <span class="rc-fb-offer__meta rc-ltr">{{ __('upsell.admin.configure.product_id', ['id' => $cfg->productNumericId()]) }}</span>
+                                                </span>
+                                            </span>
+                                        @endif
+                                    </span>
+                                </label>
+                            </div>
+                        </fieldset>
+
+                        {{-- Variant selection --}}
+                        <fieldset class="rc-field">
+                            <legend class="rc-field__label">{{ __('upsell.admin.configure.how_variants') }}</legend>
+                            <div class="rc-pp-radio-group">
+                                <label class="rc-pp-radio">
+                                    <input type="radio" wire:model="variantSelectionMode" value="customer">
+                                    <span class="rc-pp-radio__body">
+                                        <span class="rc-pp-radio__title">{{ __('upsell.admin.configure.variant_customer') }}</span>
+                                    </span>
+                                </label>
+                                <label class="rc-pp-radio">
+                                    <input type="radio" wire:model="variantSelectionMode" value="merchant">
+                                    <span class="rc-pp-radio__body">
+                                        <span class="rc-pp-radio__title">{{ __('upsell.admin.configure.variant_merchant') }}</span>
+                                    </span>
+                                </label>
+                            </div>
+                            <span class="rc-pill rc-pill--info">
+                                <x-filament::icon icon="heroicon-o-information-circle" class="rc-pill__icon" />
+                                {{ trans_choice('upsell.admin.configure.variant_count', 1, ['count' => 1]) }}
+                            </span>
+                        </fieldset>
+
+                        {{-- Purchase options --}}
+                        <div class="rc-field">
+                            <label class="rc-field__label" for="rc-purchase-option">{{ __('upsell.admin.configure.purchase_options') }}</label>
+                            <select id="rc-purchase-option" class="rc-pp-select rc-field__control" wire:model="purchaseOption">
+                                <option value="one_time">{{ __('upsell.admin.configure.purchase_one_time') }}</option>
+                                <option value="subscription">{{ __('upsell.admin.configure.purchase_subscription') }}</option>
+                                <option value="subscription_only">{{ __('upsell.admin.configure.purchase_subscription_only') }}</option>
+                            </select>
+                        </div>
+
+                        {{-- Subscription warning --}}
+                        <div class="rc-pp-info rc-pp-info--warning">
+                            <x-filament::icon icon="heroicon-o-exclamation-triangle" class="rc-pp-info__icon" />
+                            <span>{{ __('upsell.admin.configure.subscription_warning') }}</span>
+                        </div>
+
+                        {{-- Discount --}}
+                        <div class="rc-field">
+                            <label class="rc-field__label" for="rc-discount">{{ __('upsell.admin.configure.discount_label') }}</label>
+                            <div class="rc-input-suffix">
+                                <input id="rc-discount" type="number" min="0" max="100" class="rc-input rc-ltr" wire:model="discountPercent">
+                                <span class="rc-input-suffix__unit">%</span>
+                            </div>
+                        </div>
+
+                        {{-- Apply on top of Subscribe & Save --}}
+                        <label class="rc-check">
+                            <input type="checkbox" wire:model="applyDiscountOnTop">
+                            <span class="rc-check__body">
+                                <span class="rc-check__title">{{ __('upsell.admin.configure.discount_on_top') }}</span>
+                                <span class="rc-check__hint">{{ __('upsell.admin.configure.discount_on_top_hint') }}</span>
+                            </span>
+                        </label>
+
+                        {{-- Shipping --}}
+                        <fieldset class="rc-field">
+                            <legend class="rc-field__label">{{ __('upsell.admin.configure.shipping_label') }}</legend>
+                            <div class="rc-pp-radio-group">
+                                <label class="rc-pp-radio">
+                                    <input type="radio" wire:model="shippingFeeMode" value="free">
+                                    <span class="rc-pp-radio__body">
+                                        <span class="rc-pp-radio__title">{{ __('upsell.admin.configure.shipping_free') }}</span>
+                                    </span>
+                                </label>
+                                <label class="rc-pp-radio">
+                                    <input type="radio" wire:model="shippingFeeMode" value="charge">
+                                    <span class="rc-pp-radio__body">
+                                        <span class="rc-pp-radio__title">{{ __('upsell.admin.configure.shipping_charge') }}</span>
+                                        <span class="rc-pp-radio__hint">{{ __('upsell.admin.configure.shipping_charge_hint') }}</span>
+                                    </span>
+                                </label>
+                            </div>
+                        </fieldset>
+
+                        {{-- Display options --}}
+                        <fieldset class="rc-field">
+                            <legend class="rc-field__label">{{ __('upsell.admin.configure.display_options') }}</legend>
+                            <label class="rc-check">
+                                <input type="checkbox" wire:model="showTimer">
+                                <span class="rc-check__body">
+                                    <span class="rc-check__title">{{ __('upsell.admin.configure.show_timer') }}</span>
+                                    <span class="rc-check__hint">{{ __('upsell.admin.configure.show_timer_hint') }}</span>
+                                </span>
+                            </label>
+                        </fieldset>
+
+                        {{-- Partial-paid info (links to the Settings tab) --}}
+                        <div class="rc-pp-info">
+                            <x-filament::icon icon="heroicon-o-information-circle" class="rc-pp-info__icon" />
+                            <span>
+                                {{ __('upsell.admin.configure.partial_paid_info') }}
+                                <a class="rc-link" href="{{ $this->backUrl() }}?tab=settings" wire:navigate>{{ __('upsell.admin.configure.partial_paid_link') }}</a>
+                            </span>
+                        </div>
+                    </div>
+
+                    {{-- Sticky footer --}}
+                    <div class="rc-drawer__foot">
+                        @if($this->previewUrl())
+                            <a class="rc-cta rc-cta--ghost" href="{{ $this->previewUrl() }}" target="_blank" rel="noopener">
+                                <x-filament::icon icon="heroicon-o-eye" class="rc-cta__icon" />
+                                {{ __('upsell.admin.configure.view_post_purchase') }}
+                            </a>
+                        @else
+                            <button type="button" class="rc-cta rc-cta--ghost" disabled>
+                                <x-filament::icon icon="heroicon-o-eye" class="rc-cta__icon" />
+                                {{ __('upsell.admin.configure.view_post_purchase') }}
+                            </button>
+                        @endif
+                        <x-rc.cta variant="primary" wire:click="saveOfferConfig">{{ __('upsell.admin.configure.close') }}</x-rc.cta>
+                    </div>
+                </div>
+            </div>
+        @endif
+    @endif
 </x-filament-panels::page>
 
 @push('scripts')
