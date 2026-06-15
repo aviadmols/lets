@@ -1,0 +1,65 @@
+/* data-table.css — list-view density + section layout helpers
+   TOKENS: --rc-card --rc-border --rc-radius-card --rc-shadow-card --rc-type-*
+   Skins Filament's native table via stable .fi-* hooks (no re-templating). */
+
+/* page-level utility wrappers used by custom pages (dashboard, settings). */
+.rc-stack { display: flex; flex-direction: column; gap: var(--rc-space-5); }
+.rc-stack--tight { gap: var(--rc-space-3); }
+.rc-row { display: flex; align-items: center; gap: var(--rc-space-3); flex-wrap: wrap; }
+.rc-row--between { justify-content: space-between; }
+.rc-grow { flex: 1 1 auto; }
+
+.rc-section {
+    background: var(--rc-card);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-card);
+    box-shadow: var(--rc-shadow-card);
+    padding: var(--rc-space-5);
+}
+.rc-section__title { font: var(--rc-type-h); color: var(--rc-ink); margin-block-end: var(--rc-space-4); }
+.rc-section__subtitle { font: var(--rc-type-subh); color: var(--rc-ink); }
+
+.rc-label { font: var(--rc-type-label); text-transform: uppercase; letter-spacing: .04em; color: var(--rc-ink-muted); }
+.rc-muted { color: var(--rc-ink-muted); font: var(--rc-type-body); }
+.rc-strong { font: var(--rc-type-body-strong); color: var(--rc-ink); }
+
+/* key/value rows for detail panels (component §4.10). */
+.rc-kv { display: grid; grid-template-columns: minmax(120px, max-content) 1fr; gap: var(--rc-space-2) var(--rc-space-4); }
+.rc-kv__k { font: var(--rc-type-label); text-transform: uppercase; letter-spacing: .04em; color: var(--rc-ink-muted); }
+[dir="rtl"] .rc-kv__k { text-transform: none; letter-spacing: normal; }
+.rc-kv__v { font: var(--rc-type-body-strong); color: var(--rc-ink); }
+
+/* monospace / LTR-locked numeric + masked refs inside RTL rows. */
+.rc-ltr { direction: ltr; unicode-bidi: isolate; text-align: start; }
+
+/* simple plain table for schedule + ledger inside detail pages. */
+.rc-table { inline-size: 100%; border-collapse: collapse; }
+.rc-table th {
+    font: var(--rc-type-label); text-transform: uppercase; letter-spacing: .04em;
+    color: var(--rc-ink-muted); text-align: start;
+    padding: var(--rc-space-2) var(--rc-space-3);
+    border-block-end: 1px solid var(--rc-border-strong);
+}
+[dir="rtl"] .rc-table th { text-transform: none; letter-spacing: normal; }
+.rc-table td {
+    font: var(--rc-type-body); color: var(--rc-ink);
+    padding: var(--rc-space-3);
+    border-block-end: 1px solid var(--rc-border);
+}
+.rc-table tbody tr:hover { background: var(--rc-blue-bg); }
+
+/* 70/30 detail split (--rc-split). Mirrors in RTL because grid columns follow
+   the writing direction; no left/right used. Collapses to one column on narrow. */
+.rc-detail {
+    display: grid;
+    grid-template-columns: minmax(0, 7fr) minmax(0, 3fr);
+    gap: var(--rc-space-5);
+    align-items: start;
+}
+@media (max-width: 900px) {
+    .rc-detail { grid-template-columns: 1fr; }
+}
+
+/* anchor-as-card reset for clickable subscription rows. */
+a.rc-railed { display: flex; flex-direction: column; gap: var(--rc-space-1); text-decoration: none; padding-block: var(--rc-space-3); }
+a.rc-railed:hover { background: var(--rc-blue-bg); }

@@ -1,0 +1,155 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - navigation [ref=e5]:
+        - button "Collapse sidebar" [ref=e6] [cursor=pointer]:
+          - generic [ref=e7]: Collapse sidebar
+          - img [ref=e8]
+        - generic [ref=e10]:
+          - generic [ref=e15] [cursor=pointer]: EN
+          - button "User menu" [ref=e18] [cursor=pointer]:
+            - img "Avatar of Demo Admin" [ref=e19]
+      - main [ref=e20]:
+        - generic [ref=e21]:
+          - generic [ref=e22]:
+            - heading "Home" [level=1] [ref=e25]
+            - generic [ref=e28]:
+              - generic [ref=e29]:
+                - link "Processed revenue ₪738.00" [ref=e30] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/payments
+                  - generic [ref=e31]: Processed revenue
+                  - generic [ref=e32]: ₪738.00
+                - link "Active subscribers 2" [ref=e33] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/subscriptions
+                  - generic [ref=e34]: Active subscribers
+                  - generic [ref=e35]: "2"
+                - generic [ref=e36]:
+                  - generic [ref=e37]: New subscribers
+                  - generic [ref=e38]: "3"
+                - generic [ref=e39]:
+                  - generic [ref=e40]: Churned subscribers
+                  - generic [ref=e41]: "1"
+              - generic [ref=e42]:
+                - generic [ref=e43]: Performance at a glance
+                - table [ref=e44]:
+                  - rowgroup [ref=e45]:
+                    - row "Performance at a glance This period Previous period" [ref=e46]:
+                      - columnheader "Performance at a glance" [ref=e47]
+                      - columnheader "This period" [ref=e48]
+                      - columnheader "Previous period" [ref=e49]
+                  - rowgroup [ref=e50]:
+                    - row "Installment balance outstanding ₪600.00 ₪0.00" [ref=e51]:
+                      - cell "Installment balance outstanding" [ref=e52]
+                      - cell "₪600.00" [ref=e53]
+                      - cell "₪0.00" [ref=e54]
+                    - row "Upsell revenue ₪49.00 ₪0.00" [ref=e55]:
+                      - cell "Upsell revenue" [ref=e56]
+                      - cell "₪49.00" [ref=e57]
+                      - cell "₪0.00" [ref=e58]
+                    - row "Charge-success rate 80.0% 0.0%" [ref=e59]:
+                      - cell "Charge-success rate" [ref=e60]
+                      - cell "80.0%" [ref=e61]
+                      - cell "0.0%" [ref=e62]
+                    - row "Failed charges 1 0" [ref=e63]:
+                      - cell "Failed charges" [ref=e64]
+                      - cell "1" [ref=e65]
+                      - cell "0" [ref=e66]
+              - generic [ref=e67]:
+                - generic [ref=e68]: Recent activity
+                - generic [ref=e69]:
+                  - generic [ref=e72]:
+                    - generic [ref=e73]: Charge succeeded
+                    - generic [ref=e74]: ₪300.00 · Installment 1
+                    - generic [ref=e75]:
+                      - generic [ref=e76]: System
+                      - generic [ref=e77]: 15 Jun 2026, 04:08
+                  - generic [ref=e80]:
+                    - generic [ref=e81]: Charge succeeded
+                    - generic [ref=e82]: ₪300.00 · Installment 2
+                    - generic [ref=e83]:
+                      - generic [ref=e84]: System
+                      - generic [ref=e85]: 14 Jun 2026, 06:08
+                  - generic [ref=e88]:
+                    - generic [ref=e89]: Charge failed
+                    - generic [ref=e90]: ₪300.00
+                    - generic [ref=e91]:
+                      - generic [ref=e92]: System
+                      - generic [ref=e93]: 11 Jun 2026, 20:08
+                  - generic [ref=e96]:
+                    - generic [ref=e97]: Plan created
+                    - generic [ref=e98]:
+                      - generic [ref=e99]: System
+                      - generic [ref=e100]: 08 Jun 2026, 20:08
+                  - generic [ref=e103]:
+                    - generic [ref=e104]: Plan created
+                    - generic [ref=e105]:
+                      - generic [ref=e106]: System
+                      - generic [ref=e107]: 07 Jun 2026, 04:08
+                  - generic [ref=e110]:
+                    - generic [ref=e111]: Charge succeeded
+                    - generic [ref=e112]: ₪89.00
+                    - generic [ref=e113]:
+                      - generic [ref=e114]: System
+                      - generic [ref=e115]: 05 Jun 2026, 09:08
+          - generic:
+            - dialog
+          - generic:
+            - dialog
+          - generic:
+            - dialog
+    - complementary [ref=e117]:
+      - link "PayPlus Subscriptions" [ref=e121] [cursor=pointer]:
+        - /url: http://127.0.0.1:8123/admin
+        - generic [ref=e122]: PayPlus Subscriptions
+      - navigation [ref=e123]:
+        - list [ref=e124]:
+          - listitem [ref=e125]:
+            - list [ref=e126]:
+              - listitem [ref=e127]:
+                - link "Home" [ref=e128] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin
+                  - img [ref=e129]
+                  - generic [ref=e131]: Home
+          - listitem [ref=e132]:
+            - generic [ref=e133] [cursor=pointer]:
+              - generic [ref=e134]: Customers
+              - button "Customers" [expanded] [ref=e135]:
+                - generic [ref=e136]: Customers
+                - img [ref=e137]
+            - list [ref=e139]:
+              - listitem [ref=e140]:
+                - link "Customers" [ref=e141] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/customers
+                  - img [ref=e142]
+                  - generic [ref=e144]: Customers
+              - listitem [ref=e145]:
+                - link "Subscriptions" [ref=e146] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/subscriptions
+                  - img [ref=e147]
+                  - generic [ref=e149]: Subscriptions
+          - listitem [ref=e150]:
+            - generic [ref=e151] [cursor=pointer]:
+              - generic [ref=e152]: Payments
+              - button "Payments" [expanded] [ref=e153]:
+                - generic [ref=e154]: Payments
+                - img [ref=e155]
+            - list [ref=e157]:
+              - listitem [ref=e158]:
+                - link "Payments" [ref=e159] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/payments
+                  - img [ref=e160]
+                  - generic [ref=e162]: Payments
+          - listitem [ref=e163]:
+            - generic [ref=e164] [cursor=pointer]:
+              - generic [ref=e165]: Settings
+              - button "Settings" [expanded] [ref=e166]:
+                - generic [ref=e167]: Settings
+                - img [ref=e168]
+            - list [ref=e170]:
+              - listitem [ref=e171]:
+                - link "PayPlus Connection" [ref=e172] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/settings/payplus
+                  - img [ref=e173]
+                  - generic [ref=e175]: PayPlus Connection
+  - generic:
+    - status

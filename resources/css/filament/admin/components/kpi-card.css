@@ -1,0 +1,79 @@
+/* kpi-card.css — KPI card (component §4.1)
+   TOKENS: --rc-card --rc-border --rc-radius-card --rc-shadow-card --rc-shadow-hover
+           --rc-type-kpi --rc-type-label --rc-ink --rc-ink-muted --rc-green --rc-red
+   RTL: card grid mirrors via flex order; the delta arrow is vertical (no flip). */
+
+.rc-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--rc-space-4);
+}
+
+.rc-kpi {
+    display: flex;
+    flex-direction: column;
+    gap: var(--rc-space-2);
+    background: var(--rc-card);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-card);
+    box-shadow: var(--rc-shadow-card);
+    padding: var(--rc-space-5);
+    text-decoration: none;
+    color: inherit;
+    transition: box-shadow .15s ease, transform .15s ease;
+}
+.rc-kpi[href]:hover {
+    box-shadow: var(--rc-shadow-hover);
+    transform: translateY(-1px);
+}
+
+.rc-kpi__label {
+    font: var(--rc-type-label);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--rc-ink-muted);
+}
+[dir="rtl"] .rc-kpi__label {
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+.rc-kpi__value {
+    font: var(--rc-type-kpi);
+    font-size: var(--rc-kpi-size);
+    color: var(--rc-ink);
+}
+.rc-kpi__value--empty {
+    color: var(--rc-ink-muted);
+}
+
+.rc-kpi__delta {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--rc-space-1);
+    font: var(--rc-type-label);
+    text-transform: none;
+    letter-spacing: normal;
+}
+.rc-kpi__delta--up   { color: var(--rc-green); }
+.rc-kpi__delta--down { color: var(--rc-red); }
+.rc-kpi__delta--flat { color: var(--rc-ink-muted); }
+
+.rc-kpi__sub {
+    font: var(--rc-type-caption);
+    color: var(--rc-ink-muted);
+}
+
+/* loading skeleton (no magic numbers reach inline styles) */
+.rc-kpi__skeleton {
+    block-size: var(--rc-space-6);
+    inline-size: 60%;
+    border-radius: var(--rc-radius-control);
+    background: linear-gradient(90deg, var(--rc-gray-bg) 25%, var(--rc-border) 37%, var(--rc-gray-bg) 63%);
+    background-size: 400% 100%;
+    animation: rc-shimmer 1.4s ease infinite;
+}
+@keyframes rc-shimmer {
+    0%   { background-position: 100% 0; }
+    100% { background-position: 0 0; }
+}

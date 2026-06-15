@@ -1,7 +1,8 @@
 <?php
 
-// תוויות ניווט בסרגל הצד. שיקוף של כל מפתח מ-lang/en/nav.php.
+// תוויות ניווט בסרגל הצד (docs/ux/01-navigation.md). שיקוף של lang/en/nav.php.
 return [
+    // ראשי + עלים
     'home' => 'בית',
     'analytics' => 'אנליטיקה',
     'customers' => 'לקוחות',
@@ -14,4 +15,32 @@ return [
     'post_purchase_offers' => 'הצעות לאחר רכישה',
     'storefront' => 'חזית החנות',
     'settings' => 'הגדרות',
+    'payments' => 'תשלומים',
+
+    // עלים נוספים / עתידיים
+    'segments' => 'פלחים',
+    'credits' => 'זיכויים',
+    'loyalty' => 'מועדון לקוחות',
+    'churn_tools' => 'כלי שימור',
+    'sms' => 'SMS',
+    'email' => 'אימייל',
+    'tools_apps' => 'כלים ואפליקציות',
+
+    // כותרות קבוצה
+    'group' => [
+        'customers' => 'לקוחות',
+        'products' => 'מוצרים',
+        'payments' => 'תשלומים',
+        'upsell' => 'מכירה צולבת ושדרוג',
+        'settings' => 'הגדרות',
+    ],
+
+    // וידג'ט החנות
+    'store_widget' => [
+        'upgrade' => 'שדרוג',
+        'switch_shop' => 'החלפת חנות',
+    ],
+    'support' => [
+        'chat' => "צ'אט תמיכה",
+    ],
 ];

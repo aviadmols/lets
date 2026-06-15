@@ -19,6 +19,16 @@ return [
         'cancelled' => 'בוטל',
     ],
 
+    // סטטוסים של יומן התשלומים (ARCHITECTURE.md §3.3)
+    'ledger_status' => [
+        'pending' => 'ממתין',
+        'succeeded' => 'הצליח',
+        'failed' => 'נכשל',
+        'refunded' => 'זוכה',
+        'retry_scheduled' => 'תוזמן ניסיון חוזר',
+        'cancelled' => 'בוטל',
+    ],
+
     // הקשרי חיוב
     'charge_context' => [
         'deposit' => 'מקדמה',

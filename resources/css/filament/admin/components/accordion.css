@@ -1,0 +1,47 @@
+/* accordion.css — collapsible section (component §4.9)
+   TOKENS: --rc-card --rc-border --rc-radius-card --rc-type-h --rc-ink --rc-shadow-card
+   RTL: chevron points to start-side; flips via scaleX on the directional glyph only. */
+
+.rc-accordion {
+    background: var(--rc-card);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-card);
+    box-shadow: var(--rc-shadow-card);
+    overflow: hidden;
+}
+.rc-accordion + .rc-accordion { margin-block-start: var(--rc-space-4); }
+
+.rc-accordion__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    inline-size: 100%;
+    padding: var(--rc-space-4) var(--rc-space-5);
+    background: none;
+    border: 0;
+    cursor: pointer;
+    font: var(--rc-type-h);
+    color: var(--rc-ink);
+    text-align: start;
+}
+.rc-accordion__title { display: inline-flex; align-items: center; gap: var(--rc-space-3); }
+
+.rc-accordion__chevron {
+    inline-size: 16px;
+    block-size: 16px;
+    color: var(--rc-ink-muted);
+    transition: transform .18s ease;
+}
+[dir="rtl"] .rc-accordion__chevron { transform: scaleX(-1); }
+.rc-accordion[data-open="true"] .rc-accordion__chevron { transform: rotate(90deg); }
+[dir="rtl"] .rc-accordion[data-open="true"] .rc-accordion__chevron { transform: scaleX(-1) rotate(90deg); }
+
+/* grid 0fr/1fr trick — no max-height magic number, no inline style. */
+.rc-accordion__panel {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows .2s ease;
+}
+.rc-accordion[data-open="true"] .rc-accordion__panel { grid-template-rows: 1fr; }
+.rc-accordion__panel > div { overflow: hidden; }
+.rc-accordion__body { padding: 0 var(--rc-space-5) var(--rc-space-5); border-block-start: 1px solid var(--rc-border); padding-block-start: var(--rc-space-4); }

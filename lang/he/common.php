@@ -15,4 +15,13 @@ return [
     'inactive' => 'לא פעיל',
     'test_connection' => 'בדיקת חיבור',
     'back' => 'חזרה',
+    'none' => '—',
+
+    // צ'יפים של מבצע הפעולה בציר הזמן (components §4.14)
+    'actor' => [
+        'system' => 'מערכת',
+        'admin' => 'מנהל',
+        'customer' => 'לקוח',
+        'webhook' => 'Webhook',
+    ],
 ];

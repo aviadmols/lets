@@ -1,0 +1,60 @@
+/* buttons.css — CTAs (components §4.5/§4.6/§4.7)
+   TOKENS: --rc-blue --rc-blue-600 --rc-ink-on-primary --rc-card --rc-border
+           --rc-border-strong --rc-ink --rc-red --rc-red-bg --rc-radius-control --rc-ring */
+
+.rc-cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--rc-space-2);
+    padding-block: var(--rc-space-2);
+    padding-inline: var(--rc-space-4);
+    border-radius: var(--rc-radius-control);
+    font: var(--rc-type-body-strong);
+    cursor: pointer;
+    border: 1px solid transparent;
+    box-shadow: var(--rc-shadow-card);
+    transition: background-color .12s ease, border-color .12s ease;
+    text-decoration: none;
+}
+.rc-cta:focus-visible { box-shadow: var(--rc-ring); outline: none; }
+.rc-cta[disabled], .rc-cta--loading { opacity: .55; pointer-events: none; box-shadow: none; }
+
+/* primary (blue fill) */
+.rc-cta--primary {
+    background: var(--rc-blue);
+    color: var(--rc-ink-on-primary);
+}
+.rc-cta--primary:hover { background: var(--rc-blue-600); }
+
+/* secondary (white + border) */
+.rc-cta--ghost {
+    background: var(--rc-card);
+    border-color: var(--rc-border);
+    color: var(--rc-ink);
+    box-shadow: none;
+}
+.rc-cta--ghost:hover { border-color: var(--rc-border-strong); }
+
+/* destructive */
+.rc-cta--danger {
+    background: var(--rc-card);
+    border-color: var(--rc-red);
+    color: var(--rc-red);
+    box-shadow: none;
+}
+.rc-cta--danger:hover { background: var(--rc-red-bg); }
+
+/* + Add filter pill (component §4.4) — restyle Filament's native control. */
+.rc-add-filter,
+.fi-ta-filters-trigger .fi-btn {
+    border: 1px dashed var(--rc-border-strong);
+    border-radius: var(--rc-radius-control);
+    color: var(--rc-ink-muted);
+    background: transparent;
+    box-shadow: none;
+}
+.fi-ta-filters-trigger .fi-btn:hover {
+    border-color: var(--rc-blue);
+    color: var(--rc-blue);
+}

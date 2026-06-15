@@ -19,6 +19,16 @@ return [
         'cancelled' => 'Cancelled',
     ],
 
+    // payment-ledger statuses (ARCHITECTURE.md §3.3 PaymentLedgerStatus)
+    'ledger_status' => [
+        'pending' => 'Pending',
+        'succeeded' => 'Succeeded',
+        'failed' => 'Failed',
+        'refunded' => 'Refunded',
+        'retry_scheduled' => 'Retry scheduled',
+        'cancelled' => 'Cancelled',
+    ],
+
     // charge contexts
     'charge_context' => [
         'deposit' => 'Deposit',

@@ -1,0 +1,48 @@
+/* timeline.css — activity / timeline rows (components §4.14)
+   TOKENS: --rc-border --rc-green --rc-red --rc-gray --rc-blue --rc-type-*
+   RTL: the rail + dot move to start-side via logical inset; markers do not flip. */
+
+.rc-timeline { display: flex; flex-direction: column; }
+.rc-timeline__row {
+    position: relative;
+    display: flex;
+    gap: var(--rc-space-4);
+    padding-block: var(--rc-space-3);
+    padding-inline-start: var(--rc-space-5);
+    border-inline-start: 2px solid var(--rc-border);
+}
+.rc-timeline__row:last-child { border-inline-start-color: transparent; }
+
+.rc-timeline__dot {
+    position: absolute;
+    inset-inline-start: -5px;
+    inset-block-start: var(--rc-space-4);
+    inline-size: 9px;
+    block-size: 9px;
+    border-radius: var(--rc-radius-pill);
+    background: var(--rc-gray);
+}
+.rc-timeline__dot--success { background: var(--rc-green); }
+.rc-timeline__dot--failure { background: var(--rc-red); }
+.rc-timeline__dot--info    { background: var(--rc-blue); }
+
+.rc-timeline__body { display: flex; flex-direction: column; gap: var(--rc-space-1); }
+.rc-timeline__title { font: var(--rc-type-body-strong); color: var(--rc-ink); }
+.rc-timeline__meta { display: inline-flex; gap: var(--rc-space-2); align-items: center; font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+.rc-timeline__actor {
+    padding-block: 1px; padding-inline: var(--rc-space-2);
+    border-radius: var(--rc-radius-pill);
+    background: var(--rc-gray-bg); color: var(--rc-ink-muted);
+    font: var(--rc-type-caption);
+}
+.rc-timeline__summary { font: var(--rc-type-body); color: var(--rc-ink-muted); }
+
+/* empty state for any list region (component §4.13). */
+.rc-empty {
+    display: flex; flex-direction: column; align-items: center; gap: var(--rc-space-3);
+    padding: var(--rc-space-7) var(--rc-space-5);
+    text-align: center;
+}
+.rc-empty__icon { color: var(--rc-ink-muted); inline-size: 40px; block-size: 40px; }
+.rc-empty__title { font: var(--rc-type-subh); color: var(--rc-ink); }
+.rc-empty__body { font: var(--rc-type-body); color: var(--rc-ink-muted); max-inline-size: 380px; }

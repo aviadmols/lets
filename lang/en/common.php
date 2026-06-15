@@ -15,4 +15,13 @@ return [
     'inactive' => 'Inactive',
     'test_connection' => 'Test connection',
     'back' => 'Back',
+    'none' => '—',
+
+    // timeline actor chips (components §4.14)
+    'actor' => [
+        'system' => 'System',
+        'admin' => 'Admin',
+        'customer' => 'Customer',
+        'webhook' => 'Webhook',
+    ],
 ];

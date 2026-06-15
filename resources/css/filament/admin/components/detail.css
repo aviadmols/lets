@@ -1,0 +1,87 @@
+/* detail.css — subscription/customer detail extras: progress bar, consent, banner
+   TOKENS: --rc-green --rc-amber --rc-red --rc-blue --rc-blue-bg --rc-border
+           --rc-radius-card --rc-radius-pill --rc-amber-bg --rc-type-* */
+
+/* installments paid-of-total progress (fills from start-side; flips in RTL). */
+.rc-progress { inline-size: 100%; }
+.rc-progress__track {
+    inline-size: 100%; block-size: 8px;
+    background: var(--rc-gray-bg);
+    border-radius: var(--rc-radius-pill);
+    overflow: hidden;
+}
+.rc-progress__fill {
+    block-size: 100%;
+    background: var(--rc-green);
+    border-radius: var(--rc-radius-pill);
+}
+.rc-progress__meta { display: flex; justify-content: space-between; margin-block-start: var(--rc-space-2); font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+
+/* left-rule status accents on subscription cards (§4.11). */
+.rc-railed { border-inline-start: 3px solid var(--rc-border); padding-inline-start: var(--rc-space-4); }
+.rc-railed--failed { border-inline-start-color: var(--rc-red); }
+.rc-railed--awaiting { border-inline-start-color: var(--rc-amber); }
+.rc-railed--active { border-inline-start-color: var(--rc-green); }
+
+/* fulfillment-lock chip. */
+.rc-lock {
+    display: inline-flex; align-items: center; gap: var(--rc-space-2);
+    padding-block: 2px; padding-inline: var(--rc-space-3);
+    border-radius: var(--rc-radius-pill);
+    background: var(--rc-amber-bg); color: var(--rc-amber);
+    font: var(--rc-type-label); text-transform: none; letter-spacing: normal;
+}
+
+/* consent disclosure block (component §4.16 — saved-token charges). */
+.rc-consent {
+    border: 1px solid var(--rc-border);
+    border-inline-start: 3px solid var(--rc-amber);
+    background: var(--rc-amber-bg);
+    border-radius: var(--rc-radius-card);
+    padding: var(--rc-space-4);
+    font: var(--rc-type-body);
+    color: var(--rc-ink);
+}
+
+/* dashboard onboarding / promo banner. */
+.rc-banner {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--rc-space-4);
+    background: var(--rc-blue-bg);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-card);
+    padding: var(--rc-space-5);
+}
+.rc-banner__text { display: flex; flex-direction: column; gap: var(--rc-space-1); }
+.rc-banner__title { font: var(--rc-type-subh); color: var(--rc-ink); }
+.rc-banner__body { font: var(--rc-type-body); color: var(--rc-ink-muted); }
+
+/* connection-status badge row for settings. */
+.rc-conn { display: inline-flex; align-items: center; gap: var(--rc-space-2); }
+
+/* progress fill in 5% steps — keeps the bar token-pure with NO inline style
+   (the view picks .rc-progress__fill--NN by rounding the percent to the step). */
+.rc-progress__fill { inline-size: 0; }
+.rc-progress__fill--0   { inline-size: 0; }
+.rc-progress__fill--5   { inline-size: 5%; }
+.rc-progress__fill--10  { inline-size: 10%; }
+.rc-progress__fill--15  { inline-size: 15%; }
+.rc-progress__fill--20  { inline-size: 20%; }
+.rc-progress__fill--25  { inline-size: 25%; }
+.rc-progress__fill--30  { inline-size: 30%; }
+.rc-progress__fill--35  { inline-size: 35%; }
+.rc-progress__fill--40  { inline-size: 40%; }
+.rc-progress__fill--45  { inline-size: 45%; }
+.rc-progress__fill--50  { inline-size: 50%; }
+.rc-progress__fill--55  { inline-size: 55%; }
+.rc-progress__fill--60  { inline-size: 60%; }
+.rc-progress__fill--65  { inline-size: 65%; }
+.rc-progress__fill--70  { inline-size: 70%; }
+.rc-progress__fill--75  { inline-size: 75%; }
+.rc-progress__fill--80  { inline-size: 80%; }
+.rc-progress__fill--85  { inline-size: 85%; }
+.rc-progress__fill--90  { inline-size: 90%; }
+.rc-progress__fill--95  { inline-size: 95%; }
+.rc-progress__fill--100 { inline-size: 100%; }
+
+/* small inline icon sizing (used by the lock chip) without per-call styles. */
+.rc-icon-sm { inline-size: 14px; block-size: 14px; }

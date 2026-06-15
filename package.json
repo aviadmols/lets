@@ -2,7 +2,9 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "build": "vite build",
+        "build": "node build-theme.mjs",
+        "build:theme": "node build-theme.mjs",
+        "build:vite": "vite build",
         "dev": "vite"
     },
     "devDependencies": {

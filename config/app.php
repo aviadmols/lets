@@ -43,6 +43,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Dev Tenant Binding (LOCAL ONLY)
+    |--------------------------------------------------------------------------
+    |
+    | When true AND the app is running locally, BindDevTenant binds the demo
+    | shop so the admin panel renders seeded data without a Shopify session.
+    | This is a no-op in production regardless of the flag. Never enable in
+    | a production environment.
+    |
+    */
+
+    'dev_tenant' => (bool) env('APP_DEV_TENANT', false),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application URL
     |--------------------------------------------------------------------------
     |

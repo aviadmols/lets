@@ -1,0 +1,152 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - navigation [ref=e5]:
+        - generic [ref=e6]:
+          - generic [ref=e11] [cursor=pointer]: HE
+          - button "תפריט משתמש" [ref=e14] [cursor=pointer]:
+            - img "Avatar of Demo Admin" [ref=e15]
+      - main [ref=e16]:
+        - generic [ref=e17]:
+          - generic [ref=e18]:
+            - heading "בית" [level=1] [ref=e21]
+            - generic [ref=e24]:
+              - generic [ref=e25]:
+                - link "הכנסות שעובדו ‏738.00 ‏₪" [ref=e26] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/payments
+                  - generic [ref=e27]: הכנסות שעובדו
+                  - generic [ref=e28]: ‏738.00 ‏₪
+                - link "מנויים פעילים 2" [ref=e29] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/subscriptions
+                  - generic [ref=e30]: מנויים פעילים
+                  - generic [ref=e31]: "2"
+                - generic [ref=e32]:
+                  - generic [ref=e33]: מנויים חדשים
+                  - generic [ref=e34]: "3"
+                - generic [ref=e35]:
+                  - generic [ref=e36]: מנויים שעזבו
+                  - generic [ref=e37]: "1"
+              - generic [ref=e38]:
+                - generic [ref=e39]: ביצועים במבט מהיר
+                - table [ref=e40]:
+                  - rowgroup [ref=e41]:
+                    - row "ביצועים במבט מהיר תקופה נוכחית תקופה קודמת" [ref=e42]:
+                      - columnheader "ביצועים במבט מהיר" [ref=e43]
+                      - columnheader "תקופה נוכחית" [ref=e44]
+                      - columnheader "תקופה קודמת" [ref=e45]
+                  - rowgroup [ref=e46]:
+                    - row "יתרת תשלומים פתוחה ‏600.00 ‏₪ ‏0.00 ‏₪" [ref=e47]:
+                      - cell "יתרת תשלומים פתוחה" [ref=e48]
+                      - cell "‏600.00 ‏₪" [ref=e49]
+                      - cell "‏0.00 ‏₪" [ref=e50]
+                    - row "הכנסות מהצעות נלוות ‏49.00 ‏₪ ‏0.00 ‏₪" [ref=e51]:
+                      - cell "הכנסות מהצעות נלוות" [ref=e52]
+                      - cell "‏49.00 ‏₪" [ref=e53]
+                      - cell "‏0.00 ‏₪" [ref=e54]
+                    - row "שיעור חיוב מוצלח 80.0% 0.0%" [ref=e55]:
+                      - cell "שיעור חיוב מוצלח" [ref=e56]
+                      - cell "80.0%" [ref=e57]
+                      - cell "0.0%" [ref=e58]
+                    - row "חיובים שנכשלו 1 0" [ref=e59]:
+                      - cell "חיובים שנכשלו" [ref=e60]
+                      - cell "1" [ref=e61]
+                      - cell "0" [ref=e62]
+              - generic [ref=e63]:
+                - generic [ref=e64]: פעילות אחרונה
+                - generic [ref=e65]:
+                  - generic [ref=e68]:
+                    - generic [ref=e69]: החיוב הצליח
+                    - generic [ref=e70]: ‏300.00 ‏₪ · תשלום 1
+                    - generic [ref=e71]:
+                      - generic [ref=e72]: מערכת
+                      - generic [ref=e73]: 15 Jun 2026, 04:08
+                  - generic [ref=e76]:
+                    - generic [ref=e77]: החיוב הצליח
+                    - generic [ref=e78]: ‏300.00 ‏₪ · תשלום 2
+                    - generic [ref=e79]:
+                      - generic [ref=e80]: מערכת
+                      - generic [ref=e81]: 14 Jun 2026, 06:08
+                  - generic [ref=e84]:
+                    - generic [ref=e85]: החיוב נכשל
+                    - generic [ref=e86]: ‏300.00 ‏₪
+                    - generic [ref=e87]:
+                      - generic [ref=e88]: מערכת
+                      - generic [ref=e89]: 11 Jun 2026, 20:08
+                  - generic [ref=e92]:
+                    - generic [ref=e93]: התוכנית נוצרה
+                    - generic [ref=e94]:
+                      - generic [ref=e95]: מערכת
+                      - generic [ref=e96]: 08 Jun 2026, 20:08
+                  - generic [ref=e99]:
+                    - generic [ref=e100]: התוכנית נוצרה
+                    - generic [ref=e101]:
+                      - generic [ref=e102]: מערכת
+                      - generic [ref=e103]: 07 Jun 2026, 04:08
+                  - generic [ref=e106]:
+                    - generic [ref=e107]: החיוב הצליח
+                    - generic [ref=e108]: ‏89.00 ‏₪
+                    - generic [ref=e109]:
+                      - generic [ref=e110]: מערכת
+                      - generic [ref=e111]: 05 Jun 2026, 09:08
+          - generic:
+            - dialog
+          - generic:
+            - dialog
+          - generic:
+            - dialog
+    - complementary [ref=e112]:
+      - link "PayPlus Subscriptions" [ref=e116] [cursor=pointer]:
+        - /url: http://127.0.0.1:8123/admin
+        - generic [ref=e117]: PayPlus Subscriptions
+      - navigation [ref=e118]:
+        - list [ref=e119]:
+          - listitem [ref=e120]:
+            - list [ref=e121]:
+              - listitem [ref=e122]:
+                - link "בית" [ref=e123] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin
+                  - img [ref=e124]
+                  - generic [ref=e126]: בית
+          - listitem [ref=e127]:
+            - generic [ref=e128] [cursor=pointer]:
+              - generic [ref=e129]: לקוחות
+              - button "לקוחות" [expanded] [ref=e130]:
+                - generic [ref=e131]: לקוחות
+                - img [ref=e132]
+            - list [ref=e134]:
+              - listitem [ref=e135]:
+                - link "לקוחות" [ref=e136] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/customers
+                  - img [ref=e137]
+                  - generic [ref=e139]: לקוחות
+              - listitem [ref=e140]:
+                - link "מנויים" [ref=e141] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/subscriptions
+                  - img [ref=e142]
+                  - generic [ref=e144]: מנויים
+          - listitem [ref=e145]:
+            - generic [ref=e146] [cursor=pointer]:
+              - generic [ref=e147]: הגדרות
+              - button "הגדרות" [expanded] [ref=e148]:
+                - generic [ref=e149]: הגדרות
+                - img [ref=e150]
+            - list [ref=e152]:
+              - listitem [ref=e153]:
+                - link "חיבור PayPlus" [ref=e154] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/settings/payplus
+                  - img [ref=e155]
+                  - generic [ref=e157]: חיבור PayPlus
+          - listitem [ref=e158]:
+            - generic [ref=e159] [cursor=pointer]:
+              - generic [ref=e160]: תשלומים
+              - button "תשלומים" [expanded] [ref=e161]:
+                - generic [ref=e162]: תשלומים
+                - img [ref=e163]
+            - list [ref=e165]:
+              - listitem [ref=e166]:
+                - link "תשלומים" [ref=e167] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8123/admin/payments
+                  - img [ref=e168]
+                  - generic [ref=e170]: תשלומים
+  - generic:
+    - status
