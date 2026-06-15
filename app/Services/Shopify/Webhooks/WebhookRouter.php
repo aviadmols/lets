@@ -17,6 +17,7 @@ final class WebhookRouter
         private readonly OrderCancelledHandler $orderCancelled,
         private readonly AppUninstalledHandler $appUninstalled,
         private readonly PrivacyWebhookHandler $privacy,
+        private readonly ProductWebhookHandler $product,
     ) {}
 
     public function handlerFor(string $topic): ?WebhookHandler
@@ -25,6 +26,9 @@ final class WebhookRouter
             'orders/paid', 'orders/create' => $this->orderPaid,
             'orders/cancelled' => $this->orderCancelled,
             'app/uninstalled' => $this->appUninstalled,
+            'products/create',
+            'products/update',
+            'products/delete' => $this->product,
             'customers/redact',
             'shop/redact',
             'customers/data_request' => $this->privacy,

@@ -343,6 +343,12 @@ button.rc-fb-node--offer:hover {
     border-inline-start-color: var(--rc-blue-600);
     transform: translateY(-1px);
 }
+/* Trigger node is also a <button> now (opens the "Configure trigger" drawer):
+   same lift, green accent so the hover reads as the trigger's color. */
+button.rc-fb-node--trigger:hover {
+    box-shadow: var(--rc-shadow-hover);
+    transform: translateY(-1px);
+}
 button.rc-fb-node:focus-visible {
     outline: none;
     box-shadow: var(--rc-ring);

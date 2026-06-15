@@ -5,6 +5,9 @@
     (connector arrowheads point start-ward) via [dir="rtl"] CSS. Clicking an Offer
     node opens the "Configure cross-sell" slide-over drawer (.rc-drawer*); each
     field persists to a UpsellFlowOffer column via wire:model + saveOfferConfig().
+    Clicking the green Trigger node opens the "Configure trigger" drawer (same
+    .rc-drawer* pattern): a radio over match_type + the one relevant sub-field
+    (Alpine `mt` x-show), persisting to UpsellFlowTrigger via saveTriggerConfig().
     TOKENS: .rc-fb-* .rc-drawer-* .rc-field .rc-check .rc-pill .rc-input* +
             .rc-badge/.rc-cta/.rc-pp-* (published theme). ZERO inline CSS.
     Renders only — graph precomputed by FlowBuilder from the tenant-scoped flow.
@@ -83,8 +86,13 @@
             x-on:pointerleave="endPan()"
         >
             <div class="rc-fb-graph">
-                {{-- Trigger node (green) --}}
-                <div class="rc-fb-node rc-fb-node--trigger">
+                {{-- Trigger node (green) — clickable; opens the "Configure trigger" drawer --}}
+                <button
+                    type="button"
+                    wire:click="openTriggerConfig"
+                    class="rc-fb-node rc-fb-node--trigger"
+                    aria-label="{{ __('upsell.admin.trigger_config.open') }}"
+                >
                     <div class="rc-fb-node__type">
                         <x-filament::icon icon="heroicon-o-bolt" class="rc-fb-node__icon" />
                         {{ __('upsell.admin.builder.node.trigger') }}
@@ -98,7 +106,7 @@
                         @endforelse
                     </div>
                     <div class="rc-fb-port rc-fb-port--out"></div>
-                </div>
+                </button>
 
                 {{-- Connector trigger → first offer --}}
                 @if(! empty($this->offers))
@@ -360,6 +368,135 @@
                             </button>
                         @endif
                         <x-rc.cta variant="primary" wire:click="saveOfferConfig">{{ __('upsell.admin.configure.close') }}</x-rc.cta>
+                    </div>
+                </div>
+            </div>
+        @endif
+    @endif
+
+    {{-- =====================================================================
+         "Configure trigger" slide-over drawer (docs/ux/40, Recharge ref).
+         Opened by clicking the green Trigger node. The fixed trigger event is
+         "after checkout"; the merchant chooses which purchases qualify
+         (match_type) + the one relevant sub-field. Each field maps 1:1 to a
+         column on UpsellFlowTrigger; saving calls saveTriggerConfig().
+         Alpine `mt` mirrors the selected radio so only that sub-field shows
+         (x-show) — wire:model still persists the value. Tenant-scoped; ZERO
+         inline CSS. Right side (mirrors to inline-start in RTL).
+    ===================================================================== --}}
+    @if($triggerDrawerOpen)
+        @php
+            $trg = $this->configuredTrigger();
+            // DEV-ONLY: ?shot=1 lets the drawer grow to full content for the harness.
+            $shotMode = app()->isLocal() && config('app.dev_tenant', false) && request()->query('shot');
+        @endphp
+        @if($trg)
+            <div
+                @class(['rc-drawer', 'rc-drawer--shot' => $shotMode])
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="rc-trigger-drawer-title"
+                x-data="{ mt: @js($triggerMatchType) }"
+            >
+                <button type="button" class="rc-drawer__scrim" wire:click="closeTriggerConfig" aria-label="{{ __('upsell.admin.trigger_config.close') }}"></button>
+
+                <div class="rc-drawer__panel">
+                    {{-- Header --}}
+                    <div class="rc-drawer__head">
+                        <h2 id="rc-trigger-drawer-title" class="rc-drawer__title">{{ __('upsell.admin.trigger_config.title') }}</h2>
+                        <button type="button" class="rc-drawer__close" wire:click="closeTriggerConfig" aria-label="{{ __('upsell.admin.trigger_config.close') }}">
+                            <x-filament::icon icon="heroicon-o-x-mark" class="rc-drawer__close-icon" />
+                        </button>
+                    </div>
+
+                    {{-- Scrollable body --}}
+                    <div class="rc-drawer__body">
+                        <p class="rc-drawer__subtitle">{{ __('upsell.admin.trigger_config.subtitle') }}</p>
+
+                        {{-- The (fixed) trigger event --}}
+                        <div class="rc-field">
+                            <span class="rc-field__label">{{ __('upsell.admin.trigger_config.event_label') }}</span>
+                            <div class="rc-pp-info">
+                                <x-filament::icon icon="heroicon-o-bolt" class="rc-pp-info__icon" />
+                                <span>{{ __('upsell.admin.builder.trigger.headline') }}</span>
+                            </div>
+                        </div>
+
+                        {{-- Which purchases qualify? --}}
+                        <fieldset class="rc-field">
+                            <legend class="rc-field__label">{{ __('upsell.admin.trigger_config.which_label') }}</legend>
+                            <div class="rc-pp-radio-group">
+                                {{-- Any product --}}
+                                <label class="rc-pp-radio">
+                                    <input type="radio" wire:model="triggerMatchType" value="any_product" x-on:change="mt = $event.target.value">
+                                    <span class="rc-pp-radio__body">
+                                        <span class="rc-pp-radio__title">{{ __('upsell.admin.trigger_config.any_product') }}</span>
+                                        <span class="rc-pp-radio__hint">{{ __('upsell.admin.trigger_config.any_product_hint') }}</span>
+                                    </span>
+                                </label>
+
+                                {{-- A specific product --}}
+                                <label class="rc-pp-radio">
+                                    <input type="radio" wire:model="triggerMatchType" value="specific_product" x-on:change="mt = $event.target.value">
+                                    <span class="rc-pp-radio__body">
+                                        <span class="rc-pp-radio__title">{{ __('upsell.admin.trigger_config.specific_product') }}</span>
+                                        <span class="rc-pp-radio__hint">{{ __('upsell.admin.trigger_config.specific_product_hint') }}</span>
+                                        <span class="rc-drawer__subfield" x-show="mt === 'specific_product'" x-cloak>
+                                            <label class="rc-label" for="rc-trigger-product">{{ __('upsell.admin.trigger_config.product_gid_label') }}</label>
+                                            <input id="rc-trigger-product" type="text" class="rc-input rc-ltr" placeholder="gid://shopify/Product/123" wire:model="triggerProductGid">
+                                        </span>
+                                    </span>
+                                </label>
+
+                                {{-- A specific collection --}}
+                                <label class="rc-pp-radio">
+                                    <input type="radio" wire:model="triggerMatchType" value="collection" x-on:change="mt = $event.target.value">
+                                    <span class="rc-pp-radio__body">
+                                        <span class="rc-pp-radio__title">{{ __('upsell.admin.trigger_config.collection') }}</span>
+                                        <span class="rc-pp-radio__hint">{{ __('upsell.admin.trigger_config.collection_hint') }}</span>
+                                        <span class="rc-drawer__subfield" x-show="mt === 'collection'" x-cloak>
+                                            <label class="rc-label" for="rc-trigger-collection">{{ __('upsell.admin.trigger_config.collection_gid_label') }}</label>
+                                            <input id="rc-trigger-collection" type="text" class="rc-input rc-ltr" placeholder="gid://shopify/Collection/123" wire:model="triggerCollectionGid">
+                                        </span>
+                                    </span>
+                                </label>
+
+                                {{-- Has a tag --}}
+                                <label class="rc-pp-radio">
+                                    <input type="radio" wire:model="triggerMatchType" value="tag" x-on:change="mt = $event.target.value">
+                                    <span class="rc-pp-radio__body">
+                                        <span class="rc-pp-radio__title">{{ __('upsell.admin.trigger_config.tag') }}</span>
+                                        <span class="rc-pp-radio__hint">{{ __('upsell.admin.trigger_config.tag_hint') }}</span>
+                                        <span class="rc-drawer__subfield" x-show="mt === 'tag'" x-cloak>
+                                            <label class="rc-label" for="rc-trigger-tag">{{ __('upsell.admin.trigger_config.tag_label') }}</label>
+                                            <input id="rc-trigger-tag" type="text" class="rc-input" wire:model="triggerTag">
+                                        </span>
+                                    </span>
+                                </label>
+
+                                {{-- Order value over an amount --}}
+                                <label class="rc-pp-radio">
+                                    <input type="radio" wire:model="triggerMatchType" value="min_order_value" x-on:change="mt = $event.target.value">
+                                    <span class="rc-pp-radio__body">
+                                        <span class="rc-pp-radio__title">{{ __('upsell.admin.trigger_config.min_order_value') }}</span>
+                                        <span class="rc-pp-radio__hint">{{ __('upsell.admin.trigger_config.min_order_value_hint') }}</span>
+                                        <span class="rc-drawer__subfield" x-show="mt === 'min_order_value'" x-cloak>
+                                            <label class="rc-label" for="rc-trigger-amount">{{ __('upsell.admin.trigger_config.amount_label') }}</label>
+                                            <div class="rc-input-prefix">
+                                                <span class="rc-input-prefix__unit">{{ __('upsell.admin.trigger_config.currency_symbol') }}</span>
+                                                <input id="rc-trigger-amount" type="number" min="0" step="0.01" class="rc-input rc-ltr" wire:model="triggerMinOrderValue">
+                                            </div>
+                                        </span>
+                                    </span>
+                                </label>
+                            </div>
+                        </fieldset>
+                    </div>
+
+                    {{-- Sticky footer (mirrors the offer drawer: a primary "Close" that saves) --}}
+                    <div class="rc-drawer__foot">
+                        <button type="button" class="rc-cta rc-cta--ghost" wire:click="closeTriggerConfig">{{ __('upsell.admin.trigger_config.cancel') }}</button>
+                        <x-rc.cta variant="primary" wire:click="saveTriggerConfig">{{ __('upsell.admin.trigger_config.save') }}</x-rc.cta>
                     </div>
                 </div>
             </div>

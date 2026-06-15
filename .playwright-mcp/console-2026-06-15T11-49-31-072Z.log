@@ -49,3 +49,12 @@ Expression: "applyTransform($el)"
     at flushHandlers (http://127.0.0.1:8123/livewire/livewire.js?id=e949cd11:1370:48)
 [  102735ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8123/livewire/update:0
 [  108242ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8123/livewire/update:0
+[ 2291256ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8123/livewire/update:0
+[ 2443668ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8123/livewire/update:0
+[ 2496468ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8123/livewire/update:0
+[ 5258201ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8123/livewire/update:0
+[ 5261790ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8123/livewire/update:0
+[ 5270367ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8123/livewire/update:0
+[ 6687463ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8123/livewire/update:0
+[ 6690169ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8123/livewire/update:0
+[ 6695029ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8123/livewire/update:0

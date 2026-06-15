@@ -1,9 +1,11 @@
 /* =============================================================================
-   configure-drawer.css — the "Configure cross-sell" slide-over (docs/ux/40,
-   Recharge post-purchase reference). A right-side drawer + scrim opened from an
-   Offer node in the Flow Builder. Sectioned body, radios-with-descriptions,
-   blue/yellow callouts (reusing .rc-pp-info / .rc-pp-radio-group), a sticky
-   footer with "View post-purchase" + a primary "Close".
+   configure-drawer.css — the Flow-Builder slide-over drawers (docs/ux/40,
+   Recharge post-purchase reference). A right-side drawer + scrim opened from a
+   node in the Flow Builder. Two drawers share this markup: "Configure cross-sell"
+   (Offer node) and "Configure trigger" (green Trigger node — a radio over
+   match_type + the one relevant sub-field, .rc-drawer__subfield / .rc-input-prefix).
+   Sectioned body, radios-with-descriptions, blue/yellow callouts (reusing
+   .rc-pp-info / .rc-pp-radio-group), a sticky footer (primary "Close"/Save).
    TOKENS: --rc-card --rc-bg --rc-border --rc-border-strong --rc-blue --rc-blue-bg
            --rc-ink --rc-ink-muted --rc-radius-card --rc-radius-control
            --rc-radius-pill --rc-shadow-pop --rc-ring --rc-space-* --rc-type-*
@@ -189,6 +191,44 @@
     font: var(--rc-type-body-strong);
     color: var(--rc-ink-muted);
 }
+
+/* Money input with a leading currency unit (the "Order value over ₪X" field).
+   Mirrors .rc-input-suffix but the unit leads (inline-start) — logical, so it
+   sits on the correct side in RTL. */
+.rc-input-prefix {
+    display: flex;
+    align-items: stretch;
+    max-inline-size: 200px;
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    overflow: hidden;
+    background: var(--rc-card);
+}
+.rc-input-prefix .rc-input { border: 0; border-radius: 0; }
+.rc-input-prefix .rc-input:focus-visible { box-shadow: none; }
+.rc-input-prefix:focus-within { border-color: var(--rc-blue); box-shadow: var(--rc-ring); }
+.rc-input-prefix__unit {
+    display: inline-flex;
+    align-items: center;
+    padding-inline: var(--rc-space-3);
+    background: var(--rc-bg);
+    border-inline-end: 1px solid var(--rc-border);
+    font: var(--rc-type-body-strong);
+    color: var(--rc-ink-muted);
+}
+
+/* Conditional sub-field revealed under a selected trigger radio (Alpine x-show).
+   Stacks its label + control; indents from the radio body via the group gap. */
+.rc-drawer__subfield {
+    display: flex;
+    flex-direction: column;
+    gap: var(--rc-space-2);
+    margin-block-start: var(--rc-space-3);
+}
+
+/* Alpine x-show guard: keep the element hidden until Alpine evaluates, so the
+   sub-field never flashes on load before its match_type is the selected one. */
+[x-cloak] { display: none !important; }
 
 /* Inline link (e.g. "store's settings") */
 .rc-link { color: var(--rc-link); text-decoration: none; }

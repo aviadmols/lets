@@ -37,6 +37,8 @@ final class ShopifyAdminClient implements ShopifyAdminApi
     private const REST_429 = 429;
     private const NOT_FOUND = 404;
     private const BACKOFF_BASE_MS = 250;
+    /** Variants fetched inline per product. 100 is Shopify's connection max. */
+    private const VARIANTS_PER_PRODUCT = 100;
 
     /**
      * @param  string  $shopDomain  the *.myshopify.com host (routing only)
@@ -337,6 +339,84 @@ final class ShopifyAdminClient implements ShopifyAdminApi
         }
 
         return $payload;
+    }
+
+    // === GraphQL: catalog reads (thin transport — SOURCE owns DTO mapping) ===
+
+    /**
+     * One page of products via cursor pagination. Returns the raw `data.products`
+     * connection ({nodes, pageInfo}); the cost-aware graphql() handles THROTTLED
+     * backoff so the source never deals with rate limits. The SOURCE maps nodes →
+     * ProductData (this client stays thin and stable).
+     *
+     * @return array<string, mixed>
+     */
+    public function fetchProductsPage(?string $cursor = null, int $first = 50): array
+    {
+        $query = <<<'GQL'
+        query ProductsPage($first: Int!, $after: String, $variantsFirst: Int!) {
+          products(first: $first, after: $after) {
+            nodes {
+              id
+              title
+              handle
+              status
+              publishedAt
+              updatedAt
+              tags
+              featuredImage { url }
+              variants(first: $variantsFirst) {
+                nodes { id title sku price }
+              }
+            }
+            pageInfo { hasNextPage endCursor }
+          }
+        }
+        GQL;
+
+        $body = $this->graphql($query, [
+            'first' => $first,
+            'after' => $cursor,
+            'variantsFirst' => self::VARIANTS_PER_PRODUCT,
+        ]);
+
+        return (array) data_get($body, 'data.products', []);
+    }
+
+    /**
+     * One product by GID. Returns the raw `data.product` node, or null when the
+     * GID resolves to nothing (deleted upstream).
+     *
+     * @return array<string, mixed>|null
+     */
+    public function fetchProductByGid(string $gid): ?array
+    {
+        $query = <<<'GQL'
+        query ProductByGid($id: ID!, $variantsFirst: Int!) {
+          product(id: $id) {
+            id
+            title
+            handle
+            status
+            publishedAt
+            updatedAt
+            tags
+            featuredImage { url }
+            variants(first: $variantsFirst) {
+              nodes { id title sku price }
+            }
+          }
+        }
+        GQL;
+
+        $body = $this->graphql($query, [
+            'id' => $gid,
+            'variantsFirst' => self::VARIANTS_PER_PRODUCT,
+        ]);
+
+        $node = data_get($body, 'data.product');
+
+        return is_array($node) ? $node : null;
     }
 
     // === REST list pagination (Link-header pager) ===

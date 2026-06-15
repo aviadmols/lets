@@ -49,6 +49,11 @@ uri = "/shopify/webhooks"
 topics = ["orders/paid", "orders/create", "orders/cancelled", "orders/fulfilled", "refunds/create"]
 uri = "/shopify/webhooks"
 
+# Catalog sync — keep the local products cache fresh (W1).
+[[webhooks.subscriptions]]
+topics = ["products/create", "products/update", "products/delete"]
+uri = "/shopify/webhooks"
+
 [app_proxy]
 # Storefront → backend trust boundary for the installment button + thank-you
 # upsell widget (Phase 6 wires the controllers; the proxy subpath is reserved).

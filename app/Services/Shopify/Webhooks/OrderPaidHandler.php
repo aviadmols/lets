@@ -49,6 +49,13 @@ final class OrderPaidHandler implements WebhookHandler
         // TODO(laravel-backend): subscribe a listener to 'shopify.order.paid' that
         //   runs PayPlusCustomerTokenResolver → PlanActivationService → (on first
         //   installment success) ShopifyOrderStrategy::materializeForContext(deposit).
+        //   ACTIVATION SEAM: before applying plan defaults, that listener must call
+        //   App\Domain\Products\ProductPlanTemplateResolver::resolveDefaultsFor(
+        //       $shop, $productGid, $variantGid) and inherit
+        //   billing_frequency/interval_count/discount from the returned template
+        //   ONLY where checkout intent didn't override (precedence:
+        //   checkout > template > engine fallback). The resolver is tenant-safe and
+        //   touches no money — it reads templates only.
         Event::dispatch('shopify.order.paid', [[
             'shop_id' => $shop->id,
             'topic' => $event->topic,

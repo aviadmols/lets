@@ -1,0 +1,131 @@
+/* =============================================================================
+   products.css — the Products screen (Work Package W1, plan §E). The LIST's
+   "Markets" info banner, the DETAIL page (product header, details card, per-
+   variant plan groupings + reorder, side column, tag chips), and the small extras
+   the "Edit subscription plan" slide-over needs on top of configure-drawer.css
+   (the stepper row, the read-only price summary, a small ghost CTA, the native
+   <select> skin .rc-pp-select).
+   TOKENS: --rc-card --rc-bg --rc-border --rc-border-strong --rc-blue --rc-blue-bg
+           --rc-ink --rc-ink-muted --rc-radius-card --rc-radius-control
+           --rc-radius-pill --rc-shadow-card --rc-ring --rc-space-* --rc-type-*
+           --rc-teal --rc-teal-bg --rc-green --rc-amber
+   RTL: logical properties only (margin/padding/border -inline-*, inset-inline-*);
+        no left/right, no raw values, no inline CSS.
+   ========================================================================== */
+
+/* ---- List: "Markets" info banner -------------------------------------- */
+.rc-products-banner { margin-block-end: var(--rc-space-4); }
+
+/* ---- Native <select> skin (drawer purchase/frequency/charge-day) ------- */
+.rc-pp-select {
+    inline-size: 100%;
+    padding-block: var(--rc-space-2);
+    padding-inline: var(--rc-space-3);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    background: var(--rc-card);
+    font: var(--rc-type-body);
+    color: var(--rc-ink);
+    cursor: pointer;
+}
+.rc-pp-select:focus-visible { outline: none; border-color: var(--rc-blue); box-shadow: var(--rc-ring); }
+
+/* ---- Detail: header --------------------------------------------------- */
+.rc-prod-header { margin-block-end: var(--rc-space-5); gap: var(--rc-space-4); }
+.rc-prod-header__title { font: var(--rc-type-title); color: var(--rc-ink); }
+
+/* ---- Detail: product details card ------------------------------------- */
+.rc-prod-details { display: flex; align-items: flex-start; gap: var(--rc-space-4); }
+.rc-prod-details__thumb {
+    flex: 0 0 auto;
+    inline-size: 72px;
+    block-size: 72px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--rc-bg);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    overflow: hidden;
+}
+.rc-prod-details__img { inline-size: 100%; block-size: 100%; object-fit: cover; }
+.rc-prod-details__placeholder { inline-size: 28px; block-size: 28px; color: var(--rc-ink-muted); }
+.rc-prod-details__info { display: flex; flex-direction: column; gap: var(--rc-space-2); }
+.rc-prod-details__name { font: var(--rc-type-subh); color: var(--rc-ink); }
+.rc-prod-details__meta { display: flex; align-items: center; gap: var(--rc-space-2); flex-wrap: wrap; }
+.rc-prod-details__link { display: inline-flex; align-items: center; gap: var(--rc-space-2); }
+.rc-prod-details__link-icon { inline-size: 14px; block-size: 14px; }
+
+/* ---- Detail: per-variant plan group ----------------------------------- */
+.rc-plan-group { padding-block: var(--rc-space-4); }
+.rc-plan-group + .rc-plan-group { border-block-start: 1px solid var(--rc-border); }
+.rc-plan-group__head { margin-block-end: var(--rc-space-3); gap: var(--rc-space-3); }
+.rc-plan-group__title { display: inline-flex; align-items: center; gap: var(--rc-space-3); flex-wrap: wrap; }
+.rc-plan-group__icon { inline-size: 18px; block-size: 18px; color: var(--rc-ink-muted); }
+.rc-plan-group__actions { gap: var(--rc-space-2); }
+
+/* ---- Detail: plan row ------------------------------------------------- */
+.rc-plan-row {
+    display: flex;
+    align-items: center;
+    gap: var(--rc-space-3);
+    padding: var(--rc-space-3);
+    background: var(--rc-card);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+}
+.rc-plan-row + .rc-plan-row { margin-block-start: var(--rc-space-2); }
+.rc-plan-row--draft { background: var(--rc-bg); }
+
+.rc-plan-row__reorder { display: flex; flex-direction: column; gap: 2px; flex: 0 0 auto; }
+.rc-plan-row__move {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 22px;
+    block-size: 18px;
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    background: var(--rc-card);
+    color: var(--rc-ink-muted);
+    cursor: pointer;
+}
+.rc-plan-row__move:hover { border-color: var(--rc-border-strong); color: var(--rc-ink); }
+.rc-plan-row__move:disabled { opacity: .4; cursor: not-allowed; }
+.rc-plan-row__move-icon { inline-size: 12px; block-size: 12px; }
+
+.rc-plan-row__body { flex: 1 1 auto; display: flex; flex-direction: column; gap: var(--rc-space-1); min-inline-size: 0; }
+.rc-plan-row__line { display: flex; align-items: center; gap: var(--rc-space-2); flex-wrap: wrap; }
+.rc-plan-row__price { color: var(--rc-ink-muted); font: var(--rc-type-body); margin-inline-start: auto; }
+.rc-plan-row__meta { display: flex; align-items: center; gap: var(--rc-space-2); flex-wrap: wrap; font: var(--rc-type-caption); }
+
+.rc-plan-row__end { display: flex; align-items: center; gap: var(--rc-space-3); flex: 0 0 auto; }
+
+.rc-plan-empty { padding: var(--rc-space-3); }
+
+/* ---- Detail: side column ---------------------------------------------- */
+.rc-prod-side__title { margin-block-end: var(--rc-space-4); }
+.rc-prod-side__section { margin-block-start: var(--rc-space-4); display: flex; flex-direction: column; gap: var(--rc-space-2); }
+.rc-prod-side__label { margin-block-end: var(--rc-space-1); }
+[dir="rtl"] .rc-prod-side__label { text-transform: none; letter-spacing: normal; }
+
+.rc-prod-tags { gap: var(--rc-space-2); }
+.rc-prod-tag {
+    display: inline-flex;
+    align-items: center;
+    padding-block: var(--rc-space-1);
+    padding-inline: var(--rc-space-3);
+    background: var(--rc-blue-bg);
+    color: var(--rc-blue);
+    border-radius: var(--rc-radius-pill);
+    font: var(--rc-type-caption);
+}
+
+/* ---- Drawer extras (on top of configure-drawer.css) ------------------- */
+.rc-cta--sm { padding-block: var(--rc-space-1); padding-inline: var(--rc-space-3); font: var(--rc-type-caption); }
+
+.rc-plan-ship { gap: var(--rc-space-3); align-items: stretch; }
+.rc-plan-ship__count { max-inline-size: 96px; }
+.rc-plan-ship__unit { flex: 1 1 auto; max-inline-size: 200px; }
+
+.rc-plan-price-summary { font: var(--rc-type-body-strong); }

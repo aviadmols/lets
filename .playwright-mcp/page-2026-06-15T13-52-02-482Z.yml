@@ -1,0 +1,217 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - navigation [ref=e5]:
+        - button "כווץ תפריט צד" [ref=e6] [cursor=pointer]:
+          - generic [ref=e7]: כווץ תפריט צד
+          - img [ref=e8]
+        - generic [ref=e10]:
+          - generic [ref=e15] [cursor=pointer]: HE
+          - button "תפריט משתמש" [ref=e18] [cursor=pointer]:
+            - img "Avatar of Demo Admin" [ref=e19]
+      - main [ref=e20]:
+        - generic [ref=e21]:
+          - generic [ref=e22]:
+            - generic [ref=e24]:
+              - navigation [ref=e25]:
+                - list [ref=e26]:
+                  - listitem [ref=e27]:
+                    - link "הצעות לאחר רכישה" [ref=e28] [cursor=pointer]:
+                      - /url: http://127.0.0.1:8125/admin/post-purchase-offers
+                  - listitem [ref=e29]:
+                    - img [ref=e30]
+                    - generic [ref=e32]: בונה התהליכים
+              - heading "Summer add-on boost" [level=1] [ref=e33]
+            - generic [ref=e35]:
+              - generic [ref=e36]:
+                - generic [ref=e37]:
+                  - link "חזרה להצעות לאחר רכישה" [ref=e38] [cursor=pointer]:
+                    - /url: http://127.0.0.1:8125/admin/post-purchase-offers
+                    - img [ref=e39]
+                  - generic [ref=e41]: Summer add-on boost
+                  - generic [ref=e42]: פעיל
+                - button "השהיה" [ref=e45] [cursor=pointer]
+              - generic [ref=e46]:
+                - generic [ref=e47]:
+                  - button "הגדלה" [ref=e48] [cursor=pointer]: +
+                  - generic [ref=e49]: 100%
+                  - button "הקטנה" [ref=e50] [cursor=pointer]: −
+                  - button "איפוס תצוגה" [ref=e51] [cursor=pointer]:
+                    - img [ref=e52]
+                - generic [ref=e55]:
+                  - button "הגדרת טריגר" [ref=e56] [cursor=pointer]:
+                    - generic [ref=e57]:
+                      - img [ref=e58]
+                      - text: טריגר
+                    - generic [ref=e60]: לאחר שהלקוח משלים תשלום בקופה
+                    - generic [ref=e61]:
+                      - generic [ref=e62]: כל מוצר שנרכש
+                      - generic [ref=e63]: ערך הזמנה מעל ‏150.00 ‏₪
+                  - generic [ref=e65]:
+                    - img [ref=e66]
+                    - generic [ref=e67]: ▶
+                  - button "הגדרת \"Travel pouch\"" [ref=e68] [cursor=pointer]:
+                    - generic [ref=e69]:
+                      - img [ref=e71]
+                      - generic [ref=e73]:
+                        - generic [ref=e74]: מכירה צולבת
+                        - generic [ref=e75]: מוצר יחיד
+                    - generic [ref=e76]:
+                      - generic [ref=e77]: מוצר
+                      - generic [ref=e78]:
+                        - img [ref=e80]
+                        - generic [ref=e82]:
+                          - generic [ref=e83]: Travel pouch
+                          - generic [ref=e84]: "וריאציות: הכול"
+                          - generic [ref=e85]: "מחיר: ‏63.20 ‏₪ ‏79.00 ‏₪"
+                    - generic [ref=e86]:
+                      - generic [ref=e87]:
+                        - generic [ref=e88]: אישור
+                        - generic [ref=e89]: →
+                        - generic [ref=e90]: Care bundle
+                      - generic [ref=e91]:
+                        - generic [ref=e92]: דחייה
+                        - generic [ref=e93]: →
+                        - generic [ref=e94]: סיום תהליך
+                  - button "הגדרת \"Care bundle\"" [ref=e95] [cursor=pointer]:
+                    - generic [ref=e96]:
+                      - img [ref=e98]
+                      - generic [ref=e100]:
+                        - generic [ref=e101]: מכירה צולבת
+                        - generic [ref=e102]: מוצר יחיד
+                    - generic [ref=e103]:
+                      - generic [ref=e104]: מוצר
+                      - generic [ref=e105]:
+                        - img [ref=e107]
+                        - generic [ref=e109]:
+                          - generic [ref=e110]: Care bundle
+                          - generic [ref=e111]: "וריאציות: הכול"
+                          - generic [ref=e112]: "מחיר: ‏39.00 ‏₪ ‏49.00 ‏₪"
+                    - generic [ref=e113]:
+                      - generic [ref=e114]:
+                        - generic [ref=e115]: אישור
+                        - generic [ref=e116]: →
+                        - generic [ref=e117]: סיום תהליך
+                      - generic [ref=e118]:
+                        - generic [ref=e119]: דחייה
+                        - generic [ref=e120]: →
+                        - generic [ref=e121]: סיום תהליך
+              - dialog "הגדרת טריגר" [ref=e126]:
+                - button "סגירה" [ref=e127] [cursor=pointer]
+                - generic [ref=e128]:
+                  - generic [ref=e129]:
+                    - heading "הגדרת טריגר" [level=2] [ref=e130]
+                    - button "סגירה" [ref=e131] [cursor=pointer]:
+                      - img [ref=e132]
+                  - generic [ref=e134]:
+                    - paragraph [ref=e135]: בחרו מתי תוצג ההצעה שלאחר הרכישה.
+                    - generic [ref=e136]:
+                      - generic [ref=e137]: טריגר
+                      - generic [ref=e138]:
+                        - img [ref=e139]
+                        - generic [ref=e141]: לאחר שהלקוח משלים תשלום בקופה
+                    - group "אילו רכישות עומדות בתנאי?" [ref=e142]:
+                      - generic [ref=e143]: אילו רכישות עומדות בתנאי?
+                      - generic [ref=e144]:
+                        - generic [ref=e145] [cursor=pointer]:
+                          - radio "כל מוצר שנרכש הצגת ההצעה לאחר כל תשלום בקופה, ללא תלות במה שנרכש." [checked] [ref=e146]
+                          - generic [ref=e147]:
+                            - generic [ref=e148]: כל מוצר שנרכש
+                            - generic [ref=e149]: הצגת ההצעה לאחר כל תשלום בקופה, ללא תלות במה שנרכש.
+                        - generic [ref=e150] [cursor=pointer]:
+                          - radio "מוצר ספציפי הצגת ההצעה רק כאשר מוצר זה נרכש." [ref=e151]
+                          - generic [ref=e152]:
+                            - generic [ref=e153]: מוצר ספציפי
+                            - generic [ref=e154]: הצגת ההצעה רק כאשר מוצר זה נרכש.
+                        - generic [ref=e155] [cursor=pointer]:
+                          - radio "קולקציה ספציפית הצגת ההצעה רק כאשר נרכש מוצר מקולקציה זו." [ref=e156]
+                          - generic [ref=e157]:
+                            - generic [ref=e158]: קולקציה ספציפית
+                            - generic [ref=e159]: הצגת ההצעה רק כאשר נרכש מוצר מקולקציה זו.
+                        - generic [ref=e160] [cursor=pointer]:
+                          - radio "בעל תגית הצגת ההצעה רק כאשר למוצר שנרכש יש תגית זו." [ref=e161]
+                          - generic [ref=e162]:
+                            - generic [ref=e163]: בעל תגית
+                            - generic [ref=e164]: הצגת ההצעה רק כאשר למוצר שנרכש יש תגית זו.
+                        - generic [ref=e165] [cursor=pointer]:
+                          - radio "ערך הזמנה מעל סכום הצגת ההצעה רק כאשר סכום הביניים של ההזמנה גבוה מסכום זה." [ref=e166]
+                          - generic [ref=e167]:
+                            - generic [ref=e168]: ערך הזמנה מעל סכום
+                            - generic [ref=e169]: הצגת ההצעה רק כאשר סכום הביניים של ההזמנה גבוה מסכום זה.
+                  - generic [ref=e170]:
+                    - button "ביטול" [ref=e171] [cursor=pointer]
+                    - button "שמירה" [ref=e172] [cursor=pointer]
+          - generic:
+            - dialog
+          - generic:
+            - dialog
+          - generic:
+            - dialog
+    - complementary [ref=e174]:
+      - link "PayPlus Subscriptions" [ref=e178] [cursor=pointer]:
+        - /url: http://127.0.0.1:8125/admin
+        - generic [ref=e179]: PayPlus Subscriptions
+      - navigation [ref=e180]:
+        - list [ref=e181]:
+          - listitem [ref=e182]:
+            - list [ref=e183]:
+              - listitem [ref=e184]:
+                - link "בית" [ref=e185] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8125/admin
+                  - img [ref=e186]
+                  - generic [ref=e188]: בית
+          - listitem [ref=e189]:
+            - generic [ref=e190] [cursor=pointer]:
+              - generic [ref=e191]: לקוחות
+              - button "לקוחות" [expanded] [ref=e192]:
+                - generic [ref=e193]: לקוחות
+                - img [ref=e194]
+            - list [ref=e196]:
+              - listitem [ref=e197]:
+                - link "לקוחות" [ref=e198] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8125/admin/customers
+                  - img [ref=e199]
+                  - generic [ref=e201]: לקוחות
+              - listitem [ref=e202]:
+                - link "מנויים" [ref=e203] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8125/admin/subscriptions
+                  - img [ref=e204]
+                  - generic [ref=e206]: מנויים
+          - listitem [ref=e207]:
+            - generic [ref=e208] [cursor=pointer]:
+              - generic [ref=e209]: הגדרות
+              - button "הגדרות" [expanded] [ref=e210]:
+                - generic [ref=e211]: הגדרות
+                - img [ref=e212]
+            - list [ref=e214]:
+              - listitem [ref=e215]:
+                - link "חיבור PayPlus" [ref=e216] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8125/admin/settings/payplus
+                  - img [ref=e217]
+                  - generic [ref=e219]: חיבור PayPlus
+          - listitem [ref=e220]:
+            - generic [ref=e221] [cursor=pointer]:
+              - generic [ref=e222]: מכירה צולבת ושדרוג
+              - button "מכירה צולבת ושדרוג" [expanded] [ref=e223]:
+                - generic [ref=e224]: מכירה צולבת ושדרוג
+                - img [ref=e225]
+            - list [ref=e227]:
+              - listitem [ref=e228]:
+                - link "הצעות לאחר רכישה" [ref=e229] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8125/admin/post-purchase-offers
+                  - img [ref=e230]
+                  - generic [ref=e232]: הצעות לאחר רכישה
+          - listitem [ref=e233]:
+            - generic [ref=e234] [cursor=pointer]:
+              - generic [ref=e235]: תשלומים
+              - button "תשלומים" [expanded] [ref=e236]:
+                - generic [ref=e237]: תשלומים
+                - img [ref=e238]
+            - list [ref=e240]:
+              - listitem [ref=e241]:
+                - link "תשלומים" [ref=e242] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8125/admin/payments
+                  - img [ref=e243]
+                  - generic [ref=e245]: תשלומים
+  - generic:
+    - status

@@ -78,6 +78,10 @@ return [
         'orders/fulfilled',
         'refunds/create',
         'app/uninstalled',
+        // Catalog sync — keep the local products cache fresh (W1).
+        'products/create',
+        'products/update',
+        'products/delete',
         // Mandatory privacy webhooks (GDPR / Shopify Protected Customer Data).
         'customers/redact',
         'shop/redact',

@@ -1,0 +1,161 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - navigation [ref=e5]:
+        - button "כווץ תפריט צד" [ref=e6] [cursor=pointer]:
+          - generic [ref=e7]: כווץ תפריט צד
+          - img [ref=e8]
+        - generic [ref=e10]:
+          - generic [ref=e15] [cursor=pointer]: HE
+          - button "תפריט משתמש" [ref=e18] [cursor=pointer]:
+            - img "Avatar of Demo Admin" [ref=e19]
+      - main [ref=e20]:
+        - generic [ref=e21]:
+          - generic [ref=e22]:
+            - heading "הצעות לאחר רכישה" [level=1] [ref=e25]
+            - generic [ref=e27]:
+              - tablist [ref=e28]:
+                - tab "סקירה" [ref=e29] [cursor=pointer]
+                - tab "ביצועים" [ref=e30] [cursor=pointer]
+                - tab "פעילות" [ref=e31] [cursor=pointer]
+                - tab "הגדרות חדש" [ref=e32] [cursor=pointer]:
+                  - text: הגדרות
+                  - generic [ref=e33]: חדש
+              - generic [ref=e34]:
+                - generic [ref=e35]:
+                  - img [ref=e36]
+                  - generic [ref=e38]: אנליטיקה להחלפת הצעות לאחר רכישה תגיע בקרוב. ההכנסות, החשיפות וההמרה למטה משקפות את ההצעות בלחיצה אחת המבוססות על טוקן.
+                - generic [ref=e39]:
+                  - generic [ref=e40]:
+                    - generic [ref=e41]: סך הכנסות לאחר רכישה
+                    - generic [ref=e42]: ‏5,916.80 ‏₪
+                    - generic [ref=e43]: 0%
+                    - generic [ref=e44]: 30 הימים האחרונים
+                  - generic [ref=e45]:
+                    - generic [ref=e46]: חשיפות
+                    - generic [ref=e47]: "424"
+                    - generic [ref=e48]: 0%
+                    - generic [ref=e49]: 30 הימים האחרונים
+                  - generic [ref=e50]:
+                    - generic [ref=e51]: שיעור המרה לאחר רכישה
+                    - generic [ref=e52]: 29.0%
+                    - generic [ref=e53]: 0%
+                    - generic [ref=e54]: 30 הימים האחרונים
+                  - generic [ref=e55]:
+                    - generic [ref=e56]: מספר הזמנות לאחר רכישה
+                    - generic [ref=e57]: "112"
+                    - generic [ref=e58]: 0%
+                    - generic [ref=e59]: 30 הימים האחרונים
+                - generic [ref=e60]:
+                  - generic [ref=e61]:
+                    - generic [ref=e62]: התהליכים שלכם
+                    - button "יצירת תהליך" [ref=e63] [cursor=pointer]
+                  - generic [ref=e64]:
+                    - tablist [ref=e65]:
+                      - button "פעילים" [ref=e66] [cursor=pointer]
+                      - button "לא פעילים" [ref=e67] [cursor=pointer]
+                    - button "שינוי סדר עדיפות" [ref=e68] [cursor=pointer]:
+                      - img [ref=e69]
+                      - text: שינוי סדר עדיפות
+                  - table [ref=e71]:
+                    - rowgroup [ref=e72]:
+                      - row "סדר עדיפות שם נוצר בתאריך סטטוס" [ref=e73]:
+                        - columnheader "סדר עדיפות" [ref=e74]
+                        - columnheader "שם" [ref=e75]
+                        - columnheader "נוצר בתאריך" [ref=e76]
+                        - columnheader "סטטוס" [ref=e77]
+                    - rowgroup [ref=e78]:
+                      - row "1 Summer add-on boost 2 הצעות 15 ביוני 2026 פעיל" [ref=e79] [cursor=pointer]:
+                        - cell "1" [ref=e80]:
+                          - generic [ref=e81]: "1"
+                        - cell "Summer add-on boost 2 הצעות" [ref=e82]:
+                          - link "Summer add-on boost" [ref=e83]:
+                            - /url: http://127.0.0.1:8125/admin/post-purchase-offers/flow/1
+                          - generic [ref=e84]: 2 הצעות
+                        - cell "15 ביוני 2026" [ref=e85]
+                        - cell "פעיל" [ref=e86]:
+                          - generic [ref=e87]: פעיל
+                      - row "2 Coffee lovers cross-sell הצעה 1 15 ביוני 2026 פעיל" [ref=e89] [cursor=pointer]:
+                        - cell "2" [ref=e90]:
+                          - generic [ref=e91]: "2"
+                        - cell "Coffee lovers cross-sell הצעה 1" [ref=e92]:
+                          - link "Coffee lovers cross-sell" [ref=e93]:
+                            - /url: http://127.0.0.1:8125/admin/post-purchase-offers/flow/2
+                          - generic [ref=e94]: הצעה 1
+                        - cell "15 ביוני 2026" [ref=e95]
+                        - cell "פעיל" [ref=e96]:
+                          - generic [ref=e97]: פעיל
+          - generic:
+            - dialog
+          - generic:
+            - dialog
+          - generic:
+            - dialog
+    - complementary [ref=e100]:
+      - link "PayPlus Subscriptions" [ref=e104] [cursor=pointer]:
+        - /url: http://127.0.0.1:8125/admin
+        - generic [ref=e105]: PayPlus Subscriptions
+      - navigation [ref=e106]:
+        - list [ref=e107]:
+          - listitem [ref=e108]:
+            - list [ref=e109]:
+              - listitem [ref=e110]:
+                - link "בית" [ref=e111] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8125/admin
+                  - img [ref=e112]
+                  - generic [ref=e114]: בית
+          - listitem [ref=e115]:
+            - generic [ref=e116] [cursor=pointer]:
+              - generic [ref=e117]: לקוחות
+              - button "לקוחות" [expanded] [ref=e118]:
+                - generic [ref=e119]: לקוחות
+                - img [ref=e120]
+            - list [ref=e122]:
+              - listitem [ref=e123]:
+                - link "לקוחות" [ref=e124] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8125/admin/customers
+                  - img [ref=e125]
+                  - generic [ref=e127]: לקוחות
+              - listitem [ref=e128]:
+                - link "מנויים" [ref=e129] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8125/admin/subscriptions
+                  - img [ref=e130]
+                  - generic [ref=e132]: מנויים
+          - listitem [ref=e133]:
+            - generic [ref=e134] [cursor=pointer]:
+              - generic [ref=e135]: הגדרות
+              - button "הגדרות" [expanded] [ref=e136]:
+                - generic [ref=e137]: הגדרות
+                - img [ref=e138]
+            - list [ref=e140]:
+              - listitem [ref=e141]:
+                - link "חיבור PayPlus" [ref=e142] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8125/admin/settings/payplus
+                  - img [ref=e143]
+                  - generic [ref=e145]: חיבור PayPlus
+          - listitem [ref=e146]:
+            - generic [ref=e147] [cursor=pointer]:
+              - generic [ref=e148]: מכירה צולבת ושדרוג
+              - button "מכירה צולבת ושדרוג" [expanded] [ref=e149]:
+                - generic [ref=e150]: מכירה צולבת ושדרוג
+                - img [ref=e151]
+            - list [ref=e153]:
+              - listitem [ref=e154]:
+                - link "הצעות לאחר רכישה" [ref=e155] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8125/admin/post-purchase-offers
+                  - img [ref=e156]
+                  - generic [ref=e158]: הצעות לאחר רכישה
+          - listitem [ref=e159]:
+            - generic [ref=e160] [cursor=pointer]:
+              - generic [ref=e161]: תשלומים
+              - button "תשלומים" [expanded] [ref=e162]:
+                - generic [ref=e163]: תשלומים
+                - img [ref=e164]
+            - list [ref=e166]:
+              - listitem [ref=e167]:
+                - link "תשלומים" [ref=e168] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8125/admin/payments
+                  - img [ref=e169]
+                  - generic [ref=e171]: תשלומים
+  - generic:
+    - status

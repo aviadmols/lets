@@ -212,6 +212,110 @@ final class PostPurchaseOffersPageTest extends TestCase
         $this->assertSame(UpsellFlowOffer::DISCOUNT_NONE, UpsellFlowOffer::findOrFail($offerId)->discount_type);
     }
 
+    public function test_create_new_builds_a_draft_flow_with_default_trigger_and_offer_and_redirects(): void
+    {
+        $this->assertSame(0, UpsellFlow::count());
+
+        Livewire::test(PostPurchaseOffers::class)
+            ->call('createFlow')
+            ->assertRedirect(); // → the real new flow builder, never flow/0
+
+        // Exactly one draft flow was created for the bound shop, seeded 1:1.
+        $flow = UpsellFlow::query()->firstOrFail();
+        $this->assertSame($this->shop->id, $flow->shop_id);
+        $this->assertSame(UpsellFlowStatus::DRAFT, $flow->status);
+        $this->assertSame(1, $flow->priority); // first flow → priority 1
+        $this->assertSame(1, $flow->triggers()->count());
+        $this->assertSame(1, $flow->offers()->count());
+
+        $trigger = $flow->triggers()->first();
+        $this->assertSame(UpsellFlowTrigger::MATCH_ANY_PRODUCT, $trigger->match_type);
+
+        $offer = $flow->offers()->first();
+        $this->assertSame(0, $offer->position);
+
+        // The redirect targets THIS flow's builder URL (a real, openable page).
+        Livewire::test(PostPurchaseOffers::class)
+            ->call('createFlow')
+            ->assertRedirect(FlowBuilder::getUrl(['flow' => UpsellFlow::query()->latest('id')->first()->id]));
+
+        // Priority increments off the existing max (no collisions).
+        $this->assertSame(2, UpsellFlow::query()->latest('id')->first()->priority);
+    }
+
+    public function test_missing_flow_redirects_to_hub_instead_of_404(): void
+    {
+        // A flow id that does not exist for this shop bounces back to the hub.
+        Livewire::test(FlowBuilder::class, ['flow' => 999999])
+            ->assertRedirect(PostPurchaseOffers::getUrl());
+    }
+
+    public function test_trigger_node_opens_drawer_and_save_persists_match_type_and_subfield(): void
+    {
+        $flow = $this->makeFlow('Trigger flow', UpsellFlowStatus::DRAFT->value, 1);
+        $triggerId = $flow->triggers()->first()->id;
+
+        Livewire::test(FlowBuilder::class, ['flow' => $flow->id])
+            // Clicking the green Trigger node opens the "Configure trigger" drawer.
+            ->call('openTriggerConfig')
+            ->assertSet('triggerDrawerOpen', true)
+            ->assertSet('configTriggerId', $triggerId)
+            ->assertSet('triggerMatchType', UpsellFlowTrigger::MATCH_ANY_PRODUCT)
+            ->assertSee(__('upsell.admin.trigger_config.title'))
+            ->assertSee(__('upsell.admin.trigger_config.which_label'))
+            // Choose "Order value over an amount" + its sub-field, then save.
+            ->set('triggerMatchType', UpsellFlowTrigger::MATCH_MIN_ORDER_VALUE)
+            ->set('triggerMinOrderValue', '150')
+            ->set('triggerTag', 'should-be-nulled') // a stale sub-field…
+            ->call('saveTriggerConfig')
+            ->assertSet('triggerDrawerOpen', false);
+
+        $trigger = UpsellFlowTrigger::findOrFail($triggerId);
+        $this->assertSame(UpsellFlowTrigger::MATCH_MIN_ORDER_VALUE, $trigger->match_type);
+        $this->assertSame(150.0, (float) $trigger->min_order_value);
+        // Only the relevant sub-field is written; the others are nulled.
+        $this->assertNull($trigger->tag);
+        $this->assertNull($trigger->shopify_product_gid);
+        $this->assertNull($trigger->shopify_collection_gid);
+    }
+
+    public function test_save_trigger_config_is_a_noop_for_a_foreign_flow(): void
+    {
+        // A second shop owns a flow + trigger.
+        $other = Shop::create([
+            'shopify_domain' => 'other.myshopify.com',
+            'name' => 'Other',
+            'status' => Shop::STATUS_ACTIVE,
+        ]);
+
+        $foreignTriggerId = Tenant::run($other, function () use ($other): int {
+            $flow = new UpsellFlow(['name' => 'Foreign flow', 'priority' => 1]);
+            $flow->shop_id = $other->id;
+            $flow->forceFill(['status' => UpsellFlowStatus::DRAFT->value])->save();
+
+            return UpsellFlowTrigger::create([
+                'flow_id' => $flow->id,
+                'match_type' => UpsellFlowTrigger::MATCH_ANY_PRODUCT,
+            ])->id;
+        });
+
+        // Bound to the test shop: this shop owns its own flow.
+        $ourFlow = $this->makeFlow('Our flow', UpsellFlowStatus::DRAFT->value, 1);
+
+        // Forcing the configTriggerId to the foreign trigger must NOT persist:
+        // the tenant-scoped lookup resolves to null, so save is a no-op.
+        Livewire::test(FlowBuilder::class, ['flow' => $ourFlow->id])
+            ->set('configTriggerId', $foreignTriggerId)
+            ->set('triggerMatchType', UpsellFlowTrigger::MATCH_TAG)
+            ->set('triggerTag', 'hacked')
+            ->call('saveTriggerConfig');
+
+        // The foreign trigger is untouched (still any_product, no tag).
+        $foreign = Tenant::run($other, fn () => UpsellFlowTrigger::findOrFail($foreignTriggerId));
+        $this->assertSame(UpsellFlowTrigger::MATCH_ANY_PRODUCT, $foreign->match_type);
+        $this->assertNull($foreign->tag);
+    }
+
     private function makeFlow(string $name, string $status, int $priority): UpsellFlow
     {
         $flow = new UpsellFlow(['name' => $name, 'priority' => $priority]);

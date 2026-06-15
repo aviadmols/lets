@@ -2,7 +2,10 @@
 
 namespace App\Filament\Pages;
 
+use App\Domain\Upsell\Enums\UpsellFlowStatus;
 use App\Domain\Upsell\Models\UpsellFlow;
+use App\Domain\Upsell\Models\UpsellFlowOffer;
+use App\Domain\Upsell\Models\UpsellFlowTrigger;
 use App\Domain\Upsell\Models\UpsellOfferEvent;
 use App\Domain\Upsell\Models\UpsellSetting;
 use App\Domain\Upsell\UpsellMetrics;
@@ -44,6 +47,13 @@ class PostPurchaseOffers extends Page
     public const INACTIVE_STATUSES = ['inactive', 'draft'];
 
     public const ACTIVITY_LIMIT = 50;
+
+    /** Seed for "Create new": a fresh draft flow + one default trigger + one
+     *  empty offer node, so the builder opens on a real, editable graph (never
+     *  flow/0). Mirrors the engine's any-product default + a position-0 offer. */
+    public const NEW_FLOW_NAME = 'upsell.admin.builder.untitled';
+    public const NEW_FLOW_TRIGGER = UpsellFlowTrigger::MATCH_ANY_PRODUCT;
+    public const NEW_OFFER_POSITION = 0;
 
     /** Selected tab (?tab= deep-links work). */
     public string $tab = 'overview';
@@ -217,6 +227,54 @@ class PostPurchaseOffers extends Page
     public function hasAnyFlow(): bool
     {
         return UpsellFlow::query()->exists();
+    }
+
+    // === Create new flow ===
+
+    /**
+     * "Create new" — author a real, editable flow and open it in the Flow Builder
+     * (never flow/0). Tenant-scoped: BelongsToShop auto-stamps shop_id; status is
+     * the guarded column so the new row is force-filled to DRAFT (a half-built
+     * flow can never be born "active"). The seed mirrors the engine's defaults:
+     * one any-product trigger + one empty offer node, so the builder opens on a
+     * trigger → offer graph the merchant edits via the drawers.
+     */
+    public function createFlow(): void
+    {
+        if (! Tenant::check()) {
+            return;
+        }
+
+        $nextPriority = ((int) UpsellFlow::query()->max('priority')) + 1;
+
+        $flow = new UpsellFlow([
+            'name' => __(self::NEW_FLOW_NAME),
+            'priority' => $nextPriority,
+        ]);
+        // shop_id auto-stamped by BelongsToShop; status is guarded → force the
+        // canonical initial state. Never written from request input.
+        $flow->forceFill(['status' => UpsellFlowStatus::DRAFT->value])->save();
+
+        UpsellFlowTrigger::create([
+            'flow_id' => $flow->id,
+            'match_type' => self::NEW_FLOW_TRIGGER,
+        ]);
+
+        // Empty/needs-product offer: the gid columns are NOT NULL with no default,
+        // so seed them blank — the merchant fills product/price/copy via the offer
+        // drawer. The empty gid + zero price make the node render as "invalid"
+        // (offerIsValid()), which is the correct "needs product" prompt.
+        UpsellFlowOffer::create([
+            'flow_id' => $flow->id,
+            'offer_product_gid' => '',
+            'offer_variant_gid' => '',
+            'offer_title' => __('upsell.offer_default_title'),
+            'base_price' => 0,
+            'discount_type' => UpsellFlowOffer::DISCOUNT_NONE,
+            'position' => self::NEW_OFFER_POSITION,
+        ]);
+
+        $this->redirect(FlowBuilder::getUrl(['flow' => $flow->id]));
     }
 
     // === Settings save ===

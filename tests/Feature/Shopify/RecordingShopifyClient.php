@@ -84,4 +84,14 @@ final class RecordingShopifyClient implements ShopifyAdminApi
 
         return ['order' => ['id' => $orderGid, 'displayFinancialStatus' => 'PAID']];
     }
+
+    public function fetchProductsPage(?string $cursor = null, int $first = 50): array
+    {
+        return ['nodes' => [], 'pageInfo' => ['hasNextPage' => false, 'endCursor' => null]];
+    }
+
+    public function fetchProductByGid(string $gid): ?array
+    {
+        return null;
+    }
 }

@@ -11,8 +11,13 @@ use App\Models\ActivityEvent;
 use App\Models\InstallmentPayment;
 use App\Models\InstallmentPlan;
 use App\Models\PaymentLedger;
+use App\Models\Product;
+use App\Models\ProductSubscriptionPlan;
+use App\Models\ProductVariant;
 use App\Models\Shop;
 use App\Models\User;
+use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
+use App\Modules\PayPlusShopifyInstallments\Enums\PlanTemplateStatus;
 use App\Support\Tenant;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -81,7 +86,144 @@ class DemoShopSeeder extends Seeder
             if (! UpsellFlow::query()->exists()) {
                 $this->seedUpsellFlows($shop);
             }
+
+            if (! Product::query()->exists()) {
+                $this->seedProducts($shop);
+            }
         });
+    }
+
+    /**
+     * Demo catalog so the Products screen + plan-template UI render real rows
+     * locally without a Shopify sync. Three products, each with variants and a
+     * subscription + one-time plan template (per-variant where it matters).
+     */
+    private function seedProducts(Shop $shop): void
+    {
+        // --- Product 1: multi-variant coffee, per-variant subscription pricing. ---
+        $coffee = $this->product($shop, '1001', 'Single-origin coffee beans', 'single-origin-coffee', Product::ONLINE_PUBLISHED, ['coffee', 'subscription']);
+        $coffee250 = $this->variant($shop, $coffee, '2001', '250g', 'COF-250', 49.90, 0);
+        $coffee1kg = $this->variant($shop, $coffee, '2002', '1kg', 'COF-1KG', 159.00, 1);
+
+        // Subscription template targeting the 250g variant (variant-specific).
+        $this->plan($shop, $coffee, $coffee250, ProductSubscriptionPlan::TYPE_SUBSCRIPTION, [
+            'plan_name' => 'Coffee club (250g)',
+            'billing_frequency' => BillingFrequency::MONTHLY->value,
+            'interval_count' => 1,
+            'discount_type' => ProductSubscriptionPlan::DISCOUNT_PERCENT,
+            'discount_value' => 10,
+            'channels' => [ProductSubscriptionPlan::CHANNEL_STOREFRONT_WIDGET, ProductSubscriptionPlan::CHANNEL_CUSTOMER_PORTAL],
+            'position' => 0,
+        ], PlanTemplateStatus::ACTIVE);
+
+        // Product-wide subscription template (applies to all variants, e.g. 1kg).
+        $this->plan($shop, $coffee, null, ProductSubscriptionPlan::TYPE_SUBSCRIPTION, [
+            'plan_name' => 'Coffee club (any size)',
+            'billing_frequency' => BillingFrequency::MONTHLY->value,
+            'interval_count' => 2,
+            'discount_type' => ProductSubscriptionPlan::DISCOUNT_PERCENT,
+            'discount_value' => 5,
+            'channels' => [ProductSubscriptionPlan::CHANNEL_STOREFRONT_WIDGET],
+            'position' => 1,
+        ], PlanTemplateStatus::ACTIVE);
+
+        // One-time template (no cadence).
+        $this->plan($shop, $coffee, null, ProductSubscriptionPlan::TYPE_ONE_TIME, [
+            'plan_name' => 'One-time purchase',
+            'discount_type' => ProductSubscriptionPlan::DISCOUNT_NONE,
+            'channels' => [ProductSubscriptionPlan::CHANNEL_STOREFRONT_WIDGET],
+            'position' => 2,
+        ], PlanTemplateStatus::ACTIVE);
+        unset($coffee1kg);
+
+        // --- Product 2: single-variant supplement, weekly replenishment. ---
+        $vitamins = $this->product($shop, '1002', 'Daily multivitamin', 'daily-multivitamin', Product::ONLINE_PUBLISHED, ['health', 'replenishment']);
+        $vitaminsVariant = $this->variant($shop, $vitamins, '2003', 'Default', 'VIT-30', 89.00, 0);
+
+        $this->plan($shop, $vitamins, $vitaminsVariant, ProductSubscriptionPlan::TYPE_SUBSCRIPTION, [
+            'plan_name' => 'Auto-replenish every 4 weeks',
+            'billing_frequency' => BillingFrequency::WEEKLY->value,
+            'interval_count' => 4,
+            'discount_type' => ProductSubscriptionPlan::DISCOUNT_FIXED,
+            'discount_value' => 10,
+            'charge_day_of_month' => 1,
+            'channels' => [ProductSubscriptionPlan::CHANNEL_STOREFRONT_WIDGET, ProductSubscriptionPlan::CHANNEL_API],
+            'position' => 0,
+        ], PlanTemplateStatus::ACTIVE);
+        $this->plan($shop, $vitamins, null, ProductSubscriptionPlan::TYPE_ONE_TIME, [
+            'plan_name' => 'One-time purchase',
+            'discount_type' => ProductSubscriptionPlan::DISCOUNT_NONE,
+            'position' => 1,
+        ], PlanTemplateStatus::ACTIVE);
+
+        // --- Product 3: draft product with a draft template (exercises filters). ---
+        $candle = $this->product($shop, '1003', 'Seasonal candle (draft)', 'seasonal-candle', Product::ONLINE_UNPUBLISHED, ['home']);
+        $candle->forceFill(['status' => Product::STATUS_DRAFT])->save();
+        $candleVariant = $this->variant($shop, $candle, '2004', 'Default', 'CND-01', 39.00, 0);
+        $this->plan($shop, $candle, $candleVariant, ProductSubscriptionPlan::TYPE_SUBSCRIPTION, [
+            'plan_name' => 'Monthly candle (draft)',
+            'billing_frequency' => BillingFrequency::MONTHLY->value,
+            'interval_count' => 1,
+            'discount_type' => ProductSubscriptionPlan::DISCOUNT_NONE,
+            'position' => 0,
+        ], PlanTemplateStatus::DRAFT);
+    }
+
+    /** @param list<string> $tags */
+    private function product(Shop $shop, string $externalId, string $title, string $handle, string $onlineStatus, array $tags): Product
+    {
+        $product = new Product();
+        $product->forceFill([
+            'shop_id' => $shop->id,
+            'source' => Product::SOURCE_SHOPIFY,
+            'external_id' => $externalId,
+            'title' => $title,
+            'handle' => $handle,
+            'image_url' => null,
+            'status' => Product::STATUS_ACTIVE,
+            'online_store_status' => $onlineStatus,
+            'tags' => $tags,
+            'updated_at_external' => now()->subDays(random_int(1, 20)),
+            'synced_at' => now(),
+        ])->save();
+
+        return $product;
+    }
+
+    private function variant(Shop $shop, Product $product, string $externalVariantId, string $title, string $sku, float $price, int $position): ProductVariant
+    {
+        $variant = new ProductVariant();
+        $variant->forceFill([
+            'shop_id' => $shop->id,
+            'product_id' => $product->id,
+            'external_variant_id' => $externalVariantId,
+            'title' => $title,
+            'sku' => $sku,
+            'price' => $price,
+            'position' => $position,
+        ])->save();
+
+        return $variant;
+    }
+
+    /** @param array<string, mixed> $attributes */
+    private function plan(Shop $shop, Product $product, ?ProductVariant $variant, string $planType, array $attributes, PlanTemplateStatus $status): ProductSubscriptionPlan
+    {
+        $plan = new ProductSubscriptionPlan();
+        $plan->forceFill(array_merge([
+            'shop_id' => $shop->id,
+            'product_id' => $product->id,
+            'product_variant_id' => $variant?->id,
+            'plan_type' => $planType,
+            'plan_kind' => 'recurring',
+            'interval_count' => 1,
+            'discount_type' => ProductSubscriptionPlan::DISCOUNT_NONE,
+            'discount_value' => 0,
+            'status' => $status->value,
+            'position' => 0,
+        ], $attributes))->save();
+
+        return $plan;
     }
 
     /**

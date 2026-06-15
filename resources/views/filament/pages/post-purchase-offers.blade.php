@@ -74,7 +74,7 @@
             <div class="rc-section">
                 <div class="rc-row rc-row--between rc-pp-flows__head">
                     <div class="rc-section__title rc-pp-flows__title">{{ __('upsell.admin.flows.title') }}</div>
-                    <x-rc.cta variant="primary" wire:navigate href="{{ \App\Filament\Pages\FlowBuilder::getUrl(['flow' => 0]) }}">
+                    <x-rc.cta variant="primary" wire:click="createFlow">
                         {{ __('upsell.admin.flows.create') }}
                     </x-rc.cta>
                 </div>

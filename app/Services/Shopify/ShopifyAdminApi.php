@@ -35,4 +35,22 @@ interface ShopifyAdminApi
     public function upsertOrderMetafield(string $orderId, string $namespace, string $key, string $value, string $type = 'single_line_text_field'): array;
 
     public function markOrderAsPaid(string $orderGid): array;
+
+    // === Catalog reads (thin transport for ShopifyProductSource) ===
+
+    /**
+     * Raw decoded GraphQL `data.products` connection for one page (nodes +
+     * pageInfo). The SOURCE owns GID→DTO mapping; the client stays thin — it only
+     * runs the cost-aware query and hands back the decoded connection.
+     *
+     * @return array<string, mixed>  the `products` connection ({nodes, pageInfo}) or []
+     */
+    public function fetchProductsPage(?string $cursor = null, int $first = 50): array;
+
+    /**
+     * Raw decoded GraphQL `product` node for one product GID, or null if absent.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function fetchProductByGid(string $gid): ?array;
 }

@@ -1,0 +1,217 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - navigation [ref=e5]:
+        - button "Collapse sidebar" [ref=e6] [cursor=pointer]:
+          - generic [ref=e7]: Collapse sidebar
+          - img [ref=e8]
+        - generic [ref=e10]:
+          - generic [ref=e15] [cursor=pointer]: EN
+          - button "User menu" [ref=e18] [cursor=pointer]:
+            - img "Avatar of Demo Admin" [ref=e19]
+      - main [ref=e20]:
+        - generic [ref=e21]:
+          - generic [ref=e22]:
+            - generic [ref=e24]:
+              - navigation [ref=e25]:
+                - list [ref=e26]:
+                  - listitem [ref=e27]:
+                    - link "Post-Purchase Offers" [ref=e28] [cursor=pointer]:
+                      - /url: http://127.0.0.1:8125/admin/post-purchase-offers
+                  - listitem [ref=e29]:
+                    - img [ref=e30]
+                    - generic [ref=e32]: Flow Builder
+              - heading "Summer add-on boost" [level=1] [ref=e33]
+            - generic [ref=e35]:
+              - generic [ref=e36]:
+                - generic [ref=e37]:
+                  - link "Back to Post-Purchase Offers" [ref=e38] [cursor=pointer]:
+                    - /url: http://127.0.0.1:8125/admin/post-purchase-offers
+                    - img [ref=e39]
+                  - generic [ref=e41]: Summer add-on boost
+                  - generic [ref=e42]: Active
+                - button "Pause" [ref=e45] [cursor=pointer]
+              - generic [ref=e46]:
+                - generic [ref=e47]:
+                  - button "Zoom in" [ref=e48] [cursor=pointer]: +
+                  - generic [ref=e49]: 100%
+                  - button "Zoom out" [ref=e50] [cursor=pointer]: −
+                  - button "Reset view" [ref=e51] [cursor=pointer]:
+                    - img [ref=e52]
+                - generic [ref=e55]:
+                  - button "Configure trigger" [ref=e56] [cursor=pointer]:
+                    - generic [ref=e57]:
+                      - img [ref=e58]
+                      - text: Trigger
+                    - generic [ref=e60]: After the customer completes a checkout
+                    - generic [ref=e61]:
+                      - generic [ref=e62]: Any product purchased
+                      - generic [ref=e63]: Order value over ₪150.00
+                  - generic [ref=e65]:
+                    - img [ref=e66]
+                    - generic [ref=e67]: ▶
+                  - button "Configure \"Travel pouch\"" [ref=e68] [cursor=pointer]:
+                    - generic [ref=e69]:
+                      - img [ref=e71]
+                      - generic [ref=e73]:
+                        - generic [ref=e74]: Cross-sell
+                        - generic [ref=e75]: A single product
+                    - generic [ref=e76]:
+                      - generic [ref=e77]: Product
+                      - generic [ref=e78]:
+                        - img [ref=e80]
+                        - generic [ref=e82]:
+                          - generic [ref=e83]: Travel pouch
+                          - generic [ref=e84]: "Variants: All"
+                          - generic [ref=e85]: "Price: ₪63.20 ₪79.00"
+                    - generic [ref=e86]:
+                      - generic [ref=e87]:
+                        - generic [ref=e88]: Accept
+                        - generic [ref=e89]: →
+                        - generic [ref=e90]: Care bundle
+                      - generic [ref=e91]:
+                        - generic [ref=e92]: Decline
+                        - generic [ref=e93]: →
+                        - generic [ref=e94]: End flow
+                  - button "Configure \"Care bundle\"" [ref=e95] [cursor=pointer]:
+                    - generic [ref=e96]:
+                      - img [ref=e98]
+                      - generic [ref=e100]:
+                        - generic [ref=e101]: Cross-sell
+                        - generic [ref=e102]: A single product
+                    - generic [ref=e103]:
+                      - generic [ref=e104]: Product
+                      - generic [ref=e105]:
+                        - img [ref=e107]
+                        - generic [ref=e109]:
+                          - generic [ref=e110]: Care bundle
+                          - generic [ref=e111]: "Variants: All"
+                          - generic [ref=e112]: "Price: ₪39.00 ₪49.00"
+                    - generic [ref=e113]:
+                      - generic [ref=e114]:
+                        - generic [ref=e115]: Accept
+                        - generic [ref=e116]: →
+                        - generic [ref=e117]: End flow
+                      - generic [ref=e118]:
+                        - generic [ref=e119]: Decline
+                        - generic [ref=e120]: →
+                        - generic [ref=e121]: End flow
+              - dialog "Configure trigger" [ref=e126]:
+                - button "Close" [ref=e127] [cursor=pointer]
+                - generic [ref=e128]:
+                  - generic [ref=e129]:
+                    - heading "Configure trigger" [level=2] [ref=e130]
+                    - button "Close" [ref=e131] [cursor=pointer]:
+                      - img [ref=e132]
+                  - generic [ref=e134]:
+                    - paragraph [ref=e135]: Choose when this post-purchase offer is shown.
+                    - generic [ref=e136]:
+                      - generic [ref=e137]: Trigger
+                      - generic [ref=e138]:
+                        - img [ref=e139]
+                        - generic [ref=e141]: After the customer completes a checkout
+                    - group "Which purchases qualify?" [ref=e142]:
+                      - generic [ref=e143]: Which purchases qualify?
+                      - generic [ref=e144]:
+                        - generic [ref=e145] [cursor=pointer]:
+                          - radio "Any product purchased Show the offer after any completed checkout, whatever was bought." [checked] [ref=e146]
+                          - generic [ref=e147]:
+                            - generic [ref=e148]: Any product purchased
+                            - generic [ref=e149]: Show the offer after any completed checkout, whatever was bought.
+                        - generic [ref=e150] [cursor=pointer]:
+                          - radio "A specific product Only show the offer when this product was purchased." [ref=e151]
+                          - generic [ref=e152]:
+                            - generic [ref=e153]: A specific product
+                            - generic [ref=e154]: Only show the offer when this product was purchased.
+                        - generic [ref=e155] [cursor=pointer]:
+                          - radio "A specific collection Only show the offer when a product from this collection was purchased." [ref=e156]
+                          - generic [ref=e157]:
+                            - generic [ref=e158]: A specific collection
+                            - generic [ref=e159]: Only show the offer when a product from this collection was purchased.
+                        - generic [ref=e160] [cursor=pointer]:
+                          - radio "Has a tag Only show the offer when a purchased product carries this tag." [ref=e161]
+                          - generic [ref=e162]:
+                            - generic [ref=e163]: Has a tag
+                            - generic [ref=e164]: Only show the offer when a purchased product carries this tag.
+                        - generic [ref=e165] [cursor=pointer]:
+                          - radio "Order value over an amount Only show the offer when the order subtotal is over this amount." [ref=e166]
+                          - generic [ref=e167]:
+                            - generic [ref=e168]: Order value over an amount
+                            - generic [ref=e169]: Only show the offer when the order subtotal is over this amount.
+                  - generic [ref=e170]:
+                    - button "Cancel" [ref=e171] [cursor=pointer]
+                    - button "Save" [ref=e172] [cursor=pointer]
+          - generic:
+            - dialog
+          - generic:
+            - dialog
+          - generic:
+            - dialog
+    - complementary [ref=e174]:
+      - link "PayPlus Subscriptions" [ref=e178] [cursor=pointer]:
+        - /url: http://127.0.0.1:8125/admin
+        - generic [ref=e179]: PayPlus Subscriptions
+      - navigation [ref=e180]:
+        - list [ref=e181]:
+          - listitem [ref=e182]:
+            - list [ref=e183]:
+              - listitem [ref=e184]:
+                - link "Home" [ref=e185] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8125/admin
+                  - img [ref=e186]
+                  - generic [ref=e188]: Home
+          - listitem [ref=e189]:
+            - generic [ref=e190] [cursor=pointer]:
+              - generic [ref=e191]: Customers
+              - button "Customers" [expanded] [ref=e192]:
+                - generic [ref=e193]: Customers
+                - img [ref=e194]
+            - list [ref=e196]:
+              - listitem [ref=e197]:
+                - link "Customers" [ref=e198] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8125/admin/customers
+                  - img [ref=e199]
+                  - generic [ref=e201]: Customers
+              - listitem [ref=e202]:
+                - link "Subscriptions" [ref=e203] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8125/admin/subscriptions
+                  - img [ref=e204]
+                  - generic [ref=e206]: Subscriptions
+          - listitem [ref=e207]:
+            - generic [ref=e208] [cursor=pointer]:
+              - generic [ref=e209]: Payments
+              - button "Payments" [expanded] [ref=e210]:
+                - generic [ref=e211]: Payments
+                - img [ref=e212]
+            - list [ref=e214]:
+              - listitem [ref=e215]:
+                - link "Payments" [ref=e216] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8125/admin/payments
+                  - img [ref=e217]
+                  - generic [ref=e219]: Payments
+          - listitem [ref=e220]:
+            - generic [ref=e221] [cursor=pointer]:
+              - generic [ref=e222]: Cross-Sell & Upsell
+              - button "Cross-Sell & Upsell" [expanded] [ref=e223]:
+                - generic [ref=e224]: Cross-Sell & Upsell
+                - img [ref=e225]
+            - list [ref=e227]:
+              - listitem [ref=e228]:
+                - link "Post-Purchase Offers" [ref=e229] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8125/admin/post-purchase-offers
+                  - img [ref=e230]
+                  - generic [ref=e232]: Post-Purchase Offers
+          - listitem [ref=e233]:
+            - generic [ref=e234] [cursor=pointer]:
+              - generic [ref=e235]: Settings
+              - button "Settings" [expanded] [ref=e236]:
+                - generic [ref=e237]: Settings
+                - img [ref=e238]
+            - list [ref=e240]:
+              - listitem [ref=e241]:
+                - link "PayPlus Connection" [ref=e242] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8125/admin/settings/payplus
+                  - img [ref=e243]
+                  - generic [ref=e245]: PayPlus Connection
+  - generic:
+    - status

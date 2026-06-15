@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Shopify;
 
+use App\Jobs\Products\ImportShopProductsJob;
 use App\Jobs\Shopify\RegisterShopifyWebhooksJob;
 use App\Models\Shop;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -81,6 +82,10 @@ final class ShopifyOAuthTest extends TestCase
 
         // Webhook registration is dispatched for this shop.
         Queue::assertPushed(RegisterShopifyWebhooksJob::class, fn ($job) => $job->shopId === $shop->id);
+
+        // Catalog backfill is dispatched for this shop, and platform is set.
+        Queue::assertPushed(ImportShopProductsJob::class, fn ($job) => $job->shopId === $shop->id);
+        $this->assertSame(Shop::PLATFORM_SHOPIFY, $shop->platform);
     }
 
     public function test_callback_rejects_bad_hmac_401(): void

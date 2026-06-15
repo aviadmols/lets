@@ -22,6 +22,12 @@ use Illuminate\Contracts\Support\Htmlable;
  * Activate goes through the guarded UpsellFlow::transitionTo() — never a raw
  * status write — so a half-built flow can't be published.
  *
+ * Two slide-over drawers edit the graph in place (same .rc-drawer pattern):
+ * the Offer node opens "Configure cross-sell" (→ UpsellFlowOffer columns); the
+ * green Trigger node opens "Configure trigger" (→ UpsellFlowTrigger.match_type +
+ * the one relevant sub-field). Both are UI config only — the charge engine is
+ * untouched — and both are tenant-scoped (a foreign id is a no-op).
+ *
  * Livewire state is the int $flowId ONLY (not the model — Eloquent models aren't
  * cleanly serialisable as Livewire props, and the route param is named `flow`).
  * The flow + derived nodes are computed on each render from the bound tenant.
@@ -38,6 +44,17 @@ class FlowBuilder extends Page
     public const NODE_TRIGGER = 'trigger';
     public const NODE_OFFER = 'offer';
     public const NODE_END = 'end';
+
+    /** match_type allow-list for the "Configure trigger" drawer — the ONLY values
+     *  saveTriggerConfig() will persist (anything else falls back to any_product).
+     *  Mirrors UpsellFlowTrigger's taxonomy; never trust the raw radio value. */
+    public const TRIGGER_MATCH_TYPES = [
+        UpsellFlowTrigger::MATCH_ANY_PRODUCT,
+        UpsellFlowTrigger::MATCH_SPECIFIC_PRODUCT,
+        UpsellFlowTrigger::MATCH_COLLECTION,
+        UpsellFlowTrigger::MATCH_TAG,
+        UpsellFlowTrigger::MATCH_MIN_ORDER_VALUE,
+    ];
 
     /** The ONLY Livewire-persisted graph state. */
     public int $flowId = 0;
@@ -69,21 +86,54 @@ class FlowBuilder extends Page
 
     public bool $showTimer = true;
 
+    // === "Configure trigger" drawer state ===
+    /** The trigger being configured, or 0 when the drawer is closed. */
+    public int $configTriggerId = 0;
+
+    public bool $triggerDrawerOpen = false;
+
+    /** Drawer form fields → upsell_flow_triggers columns (sanitized on save). */
+    public string $triggerMatchType = UpsellFlowTrigger::MATCH_ANY_PRODUCT;
+
+    public string $triggerProductGid = '';
+
+    public string $triggerCollectionGid = '';
+
+    public string $triggerTag = '';
+
+    public string $triggerMinOrderValue = '';
+
     private ?UpsellFlow $resolved = null;
 
     public function mount(int|string $flow): void
     {
         $this->flowId = (int) $flow;
+
+        // Graceful degrade: a genuinely missing flow (or a foreign-shop id, which
+        // the BelongsToShop global scope resolves to null — never another shop's
+        // row) bounces back to the hub with a warning instead of a bare 404. The
+        // tenant boundary still holds: a foreign id NEVER loads, it redirects.
+        if ($this->resolveFlow() === null) {
+            Notification::make()->title(__('upsell.admin.builder.missing'))->warning()->send();
+            $this->redirect(PostPurchaseOffers::getUrl());
+
+            return;
+        }
+
         $this->hydrateGraph();
 
-        // DEV-ONLY deep-link to open the Configure drawer for an offer (used by
-        // the screenshot harness). Hard-gated like DevAutoLogin so it can never
-        // act on a production deploy; the openOfferConfig() lookup is itself
-        // tenant-scoped, so a foreign id is a no-op.
+        // DEV-ONLY deep-links to open a drawer (used by the screenshot harness).
+        // Hard-gated like DevAutoLogin so they can never act on a production
+        // deploy; both lookups are tenant-scoped, so a foreign id is a no-op.
+        //   ?config={offerId} → "Configure cross-sell"
+        //   ?trigger=1        → "Configure trigger"
         if (app()->isLocal() && config('app.dev_tenant', false)) {
             $config = request()->query('config');
             if (is_string($config) && ctype_digit($config)) {
                 $this->openOfferConfig((int) $config);
+            }
+            if (request()->query('trigger')) {
+                $this->openTriggerConfig();
             }
         }
     }
@@ -124,14 +174,37 @@ class FlowBuilder extends Page
     }
 
     /**
-     * The tenant-scoped flow + its graph. Cached per request. The global scope
-     * guarantees a shop only ever opens its own flow (a foreign id 404s).
+     * The tenant-scoped flow + its graph. Cached per request. Only ever called
+     * after mount() has confirmed the flow exists (a missing/foreign id is
+     * redirected there), so it returns non-null; the findOrFail is a belt-and-
+     * braces guard for the impossible post-redirect path.
      */
     public function flow(): UpsellFlow
     {
-        return $this->resolved ??= UpsellFlow::query()
+        return $this->resolved ??= $this->loadFlow()
+            ?? UpsellFlow::query()->findOrFail($this->flowId);
+    }
+
+    /**
+     * Tenant-scoped lookup of THIS flow, or null. The BelongsToShop global scope
+     * makes a foreign-shop id resolve to null — it is never exposed, only
+     * redirected (mount()). Caches the resolved model.
+     */
+    private function resolveFlow(): ?UpsellFlow
+    {
+        return $this->resolved ??= $this->loadFlow();
+    }
+
+    /** Eager-load the flow graph (triggers/offers/branches), tenant-scoped. */
+    private function loadFlow(): ?UpsellFlow
+    {
+        if ($this->flowId <= 0) {
+            return null;
+        }
+
+        return UpsellFlow::query()
             ->with(['triggers', 'offers' => fn ($q) => $q->orderBy('position')->orderBy('id'), 'branches'])
-            ->findOrFail($this->flowId);
+            ->find($this->flowId);
     }
 
     public function getTitle(): string|Htmlable
@@ -306,6 +379,86 @@ class FlowBuilder extends Page
         return route('upsell.dev_preview', ['offer' => $this->configOfferId]);
     }
 
+    // === "Configure trigger" drawer (UI config — no charge-engine change) ===
+
+    /**
+     * Open the trigger slide-over from the clicked green Trigger node. Loads the
+     * flow's FIRST trigger (tenant-scoped) into the bound form props. A foreign
+     * flow resolves to null (global scope) and the drawer simply stays closed.
+     */
+    public function openTriggerConfig(): void
+    {
+        $trigger = $this->firstTriggerModel();
+
+        if ($trigger === null) {
+            return;
+        }
+
+        $this->configTriggerId = $trigger->id;
+        $this->triggerMatchType = $this->sanitize($trigger->match_type, self::TRIGGER_MATCH_TYPES, UpsellFlowTrigger::MATCH_ANY_PRODUCT);
+        $this->triggerProductGid = (string) ($trigger->shopify_product_gid ?? '');
+        $this->triggerCollectionGid = (string) ($trigger->shopify_collection_gid ?? '');
+        $this->triggerTag = (string) ($trigger->tag ?? '');
+        $this->triggerMinOrderValue = $trigger->min_order_value !== null
+            ? (string) (float) $trigger->min_order_value
+            : '';
+        $this->triggerDrawerOpen = true;
+    }
+
+    public function closeTriggerConfig(): void
+    {
+        $this->triggerDrawerOpen = false;
+        $this->configTriggerId = 0;
+    }
+
+    /**
+     * Persist the trigger's "which purchases qualify?" choice (tenant-scoped).
+     * match_type is sanitized against the CONST allow-list; ONLY the sub-field
+     * relevant to the chosen type is written — the others are nulled — so a stale
+     * collection gid can't leak into a tag rule. shop_id + flow id are NEVER
+     * written from input (guarded + the scoped lookup owns them).
+     */
+    public function saveTriggerConfig(): void
+    {
+        $trigger = $this->triggerModel($this->configTriggerId);
+
+        if ($trigger === null) {
+            return;
+        }
+
+        $type = $this->sanitize($this->triggerMatchType, self::TRIGGER_MATCH_TYPES, UpsellFlowTrigger::MATCH_ANY_PRODUCT);
+
+        // Reset every sub-field, then set only the one this match_type uses.
+        $trigger->match_type = $type;
+        $trigger->shopify_product_gid = null;
+        $trigger->shopify_collection_gid = null;
+        $trigger->tag = null;
+        $trigger->min_order_value = null;
+
+        match ($type) {
+            UpsellFlowTrigger::MATCH_SPECIFIC_PRODUCT => $trigger->shopify_product_gid = trim($this->triggerProductGid) ?: null,
+            UpsellFlowTrigger::MATCH_COLLECTION => $trigger->shopify_collection_gid = trim($this->triggerCollectionGid) ?: null,
+            UpsellFlowTrigger::MATCH_TAG => $trigger->tag = trim($this->triggerTag) ?: null,
+            UpsellFlowTrigger::MATCH_MIN_ORDER_VALUE => $trigger->min_order_value = max(0, (float) $this->triggerMinOrderValue),
+            default => null, // any_product — no sub-field
+        };
+
+        $trigger->save();
+
+        $this->resolved = null;
+        $this->hydrateGraph();
+        $this->triggerDrawerOpen = false;
+        $this->configTriggerId = 0;
+
+        Notification::make()->title(__('upsell.admin.trigger_config.saved'))->success()->send();
+    }
+
+    /** The currently-configured trigger model (tenant-scoped), or null. */
+    public function configuredTrigger(): ?UpsellFlowTrigger
+    {
+        return $this->configTriggerId > 0 ? $this->triggerModel($this->configTriggerId) : null;
+    }
+
     // === Internals (presentation only) ===
 
     /** Tenant-scoped lookup of an offer that belongs to THIS flow. */
@@ -318,6 +471,27 @@ class FlowBuilder extends Page
         return UpsellFlowOffer::query()
             ->where('flow_id', $this->flowId)
             ->find($offerId);
+    }
+
+    /** Tenant-scoped lookup of a trigger that belongs to THIS flow. */
+    private function triggerModel(int $triggerId): ?UpsellFlowTrigger
+    {
+        if ($triggerId <= 0) {
+            return null;
+        }
+
+        return UpsellFlowTrigger::query()
+            ->where('flow_id', $this->flowId)
+            ->find($triggerId);
+    }
+
+    /** The flow's first trigger (tenant-scoped) — the one the node configures. */
+    private function firstTriggerModel(): ?UpsellFlowTrigger
+    {
+        return UpsellFlowTrigger::query()
+            ->where('flow_id', $this->flowId)
+            ->orderBy('id')
+            ->first();
     }
 
     /**

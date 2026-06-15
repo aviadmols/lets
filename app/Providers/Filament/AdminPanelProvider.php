@@ -49,6 +49,7 @@ class AdminPanelProvider extends PanelProvider
      */
     public const NAV_GROUP_ORDER = [
         'nav.group.customers',
+        'nav.group.products',
         'nav.group.payments',
         'nav.group.upsell',
         'nav.group.settings',

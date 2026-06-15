@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Shopify;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\Products\ImportShopProductsJob;
 use App\Jobs\Shopify\RegisterShopifyWebhooksJob;
 use App\Models\Shop;
 use App\Services\Shopify\MerchantUserProvisioner;
@@ -123,7 +124,7 @@ final class OAuthController extends Controller
         $newInstall = ! Shop::query()->where('shopify_domain', $shop)->exists();
         $shopModel = Shop::query()->firstOrCreate(
             ['shopify_domain' => $shop],
-            ['name' => $shop, 'status' => Shop::STATUS_INSTALLED],
+            ['name' => $shop, 'platform' => Shop::PLATFORM_SHOPIFY, 'status' => Shop::STATUS_INSTALLED],
         );
         $shopModel->captureShopifyInstall($accessToken, $scopes !== '' ? $scopes : null);
 
@@ -136,9 +137,10 @@ final class OAuthController extends Controller
         // 6. Register webhooks for THIS shop (idempotent, tenant-bound job).
         RegisterShopifyWebhooksJob::dispatch($shopModel->id);
 
-        // 7. BackfillShopCatalogJob — products/collections for trigger matching.
-        // TODO(sync phase): BackfillShopCatalogJob::dispatch($shopModel->id) once
-        //   the sync surface lands; not in this run's scope.
+        // 7. Backfill the local product cache from this shop's source (idempotent,
+        //    tenant-bound, on the `sync` queue). Reinstall re-runs it safely
+        //    (upsert by external id). Product webhooks keep it fresh thereafter.
+        ImportShopProductsJob::dispatch($shopModel->id);
 
         // 8. Handoff to saas-multitenancy-billing: trial/subscribe confirmation.
         // TODO(saas agent): redirect into the AppSubscription trial flow here

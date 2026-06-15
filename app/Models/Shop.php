@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Casts\EncryptedCredentials;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -22,6 +23,15 @@ class Shop extends Model
     public const STATUS_ACTIVE = 'active';
     public const STATUS_UNINSTALLED = 'uninstalled';
 
+    /**
+     * Catalog source discriminator — which upstream this shop's products sync
+     * FROM. The ProductSourceFactory switches on this. Shopify is the only live
+     * source in Stage 1; WooCommerce is the Stage-2 placeholder.
+     */
+    public const PLATFORM_SHOPIFY = 'shopify';
+    public const PLATFORM_WOOCOMMERCE = 'woocommerce';
+    public const PLATFORMS = [self::PLATFORM_SHOPIFY, self::PLATFORM_WOOCOMMERCE];
+
     /** Statuses for which background charge dispatch + Shopify API calls are allowed. */
     public const LIVE_STATUSES = [self::STATUS_INSTALLED, self::STATUS_ACTIVE];
 
@@ -34,6 +44,7 @@ class Shop extends Model
     protected $fillable = [
         'shopify_domain',
         'name',
+        'platform',
         'status',
         'plan',
         'trial_ends_at',
@@ -57,6 +68,24 @@ class Shop extends Model
             'installed_at' => 'datetime',
             'uninstalled_at' => 'datetime',
         ];
+    }
+
+    // === Catalog source ===
+
+    /**
+     * The catalog platform discriminator (read as the property `$shop->platform`).
+     * Defaults to Shopify when the column is null/blank or holds an unknown value
+     * — covers rows created before the column existed and guards the
+     * ProductSourceFactory switch against a bad value. The DB column stays the
+     * source of truth; this only normalises the READ.
+     */
+    protected function platform(): Attribute
+    {
+        return Attribute::make(
+            get: fn ($value): string => in_array((string) $value, self::PLATFORMS, true)
+                ? (string) $value
+                : self::PLATFORM_SHOPIFY,
+        );
     }
 
     // === Shopify credentials + lifecycle ===
@@ -167,5 +196,22 @@ class Shop extends Model
     public function paymentMethods(): HasMany
     {
         return $this->hasMany(InstallmentPaymentMethod::class);
+    }
+
+    /** The local products cache for this shop (synced from its source). */
+    public function products(): HasMany
+    {
+        return $this->hasMany(Product::class);
+    }
+
+    public function productVariants(): HasMany
+    {
+        return $this->hasMany(ProductVariant::class);
+    }
+
+    /** The per-product/variant subscription plan templates for this shop. */
+    public function productSubscriptionPlans(): HasMany
+    {
+        return $this->hasMany(ProductSubscriptionPlan::class);
     }
 }
