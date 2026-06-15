@@ -3,6 +3,7 @@
 namespace App\Providers\Filament;
 
 use App\Http\Middleware\BindDevTenant;
+use App\Http\Middleware\BindTenantFromUser;
 use App\Http\Middleware\SetAdminLocale;
 use BezhanSalleh\FilamentLanguageSwitch\LanguageSwitch;
 use Filament\Http\Middleware\Authenticate;
@@ -103,10 +104,17 @@ class AdminPanelProvider extends PanelProvider
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
                 SetAdminLocale::class,   // resolves en/he + ?locale override
-                BindDevTenant::class,    // DEV-ONLY: binds the demo shop locally
             ])
             ->authMiddleware([
+                // 1. Require an authenticated user (redirects to login otherwise).
                 Authenticate::class,
+                // 2. PRODUCTION tenant binding: bind the user's own shop, or deny a
+                //    shopless merchant. Respects an already-bound embedded session.
+                //    This is the seam that isolates each merchant to their store.
+                BindTenantFromUser::class,
+                // 3. DEV-ONLY safety net: binds the demo shop locally ONLY when no
+                //    real tenant was bound above (no-op in production / when bound).
+                BindDevTenant::class,
             ]);
     }
 

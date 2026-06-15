@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Shopify;
 use App\Http\Controllers\Controller;
 use App\Jobs\Shopify\RegisterShopifyWebhooksJob;
 use App\Models\Shop;
+use App\Services\Shopify\MerchantUserProvisioner;
 use App\Services\Shopify\ShopifyDomain;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -125,6 +126,12 @@ final class OAuthController extends Controller
             ['name' => $shop, 'status' => Shop::STATUS_INSTALLED],
         );
         $shopModel->captureShopifyInstall($accessToken, $scopes !== '' ? $scopes : null);
+
+        // 5b. Provision/link an admin login BOUND to this shop, so the merchant
+        //     gets a store-scoped login. Idempotent on reinstall (reuses the
+        //     existing linked user). Each store is an independent tenant: its own
+        //     Shop row + its own user(s) via shop_id — never shared across stores.
+        app(MerchantUserProvisioner::class)->provisionFor($shopModel);
 
         // 6. Register webhooks for THIS shop (idempotent, tenant-bound job).
         RegisterShopifyWebhooksJob::dispatch($shopModel->id);
