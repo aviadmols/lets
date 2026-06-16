@@ -4,9 +4,11 @@ namespace App\Filament\Pages;
 
 use App\Domain\Dashboard\DashboardMetrics;
 use App\Filament\Concerns\ShopScopedScreen;
+use App\Filament\Resources\ShopResource;
 use App\Models\ActivityEvent;
 use App\Support\Tenant;
 use App\Support\Ui\Money;
+use App\Support\Ui\PanelAccess;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
 
@@ -37,6 +39,31 @@ class HomeDashboard extends Page
     public const DEFAULT_RANGE_DAYS = 30;
 
     public const ACTIVITY_LIMIT = 12;
+
+    /**
+     * Overrides ShopScopedScreen::canAccess(). A bound user (merchant, or platform
+     * admin who entered a shop) sees the shop dashboard. A platform admin in
+     * platform mode (no entered shop) is allowed to LOAD '/' only so mount() can
+     * bounce them to the Shops list — otherwise the owner 403s on /admin (the
+     * dashboard is shop-scoped and they have no bound tenant). A shopless,
+     * non-platform user is still denied (fail closed).
+     */
+    public static function canAccess(): bool
+    {
+        return PanelAccess::canSeeShopScoped() || PanelAccess::isPlatformAdmin();
+    }
+
+    /**
+     * A platform admin in platform mode has no shop-scoped data → send them to the
+     * Shops/Accounts list (the W2 platform home) instead of the empty dashboard.
+     * Merchants and entered platform admins (tenant bound) fall through and render.
+     */
+    public function mount(): void
+    {
+        if (PanelAccess::isPlatformAdmin() && ! PanelAccess::tenantBound()) {
+            $this->redirect(ShopResource::getUrl());
+        }
+    }
 
     public static function getNavigationLabel(): string
     {
