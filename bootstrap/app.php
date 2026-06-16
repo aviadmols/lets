@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\AddHstsHeader;
+use App\Http\Middleware\RequestDebugLogger;
 use App\Http\Middleware\SessionTokenAuth;
 use App\Http\Middleware\VerifyShopifyAppProxy;
 use App\Http\Middleware\VerifyShopifyWebhook;
@@ -55,6 +56,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // stale uPress vhost. Global so it covers admin + storefront + proxy. Only
         // emits over a real https request in production (see the middleware).
         $middleware->append(AddHstsHeader::class);
+
+        // TEMPORARY: trace every inbound request to stderr (railway logs) to prove
+        // whether browser requests that show 403 actually reach the app. Remove
+        // once the 403 source (suspected client-side content filter) is confirmed.
+        $middleware->append(RequestDebugLogger::class);
 
         // Named middleware aliases for the Shopify boundary.
         $middleware->alias([
