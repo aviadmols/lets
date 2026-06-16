@@ -2,7 +2,7 @@
 # Railway provides $PORT; FrankPHP serves the Laravel public/ dir.
 {
 	frankenphp
-	# Trust Railway's proxy so APP_URL / HTTPS detection works.
+	# Trust Railway's load-balancer so X-Forwarded-* headers are accepted.
 	servers {
 		trusted_proxies static private_ranges
 	}
@@ -11,5 +11,11 @@
 :{$PORT:8080} {
 	root * public/
 	encode zstd gzip
+
+	# Railway terminates TLS at its edge and forwards plain HTTP internally.
+	# Inject X-Forwarded-Proto so Laravel knows the original request was HTTPS
+	# and generates HTTPS asset URLs — preventing mixed-content errors.
+	header X-Forwarded-Proto https
+
 	php_server
 }

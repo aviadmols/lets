@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Services\Shopify\Orders\DefaultShopifyOrderStrategy;
 use App\Services\Shopify\Orders\ShopifyOrderStrategy;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -26,6 +27,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // Railway terminates TLS at its edge and forwards plain HTTP to the
+        // container. Force HTTPS for all generated URLs in production so that
+        // asset(), route(), and url() helpers never emit http:// links —
+        // preventing mixed-content errors in the browser.
+        // The Caddyfile + trustProxies() handle the X-Forwarded-Proto path;
+        // this is a belt-and-suspenders guarantee for any edge case where the
+        // scheme is not detected from the request.
+        if ($this->app->environment('production')) {
+            URL::forceScheme('https');
+        }
     }
 }
