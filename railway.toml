@@ -11,8 +11,11 @@ preDeployCommand = "sh scripts/predeploy.sh"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 
-# Health check is intentionally relaxed: FrankPHP cold-boot on Nixpacks/Docker
-# can exceed Railway's edge timeout and cause false negatives. Verify with a
-# manual GET /up after deploy. (Workers/scheduler services: disable healthcheck.)
-healthcheckPath = "/up"
-healthcheckTimeout = 300
+# NO HTTP healthcheck here on purpose. This file is shared by all three services
+# (web, worker, scheduler). Only `web` serves HTTP — `worker` (horizon) and
+# `scheduler` (schedule:work) have no listening port, so a global
+# `healthcheckPath = "/up"` made EVERY worker/scheduler deploy fail
+# ("1/1 replicas never became healthy"). FrankPHP cold-boot also produced
+# false negatives for web. Verify web liveness with a manual GET /up after
+# deploy. To re-gate web only, give it a per-service config file
+# (railway.web.toml) with healthcheckPath set, via its Railway config path.

@@ -5,6 +5,7 @@ set -eu
 
 # === CONSTANTS ===
 ENV="${APP_ENV:-production}"
+SERVICE="${RAILWAY_SERVICE_NAME:-web}"   # only `web` runs migrations (canonical migrator)
 
 # Refuse SQLite in production — Railway containers have ephemeral filesystems and
 # would silently lose all data on restart.
@@ -21,8 +22,16 @@ fi
 # Clear any baked config cache (prevents stale encryption keys / env).
 rm -f bootstrap/cache/config.php 2>/dev/null || true
 
-# Migrate, then re-cache for runtime performance.
-php artisan migrate --force
+# Migrate ONLY from the web service. This script is shared by web, worker, and
+# scheduler; running `migrate` from all three concurrently can race (two
+# processes creating the same table → one fails the deploy). web is the
+# canonical migrator; worker/scheduler skip it. Defaults to running when
+# RAILWAY_SERVICE_NAME is unset (local) so local deploys still migrate.
+if [ "$SERVICE" = "web" ]; then
+    php artisan migrate --force
+else
+    echo "predeploy: $SERVICE — skipping migrate (web is the canonical migrator)"
+fi
 # (spatie settings migrations, if any, run as normal migrations above — there is
 # no `settings:migrate` command, so it is intentionally not invoked here.)
 php artisan config:cache || true
