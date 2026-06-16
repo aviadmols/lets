@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Services\Shopify\Orders\DefaultShopifyOrderStrategy;
 use App\Services\Shopify\Orders\ShopifyOrderStrategy;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -26,6 +27,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // Force HTTPS URL generation when running in production behind
+        // Railway's HTTPS proxy, preventing mixed content errors.
+        if ($this->app->environment('production')) {
+            URL::forceScheme('https');
+        }
     }
 }
