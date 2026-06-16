@@ -400,3 +400,28 @@ Use `TodoWrite` to track this. Do not skip the verification gate; do not submit 
 ---
 
 **Final reminder:** you are the bridge from "the engine works" to "the app is live on the App Store." Keep the toml ≡ env ≡ config; make the **token-based thank-you upsell the primary post-purchase path** and the native changeset a gated enhancement; set the dashboard secret as the one manual step and let everything else be config; and do not submit until §9 is green, tenant isolation is GREEN (from `saas`), and `code-review-gatekeeper` passes. A clean first-submission approval is the job done right.
+
+---
+
+## §13 Battle-tested deploy & release runbook (LETS, hardened 2026-06)
+
+Verified facts from actually shipping LETS. **These override anything above that conflicts** (notably: ONE extension, not two; api_version `2026-04`).
+
+**ONE storefront extension — locked.** LETS ships exactly one extension under `extensions/`: **`lets-thank-you`** (`type = "ui_extension"`, targets `purchase.thank-you.block.render` + `customer-account.order-status.block.render`). It displays the addable product(s) and charges the saved PayPlus token via the App-Proxy-signed offer + signed accept URL. The native `checkout_post_purchase` extension (`lets-post-purchase`) was **REMOVED** — it requires Shopify Payments (Israeli PayPlus merchants don't have it) and duplicated the thank-you upsell. Do NOT re-add a second extension. The shape is **one storefront extension + the embedded admin app**; subscription / product / order / deposit / installment **management lives in the embedded app at `/admin`**, never in a storefront extension (Shopify's model forbids it).
+
+**Preact build (2026-04 checkout UI extensions run on Preact, not React).** The CLI's esbuild fails unless:
+- `@preact/signals` is a dependency (imported by `@shopify/ui-extensions/build/esm/preact.mjs`; missing → `Could not resolve "@preact/signals"`).
+- JSX uses Preact's runtime, not React's: add `extensions/lets-thank-you/jsconfig.json` `{"compilerOptions":{"jsx":"react-jsx","jsxImportSource":"preact"}}` AND a `/** @jsxImportSource preact */` pragma atop each `.jsx`. Otherwise `Could not resolve "react/jsx-runtime"` (+ a cascade `Unexpected end of JSON input [plugin onEnd]`).
+- Run `npm install` inside the extension dir. `extensions/**/node_modules` is gitignored; **commit `package-lock.json`**.
+
+**Deploy command (CLI authed, non-interactive).** With the CLI logged in as the org owner and config linked (`shopify app config link` → app "Lets"): `shopify app deploy --force </dev/null` — `--force` skips confirmation, `</dev/null` fails fast on any unexpected prompt. Creates a versioned snapshot of the toml config + the extension and attempts to release it.
+
+**Commit BEFORE you deploy.** Deploy/config ops can rewrite `shopify.app.toml` on disk (pulling the remote app's config → wiping `scopes`, setting `application_url=example.com`, emptying redirect URLs). Commit the correct toml first so you can `git checkout shopify.app.toml` to restore. After every deploy: `git status` the toml + `grep -E '^scopes|application_url' shopify.app.toml` to confirm it survived.
+
+**The two Partner-Dashboard approval gates (CLI/code CANNOT do these — the org owner must, in the dashboard).**
+1. **Extension network access** — `network_access = true` on `lets-thank-you` (it calls the app via the App Proxy). Until granted, every deploy returns *"New version created, but not released — Network access must be requested and approved."* The version is created (e.g. `lets-3`, status `inactive`) but cannot go active. Grant on the version page (`…/apps/382947852289/versions/<id>`), then release.
+2. **Protected customer data access** — `read_customers`/`read_orders` scopes + the `customers/*` (GDPR) and `orders/*` webhook topics are protected. Declare GDPR topics via **`compliance_topics`** (NOT plain `topics`) and `orders/*` via `topics`; keep both blocks **commented out** in the toml until access is granted (else the deploy is rejected: *"not approved to subscribe to webhook topics containing protected customer data"*). Order webhooks still register per-shop via the Admin API on install (`RegisterShopifyWebhooksJob`), so token capture works meanwhile. Request at *app → API access → Protected customer data access*; re-add the two blocks + re-deploy once granted (required for App Store).
+
+**Releasing.** After network access is granted: `shopify app release --version <name>` (or re-run `shopify app deploy --force`) → version goes `★ active`. **Only the active version's config is live**, so the dashboard "App setup" Scopes / Redirect-URL fields stay empty until an *active* version carries them. Verify with `shopify app versions list` (one `★ active`) and confirm its config is `app.lets.co.il`, not `example.com`.
+
+**Charge path is owned by laravel-backend / the PayPlus gateway — never reimplement it.** Thank-you Accept POSTs the server-returned signed `accept_api_url` → `AcceptUpsellApiController` → `UpsellChargeService::accept` → `PayPlusGatewayFactory::for($shop)->chargeWithReference($method, $amount, $key, …)` (consent + pending-ledger-before-charge + deterministic idempotency at [UpsellChargeService.php:148]). The extension never sends a shop id or an amount; the server recomputes the price.
