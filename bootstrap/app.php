@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\SessionTokenAuth;
+use App\Http\Middleware\VerifyShopifyAppProxy;
 use App\Http\Middleware\VerifyShopifyWebhook;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -23,6 +24,13 @@ return Application::configure(basePath: dirname(__DIR__))
             // signed shop id (no admin session on the storefront).
             \Illuminate\Support\Facades\Route::middleware('web')
                 ->group(base_path('routes/upsell.php'));
+
+            // App-Proxy seam for the checkout/post-purchase EXTENSIONS. Stateless
+            // JSON — no session, no CSRF token (server-to-server via the Shopify
+            // proxy). VerifyShopifyAppProxy is the auth (Shopify `signature`) and
+            // binds the tenant from the verified shop. The route file applies the
+            // proxy middleware itself, so no web/api group is needed.
+            \Illuminate\Support\Facades\Route::group([], base_path('routes/proxy.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware) {
@@ -30,13 +38,17 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'shopify.webhook' => VerifyShopifyWebhook::class,
             'shopify.session' => SessionTokenAuth::class,
+            'shopify.proxy' => VerifyShopifyAppProxy::class,
         ]);
 
         // Shopify webhooks are server-to-server POSTs with no CSRF token — exempt
         // the webhook endpoint (HMAC is the auth, verified by VerifyShopifyWebhook).
+        // The extensions' signed JSON accept (upsell.accept.api) is likewise auth'd
+        // by the URL signature, not a session/CSRF token, so POSTs to it are exempt.
         $middleware->validateCsrfTokens(except: [
             'shopify/webhooks',
             'shopify/webhooks/*',
+            'upsell/accept-api',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

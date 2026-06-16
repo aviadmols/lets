@@ -6,9 +6,10 @@ differently than assumed, adapt the *implementation*, never drop a *pillar*.
 ## Product
 
 **PayPlus Subscriptions, Installments & Post-Purchase Upsells for Shopify** — a
-multi-tenant SaaS for Israeli Shopify merchants using PayPlus. Three pillars:
-deposit+installments-until-paid · open-ended recurring · token-based
-post-purchase upsells.
+multi-tenant SaaS for Israeli Shopify merchants using PayPlus. Ships on the App
+Store as **LETS** at **https://app.lets.co.il** (handle `lets`; Partner org
+128972608, app id 382947852289). Three pillars: deposit+installments-until-paid ·
+open-ended recurring · token-based post-purchase upsells.
 
 ## Locked decisions
 

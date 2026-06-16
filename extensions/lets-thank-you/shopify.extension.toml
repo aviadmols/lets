@@ -1,0 +1,43 @@
+# LETS thank-you / order-status upsell widget (PRIMARY path for PayPlus).
+#
+# A checkout UI extension (type = "ui_extension") that renders the LETS
+# token-based upsell on the Thank-you page AND the customer-account Order-status
+# page. This is the PRIMARY post-purchase surface for Israeli PayPlus merchants:
+# the customer's PayPlus token was saved during checkout, so we charge it with NO
+# card re-entry. (The native post-purchase interstitial in extensions/
+# lets-post-purchase is the SECONDARY/enhancement path — it needs Shopify Payments,
+# which IL PayPlus merchants typically don't use.)
+#
+# API: api_version "2026-04". As of 2026-04 Shopify checkout UI extensions run on
+# Preact / web components (@shopify/ui-extensions, not React — React was last
+# supported in 2025-07). The two render targets are flexible blocks the merchant
+# places in the checkout/account editor.
+#
+# Data path: the extension calls the LETS app through the App Proxy
+# (/apps/payplus/upsell/offer) so the request is Shopify-signed; the app resolves
+# the eligible offer (server-computed price) and hands back a SIGNED accept URL.
+# Accept POSTs to that signed URL, which charges the saved PayPlus token + creates
+# the linked child order. The extension NEVER sends a shop id or an amount.
+
+api_version = "2026-04"
+
+[[extensions]]
+name = "LETS post-purchase upsell"
+handle = "lets-thank-you"
+type = "ui_extension"
+
+  # Thank-you page block (immediately after checkout completes).
+  [[extensions.targeting]]
+  target = "purchase.thank-you.block.render"
+  module = "./src/ThankYouBlock.jsx"
+
+  # Customer-account Order-status page block (the post-checkout order page the
+  # customer can revisit). Same widget, same signed accept flow.
+  [[extensions.targeting]]
+  target = "customer-account.order-status.block.render"
+  module = "./src/OrderStatusBlock.jsx"
+
+  # App Proxy base the widget calls. The storefront-relative path resolves to
+  # https://{shop}/apps/payplus/... which Shopify proxies (signed) to the app.
+  [extensions.capabilities]
+  network_access = true

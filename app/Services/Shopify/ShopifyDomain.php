@@ -60,4 +60,39 @@ final class ShopifyDomain
 
         return hash_equals($calculated, $provided);
     }
+
+    /**
+     * Verify a Shopify APP PROXY request `signature`. The proxy algorithm DIFFERS
+     * from the OAuth one above:
+     *   - the proxy HMAC lives in the `signature` query param (hex digest),
+     *   - params are sorted, mapped to "key=value", array values joined by ",",
+     *     and concatenated with NO separator (not "&"),
+     *   - HMAC-SHA256 with the app shared secret, compared timing-safe.
+     * Signed with the same app secret as webhooks/OAuth. Fails closed: an absent
+     * signature, empty secret, or mismatch ⇒ false.
+     *
+     * @param  array<string, mixed>  $query
+     */
+    public static function verifyProxySignature(array $query, string $secret): bool
+    {
+        $provided = $query['signature'] ?? null;
+        if ($secret === '' || ! is_string($provided) || $provided === '') {
+            return false;
+        }
+
+        unset($query['signature']);
+        ksort($query);
+
+        $message = '';
+        foreach ($query as $key => $value) {
+            if (is_array($value)) {
+                $value = implode(',', $value);
+            }
+            $message .= $key.'='.$value; // NO separator between pairs (proxy spec)
+        }
+
+        $calculated = hash_hmac('sha256', $message, $secret); // hex digest
+
+        return hash_equals($calculated, $provided);
+    }
 }

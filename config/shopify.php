@@ -34,7 +34,7 @@ return [
     | changes to orders/draftOrders/fulfillmentOrders/webhookSubscription, run the
     | integration tests against a sandbox shop, then promote.
     */
-    'api_version' => env('SHOPIFY_API_VERSION', '2025-10'),
+    'api_version' => env('SHOPIFY_API_VERSION', '2026-04'),
 
     // Public URL of THIS app (the platform callback host for OAuth + webhooks).
     'app_url' => rtrim((string) env('SHOPIFY_APP_URL', env('APP_URL', '')), '/'),
@@ -141,5 +141,16 @@ return [
     'order_source_name' => env('SHOPIFY_ORDER_SOURCE_NAME', 'payplus-subscriptions'),
 
     // Where to send the merchant after a successful install (embedded admin).
-    'app_handle' => env('SHOPIFY_APP_HANDLE', 'payplus-subscriptions'),
+    // The app ships as "LETS" (handle `lets`) at https://app.lets.co.il.
+    'app_handle' => env('SHOPIFY_APP_HANDLE', 'lets'),
+
+    /*
+    | App Proxy subpath/prefix — must mirror shopify.app.toml [app_proxy]. The
+    | storefront/extension calls https://{shop}/apps/payplus/... which Shopify
+    | proxies to https://app.lets.co.il/proxy/... with a `signature` query param.
+    | VerifyShopifyAppProxy verifies that signature (fail closed) and derives the
+    | shop from the verified `shop` param — never from untrusted client input.
+    */
+    'app_proxy_prefix' => env('SHOPIFY_APP_PROXY_PREFIX', 'apps'),
+    'app_proxy_subpath' => env('SHOPIFY_APP_PROXY_SUBPATH', 'payplus'),
 ];

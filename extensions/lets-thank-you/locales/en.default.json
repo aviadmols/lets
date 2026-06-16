@@ -1,0 +1,8 @@
+{
+  "upsell": {
+    "accept": "Add to my order",
+    "decline": "No thanks",
+    "added": "Added to your order — no card re-entry needed.",
+    "failed": "We couldn't add that. You have not been charged."
+  }
+}

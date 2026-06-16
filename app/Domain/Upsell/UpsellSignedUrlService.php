@@ -22,6 +22,8 @@ final class UpsellSignedUrlService
     // === CONSTANTS ===
     public const ROUTE_ACCEPT = 'upsell.accept';
     public const ROUTE_DECLINE = 'upsell.decline';
+    /** JSON twin of ROUTE_ACCEPT for the checkout/post-purchase extensions. */
+    public const ROUTE_ACCEPT_API = 'upsell.accept.api';
 
     /** How long a thank-you-page action link stays valid. */
     private const DEFAULT_TTL_MINUTES = 60;
@@ -29,6 +31,12 @@ final class UpsellSignedUrlService
     public function acceptUrl(UpsellFlow $flow, UpsellFlowOffer $offer, string $parentOrderId, string $customerRef): string
     {
         return $this->sign(self::ROUTE_ACCEPT, $flow, $offer, $parentOrderId, $customerRef);
+    }
+
+    /** Signed JSON accept URL for the extensions (same params, same TTL). */
+    public function acceptApiUrl(UpsellFlow $flow, UpsellFlowOffer $offer, string $parentOrderId, string $customerRef): string
+    {
+        return $this->sign(self::ROUTE_ACCEPT_API, $flow, $offer, $parentOrderId, $customerRef);
     }
 
     public function declineUrl(UpsellFlow $flow, UpsellFlowOffer $offer, string $parentOrderId, string $customerRef): string

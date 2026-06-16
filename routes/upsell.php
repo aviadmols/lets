@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Upsell\Http\Controllers\AcceptUpsellApiController;
 use App\Domain\Upsell\Http\Controllers\AcceptUpsellController;
 use App\Domain\Upsell\Http\Controllers\DeclineUpsellController;
 use App\Domain\Upsell\Http\Controllers\DevPreviewUpsellController;
@@ -24,6 +25,13 @@ Route::middleware(['signed'])->prefix('upsell')->group(function () {
     // One-click action links rendered inside the widget.
     Route::get('/accept', AcceptUpsellController::class)->name(UpsellSignedUrlService::ROUTE_ACCEPT);
     Route::get('/decline', DeclineUpsellController::class)->name(UpsellSignedUrlService::ROUTE_DECLINE);
+
+    // JSON twin of /accept for the checkout/post-purchase EXTENSIONS (they consume
+    // JSON, not an HTML view). Same signed-link auth, same UpsellChargeService,
+    // same idempotency — only the response shape differs. GET + POST so an
+    // extension can fetch() with either verb against the one signed URL.
+    Route::match(['get', 'post'], '/accept-api', AcceptUpsellApiController::class)
+        ->name(UpsellSignedUrlService::ROUTE_ACCEPT_API);
 });
 
 /*

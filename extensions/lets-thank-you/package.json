@@ -1,0 +1,15 @@
+{
+  "name": "lets-thank-you",
+  "private": true,
+  "version": "1.0.0",
+  "description": "LETS token-based post-purchase upsell widget (thank-you + order-status). PRIMARY path for PayPlus merchants.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "dependencies": {
+    "@shopify/ui-extensions": "2026.4.x",
+    "preact": "^10.24.0"
+  },
+  "devDependencies": {
+    "@shopify/ui-extensions-tester": "2026.4.x"
+  }
+}

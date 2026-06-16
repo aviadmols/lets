@@ -1,4 +1,7 @@
-# Shopify app configuration (public, App-Store-distributed).
+# Shopify app configuration — the LETS app (public, App-Store-distributed).
+#
+# Ships as "LETS" at https://app.lets.co.il (PayPlus Subscriptions, Installments
+# & Post-Purchase Upsells for Israeli merchants).
 #
 # `shopify app config push` validates this; the mandatory privacy webhooks
 # declared here are validated at config-push time, AND we register them via the
@@ -6,13 +9,17 @@
 # config('shopify.oauth_scopes') / SHOPIFY_OAUTH_SCOPES — every scope maps to a
 # real call in this codebase (App Store reviewers check unused scopes).
 #
-# Replace the placeholder client_id + application_url at deploy time (or let the
-# CLI manage them); secrets live in env, never here.
+# client_id = the Shopify API key. It is NOT a secret, but it is environment-
+# specific, so we keep a clearly-marked placeholder here and paste the real value
+# from the Partner dashboard (the ONE manual step — see docs/SHOPIFY-APP-SETUP.md):
+#   Dashboard: https://dev.shopify.com/dashboard/128972608/apps/382947852289/settings
+#   Org 128972608 · App id 382947852289
+# The matching API SECRET lives only in env (SHOPIFY_API_SECRET), never here.
 
-name = "PayPlus Subscriptions"
-handle = "payplus-subscriptions"
-client_id = "REPLACE_WITH_SHOPIFY_API_KEY"
-application_url = "https://REPLACE_WITH_APP_URL"
+name = "LETS"
+handle = "lets"
+client_id = "REPLACE_WITH_SHOPIFY_API_KEY"  # paste API key from dashboard app 382947852289
+application_url = "https://app.lets.co.il"
 embedded = true
 
 [access_scopes]
@@ -21,11 +28,13 @@ scopes = "read_products,read_orders,write_orders,read_draft_orders,write_draft_o
 
 [auth]
 redirect_urls = [
-  "https://REPLACE_WITH_APP_URL/shopify/callback",
+  "https://app.lets.co.il/shopify/callback",
 ]
 
 [webhooks]
-api_version = "2025-10"
+# Pinned to the platform Admin API version (config/shopify.php api_version +
+# SHOPIFY_API_VERSION). Bump in lockstep each quarter.
+api_version = "2026-04"
 
 # Mandatory privacy / GDPR webhooks — App Store rejection if missing.
 [[webhooks.subscriptions]]
@@ -55,11 +64,25 @@ topics = ["products/create", "products/update", "products/delete"]
 uri = "/shopify/webhooks"
 
 [app_proxy]
-# Storefront → backend trust boundary for the installment button + thank-you
-# upsell widget (Phase 6 wires the controllers; the proxy subpath is reserved).
-url = "https://REPLACE_WITH_APP_URL/proxy"
+# Storefront → backend trust boundary for the installment button + the thank-you /
+# post-purchase upsell widgets. The extensions (extensions/lets-thank-you and
+# extensions/lets-post-purchase) call the app through this proxy so the request is
+# Shopify-signed (App Proxy `signature`) — the storefront/extension never sends a
+# trusted shop id. Verified by App\Http\Middleware\VerifyShopifyAppProxy.
+#   Storefront URL:  https://{shop}/apps/payplus/...  →  https://app.lets.co.il/proxy/...
+url = "https://app.lets.co.il/proxy"
 subpath = "payplus"
 prefix = "apps"
 
 [pos]
 embedded = false
+
+# === Extensions ===
+# The two upsell extensions live under extensions/ and are AUTO-DISCOVERED by the
+# unified app config — each has its own extensions/<name>/shopify.extension.toml,
+# so NO [[extensions]] block is needed here. `shopify app deploy` bundles them.
+#   - extensions/lets-thank-you     → ui_extension (thank-you + order-status block).
+#                                      PRIMARY path for PayPlus (token widget).
+#   - extensions/lets-post-purchase → checkout_post_purchase (interstitial).
+#                                      SECONDARY/enhancement; native applyChangeset
+#                                      needs Shopify Payments (gated, Phase 0.5).

@@ -1,5 +1,9 @@
 /.phpunit.cache
 /node_modules
+# Shopify extension build artefacts + installed deps (hand-authored sources are
+# committed; node_modules/dist are not).
+extensions/**/node_modules
+extensions/**/dist
 /public/build
 /public/hot
 /public/storage

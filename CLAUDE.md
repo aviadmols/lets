@@ -7,8 +7,9 @@
 ## What this is
 
 A **multi-tenant SaaS Shopify app** for Israeli merchants on the **PayPlus**
-gateway. Recharge-style, but broader. Three monetization pillars — **none may be
-dropped**:
+gateway. Recharge-style, but broader. Ships on the App Store as **LETS** at
+**https://app.lets.co.il** (Partner org 128972608, app id 382947852289). Three
+monetization pillars — **none may be dropped**:
 
 1. **Deposit + installments until fully paid** → release fulfillment only after
    full payment, then issue the final document.
@@ -29,12 +30,17 @@ are listed in §9 of the plan and in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## The agent team (`.claude/agents/`)
 
-Work is driven by 8 expert agents. Invoke `recharge-orchestrator` first; it
+Work is driven by 9 expert agents. Invoke `recharge-orchestrator` first; it
 enforces the handoff order and phase gates.
 
 `recharge-orchestrator` → `railway-infra` → `laravel-backend` →
 `shopify-integration` → `saas-multitenancy-billing` →
 `product-ux-architect` (parallel from start) → `admin-design-system`.
+
+`shopify-app-release` is the connect/release specialist: it owns the LETS app
+config (`shopify.app.toml`), OAuth scopes↔features, webhooks, App Bridge/session
+tokens, the post-purchase + thank-you-page extensions (`extensions/`), billing
+confirmation, and the App Store submission runbook (`docs/SHOPIFY-APP-SETUP.md`).
 
 `code-review-gatekeeper` is the quality supervisor: it reviews **every** unit of
 code the specialists produce and runs at every phase gate. It only reports
