@@ -1,3 +1,4 @@
+/** @jsxImportSource preact */
 // === LETS upsell widget (Preact) — shared by both render targets ===
 //
 // Renders the resolved offer with one-click Accept / Decline. On Accept it POSTs
@@ -15,9 +16,13 @@ import { fetchOffer, acceptOffer } from './upsellClient.js';
  * @param {object} props
  * @param {object} props.context  the purchase context built from the order target
  *   (parentOrderId, customerRef, subtotal, productGids, email, currency)
+ * @param {object} [props.i18n]   Shopify's localization API (shopify.i18n): provides
+ *   translate(key) keyed to locales/*.json + formatCurrency(amount). Optional so the
+ *   widget still renders (with EN fallbacks) if a target omits it.
  */
-export function UpsellWidget({ context }) {
+export function UpsellWidget({ context, i18n }) {
   const [state, setState] = useState({ phase: 'loading' });
+  const t = makeTranslator(i18n);
 
   // Resolve the eligible offer once on mount (records the server-side impression).
   useEffect(() => {
@@ -58,7 +63,7 @@ export function UpsellWidget({ context }) {
   if (state.phase === 'done') {
     return (
       <s-banner tone="success">
-        <s-text>{translate('upsell.added')}</s-text>
+        <s-text>{t('upsell.added')}</s-text>
       </s-banner>
     );
   }
@@ -66,7 +71,7 @@ export function UpsellWidget({ context }) {
   if (state.phase === 'failed') {
     return (
       <s-banner tone="critical">
-        <s-text>{translate('upsell.failed')}</s-text>
+        <s-text>{t('upsell.failed')}</s-text>
       </s-banner>
     );
   }
@@ -74,18 +79,31 @@ export function UpsellWidget({ context }) {
   const offer = state.data.offer;
   const busy = state.phase === 'charging';
 
+  // The product the customer can add to this order. The server is the price truth:
+  // `price` is the (possibly discounted) server-computed charge; `base_price` is the
+  // pre-discount reference shown struck-through when it is genuinely higher.
+  const price = formatPrice(i18n, offer.price, offer.currency);
+  const basePrice = formatPrice(i18n, offer.base_price, offer.currency);
+  const discounted = Number(offer.base_price) > Number(offer.price);
+
   return (
-    <s-section heading={offer.title}>
+    <s-section heading={t('upsell.heading')}>
       <s-stack direction="block" gap="base">
-        <s-text>
-          {offer.title} — {formatPrice(offer.price, offer.currency)}
-        </s-text>
+        {/* The addable product, surfaced as a clear line: name + server price. */}
+        <s-stack direction="inline" gap="base" blockalignment="center">
+          <s-text emphasis="bold">{offer.title}</s-text>
+          {discounted ? (
+            <s-text accessibilityrole="deletion" tone="subdued">{basePrice}</s-text>
+          ) : null}
+          <s-text emphasis="bold">{price}</s-text>
+        </s-stack>
+        <s-text tone="subdued">{t('upsell.reassurance')}</s-text>
         <s-stack direction="inline" gap="base">
           <s-button onClick={onAccept} disabled={busy} loading={busy}>
-            {translate('upsell.accept')}
+            {t('upsell.accept')}
           </s-button>
           <s-button kind="secondary" onClick={onDecline} disabled={busy}>
-            {translate('upsell.decline')}
+            {t('upsell.decline')}
           </s-button>
         </s-stack>
       </s-stack>
@@ -93,22 +111,45 @@ export function UpsellWidget({ context }) {
   );
 }
 
-// i18n: real keys live in the extension's locales/*.json (en + he). This wrapper
-// keeps the component string-free; the build injects the localised value.
-function translate(key) {
+// i18n: real keys live in the extension's locales/*.json (en + he). Prefer
+// Shopify's localization API (shopify.i18n.translate, locale-aware); fall back to a
+// small EN map so the component never renders a raw key if the API is absent.
+function makeTranslator(i18n) {
   const fallback = {
+    'upsell.heading': 'Add to your order',
     'upsell.accept': 'Add to my order',
     'upsell.decline': 'No thanks',
+    'upsell.reassurance': 'One click — charged to the card you just used. No re-entry.',
     'upsell.added': 'Added to your order — no card re-entry needed.',
     'upsell.failed': "We couldn't add that. You have not been charged.",
   };
-  return fallback[key] ?? key;
+  return (key) => {
+    if (i18n && typeof i18n.translate === 'function') {
+      try {
+        const v = i18n.translate(key);
+        if (typeof v === 'string' && v && v !== key) return v;
+      } catch {
+        /* fall through to the EN map */
+      }
+    }
+    return fallback[key] ?? key;
+  };
 }
 
-function formatPrice(amount, currency) {
+// Price formatting: Shopify's i18n.formatCurrency is locale-aware (preferred);
+// Intl is the fallback. The amount is always a SERVER value — display only.
+function formatPrice(i18n, amount, currency) {
+  const num = Number(amount);
+  if (i18n && typeof i18n.formatCurrency === 'function') {
+    try {
+      return i18n.formatCurrency(num);
+    } catch {
+      /* fall through to Intl */
+    }
+  }
   try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency || 'ILS' }).format(amount);
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency || 'ILS' }).format(num);
   } catch {
-    return `${amount} ${currency || 'ILS'}`;
+    return `${num} ${currency || 'ILS'}`;
   }
 }

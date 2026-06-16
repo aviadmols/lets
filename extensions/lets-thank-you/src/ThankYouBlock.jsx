@@ -1,3 +1,4 @@
+/** @jsxImportSource preact */
 // === Target: purchase.thank-you.block.render ===
 //
 // The PRIMARY post-purchase surface. Runs on the Thank-you page right after
@@ -32,5 +33,6 @@ function ThankYou() {
     currency: order.totalPrice?.currencyCode ?? order.currencyCode ?? 'ILS',
   };
 
-  return <UpsellWidget context={context} />;
+  // shopify.i18n drives localised copy (locales/*.json) + locale-aware currency.
+  return <UpsellWidget context={context} i18n={shopify?.i18n} />;
 }

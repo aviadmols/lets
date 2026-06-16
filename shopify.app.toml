@@ -3,28 +3,26 @@
 # Ships as "LETS" at https://app.lets.co.il (PayPlus Subscriptions, Installments
 # & Post-Purchase Upsells for Israeli merchants).
 #
-# `shopify app config push` validates this; the mandatory privacy webhooks
-# declared here are validated at config-push time, AND we register them via the
-# Admin API on install (belt-and-suspenders). The scopes here MUST match
+# `shopify app deploy` validates this and snapshots it (plus the single storefront
+# extension under extensions/) into a versioned release. The scopes here MUST match
 # config('shopify.oauth_scopes') / SHOPIFY_OAUTH_SCOPES — every scope maps to a
 # real call in this codebase (App Store reviewers check unused scopes).
 #
-# client_id = the Shopify API key. It is NOT a secret, but it is environment-
-# specific, so we keep a clearly-marked placeholder here and paste the real value
-# from the Partner dashboard (the ONE manual step — see docs/SHOPIFY-APP-SETUP.md):
+# client_id = the Shopify API key (public, not a secret). The matching API SECRET
+# lives only in env (SHOPIFY_API_SECRET), never here.
 #   Dashboard: https://dev.shopify.com/dashboard/128972608/apps/382947852289/settings
 #   Org 128972608 · App id 382947852289
-# The matching API SECRET lives only in env (SHOPIFY_API_SECRET), never here.
 
 name = "LETS"
 handle = "lets"
-client_id = "REPLACE_WITH_SHOPIFY_API_KEY"  # paste API key from dashboard app 382947852289
+client_id = "2d6bb06891707fcc4471a1f4d710d3e7"  # API key for app 382947852289 (org 128972608) — public, not a secret
 application_url = "https://app.lets.co.il"
 embedded = true
 
 [access_scopes]
 # Keep in sync with SHOPIFY_OAUTH_SCOPES in .env / config/shopify.php.
 scopes = "read_products,read_orders,write_orders,read_draft_orders,write_draft_orders,read_customers,read_fulfillments,write_fulfillments,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders"
+use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [
@@ -37,26 +35,39 @@ redirect_urls = [
 api_version = "2026-04"
 
 # Mandatory privacy / GDPR webhooks — App Store rejection if missing.
-[[webhooks.subscriptions]]
-topics = ["customers/data_request"]
-uri = "/shopify/webhooks"
-
-[[webhooks.subscriptions]]
-topics = ["customers/redact"]
-uri = "/shopify/webhooks"
-
-[[webhooks.subscriptions]]
-topics = ["shop/redact"]
-uri = "/shopify/webhooks"
+# These protected-customer-data topics MUST be declared via `compliance_topics`
+# (NOT plain `topics`): Shopify only allows them through the compliance mechanism
+# and rejects the deploy if they appear under `topics`. They route to the same
+# /shopify/webhooks endpoint and are HMAC-verified by VerifyShopifyWebhook.
+#
+# RE-ENABLE BEFORE APP STORE SUBMISSION: deploying these requires "Protected
+# customer data access" to be GRANTED first in the Partner Dashboard
+# (Apps → app 382947852289 → API access requests → Protected customer data access
+# → Request access; same gate also covers read_customers / read_orders). Until that
+# approval lands, Shopify rejects the version ("This app is not approved to
+# subscribe to webhook topics containing protected customer data"). The handlers +
+# per-shop Admin-API registration already exist; this is purely the deploy-time
+# declaration, re-added once access is approved.
+# [[webhooks.subscriptions]]
+# compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
+# uri = "/shopify/webhooks"
 
 # Operational webhooks (also registered per-shop via the Admin API on install).
 [[webhooks.subscriptions]]
 topics = ["app/uninstalled"]
 uri = "/shopify/webhooks"
 
-[[webhooks.subscriptions]]
-topics = ["orders/paid", "orders/create", "orders/cancelled", "orders/fulfilled", "refunds/create"]
-uri = "/shopify/webhooks"
+# Order / refund webhooks carry PROTECTED CUSTOMER DATA, so subscribing to them at
+# the app (toml) level requires "Protected customer data access" to be GRANTED in
+# the Partner Dashboard first (same gate as the GDPR compliance topics above —
+# Apps → app 382947852289 → API access requests → Protected customer data access).
+# Until that approval lands, Shopify rejects the version. These topics are STILL
+# registered per-shop via the Admin API on install (RegisterShopifyWebhooksJob), so
+# token capture on orders/paid keeps working; re-add this block to the toml once
+# protected-customer-data access is approved (needed for App Store submission).
+# [[webhooks.subscriptions]]
+# topics = ["orders/paid", "orders/create", "orders/cancelled", "orders/fulfilled", "refunds/create"]
+# uri = "/shopify/webhooks"
 
 # Catalog sync — keep the local products cache fresh (W1).
 [[webhooks.subscriptions]]
@@ -65,10 +76,10 @@ uri = "/shopify/webhooks"
 
 [app_proxy]
 # Storefront → backend trust boundary for the installment button + the thank-you /
-# post-purchase upsell widgets. The extensions (extensions/lets-thank-you and
-# extensions/lets-post-purchase) call the app through this proxy so the request is
-# Shopify-signed (App Proxy `signature`) — the storefront/extension never sends a
-# trusted shop id. Verified by App\Http\Middleware\VerifyShopifyAppProxy.
+# order-status upsell widget. The single storefront extension (extensions/
+# lets-thank-you) calls the app through this proxy so the request is Shopify-signed
+# (App Proxy `signature`) — the storefront/extension never sends a trusted shop id.
+# Verified by App\Http\Middleware\VerifyShopifyAppProxy.
 #   Storefront URL:  https://{shop}/apps/payplus/...  →  https://app.lets.co.il/proxy/...
 url = "https://app.lets.co.il/proxy"
 subpath = "payplus"
@@ -78,11 +89,17 @@ prefix = "apps"
 embedded = false
 
 # === Extensions ===
-# The two upsell extensions live under extensions/ and are AUTO-DISCOVERED by the
-# unified app config — each has its own extensions/<name>/shopify.extension.toml,
-# so NO [[extensions]] block is needed here. `shopify app deploy` bundles them.
-#   - extensions/lets-thank-you     → ui_extension (thank-you + order-status block).
-#                                      PRIMARY path for PayPlus (token widget).
-#   - extensions/lets-post-purchase → checkout_post_purchase (interstitial).
-#                                      SECONDARY/enhancement; native applyChangeset
-#                                      needs Shopify Payments (gated, Phase 0.5).
+# ONE storefront extension lives under extensions/ and is AUTO-DISCOVERED by the
+# unified app config — it has its own extensions/lets-thank-you/
+# shopify.extension.toml, so NO [[extensions]] block is needed here.
+# `shopify app deploy` bundles it.
+#   - extensions/lets-thank-you → ui_extension (thank-you + order-status block).
+#                                 The single PayPlus token-charge upsell surface:
+#                                 displays the addable product(s) on the thank-you /
+#                                 order-status page and charges the saved PayPlus
+#                                 token via the App-Proxy-signed offer + signed
+#                                 accept URL (no card re-entry, no Shopify Payments).
+# (Subscription / product / order / deposit / installment MANAGEMENT lives in the
+#  embedded admin app at /admin — that is the single control center, not a checkout
+#  extension; Shopify's model does not allow admin management inside a storefront
+#  extension.)

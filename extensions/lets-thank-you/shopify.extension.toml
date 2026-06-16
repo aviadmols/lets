@@ -1,12 +1,12 @@
-# LETS thank-you / order-status upsell widget (PRIMARY path for PayPlus).
+# LETS thank-you / order-status upsell widget — the SINGLE storefront extension.
 #
 # A checkout UI extension (type = "ui_extension") that renders the LETS
 # token-based upsell on the Thank-you page AND the customer-account Order-status
-# page. This is the PRIMARY post-purchase surface for Israeli PayPlus merchants:
+# page. This is the ONLY post-purchase surface for Israeli PayPlus merchants:
 # the customer's PayPlus token was saved during checkout, so we charge it with NO
-# card re-entry. (The native post-purchase interstitial in extensions/
-# lets-post-purchase is the SECONDARY/enhancement path — it needs Shopify Payments,
-# which IL PayPlus merchants typically don't use.)
+# card re-entry. (A native checkout_post_purchase interstitial was deliberately NOT
+# shipped — its applyChangeset needs Shopify Payments, which IL PayPlus merchants
+# typically don't use; this token widget has no such dependency.)
 #
 # API: api_version "2026-04". As of 2026-04 Shopify checkout UI extensions run on
 # Preact / web components (@shopify/ui-extensions, not React — React was last
@@ -20,11 +20,16 @@
 # the linked child order. The extension NEVER sends a shop id or an amount.
 
 api_version = "2026-04"
+uid = "18daabb0-7986-108e-0c4f-0e76e1a574fa13288f2b"
 
 [[extensions]]
 name = "LETS post-purchase upsell"
 handle = "lets-thank-you"
 type = "ui_extension"
+
+  # Build: Preact JSX (jsxImportSource = "preact" via jsconfig.json). The runtime is
+  # @shopify/ui-extensions/preact, whose peer deps (preact + @preact/signals) are in
+  # this folder's package.json. NOT React — React was dropped after api_version 2025-07.
 
   # Thank-you page block (immediately after checkout completes).
   [[extensions.targeting]]

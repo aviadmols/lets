@@ -1,3 +1,4 @@
+/** @jsxImportSource preact */
 // === Target: customer-account.order-status.block.render ===
 //
 // Same LETS upsell widget on the customer-account Order-status page (the order
@@ -29,5 +30,6 @@ function OrderStatus() {
     currency: order.totalPrice?.currencyCode ?? order.currencyCode ?? 'ILS',
   };
 
-  return <UpsellWidget context={context} />;
+  // shopify.i18n drives localised copy (locales/*.json) + locale-aware currency.
+  return <UpsellWidget context={context} i18n={shopify?.i18n} />;
 }

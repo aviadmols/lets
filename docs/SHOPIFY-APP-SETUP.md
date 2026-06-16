@@ -49,18 +49,27 @@ shopify app config push
 the webhook subscriptions (incl. the 3 mandatory GDPR topics), and the App Proxy
 (`prefix = apps`, `subpath = payplus`).
 
-## 2. Deploy the extensions
+## 2. Deploy the extension
 
-The two extensions under `extensions/` are auto-discovered (no `[[extensions]]`
-block needed in `shopify.app.toml`):
+There is ONE storefront extension under `extensions/`, auto-discovered (no
+`[[extensions]]` block needed in `shopify.app.toml`):
 
-- `extensions/lets-thank-you` — `ui_extension` (thank-you + order-status block).
-  **PRIMARY** PayPlus token widget.
-- `extensions/lets-post-purchase` — `checkout_post_purchase` interstitial.
-  **SECONDARY** (native changeset gated behind Phase-0.5 / Shopify Payments).
+- `extensions/lets-thank-you` — `ui_extension` rendering on **both**
+  `purchase.thank-you.block.render` and `customer-account.order-status.block.render`.
+  The single PayPlus token-charge upsell surface: it displays the addable
+  product(s) and charges the saved PayPlus token (no card re-entry, no Shopify
+  Payments dependency).
+
+> The native `checkout_post_purchase` interstitial was removed: it is a separate
+> extension type that cannot merge into the thank-you `ui_extension`, its native
+> `applyChangeset` requires Shopify Payments (which Israeli PayPlus merchants
+> typically lack), and it duplicated this widget's upsell. The thank-you /
+> order-status `ui_extension` is the sole storefront upsell path. Subscription /
+> product / order / deposit / installment **management** lives in the embedded
+> admin app at `/admin` — the single control center.
 
 ```sh
-shopify app deploy   # bundles + versions both extensions (needs Partner login)
+shopify app deploy   # bundles + versions the extension (needs Partner login)
 ```
 
 ## 3. Deploy the app to app.lets.co.il
@@ -97,17 +106,15 @@ Open `https://app.lets.co.il/shopify/install?shop={your-dev-store}.myshopify.com
 
 ## Notes & assumptions
 
-- **Israeli PayPlus reality:** the **PRIMARY** post-purchase path is the
+- **Israeli PayPlus reality:** the single post-purchase path is the
   `lets-thank-you` token widget (App-Proxy signed, charges the saved PayPlus
-  token). The native post-purchase interstitial (`lets-post-purchase`) needs
-  Shopify Payments and is gated behind Phase-0.5 capability verification.
-- **Extension → app auth:** the thank-you/order-status widgets authenticate via the
+  token). The native `checkout_post_purchase` interstitial was removed because its
+  `applyChangeset` needs Shopify Payments, which IL PayPlus merchants typically
+  lack; the token widget has no such dependency, so it is the only path.
+- **Extension → app auth:** the thank-you/order-status widget authenticates via the
   **App Proxy `signature`** (verified by `App\Http\Middleware\VerifyShopifyAppProxy`,
   fail-closed). The offer endpoint hands back a **signed** accept URL so the charge
-  reuses the proven signed-link auth + idempotency. The **native post-purchase**
-  extension does NOT get an App-Proxy signature — it carries a Shopify-signed input
-  **token** (JWT) that the app must verify; that exact handshake is the documented
-  remaining wiring (see `extensions/lets-post-purchase/README.md`).
+  reuses the proven signed-link auth + idempotency.
 - **Money safety unchanged:** the upsell amount is always recomputed server-side
   (`UpsellFlowOffer::discountedPrice`); the client never sends an amount. Consent +
   ledger + deterministic idempotency are enforced by the existing

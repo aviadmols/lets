@@ -1,7 +1,9 @@
 {
   "upsell": {
+    "heading": "Add to your order",
     "accept": "Add to my order",
     "decline": "No thanks",
+    "reassurance": "One click — charged to the card you just used. No re-entry.",
     "added": "Added to your order — no card re-entry needed.",
     "failed": "We couldn't add that. You have not been charged."
   }
