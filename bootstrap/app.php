@@ -6,6 +6,7 @@ use App\Http\Middleware\VerifyShopifyWebhook;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -34,6 +35,21 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // Behind Railway's edge proxy (TLS terminates at the edge, the container
+        // gets HTTP + X-Forwarded-Proto: https). Trust the forwarded headers so
+        // Laravel/Filament generate https:// URLs (assets, redirects, OAuth
+        // callbacks) — otherwise asset URLs come out http:// on an https page and
+        // the browser blocks them (mixed content → broken admin). Railway is the
+        // only hop, so trust all proxies.
+        $middleware->trustProxies(
+            at: '*',
+            headers: Request::HEADER_X_FORWARDED_FOR
+                | Request::HEADER_X_FORWARDED_HOST
+                | Request::HEADER_X_FORWARDED_PORT
+                | Request::HEADER_X_FORWARDED_PROTO
+                | Request::HEADER_X_FORWARDED_PREFIX,
+        );
+
         // Named middleware aliases for the Shopify boundary.
         $middleware->alias([
             'shopify.webhook' => VerifyShopifyWebhook::class,

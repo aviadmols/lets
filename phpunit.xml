@@ -24,6 +24,13 @@
         <env name="CACHE_STORE" value="array"/>
         <env name="DB_CONNECTION" value="sqlite"/>
         <env name="DB_DATABASE" value=":memory:"/>
+        <!-- SAFETY: force DB_URL/DATABASE_URL to null so the sqlite connection's
+             `'url' => env('DB_URL')` is never parsed into a real (e.g. Railway)
+             database. Laravel's env() maps the string "null" to null; an empty
+             string would still be parsed. Without this, RefreshDatabase could
+             migrate:fresh the production DB. -->
+        <env name="DB_URL" value="null"/>
+        <env name="DATABASE_URL" value="null"/>
         <env name="TENANT_CREDENTIALS_KEY" value="base64:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>

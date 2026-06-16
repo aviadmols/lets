@@ -23,7 +23,8 @@ rm -f bootstrap/cache/config.php 2>/dev/null || true
 
 # Migrate, then re-cache for runtime performance.
 php artisan migrate --force
-php artisan settings:migrate || true
+# (spatie settings migrations, if any, run as normal migrations above — there is
+# no `settings:migrate` command, so it is intentionally not invoked here.)
 php artisan config:cache || true
 php artisan event:cache || true
 

@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Services\Shopify\Orders\DefaultShopifyOrderStrategy;
 use App\Services\Shopify\Orders\ShopifyOrderStrategy;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -26,6 +27,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // Belt-and-suspenders for HTTPS behind Railway's proxy (alongside
+        // trustProxies in bootstrap/app.php): force every generated URL to https
+        // in production so assets/redirects/OAuth callbacks are never http:// on
+        // an https page. Local dev (http://localhost) is untouched.
+        if ($this->app->environment('production')) {
+            URL::forceScheme('https');
+        }
     }
 }
