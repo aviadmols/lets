@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\AddHstsHeader;
 use App\Http\Middleware\SessionTokenAuth;
 use App\Http\Middleware\VerifyShopifyAppProxy;
 use App\Http\Middleware\VerifyShopifyWebhook;
@@ -49,6 +50,11 @@ return Application::configure(basePath: dirname(__DIR__))
                 | Request::HEADER_X_FORWARDED_PROTO
                 | Request::HEADER_X_FORWARDED_PREFIX,
         );
+
+        // Pin https in the browser (HSTS) so it never falls back to http and the
+        // stale uPress vhost. Global so it covers admin + storefront + proxy. Only
+        // emits over a real https request in production (see the middleware).
+        $middleware->append(AddHstsHeader::class);
 
         // Named middleware aliases for the Shopify boundary.
         $middleware->alias([
