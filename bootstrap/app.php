@@ -34,6 +34,19 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // Trust Railway's reverse proxy so X-Forwarded-Proto is honoured.
+        // '*' trusts all proxies — safe because Caddy already injects the
+        // header and Railway's network boundary is not publicly reachable.
+        // HEADER_X_FORWARDED_FOR | HEADER_X_FORWARDED_HOST | HEADER_X_FORWARDED_PORT
+        // | HEADER_X_FORWARDED_PROTO covers the full set Laravel checks.
+        $middleware->trustProxies(
+            at: '*',
+            headers: \Illuminate\Http\Request::HEADER_X_FORWARDED_FOR
+                | \Illuminate\Http\Request::HEADER_X_FORWARDED_HOST
+                | \Illuminate\Http\Request::HEADER_X_FORWARDED_PORT
+                | \Illuminate\Http\Request::HEADER_X_FORWARDED_PROTO,
+        );
+
         // Named middleware aliases for the Shopify boundary.
         $middleware->alias([
             'shopify.webhook' => VerifyShopifyWebhook::class,
