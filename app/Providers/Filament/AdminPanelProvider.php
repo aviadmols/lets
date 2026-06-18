@@ -6,6 +6,7 @@ use App\Http\Middleware\BindDevTenant;
 use App\Http\Middleware\BindTenantFromUser;
 use App\Http\Middleware\DevAutoLogin;
 use App\Http\Middleware\EmbeddedAuthenticate;
+use App\Http\Middleware\PersistEmbeddedContext;
 use App\Http\Middleware\SetAdminLocale;
 use BezhanSalleh\FilamentLanguageSwitch\LanguageSwitch;
 use Filament\Http\Middleware\Authenticate;
@@ -107,6 +108,14 @@ class AdminPanelProvider extends PanelProvider
                 PanelsRenderHook::BODY_START,
                 fn (): View => ViewFacade::make('filament.platform.viewing-as-banner'),
             )
+            // Shopify App Bridge, FIRST in <head>, for embedded sessions ONLY (the
+            // partial is a no-op without a Shopify `host`). Loading it makes Shopify
+            // issue a session token and auto-attach it to backend requests, which
+            // EmbeddedAuthenticate verifies → managed install + merchant auto-login.
+            ->renderHook(
+                PanelsRenderHook::HEAD_START,
+                fn (): View => ViewFacade::make('filament.embedded.app-bridge'),
+            )
             ->navigationGroups($this->navigationGroups())
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
@@ -115,6 +124,10 @@ class AdminPanelProvider extends PanelProvider
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,
                 StartSession::class,
+                // Persist the Shopify embedded `host` in the session so App Bridge
+                // (the HEAD_START partial) loads on every page of an embedded session,
+                // not just the first load that carries ?host=…
+                PersistEmbeddedContext::class,
                 // EMBEDDED AUTH: runs right after StartSession (so a session exists
                 // for Auth::login) and BEFORE AuthenticateSession / the panel's
                 // Authenticate. For an embedded App Bridge load it verifies the

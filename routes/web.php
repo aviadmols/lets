@@ -10,8 +10,18 @@ use Illuminate\Support\Facades\Route;
 /*
  * Root → the admin panel. This is an embedded Shopify admin app; there is no
  * public marketing page. The Filament panel lives at /admin (AdminPanelProvider).
+ *
+ * PRESERVE the query string: Shopify loads the App URL (root) with the embedded
+ * entry params (?id_token=…&host=…&shop=…&embedded=1). Forwarding them to /admin
+ * lets EmbeddedAuthenticate authenticate on the very first load and App Bridge get
+ * its host — a bare redirect('/admin') would drop them and the embedded app would
+ * fall back to the login form.
  */
-Route::get('/', fn () => redirect('/admin'));
+Route::get('/', function () {
+    $qs = request()->getQueryString();
+
+    return redirect('/admin'.($qs !== null && $qs !== '' ? '?'.$qs : ''));
+});
 
 /*
  * Platform-admin "Exit shop": clear the entered-shop session selection and return
