@@ -3,11 +3,8 @@
 namespace App\Http\Controllers\Shopify;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\Products\ImportShopProductsJob;
-use App\Jobs\Shopify\RegisterShopifyWebhooksJob;
-use App\Models\Shop;
-use App\Services\Shopify\MerchantUserProvisioner;
 use App\Services\Shopify\ShopifyDomain;
+use App\Services\Shopify\ShopInstaller;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -119,34 +116,18 @@ final class OAuthController extends Controller
             abort(Response::HTTP_BAD_GATEWAY, 'Access token missing in Shopify response.');
         }
 
-        // 5. Upsert the Shop (matched by domain ⇒ reinstall reuses the row) and
-        //    store the ENCRYPTED offline token + granted scopes.
-        $newInstall = ! Shop::query()->where('shopify_domain', $shop)->exists();
-        $shopModel = Shop::query()->firstOrCreate(
-            ['shopify_domain' => $shop],
-            ['name' => $shop, 'platform' => Shop::PLATFORM_SHOPIFY, 'status' => Shop::STATUS_INSTALLED],
-        );
-        $shopModel->captureShopifyInstall($accessToken, $scopes !== '' ? $scopes : null);
-
-        // 5b. Provision/link an admin login BOUND to this shop, so the merchant
-        //     gets a store-scoped login. Idempotent on reinstall (reuses the
-        //     existing linked user). Each store is an independent tenant: its own
-        //     Shop row + its own user(s) via shop_id — never shared across stores.
-        app(MerchantUserProvisioner::class)->provisionFor($shopModel);
-
-        // 6. Register webhooks for THIS shop (idempotent, tenant-bound job).
-        RegisterShopifyWebhooksJob::dispatch($shopModel->id);
-
-        // 7. Backfill the local product cache from this shop's source (idempotent,
-        //    tenant-bound, on the `sync` queue). Reinstall re-runs it safely
-        //    (upsert by external id). Product webhooks keep it fresh thereafter.
-        ImportShopProductsJob::dispatch($shopModel->id);
+        // 5–7. Upsert the Shop (matched by domain ⇒ reinstall reuses the row),
+        //   store the ENCRYPTED offline token + granted scopes, provision the
+        //   store-scoped admin login, and register webhooks + backfill products.
+        //   This shared routine is ALSO used by the managed-install / token-exchange
+        //   path (EmbeddedAuthenticate) — one install routine, never duplicated.
+        app(ShopInstaller::class)->installFromToken($shop, $accessToken, $scopes !== '' ? $scopes : null);
 
         // 8. Handoff to saas-multitenancy-billing: trial/subscribe confirmation.
         // TODO(saas agent): redirect into the AppSubscription trial flow here
         //   (e.g. route('billing.confirm', ['shop' => $shop])). For v1 baseline we
         //   go straight to the embedded admin; the SaaS agent owns the gate.
-        Log::info('shopify.oauth.installed', ['shop' => $shop, 'new_install' => $newInstall]);
+        Log::info('shopify.oauth.installed', ['shop' => $shop]);
 
         // 9. Final redirect → embedded admin home.
         $handle = (string) config('shopify.app_handle');

@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\AddHstsHeader;
 use App\Http\Middleware\AllowExtensionCors;
+use App\Http\Middleware\EmbeddedAuthenticate;
 use App\Http\Middleware\SessionTokenAuth;
 use App\Http\Middleware\VerifyShopifyAppProxy;
 use App\Http\Middleware\VerifyShopifyWebhook;
@@ -61,6 +62,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'shopify.webhook' => VerifyShopifyWebhook::class,
             'shopify.session' => SessionTokenAuth::class,
+            // Embedded-admin auth + managed install for the Filament panel (verify
+            // session token → token exchange/install → Auth::login → bind tenant).
+            'shopify.embedded' => EmbeddedAuthenticate::class,
             'shopify.proxy' => VerifyShopifyAppProxy::class,
             // CORS for the checkout/customer-account UI extension cross-origin
             // fetch — attached ONLY to the upsell offer + accept-api routes.

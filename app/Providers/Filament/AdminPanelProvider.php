@@ -5,6 +5,7 @@ namespace App\Providers\Filament;
 use App\Http\Middleware\BindDevTenant;
 use App\Http\Middleware\BindTenantFromUser;
 use App\Http\Middleware\DevAutoLogin;
+use App\Http\Middleware\EmbeddedAuthenticate;
 use App\Http\Middleware\SetAdminLocale;
 use BezhanSalleh\FilamentLanguageSwitch\LanguageSwitch;
 use Filament\Http\Middleware\Authenticate;
@@ -114,6 +115,16 @@ class AdminPanelProvider extends PanelProvider
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,
                 StartSession::class,
+                // EMBEDDED AUTH: runs right after StartSession (so a session exists
+                // for Auth::login) and BEFORE AuthenticateSession / the panel's
+                // Authenticate. For an embedded App Bridge load it verifies the
+                // session token, performs managed install on first load (token
+                // exchange → ShopInstaller), logs in the shop-scoped merchant user,
+                // and binds the verified shop as tenant. For a NON-embedded request
+                // (no/invalid token) it is a transparent no-op, so the normal
+                // platform-admin login still works. Tenant is derived ONLY from the
+                // verified JWT — never from client input.
+                EmbeddedAuthenticate::class,
                 AuthenticateSession::class,
                 ShareErrorsFromSession::class,
                 VerifyCsrfToken::class,
