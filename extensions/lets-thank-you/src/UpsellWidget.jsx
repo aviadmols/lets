@@ -19,15 +19,22 @@ import { fetchOffer, acceptOffer } from './upsellClient.js';
  * @param {object} [props.i18n]   Shopify's localization API (shopify.i18n): provides
  *   translate(key) keyed to locales/*.json + formatCurrency(amount). Optional so the
  *   widget still renders (with EN fallbacks) if a target omits it.
+ * @param {object} props.shopify  the target's global extension API. Used here for
+ *   shopify.sessionToken — the App Bridge JWT that authenticates the offer fetch
+ *   (the app verifies it, derives the shop, binds the tenant). Available in both
+ *   the thank-you and order-status targets.
  */
-export function UpsellWidget({ context, i18n }) {
+export function UpsellWidget({ context, i18n, shopify }) {
   const [state, setState] = useState({ phase: 'loading' });
   const t = makeTranslator(i18n);
 
   // Resolve the eligible offer once on mount (records the server-side impression).
+  // We first mint a fresh session token (short-lived JWT) and send it as the bearer
+  // so the direct cross-origin fetch is authenticated by the shop that's looking.
   useEffect(() => {
     let live = true;
-    fetchOffer(context)
+    getSessionToken(shopify)
+      .then((sessionToken) => fetchOffer({ ...context, sessionToken }))
       .then((data) => {
         if (!live) return;
         if (!data?.offer) {
@@ -109,6 +116,24 @@ export function UpsellWidget({ context, i18n }) {
       </s-stack>
     </s-section>
   );
+}
+
+// Session token: mint a fresh short-lived JWT from the target's extension API. The
+// app verifies it (HS256 w/ the app secret), derives the shop from the `dest`
+// claim, and binds the tenant — so the client never sends a shop id. The API is
+// exposed as `shopify.sessionToken` (current) and `shopify.idToken()` (legacy);
+// support both, and resolve to '' if neither is present (the fetch then 401s and we
+// render empty — fail closed, never show an unauthenticated offer).
+async function getSessionToken(shopify) {
+  try {
+    const api = shopify?.sessionToken;
+    if (api && typeof api.get === 'function') return (await api.get()) ?? '';
+    if (typeof api === 'function') return (await api()) ?? '';
+    if (typeof shopify?.idToken === 'function') return (await shopify.idToken()) ?? '';
+  } catch {
+    /* fall through — no token → the offer fetch 401s → empty (fail closed) */
+  }
+  return '';
 }
 
 // i18n: real keys live in the extension's locales/*.json (en + he). Prefer

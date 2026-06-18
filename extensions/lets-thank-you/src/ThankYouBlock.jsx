@@ -33,6 +33,7 @@ function ThankYou() {
     currency: order.totalPrice?.currencyCode ?? order.currencyCode ?? 'ILS',
   };
 
-  // shopify.i18n drives localised copy (locales/*.json) + locale-aware currency.
-  return <UpsellWidget context={context} i18n={shopify?.i18n} />;
+  // shopify.i18n drives localised copy; shopify (the target API) provides the
+  // session token the widget sends as the offer-fetch bearer.
+  return <UpsellWidget context={context} i18n={shopify?.i18n} shopify={shopify} />;
 }

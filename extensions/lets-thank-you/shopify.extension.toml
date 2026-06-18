@@ -13,11 +13,16 @@
 # supported in 2025-07). The two render targets are flexible blocks the merchant
 # places in the checkout/account editor.
 #
-# Data path: the extension calls the LETS app through the App Proxy
-# (/apps/payplus/upsell/offer) so the request is Shopify-signed; the app resolves
-# the eligible offer (server-computed price) and hands back a SIGNED accept URL.
-# Accept POSTs to that signed URL, which charges the saved PayPlus token + creates
-# the linked child order. The extension NEVER sends a shop id or an amount.
+# Data path: these targets run in a sandboxed worker with NO storefront origin/
+# session, so a relative App-Proxy fetch cannot resolve. The extension instead
+# DIRECT-fetches the absolute app URL (https://app.lets.co.il/upsell/offer) with a
+# session-token (JWT) bearer; the app verifies the JWT, derives the shop from it,
+# resolves the eligible offer (server-computed price), and hands back a SIGNED
+# accept URL. Accept POSTs to that absolute signed URL, which charges the saved
+# PayPlus token + creates the linked child order. The app returns CORS
+# (Access-Control-Allow-Origin:*) so the cross-origin fetch is allowed. The
+# extension NEVER sends a shop id or an amount. (The App-Proxy offer route remains
+# available as a storefront fallback.)
 
 api_version = "2026-04"
 uid = "18daabb0-7986-108e-0c4f-0e76e1a574fa13288f2b"
