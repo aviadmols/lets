@@ -6,6 +6,7 @@ use App\Http\Middleware\BindDevTenant;
 use App\Http\Middleware\BindTenantFromUser;
 use App\Http\Middleware\DevAutoLogin;
 use App\Http\Middleware\EmbeddedAuthenticate;
+use App\Http\Middleware\EnsureEmbeddedSession;
 use App\Http\Middleware\PersistEmbeddedContext;
 use App\Http\Middleware\SetAdminLocale;
 use BezhanSalleh\FilamentLanguageSwitch\LanguageSwitch;
@@ -138,6 +139,12 @@ class AdminPanelProvider extends PanelProvider
                 // platform-admin login still works. Tenant is derived ONLY from the
                 // verified JWT — never from client input.
                 EmbeddedAuthenticate::class,
+                // BOUNCE an embedded request that is still unauthenticated (deep-link
+                // / expired token) to App Bridge for a fresh session token, instead of
+                // 302→login (a dead end for a passwordless merchant). Must run after
+                // EmbeddedAuthenticate (knows if auth succeeded) and before the panel's
+                // Authenticate. No-op for authenticated or non-embedded requests.
+                EnsureEmbeddedSession::class,
                 AuthenticateSession::class,
                 ShareErrorsFromSession::class,
                 VerifyCsrfToken::class,
