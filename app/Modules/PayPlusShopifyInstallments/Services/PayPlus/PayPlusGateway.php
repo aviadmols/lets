@@ -27,8 +27,11 @@ final class PayPlusGateway implements PayPlusGatewayInterface
     private const PATH_GENERATE_LINK = '/PaymentPages/generateLink';
     private const PATH_TOKEN_LIST = '/Token/List';
 
-    private const HEADER_API_KEY = 'api-key';
-    private const HEADER_SECRET_KEY = 'secret-key';
+    // PayPlus authenticates on TWO request headers (not a bearer token). These are
+    // public so account-discovery / probe callers (PayPlusAccountDiscovery) reuse
+    // the SAME header names — one source of truth, never duplicated.
+    public const HEADER_API_KEY = 'api-key';
+    public const HEADER_SECRET_KEY = 'secret-key';
     private const HEADER_IDEMPOTENCY = 'Idempotency-Key';
 
     /**

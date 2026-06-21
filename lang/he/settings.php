@@ -39,6 +39,31 @@ return [
             'error' => 'שגיאת חיבור',
         ],
         'empty' => 'חברו את חשבון PayPlus כדי להתחיל לחייב.',
+
+        // מתג סביבה.
+        'environment' => 'סביבה',
+        'env_production' => 'ייצור',
+        'env_sandbox' => 'בדיקות (Sandbox)',
+
+        // חיבור וזיהוי אוטומטי.
+        'connect' => 'התחברות',
+        'connect_need_creds' => 'הזינו תחילה מפתח API ומפתח סודי.',
+        'connect_found' => 'נמצאו :count מסופים בחשבון ה-PayPlus שלכם.',
+        'connect_failed' => 'לא ניתן להתחבר ל-PayPlus: :reason',
+        'pages_failed' => 'לא ניתן לטעון עמודי תשלום: :reason',
+        'discovery_heading' => 'מסוף ועמוד תשלום',
+        'discovery_intro' => 'זוהו מחשבון ה-PayPlus שלכם. בחרו אחד אם יש לכם כמה.',
+        'terminal' => 'מסוף',
+        'terminal_inactive' => 'לא פעיל',
+        'payment_page' => 'עמוד תשלום',
+        'connected_label' => 'מחובר אל',
+        'advanced' => 'מתקדם',
+        'advanced_intro' => 'אופציונלי. סוד ה-Webhook אינו ניתן לזיהוי דרך ה-API — הדביקו אותו רק אם PayPlus סיפק לכם אחד.',
+        'reason' => [
+            'auth' => 'מפתח API או מפתח סודי שגויים',
+            'transport' => 'שגיאת רשת או שרת',
+            'malformed' => 'תגובה לא צפויה',
+        ],
     ],
 
     'validation' => [

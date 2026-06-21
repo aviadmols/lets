@@ -39,6 +39,31 @@ return [
             'error' => 'Connection error',
         ],
         'empty' => 'Connect your PayPlus account to start charging.',
+
+        // Environment toggle.
+        'environment' => 'Environment',
+        'env_production' => 'Production',
+        'env_sandbox' => 'Sandbox',
+
+        // Connect + auto-discovery flow.
+        'connect' => 'Connect',
+        'connect_need_creds' => 'Enter your API key and Secret key first.',
+        'connect_found' => 'Found :count terminal(s) on your PayPlus account.',
+        'connect_failed' => 'Could not reach PayPlus: :reason',
+        'pages_failed' => 'Could not load payment pages: :reason',
+        'discovery_heading' => 'Terminal & payment page',
+        'discovery_intro' => 'Discovered from your PayPlus account. Pick one if you have several.',
+        'terminal' => 'Terminal',
+        'terminal_inactive' => 'inactive',
+        'payment_page' => 'Payment page',
+        'connected_label' => 'Connected to',
+        'advanced' => 'Advanced',
+        'advanced_intro' => 'Optional. The webhook secret is not discoverable via the API — paste it only if PayPlus gave you one.',
+        'reason' => [
+            'auth' => 'invalid API key or secret',
+            'transport' => 'network or server error',
+            'malformed' => 'unexpected response',
+        ],
     ],
 
     'validation' => [

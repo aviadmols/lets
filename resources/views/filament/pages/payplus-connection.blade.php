@@ -1,5 +1,8 @@
 {{--
     Settings → PayPlus Connection (docs/ux/50-settings.md §1).
+    REDESIGN: merchant enters only api_key + secret_key + environment, then
+    "Connect" auto-discovers the terminal / payment page / cashier from PayPlus
+    (a picker appears only when the account has multiple terminals/pages).
     TOKENS: .rc-section/.rc-conn/.rc-badge/.rc-row (published theme). ZERO inline CSS.
     Secrets masked; credential values stay LTR even in HE.
 --}}
@@ -21,7 +24,7 @@
             </div>
         </div>
 
-        {{-- credential form --}}
+        {{-- credentials → Connect (discovery) → terminal/page pickers → Save --}}
         <form wire:submit="save" class="rc-stack">
             {{ $this->form }}
 

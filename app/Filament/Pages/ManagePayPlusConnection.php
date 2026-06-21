@@ -4,14 +4,20 @@ namespace App\Filament\Pages;
 
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Models\Shop;
+use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusAccountDiscovery;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
 use App\Support\Tenant;
+use Filament\Forms\Components\Actions;
+use Filament\Forms\Components\Actions\Action;
+use Filament\Forms\Components\Placeholder;
+use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
+use Filament\Forms\Get;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
@@ -19,13 +25,19 @@ use Throwable;
 
 /**
  * Settings → PayPlus Connection (docs/ux/50-settings.md §1, ARCHITECTURE.md
- * "Per-shop credentials"). The merchant pastes THEIR OWN PayPlus credentials,
- * stored encrypted on the current Shop via EncryptedCredentials. Secrets are
- * masked after save (we never re-display the full value; an empty secret field
- * on save means "keep the existing one"). A "Test connection" action probes the
- * gateway WITHOUT charging.
+ * "Per-shop credentials"). REDESIGNED: the merchant pastes only their api_key +
+ * secret_key and picks Production/Sandbox. The app then AUTO-DISCOVERS the
+ * terminal, payment page, and cashier from PayPlus (PayPlusAccountDiscovery):
  *
- * Tenant-safe: writes only to Tenant::current(); never touches another shop.
+ *   Connect  → GET /MyTerminals          → terminal_uid (picker if >1)
+ *   Terminal → GET /PaymentPages/list    → payment_page_uid + cashier_uid (picker if >1)
+ *   Save     → encrypted bag on the shop  (the existing payplus_credentials path)
+ *
+ * Secrets are masked after save (an empty secret field on save = "keep existing").
+ * The opaque terminal/cashier/page UIDs are never free-text anymore — they come
+ * from the discovered options, with a read-only "Connected to:" summary.
+ *
+ * Tenant-safe: reads/writes only Tenant::current(); never touches another shop.
  */
 class ManagePayPlusConnection extends Page implements HasForms
 {
@@ -40,12 +52,41 @@ class ManagePayPlusConnection extends Page implements HasForms
 
     /** Credential keys that are sensitive → masked after save, never re-shown. */
     public const SECRET_KEYS = ['api_key', 'secret_key', 'webhook_secret'];
+
+    /** Plain (non-secret) keys persisted directly into the encrypted bag. */
     public const PLAIN_KEYS = ['terminal_uid', 'cashier_uid', 'payment_page_uid', 'base_url'];
 
     /** @var array<string, mixed> */
     public array $data = [];
 
     public ?string $connectionStatus = 'not_connected';
+
+    /**
+     * Discovered terminals, keyed by uid → label, for the reactive Select. Lives on
+     * the Livewire component so it survives between the Connect action and render.
+     *
+     * @var array<string, string>
+     */
+    public array $terminalOptions = [];
+
+    /**
+     * Discovered payment pages for the selected terminal, keyed by uid → label.
+     *
+     * @var array<string, string>
+     */
+    public array $pageOptions = [];
+
+    /**
+     * The discovered page rows by uid, so terminal/page selection can recover the
+     * cashier_uid + names: [uid => ['name' => ..., 'cashier_uid' => ...]].
+     *
+     * @var array<string, array{name:string,cashier_uid:string}>
+     */
+    public array $pageMeta = [];
+
+    /** Human names for the connected summary line. */
+    public ?string $connectedTerminalName = null;
+    public ?string $connectedPageName = null;
 
     public static function getNavigationGroup(): ?string
     {
@@ -67,14 +108,35 @@ class ManagePayPlusConnection extends Page implements HasForms
         $shop = Tenant::current();
         $this->connectionStatus = $shop?->hasPayplusConnection() ? 'connected' : 'not_connected';
 
-        // Pre-fill plain fields; secrets stay blank (masked) — a saved secret shows
-        // the masked hint, an empty field keeps the stored value untouched.
         $bag = $shop?->payplus_credentials ?? [];
+
+        // Pre-seed the discovered-option props from what is already saved so a
+        // returning merchant sees their terminal/page already selected without a
+        // re-Connect (the Select needs the value present in its options).
+        $this->terminalOptions = [];
+        $this->pageOptions = [];
+        if (! empty($bag['terminal_uid'])) {
+            $this->terminalOptions = [$bag['terminal_uid'] => (string) $bag['terminal_uid']];
+        }
+        if (! empty($bag['payment_page_uid'])) {
+            $this->pageOptions = [$bag['payment_page_uid'] => (string) $bag['payment_page_uid']];
+            $this->pageMeta = [
+                $bag['payment_page_uid'] => [
+                    'name' => (string) $bag['payment_page_uid'],
+                    'cashier_uid' => (string) ($bag['cashier_uid'] ?? ''),
+                ],
+            ];
+        }
+
+        $this->connectedTerminalName = $bag['terminal_uid'] ?? null;
+        $this->connectedPageName = $bag['payment_page_uid'] ?? null;
+
+        // Secrets stay blank (masked); plain discovered values are pre-filled.
         $this->form->fill([
-            'terminal_uid' => $bag['terminal_uid'] ?? null,
-            'cashier_uid' => $bag['cashier_uid'] ?? null,
-            'payment_page_uid' => $bag['payment_page_uid'] ?? null,
             'base_url' => $bag['base_url'] ?? config('payplus.base_url'),
+            'terminal_uid' => $bag['terminal_uid'] ?? null,
+            'payment_page_uid' => $bag['payment_page_uid'] ?? null,
+            'cashier_uid' => $bag['cashier_uid'] ?? null,
         ]);
     }
 
@@ -83,42 +145,96 @@ class ManagePayPlusConnection extends Page implements HasForms
         return $form
             ->statePath('data')
             ->schema([
-                Section::make(__('settings.payplus.heading'))
-                    ->description(__('settings.payplus.intro'))
-                    ->schema([
-                        TextInput::make('api_key')
-                            ->label(__('settings.payplus.api_key'))
-                            ->password()
-                            ->revealable()
-                            ->placeholder($this->maskHint('api_key'))
-                            ->autocomplete(false),
-                        TextInput::make('secret_key')
-                            ->label(__('settings.payplus.secret_key'))
-                            ->password()
-                            ->revealable()
-                            ->placeholder($this->maskHint('secret_key'))
-                            ->autocomplete(false),
-                        TextInput::make('terminal_uid')
-                            ->label(__('settings.payplus.terminal_uid')),
-                        TextInput::make('cashier_uid')
-                            ->label(__('settings.payplus.cashier_uid')),
-                        TextInput::make('payment_page_uid')
-                            ->label(__('settings.payplus.payment_page_uid')),
-                        Select::make('base_url')
-                            ->label(__('settings.payplus.base_url'))
-                            ->options([
-                                config('payplus.base_url') => 'Production',
-                                config('payplus.base_url_sandbox', config('payplus.base_url')) => 'Sandbox',
-                            ])
-                            ->native(false),
-                        TextInput::make('webhook_secret')
-                            ->label(__('settings.payplus.webhook_secret'))
-                            ->password()
-                            ->revealable()
-                            ->placeholder($this->maskHint('webhook_secret'))
-                            ->autocomplete(false),
+                $this->credentialsSection(),
+                $this->discoverySection(),
+                $this->advancedSection(),
+            ]);
+    }
+
+    /** Step 1 — credentials + environment + the Connect action. */
+    private function credentialsSection(): Section
+    {
+        return Section::make(__('settings.payplus.heading'))
+            ->description(__('settings.payplus.intro'))
+            ->schema([
+                TextInput::make('api_key')
+                    ->label(__('settings.payplus.api_key'))
+                    ->password()
+                    ->revealable()
+                    ->placeholder($this->maskHint('api_key'))
+                    ->autocomplete(false),
+                TextInput::make('secret_key')
+                    ->label(__('settings.payplus.secret_key'))
+                    ->password()
+                    ->revealable()
+                    ->placeholder($this->maskHint('secret_key'))
+                    ->autocomplete(false),
+                Radio::make('base_url')
+                    ->label(__('settings.payplus.environment'))
+                    ->options([
+                        (string) config('payplus.base_url') => __('settings.payplus.env_production'),
+                        (string) config('payplus.base_url_sandbox', config('payplus.base_url')) => __('settings.payplus.env_sandbox'),
                     ])
-                    ->columns(2),
+                    ->default((string) config('payplus.base_url'))
+                    ->inline()
+                    ->inlineLabel(false),
+                Actions::make([
+                    Action::make('connect')
+                        ->label(__('settings.payplus.connect'))
+                        ->icon('heroicon-m-link')
+                        ->action('connect'),
+                ]),
+            ])
+            ->columns(2);
+    }
+
+    /** Step 2 + 3 — discovered terminal + payment page (pickers when >1). */
+    private function discoverySection(): Section
+    {
+        return Section::make(__('settings.payplus.discovery_heading'))
+            ->description(__('settings.payplus.discovery_intro'))
+            ->visible(fn (): bool => $this->terminalOptions !== [])
+            ->schema([
+                Select::make('terminal_uid')
+                    ->label(__('settings.payplus.terminal'))
+                    ->options(fn (): array => $this->terminalOptions)
+                    ->native(false)
+                    ->live()
+                    ->afterStateUpdated(function (?string $state): void {
+                        $this->onTerminalSelected($state);
+                    })
+                    ->visible(fn (): bool => count($this->terminalOptions) > 0),
+                Select::make('payment_page_uid')
+                    ->label(__('settings.payplus.payment_page'))
+                    ->options(fn (): array => $this->pageOptions)
+                    ->native(false)
+                    ->live()
+                    ->afterStateUpdated(function (?string $state): void {
+                        $this->onPageSelected($state);
+                    })
+                    ->visible(fn (): bool => count($this->pageOptions) > 0),
+                // Discovered, non-editable: the cashier rides along with the page.
+                Placeholder::make('connected_summary')
+                    ->label(__('settings.payplus.connected_label'))
+                    ->content(fn (Get $get): string => $this->summaryLine($get))
+                    ->visible(fn (Get $get): bool => filled($get('payment_page_uid'))),
+            ])
+            ->columns(2);
+    }
+
+    /** Advanced — the webhook secret (NOT API-discoverable), collapsed by default. */
+    private function advancedSection(): Section
+    {
+        return Section::make(__('settings.payplus.advanced'))
+            ->description(__('settings.payplus.advanced_intro'))
+            ->collapsed()
+            ->schema([
+                TextInput::make('webhook_secret')
+                    ->label(__('settings.payplus.webhook_secret'))
+                    ->password()
+                    ->revealable()
+                    ->placeholder($this->maskHint('webhook_secret'))
+                    ->autocomplete(false),
             ]);
     }
 
@@ -128,6 +244,137 @@ class ManagePayPlusConnection extends Page implements HasForms
         $bag = Tenant::current()?->payplus_credentials ?? [];
 
         return ! empty($bag[$key]) ? __('settings.payplus.masked_hint') : null;
+    }
+
+    /**
+     * Connect action — discover the account's terminals from the typed creds (or
+     * the stored secret when the field is left blank). Auto-selects a sole terminal
+     * and immediately fetches its payment pages. Fails closed with a masked reason.
+     */
+    public function connect(): void
+    {
+        $shop = Tenant::current();
+        if (! $shop) {
+            return;
+        }
+
+        [$apiKey, $secretKey, $baseUrl] = $this->resolveCredentials($shop);
+
+        if ($apiKey === '' || $secretKey === '') {
+            Notification::make()
+                ->title(__('settings.payplus.connect_need_creds'))
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        $discovery = PayPlusAccountDiscovery::for($apiKey, $secretKey, $baseUrl);
+        $terminals = $discovery->terminals();
+
+        if ($terminals === []) {
+            $this->terminalOptions = [];
+            $this->pageOptions = [];
+            Notification::make()
+                ->title(__('settings.payplus.connect_failed', [
+                    'reason' => __('settings.payplus.reason.'.($discovery->lastReason ?? 'transport')),
+                ]))
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        // Build the picker options (active terminals first, but keep all visible).
+        $this->terminalOptions = [];
+        foreach ($terminals as $t) {
+            $label = $t['name'].' — '.$t['uid'];
+            if (! $t['active']) {
+                $label .= ' ('.__('settings.payplus.terminal_inactive').')';
+            }
+            $this->terminalOptions[$t['uid']] = $label;
+        }
+
+        Notification::make()
+            ->title(__('settings.payplus.connect_found', ['count' => count($terminals)]))
+            ->success()
+            ->send();
+
+        // Auto-select a sole terminal and chain straight to its pages.
+        if (count($this->terminalOptions) === 1) {
+            $only = array_key_first($this->terminalOptions);
+            $this->data['terminal_uid'] = $only;
+            $this->onTerminalSelected($only);
+        }
+    }
+
+    /**
+     * Terminal selected → discover that terminal's payment pages. Auto-selects a
+     * sole page (carrying its cashier_uid). Reactive: invoked from the Select's
+     * afterStateUpdated AND from the auto-select path in connect().
+     */
+    public function onTerminalSelected(?string $terminalUid): void
+    {
+        $this->pageOptions = [];
+        $this->pageMeta = [];
+        $this->data['payment_page_uid'] = null;
+        $this->data['cashier_uid'] = null;
+        $this->connectedTerminalName = $this->terminalLabel($terminalUid);
+        $this->connectedPageName = null;
+
+        if (! $terminalUid) {
+            return;
+        }
+
+        $shop = Tenant::current();
+        if (! $shop) {
+            return;
+        }
+
+        [$apiKey, $secretKey, $baseUrl] = $this->resolveCredentials($shop);
+
+        $discovery = PayPlusAccountDiscovery::for($apiKey, $secretKey, $baseUrl);
+        $pages = $discovery->paymentPages($terminalUid);
+
+        if ($pages === []) {
+            Notification::make()
+                ->title(__('settings.payplus.pages_failed', [
+                    'reason' => __('settings.payplus.reason.'.($discovery->lastReason ?? 'transport')),
+                ]))
+                ->warning()
+                ->send();
+
+            return;
+        }
+
+        foreach ($pages as $p) {
+            $this->pageOptions[$p['uid']] = $p['name'];
+            $this->pageMeta[$p['uid']] = [
+                'name' => $p['name'],
+                'cashier_uid' => $p['cashier_uid'],
+            ];
+        }
+
+        // Auto-select a sole page (and its cashier).
+        if (count($this->pageOptions) === 1) {
+            $only = array_key_first($this->pageOptions);
+            $this->data['payment_page_uid'] = $only;
+            $this->onPageSelected($only);
+        }
+    }
+
+    /** Payment page selected → capture its cashier_uid + names for the summary. */
+    public function onPageSelected(?string $pageUid): void
+    {
+        if (! $pageUid || ! isset($this->pageMeta[$pageUid])) {
+            $this->data['cashier_uid'] = null;
+            $this->connectedPageName = null;
+
+            return;
+        }
+
+        $this->data['cashier_uid'] = $this->pageMeta[$pageUid]['cashier_uid'];
+        $this->connectedPageName = $this->pageMeta[$pageUid]['name'];
     }
 
     public function save(): void
@@ -140,13 +387,17 @@ class ManagePayPlusConnection extends Page implements HasForms
         $bag = $shop->payplus_credentials ?: [];
         $input = $this->form->getState();
 
-        // Plain fields overwrite directly; secrets only overwrite when a new value
-        // was typed (an empty secret field keeps the existing encrypted value).
+        // Plain (discovered) fields are read from the raw Livewire state ($this->data),
+        // NOT getState(): the discovery section is conditionally visible, and hidden
+        // Filament components are excluded from getState()/dehydration. The raw state
+        // always holds the discovered terminal/page/cashier we set programmatically.
         foreach (self::PLAIN_KEYS as $key) {
-            if (array_key_exists($key, $input)) {
-                $bag[$key] = $input[$key];
+            if (array_key_exists($key, $this->data)) {
+                $bag[$key] = $this->data[$key];
             }
         }
+        // Secrets overwrite only when a new value was typed (an empty secret field
+        // keeps the existing encrypted value). Secrets are always visible.
         foreach (self::SECRET_KEYS as $key) {
             if (! empty($input[$key])) {
                 $bag[$key] = $input[$key];
@@ -157,7 +408,7 @@ class ManagePayPlusConnection extends Page implements HasForms
         $shop->save();
 
         $this->connectionStatus = $shop->hasPayplusConnection() ? 'connected' : 'not_connected';
-        $this->mount(); // re-mask the secret fields
+        $this->mount(); // re-mask secret fields + refresh the connected summary
 
         Notification::make()->title(__('settings.payplus.saved'))->success()->send();
     }
@@ -198,5 +449,44 @@ class ManagePayPlusConnection extends Page implements HasForms
                 ->danger()
                 ->send();
         }
+    }
+
+    // === Internals ===
+
+    /**
+     * The credentials discovery should use: the TYPED secrets win; when a field is
+     * left blank we fall back to the shop's already-stored secret (so a returning
+     * merchant can re-Connect without re-pasting). Read from the raw Livewire state
+     * so it works regardless of which form sections are currently visible.
+     *
+     * @return array{0:string,1:string,2:string} [apiKey, secretKey, baseUrl]
+     */
+    private function resolveCredentials(Shop $shop): array
+    {
+        $bag = $shop->payplus_credentials ?: [];
+
+        $apiKey = (string) ($this->data['api_key'] ?? '') ?: (string) ($bag['api_key'] ?? '');
+        $secretKey = (string) ($this->data['secret_key'] ?? '') ?: (string) ($bag['secret_key'] ?? '');
+        $baseUrl = (string) ($this->data['base_url'] ?? '') ?: (string) config('payplus.base_url');
+
+        return [$apiKey, $secretKey, $baseUrl];
+    }
+
+    private function terminalLabel(?string $uid): ?string
+    {
+        if (! $uid) {
+            return null;
+        }
+
+        return $this->terminalOptions[$uid] ?? $uid;
+    }
+
+    /** The read-only "Connected to: {terminal} · {page}" line. */
+    private function summaryLine(Get $get): string
+    {
+        $terminal = $this->connectedTerminalName ?: $get('terminal_uid');
+        $page = $this->connectedPageName ?: $get('payment_page_uid');
+
+        return trim((string) $terminal).' · '.trim((string) $page);
     }
 }
