@@ -30,6 +30,22 @@ class ActivityEvent extends Model
         'manual_payment_email_resent',
         'reminder_email_sent',
         'cancellation_email_sent',
+        'charge_succeeded_email_sent',
+        'charge_failed_email_sent',
+    ];
+
+    /**
+     * Map a MerchantMailSettings template key → the Timeline kind written when
+     * that email is sent. Lets a listener record the right previewable kind
+     * without restating the mapping in three places.
+     */
+    public const EMAIL_KIND_FOR_TEMPLATE = [
+        'first_payment_welcome' => 'first_payment_welcome_email_sent',
+        'recurring_payment_reminder' => 'reminder_email_sent',
+        'manual_recurring_payment' => 'manual_payment_email_sent',
+        'charge_succeeded' => 'charge_succeeded_email_sent',
+        'charge_failed' => 'charge_failed_email_sent',
+        'plan_cancelled' => 'cancellation_email_sent',
     ];
 
     protected $guarded = [];

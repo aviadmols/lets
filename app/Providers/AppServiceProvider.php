@@ -2,8 +2,13 @@
 
 namespace App\Providers;
 
+use App\Events\ChargeFailed;
+use App\Events\ChargeSucceeded;
+use App\Listeners\SendChargeFailedNotification;
+use App\Listeners\SendChargeSucceededNotification;
 use App\Services\Shopify\Orders\DefaultShopifyOrderStrategy;
 use App\Services\Shopify\Orders\ShopifyOrderStrategy;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
@@ -34,5 +39,13 @@ class AppServiceProvider extends ServiceProvider
         if ($this->app->environment('production')) {
             URL::forceScheme('https');
         }
+
+        // Charge-attempt notifications. The orchestrator fires these AFTER the
+        // money truth (ledger + Timeline) is written; the listeners are tenant-
+        // bound, idempotent, and wrap sends so a mail failure never blocks a
+        // charge. Registered explicitly (not relying on auto-discovery) so the
+        // wiring is greppable.
+        Event::listen(ChargeSucceeded::class, SendChargeSucceededNotification::class);
+        Event::listen(ChargeFailed::class, SendChargeFailedNotification::class);
     }
 }

@@ -33,6 +33,8 @@ final class EventPresenter
         'manual_payment_email_resent' => ['info', 'timeline.kind.email_sent'],
         'reminder_email_sent' => ['info', 'timeline.kind.email_sent'],
         'cancellation_email_sent' => ['info', 'timeline.kind.email_sent'],
+        'charge_succeeded_email_sent' => ['info', 'timeline.kind.email_sent'],
+        'charge_failed_email_sent' => ['info', 'timeline.kind.email_sent'],
         'webhook_received' => ['info', 'timeline.kind.webhook_received'],
     ];
 

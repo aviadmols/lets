@@ -6,6 +6,9 @@ use App\Domain\Billing\Contracts\DocumentPolicy;
 use App\Domain\Billing\Contracts\DocumentPolicyInput;
 use App\Domain\Billing\IdempotencyKey;
 use App\Domain\Billing\Ledger;
+use App\Events\ChargeFailed;
+use App\Events\ChargeSucceeded;
+use App\Mail\ManualRecurringPaymentMail;
 use App\Models\CustomerConsent;
 use App\Models\InstallmentPayment;
 use App\Models\InstallmentPlan;
@@ -24,6 +27,7 @@ use App\Services\Shopify\Orders\ShopifyOrderStrategy;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 /**
  * The charge pipeline (the spine). Ported + multi-tenant-refactored from the
@@ -38,11 +42,12 @@ use Illuminate\Support\Facades\Log;
  *
  * Source: app/Modules/PayPlusShopifyInstallments/Services/ChargeOrchestrator.php
  *
- * TODO(phase 3.5/4): wire ChargeSucceeded/ChargeFailed events for email
- * listeners; TODO(phase 4): ShopifyOrderStrategy::createFulfillableOrder for
- * recurring cycles + ReleaseFulfillmentIfFullyPaidJob on installments completion;
- * TODO(phase 3.x): OrderChargeEligibility (cancelled/closed order) + manual-mode
- * email short-circuit (meta.manual_payment_sent_at).
+ * ChargeSucceeded/ChargeFailed events are fired AFTER the ledger + Timeline are
+ * written (Phase 3.5) — the email listeners are tenant-bound + non-blocking.
+ * TODO(phase 4): ShopifyOrderStrategy::createFulfillableOrder for recurring cycles
+ * + ReleaseFulfillmentIfFullyPaidJob on installments completion;
+ * TODO(phase 3.x): OrderChargeEligibility (cancelled/closed order); the manual-mode
+ * email short-circuit (meta.manual_payment_sent_at) is wired in handleManualMode().
  *
  * TODO(review #4, #6): see docs/reviews/phase-2-3.md — deferred gatekeeper
  * suggestions (not blockers) to be addressed in a follow-up pass.
@@ -164,6 +169,13 @@ final class ChargeOrchestrator
     ): ChargeOutcome {
         $masked = ResponseMasker::mask($result->raw);
 
+        // First-payment detection BEFORE this slot is marked succeeded: a plan with
+        // no prior succeeded payment is welcoming its customer with this charge.
+        // Drives the welcome-vs-confirmation choice in the ChargeSucceeded listener.
+        $isFirstPayment = $plan->payments()
+            ->where('status', PaymentStatus::SUCCEEDED->value)
+            ->count() === 0;
+
         // Ledger → succeeded. NEVER persist '' for the uid (unique-index collision).
         Ledger::transition($ledger, LedgerStatus::SUCCEEDED, [
             'payplus_transaction_uid' => $result->transactionUid ?: null,
@@ -221,7 +233,17 @@ final class ChargeOrchestrator
             shopId: $plan->shop_id,
         );
 
-        // TODO(phase 3.5): event(new ChargeSucceeded($plan, $payment)) for email listeners.
+        // Notification — fired AFTER the ledger row + Timeline are written (money
+        // truth first; an email is never the reason a charge "happened"). The
+        // listener is tenant-bound + wraps the send in try/catch so a mail failure
+        // can never roll back or block the charge.
+        ChargeSucceeded::dispatch(
+            (int) $plan->shop_id,
+            $plan,
+            $payment,
+            $isFirstPayment,
+            $isFinal,
+        );
 
         return ChargeOutcome::succeeded($ledger->idempotency_key, $result->transactionUid, $isFinal);
     }
@@ -285,7 +307,16 @@ final class ChargeOrchestrator
             shopId: $plan->shop_id,
         );
 
-        // TODO(phase 3.5): event(new ChargeFailed($plan, $payment)) for failed-charge email.
+        // Notification — fired AFTER the ledger row + Timeline are written. The
+        // failed-charge email tells the customer the reason + the next retry date.
+        ChargeFailed::dispatch(
+            (int) $plan->shop_id,
+            $plan,
+            $payment,
+            $result->errorCode,
+            $result->errorMessage,
+            $willRetry,
+        );
 
         return ChargeOutcome::failed($ledger->idempotency_key, $result->errorCode, $willRetry);
     }
@@ -320,37 +351,113 @@ final class ChargeOrchestrator
     }
 
     /**
-     * Manual-payment mode: no saved token. The reference engine emails a draft
-     * invoice and short-circuits on meta.manual_payment_sent_at so the scheduler
-     * never double-invoices. Full email wiring lands in phase 3.5; here we record
-     * the intent and advance the clock without charging.
+     * Manual-payment mode: no saved token. Emails the merchant's invoice link and
+     * short-circuits on meta.manual_payment_sent_at so the scheduler never
+     * double-invoices a customer who has not yet paid last cycle's invoice. The
+     * clock advances (recurring) without charging.
      */
     private function handleManualMode(InstallmentPlan $plan, PaymentType $type, string $key): ChargeOutcome
     {
         $alreadySent = (bool) (($plan->meta ?? [])['manual_payment_sent_at'] ?? false);
 
-        if (! $alreadySent) {
-            $meta = (array) ($plan->meta ?? []);
-            $meta['manual_payment_sent_at'] = now()->toIso8601String();
-            $plan->meta = $meta;
+        // SHORT-CIRCUIT (scar tissue): a customer who has not paid last cycle's
+        // emailed invoice must NOT get a second one. When the marker is set we only
+        // advance the clock (recurring) — never re-invoice — until payment lands.
+        if ($alreadySent) {
+            if ($plan->plan_kind === PlanKind::RECURRING) {
+                $plan->next_charge_at = $this->advanceNextChargeAt($plan);
+                $plan->save();
+            }
+
+            Timeline::record(
+                kind: 'manual_payment_pending',
+                details: ['type' => $type->value, 'key' => $key],
+                planId: $plan->getKey(),
+                shopId: $plan->shop_id,
+            );
+
+            return ChargeOutcome::skipped('manual_mode', $key);
         }
 
-        // Advance the clock so we don't re-trigger immediately (recurring only).
+        // First request this cycle: mark the marker (idempotency guard) + advance.
+        $meta = (array) ($plan->meta ?? []);
+        $meta['manual_payment_sent_at'] = now()->toIso8601String();
+        $plan->meta = $meta;
+
         if ($plan->plan_kind === PlanKind::RECURRING) {
             $plan->next_charge_at = $this->advanceNextChargeAt($plan);
         }
         $plan->save();
 
+        // Email the merchant's draft invoice link. The UNPAID-invoice draft-order
+        // method is not built yet (ShopifyDraftOrderService only does the
+        // completed-as-paid upsell child order), so the invoice URL is stubbed.
+        // TODO(phase 3.x): ShopifyDraftOrderService::createManualPaymentInvoice($plan)
+        // → unpaid draft → invoice_url; pass it to the mailable below.
+        $invoiceUrl = $this->manualInvoiceUrlStub($plan);
+        $recipient = $this->recipientFor($plan);
+
+        // The email is a side effect — wrap it so a mail failure never aborts the
+        // money pipeline (the marker is already set, the clock already advanced).
+        if ($recipient !== '') {
+            try {
+                Mail::to($recipient)->send(
+                    new ManualRecurringPaymentMail(
+                        shop: $plan->shop,
+                        plan: $plan,
+                        portalUrl: $this->portalUrlFor($plan),
+                        invoiceUrl: $invoiceUrl,
+                    ),
+                );
+            } catch (\Throwable $e) {
+                Log::warning('mail.manual_payment.send_failed', [
+                    'shop_id' => $plan->shop_id,
+                    'plan_id' => $plan->getKey(),
+                    'exception' => $e::class,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+        }
+
         Timeline::record(
-            kind: $alreadySent ? 'manual_payment_pending' : 'manual_payment_email_queued',
-            details: ['type' => $type->value, 'key' => $key],
+            kind: 'manual_payment_email_sent',
+            details: ['type' => $type->value, 'key' => $key, 'invoice_url' => $invoiceUrl],
             planId: $plan->getKey(),
             shopId: $plan->shop_id,
         );
 
-        // TODO(phase 3.5): dispatch ManualRecurringPaymentMail + draft order.
-
         return ChargeOutcome::skipped('manual_mode', $key);
+    }
+
+    /**
+     * Stub for the manual-payment invoice URL until the unpaid-draft method lands.
+     * Returns the portal URL (where the customer can pay) so the email's CTA is at
+     * least live, never a dead link.
+     */
+    private function manualInvoiceUrlStub(InstallmentPlan $plan): string
+    {
+        return $this->portalUrlFor($plan) ?? '';
+    }
+
+    /** Recipient email for a plan's notifications. */
+    private function recipientFor(InstallmentPlan $plan): string
+    {
+        return (string) ($plan->customer_email ?? '');
+    }
+
+    /**
+     * The signed customer-portal URL for the plan, when one can be built. The
+     * SignedUrlService magic-link port lands in Phase 6.5; until then we read an
+     * explicit per-shop portal landing URL from MailSettings if configured.
+     * TODO(phase 6.5): SignedUrlService::portalShowUrl($plan).
+     */
+    private function portalUrlFor(InstallmentPlan $plan): ?string
+    {
+        $settings = \App\Models\MerchantMailSettings::acrossAllTenants()
+            ->where('shop_id', $plan->shop_id)
+            ->first();
+
+        return $settings?->portal_store_page_url ?: null;
     }
 
     private function findOrCreatePayment(InstallmentPlan $plan, PaymentType $type): InstallmentPayment
