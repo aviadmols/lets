@@ -1,0 +1,192 @@
+{%- comment -%}
+  LETS installments app block — the storefront DEPOSIT entry (W9 Part C).
+
+  Renders "Pay a deposit & reserve it" on the product page and opens a <dialog>
+  whose <iframe> loads the deposit calculator THROUGH the App Proxy:
+      /apps/{proxy_subpath}/installments/modal/{productGid}/{variantGid}
+  Because the path is App-Proxy-relative, Shopify SIGNS the request — the backend
+  derives the shop from that signature, never from anything this block sends.
+
+  The block tracks variant changes (the theme dispatches `variant:change` /
+  updates ?variant=) and rebuilds the iframe src so the calculator always prices
+  the SELECTED variant. It listens for the iframe's postMessage('lets:redirect')
+  and navigates the TOP window to the returned PayPlus invoice URL.
+
+  Settings (theme editor): button label, proxy subpath (defaults to the app's
+  configured subpath), and which variant to use.
+{%- endcomment -%}
+
+{%- assign proxy_subpath = block.settings.proxy_subpath | default: 'payplus' -%}
+{%- assign current_variant = product.selected_or_first_available_variant -%}
+
+{%- if product and current_variant -%}
+  <div
+    class="lets-installments"
+    data-lets-installments
+    data-proxy-base="/apps/{{ proxy_subpath }}/installments"
+    data-product-id="{{ product.id }}"
+    data-variant-id="{{ current_variant.id }}"
+    data-locale="{{ request.locale.iso_code | default: 'en' }}"
+    data-currency="{{ cart.currency.iso_code | default: shop.currency }}"
+  >
+    <button type="button" class="lets-installments__btn" data-lets-open>
+      <span class="lets-installments__label">{{ block.settings.button_label | default: 'Pay a deposit & reserve it' }}</span>
+      {%- if block.settings.button_sublabel != blank -%}
+        <span class="lets-installments__sub">{{ block.settings.button_sublabel }}</span>
+      {%- endif -%}
+    </button>
+
+    <dialog class="lets-installments__dialog" data-lets-dialog aria-label="{{ block.settings.button_label | escape }}">
+      <button type="button" class="lets-installments__close" data-lets-close aria-label="Close">&times;</button>
+      <iframe
+        class="lets-installments__frame"
+        data-lets-frame
+        title="{{ block.settings.button_label | escape }}"
+        loading="lazy"
+        referrerpolicy="no-referrer"
+      ></iframe>
+    </dialog>
+  </div>
+
+  {%- style -%}
+    .lets-installments { margin: 12px 0; }
+    .lets-installments__btn {
+      display: inline-flex; flex-direction: column; align-items: flex-start;
+      gap: 2px; width: 100%; cursor: pointer;
+      padding: 12px 16px; border-radius: 10px;
+      border: 1px solid {{ block.settings.border_color | default: '#111827' }};
+      background: {{ block.settings.button_bg | default: '#111827' }};
+      color: {{ block.settings.button_fg | default: '#ffffff' }};
+      font-size: 15px; font-weight: 600; line-height: 1.3;
+    }
+    .lets-installments__sub { font-size: 12px; font-weight: 400; opacity: .85; }
+    .lets-installments__dialog {
+      width: min(520px, 94vw); max-width: 94vw; height: min(620px, 90vh);
+      padding: 0; border: none; border-radius: 14px; overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0,0,0,.35);
+    }
+    .lets-installments__dialog::backdrop { background: rgba(0,0,0,.45); }
+    .lets-installments__frame { width: 100%; height: 100%; border: 0; display: block; }
+    .lets-installments__close {
+      position: absolute; inset-inline-end: 10px; inset-block-start: 8px; z-index: 2;
+      width: 32px; height: 32px; border-radius: 50%; border: none; cursor: pointer;
+      background: rgba(0,0,0,.06); color: #111; font-size: 20px; line-height: 1;
+    }
+  {%- endstyle -%}
+
+  <script>
+    (function () {
+      'use strict';
+      var root = document.querySelector('[data-lets-installments]');
+      if (!root || root.dataset.letsBound) { return; }
+      root.dataset.letsBound = '1';
+
+      var dialog = root.querySelector('[data-lets-dialog]');
+      var frame = root.querySelector('[data-lets-frame]');
+      var proxyBase = root.getAttribute('data-proxy-base');
+      var productId = root.getAttribute('data-product-id');
+
+      function frameSrc(variantId) {
+        // Pass BARE NUMERIC ids in the path (no slashes, no %2F encoding pitfalls);
+        // the backend rebuilds the canonical gid:// before the cache lookup.
+        var qs = '?currency=' + encodeURIComponent(root.getAttribute('data-currency') || '')
+               + '&locale=' + encodeURIComponent(root.getAttribute('data-locale') || 'en');
+        return proxyBase + '/modal/' + encodeURIComponent(productId) + '/' + encodeURIComponent(variantId) + qs;
+      }
+
+      function currentVariantId() {
+        // 1) the URL ?variant= (theme variant pickers keep this in sync)
+        var url = new URL(window.location.href);
+        var v = url.searchParams.get('variant');
+        if (v) { return v; }
+        // 2) the data attribute (updated by the variant listener below)
+        return root.getAttribute('data-variant-id');
+      }
+
+      function openDialog() {
+        frame.src = frameSrc(currentVariantId());
+        if (typeof dialog.showModal === 'function') { dialog.showModal(); }
+        else { dialog.setAttribute('open', ''); }
+      }
+      function closeDialog() {
+        if (typeof dialog.close === 'function') { dialog.close(); } else { dialog.removeAttribute('open'); }
+        frame.src = 'about:blank';
+      }
+
+      root.querySelector('[data-lets-open]').addEventListener('click', openDialog);
+      root.querySelector('[data-lets-close]').addEventListener('click', closeDialog);
+      dialog.addEventListener('click', function (e) { if (e.target === dialog) { closeDialog(); } });
+
+      // Keep the variant in sync as the shopper switches options.
+      document.addEventListener('change', function (e) {
+        var input = e.target.closest('select[name="id"], input[name="id"]');
+        if (input && input.value) { root.setAttribute('data-variant-id', input.value); }
+      });
+      // Shopify's pub/sub variant-change event (newer themes).
+      if (window.Shopify && window.Shopify.designMode === undefined && document.addEventListener) {
+        document.addEventListener('variant:change', function (e) {
+          var variant = e && e.detail && e.detail.variant;
+          if (variant && variant.id) { root.setAttribute('data-variant-id', variant.id); }
+        });
+      }
+
+      // Receive the redirect instruction from the iframe (App-Proxy-signed page).
+      window.addEventListener('message', function (e) {
+        var data = e.data || {};
+        if (!data || data.source !== 'lets') { return; }
+        if (data.type === 'lets:redirect' && data.url) {
+          // Navigate the TOP window to the hosted PayPlus deposit invoice.
+          window.top.location.href = data.url;
+        } else if (data.type === 'lets:close') {
+          closeDialog();
+        }
+      });
+    })();
+  </script>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "LETS deposit & installments",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "button_label",
+      "label": "Button label",
+      "default": "Pay a deposit & reserve it"
+    },
+    {
+      "type": "text",
+      "id": "button_sublabel",
+      "label": "Button sub-label",
+      "default": "Split the rest into installments"
+    },
+    {
+      "type": "text",
+      "id": "proxy_subpath",
+      "label": "App Proxy subpath",
+      "info": "Must match the app's App Proxy subpath (default: payplus). Change only if you customized it.",
+      "default": "payplus"
+    },
+    {
+      "type": "color",
+      "id": "button_bg",
+      "label": "Button background",
+      "default": "#111827"
+    },
+    {
+      "type": "color",
+      "id": "button_fg",
+      "label": "Button text",
+      "default": "#ffffff"
+    },
+    {
+      "type": "color",
+      "id": "border_color",
+      "label": "Button border",
+      "default": "#111827"
+    }
+  ]
+}
+{% endschema %}

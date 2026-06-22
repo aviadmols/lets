@@ -1,0 +1,19 @@
+# LETS installments button — the storefront DEPOSIT entry (W9 Part C).
+#
+# A THEME app extension (type = "theme"): the merchant drops the "Pay a deposit &
+# reserve it" app block onto the product page in the theme editor — no code edits,
+# no theme.liquid surgery (App Store requirement: theme changes must not break the
+# app). The block renders the button + a <dialog> whose <iframe> points at the App
+# Proxy /apps/{subpath}/installments/modal/... so the calculator + start flow are
+# Shopify-SIGNED (the storefront never sends a trusted shop id or an amount).
+#
+# A standalone pasteable snippet (snippet/lets-installments-button.liquid) ships
+# alongside for merchants who prefer manual {% render %} insertion — same markup,
+# same App-Proxy-only calls. See docs/INSTALLMENTS-SNIPPET.md.
+
+api_version = "2026-04"
+
+[[extensions]]
+name = "LETS installments button"
+handle = "lets-installments"
+type = "theme"

@@ -44,6 +44,22 @@ final class RecordingShopifyClient implements ShopifyAdminApi
         return ['id' => '888', 'order_id' => '888', 'admin_graphql_api_id' => 'gid://shopify/Order/888'];
     }
 
+    /** @var array<int, array<string, mixed>> Deposit drafts created via GraphQL. */
+    public array $depositDrafts = [];
+
+    public function createDepositDraftOrder(array $input): array
+    {
+        $this->depositDrafts[] = $input;
+        $id = (string) $this->nextOrderId++;
+
+        return [
+            'draft_order_gid' => 'gid://shopify/DraftOrder/'.$id,
+            'draft_order_id' => $id,
+            'invoice_url' => 'https://example.myshopify.com/invoices/'.$id,
+            'name' => '#D'.$id,
+        ];
+    }
+
     public function fetchOrderWithMetafields(string $orderId): array
     {
         return ['id' => $orderId, 'tags' => 'installments-hold, installment_plan_active', 'metafields' => []];

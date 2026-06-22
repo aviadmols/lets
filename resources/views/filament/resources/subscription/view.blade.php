@@ -43,29 +43,6 @@
                 @else
                     <x-rc.badge tone="green" label="subscriptions.detail.order_released" />
                 @endif
-
-                <table class="rc-table">
-                    <thead>
-                        <tr>
-                            <th>{{ __('subscriptions.detail.col.sequence') }}</th>
-                            <th>{{ __('subscriptions.detail.col.amount') }}</th>
-                            <th>{{ __('subscriptions.detail.col.status') }}</th>
-                            <th>{{ __('subscriptions.detail.col.date') }}</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($this->schedule() as $slot)
-                            <tr>
-                                <td>{{ $slot->sequence === 1 && $slot->payment_type?->value === 'deposit'
-                                    ? __('subscriptions.detail.deposit')
-                                    : __('subscriptions.detail.installment_n', ['n' => $slot->sequence]) }}</td>
-                                <td class="rc-ltr">{{ \App\Support\Ui\Money::format($slot->amount) }}</td>
-                                <td><x-rc.badge :status="$slot->status->value" :label="'billing.ledger_status.' . $slot->status->value" /></td>
-                                <td class="rc-ltr">{{ optional($slot->charged_at)->format('d M Y') ?? '—' }}</td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
             @else
                 {{-- recurring rendering --}}
                 <div class="rc-kv">
@@ -78,6 +55,46 @@
                 </div>
             @endif
         </div>
+
+        {{-- Payment Schedule (installments only): per-slot status, attempts, and a
+             plain-language admin note. All values precomputed on the page; the
+             Timeline below remains the canonical attempted/succeeded feed. --}}
+        @if($this->isInstallments())
+            <div class="rc-section">
+                <div class="rc-section__title">{{ __('subscriptions.detail.payment_schedule') }}</div>
+                @php $scheduleRows = $this->scheduleRows(); @endphp
+                @if(count($scheduleRows) === 0)
+                    <p class="rc-muted">{{ __('subscriptions.detail.schedule_empty') }}</p>
+                @else
+                    <table class="rc-table">
+                        <thead>
+                            <tr>
+                                <th>{{ __('subscriptions.detail.col.sequence') }}</th>
+                                <th>{{ __('subscriptions.detail.col.amount') }}</th>
+                                <th>{{ __('subscriptions.detail.col.scheduled_for') }}</th>
+                                <th>{{ __('subscriptions.detail.col.status') }}</th>
+                                <th>{{ __('subscriptions.detail.col.attempts') }}</th>
+                                <th>{{ __('subscriptions.detail.col.charged_at') }}</th>
+                                <th>{{ __('subscriptions.detail.col.note') }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($scheduleRows as $row)
+                                <tr>
+                                    <td>{{ $row['sequence_label'] }}</td>
+                                    <td class="rc-ltr">{{ $row['amount'] }}</td>
+                                    <td class="rc-ltr">{{ $row['scheduled_for'] }}</td>
+                                    <td><x-rc.badge :status="$row['status']" :label="$row['status_label_key']" /></td>
+                                    <td class="rc-ltr">{{ $row['attempts'] }}</td>
+                                    <td class="rc-ltr">{{ $row['charged_at'] }}</td>
+                                    <td class="rc-muted">{{ $row['admin_note'] }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                @endif
+            </div>
+        @endif
 
         {{-- Payment ledger (this plan) — immutable money truth. No raw token / invoice_url. --}}
         <div class="rc-section">

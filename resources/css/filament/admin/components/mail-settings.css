@@ -1,0 +1,38 @@
+/* mail-settings.css — Settings → Email notifications (W9 Part A)
+   TOKENS: --rc-card --rc-bg --rc-border --rc-border-strong --rc-radius-control
+           --rc-ink --rc-ink-muted --rc-blue-bg --rc-space-1 --rc-space-2 --rc-space-3
+   Placeholder token chips + the sandboxed email-preview frame. ZERO inline CSS. */
+
+/* Placeholder helper chips: the {tokens} a template supports, shown inline. */
+.rc-token-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--rc-space-2);
+}
+.rc-token {
+    direction: ltr;
+    unicode-bidi: isolate;
+    font-family: ui-monospace, "SFMono-Regular", "Menlo", "Consolas", monospace;
+    font-size: 12px;
+    color: var(--rc-ink);
+    background: var(--rc-blue-bg);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    padding-block: 2px;
+    padding-inline: var(--rc-space-2);
+}
+
+/* The email-preview surface: a framed, sandboxed iframe rendering the email HTML. */
+.rc-preview {
+    background: var(--rc-bg);
+    border: 1px solid var(--rc-border-strong);
+    border-radius: var(--rc-radius-control);
+    padding: var(--rc-space-3);
+}
+.rc-preview__frame {
+    inline-size: 100%;
+    block-size: 520px;
+    border: 0;
+    background: var(--rc-card); /* white email canvas via the card token */
+    border-radius: var(--rc-radius-control);
+}

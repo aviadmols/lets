@@ -29,6 +29,7 @@ return [
         'enabled' => 'Send an upcoming-charge reminder',
         'offset_hours' => 'Hours before the charge',
         'offset_help' => 'How many hours before the next charge to email the reminder.',
+        'offset_option' => ':hours hours before',
     ],
 
     'smtp' => [
@@ -38,9 +39,12 @@ return [
         'host' => 'SMTP host',
         'port' => 'Port',
         'encryption' => 'Encryption',
+        'encryption_tls' => 'TLS',
+        'encryption_ssl' => 'SSL',
         'username' => 'Username',
         'password' => 'Password',
         'password_hint' => 'Saved encrypted. Paste a new value to replace it.',
+        'password_saved' => 'Saved — paste a new value to replace it.',
         'from_address' => 'From address',
         'from_name' => 'From name',
     ],
@@ -55,13 +59,28 @@ return [
         'note' => 'Preview uses sample data. Placeholders show as plain text.',
         'using_custom' => 'Showing your custom template.',
         'using_default' => 'Showing the default template.',
+        'close' => 'Close',
+    ],
+
+    'reset' => [
+        'heading' => 'Restore the default template?',
+        'body' => 'This clears your custom subject and body for this email. The platform default will be used.',
+    ],
+
+    'test' => [
+        'template' => 'Template to test',
+        'recipient' => 'Send to',
+        'sent' => 'Test email sent to :email.',
+        'failed' => 'Could not send the test email (:reason).',
     ],
 
     'actions' => [
         'save' => 'Save email settings',
-        'reset' => 'Reset to default',
+        'reset' => 'Restore default',
+        'preview' => 'Preview',
         'send_test' => 'Send test email',
     ],
 
     'saved' => 'Email settings saved.',
+    'reset_done' => 'Template restored to the default.',
 ];

@@ -20,6 +20,18 @@ interface ShopifyAdminApi
 
     public function completeDraftOrder(string $draftId, bool $paymentPending = false): array;
 
+    /**
+     * Create an UNPAID deposit draft order via GraphQL draftOrderCreate and return
+     * the hosted invoice URL the customer pays at. Unlike createDraftOrder (REST,
+     * no URL) this is the GraphQL surface specifically because only the GraphQL
+     * DraftOrder node exposes `invoiceUrl`. The draft stays OPEN (not completed) —
+     * the customer pays it on PayPlus, and orders/paid then activates the plan.
+     *
+     * @param  array<string, mixed>  $input  GraphQL DraftOrderInput (lineItems, email, tags, customAttributes, …)
+     * @return array{draft_order_id: string, draft_order_gid: string, invoice_url: string, name: string}
+     */
+    public function createDepositDraftOrder(array $input): array;
+
     public function fetchOrderWithMetafields(string $orderId): array;
 
     /** @return array<int, array<string, mixed>> */

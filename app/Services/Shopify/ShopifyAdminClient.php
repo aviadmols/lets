@@ -94,6 +94,53 @@ final class ShopifyAdminClient implements ShopifyAdminApi
         }
     }
 
+    /**
+     * Create an UNPAID deposit draft order and return its hosted invoice URL.
+     *
+     * GraphQL (NOT the REST createDraftOrder above) is deliberate: only the
+     * GraphQL DraftOrder node exposes `invoiceUrl`, the hosted page the customer is
+     * redirected to to pay the deposit. The draft is left OPEN — we do NOT complete
+     * it; the customer pays via PayPlus and the orders/paid webhook activates the
+     * plan. The line item is built from a server-trusted `originalUnitPrice` (the
+     * deposit amount the controller computed), never a client-sent amount.
+     *
+     * @param  array<string, mixed>  $input  DraftOrderInput
+     * @return array{draft_order_id: string, draft_order_gid: string, invoice_url: string, name: string}
+     */
+    public function createDepositDraftOrder(array $input): array
+    {
+        $mutation = <<<'GQL'
+        mutation depositDraftCreate($input: DraftOrderInput!) {
+          draftOrderCreate(input: $input) {
+            draftOrder { id legacyResourceId name invoiceUrl }
+            userErrors { field message }
+          }
+        }
+        GQL;
+
+        $body = $this->graphql($mutation, ['input' => $input]);
+        $payload = (array) data_get($body, 'data.draftOrderCreate', []);
+        $userErrors = (array) ($payload['userErrors'] ?? []);
+
+        if ($userErrors !== []) {
+            throw new RuntimeException('shopify.create_deposit_draft_order_failed: '.$this->stringifyErrors($userErrors));
+        }
+
+        $draft = (array) ($payload['draftOrder'] ?? []);
+        $invoiceUrl = (string) ($draft['invoiceUrl'] ?? '');
+
+        if ($invoiceUrl === '') {
+            throw new RuntimeException('shopify.create_deposit_draft_order_no_invoice_url shop='.$this->shopId);
+        }
+
+        return [
+            'draft_order_gid' => (string) ($draft['id'] ?? ''),
+            'draft_order_id' => (string) ($draft['legacyResourceId'] ?? ''),
+            'invoice_url' => $invoiceUrl,
+            'name' => (string) ($draft['name'] ?? ''),
+        ];
+    }
+
     public function createOrderTransaction(string $orderId, array $payload): array
     {
         $response = $this->request('POST', '/orders/'.$orderId.'/transactions.json', ['transaction' => $payload]);

@@ -89,16 +89,22 @@ prefix = "apps"
 embedded = false
 
 # === Extensions ===
-# ONE storefront extension lives under extensions/ and is AUTO-DISCOVERED by the
-# unified app config — it has its own extensions/lets-thank-you/
-# shopify.extension.toml, so NO [[extensions]] block is needed here.
-# `shopify app deploy` bundles it.
-#   - extensions/lets-thank-you → ui_extension (thank-you + order-status block).
+# Storefront extensions live under extensions/ and are AUTO-DISCOVERED by the
+# unified app config — each has its own extensions/<name>/shopify.extension.toml, so
+# NO [[extensions]] block is needed here. `shopify app deploy` bundles them.
+#   - extensions/lets-thank-you   → ui_extension (thank-you + order-status block).
 #                                 The single PayPlus token-charge upsell surface:
 #                                 displays the addable product(s) on the thank-you /
 #                                 order-status page and charges the saved PayPlus
 #                                 token via the App-Proxy-signed offer + signed
 #                                 accept URL (no card re-entry, no Shopify Payments).
+#   - extensions/lets-installments → theme app extension (app block + pasteable
+#                                 snippet). The DEPOSIT + installments storefront
+#                                 ENTRY (W9 Part C): the product-page button opens
+#                                 the App-Proxy-signed deposit calculator
+#                                 (/apps/payplus/installments/modal/...), which
+#                                 creates a plan + an UNPAID deposit invoice and
+#                                 redirects to PayPlus. No card data touches the app.
 # (Subscription / product / order / deposit / installment MANAGEMENT lives in the
 #  embedded admin app at /admin — that is the single control center, not a checkout
 #  extension; Shopify's model does not allow admin management inside a storefront

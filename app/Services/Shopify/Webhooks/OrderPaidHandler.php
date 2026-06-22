@@ -2,6 +2,7 @@
 
 namespace App\Services\Shopify\Webhooks;
 
+use App\Domain\Installments\PlanActivationService;
 use App\Models\WebhookEvent;
 use App\Support\Tenant;
 use Illuminate\Support\Facades\Event;
@@ -24,6 +25,8 @@ use Illuminate\Support\Facades\Log;
  */
 final class OrderPaidHandler implements WebhookHandler
 {
+    public function __construct(private readonly PlanActivationService $activation) {}
+
     public function handle(WebhookEvent $event): void
     {
         $shop = Tenant::current();
@@ -39,6 +42,30 @@ final class OrderPaidHandler implements WebhookHandler
             'topic' => $event->topic,
             'order_id' => $orderId,
         ]);
+
+        // DEPOSIT activation (W9 Part C): if this paid order is a LETS deposit (it
+        // carries the pps_plan_public_id / pps_order_role attributes, or its source
+        // draft id matches a plan), activate the plan — record the paid deposit,
+        // capture the reusable token, set next_charge_at, and flip the plan active.
+        // Idempotent: a twice-delivered webhook activates exactly once. Non-deposit
+        // orders return null and fall through unchanged. Wrapped so an activation
+        // hiccup never blocks the broader order.paid event below.
+        try {
+            $plan = $this->activation->activateFromPaidOrder($shop, $payload);
+            if ($plan !== null) {
+                Log::info('shopify.order_paid.deposit_activated', [
+                    'shop_id' => $shop->id,
+                    'order_id' => $orderId,
+                    'plan_id' => $plan->getKey(),
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::error('shopify.order_paid.deposit_activation_failed', [
+                'shop_id' => $shop->id,
+                'order_id' => $orderId,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         // Seam to laravel-backend: it owns token capture + plan activation. We emit
         // a string-keyed event (no hard class dependency on a backend class that

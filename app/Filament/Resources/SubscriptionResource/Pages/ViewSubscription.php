@@ -4,7 +4,10 @@ namespace App\Filament\Resources\SubscriptionResource\Pages;
 
 use App\Filament\Resources\SubscriptionResource;
 use App\Models\ActivityEvent;
+use App\Models\InstallmentPayment;
 use App\Models\PaymentLedger;
+use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
+use App\Modules\PayPlusShopifyInstallments\Enums\PaymentType;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Support\Ui\Money;
 use Filament\Resources\Pages\Page;
@@ -90,6 +93,110 @@ class ViewSubscription extends Page
     public function schedule(): iterable
     {
         return $this->record->payments()->orderBy('sequence')->get();
+    }
+
+    /**
+     * The Payment Schedule rows (W9 Part B), fully resolved in PHP so the Blade only
+     * renders. Each row is the installments plan's per-slot record: "N of M",
+     * amount, scheduled date, the slot status, the attempt count, the charged-at
+     * timestamp, and a human admin note (mirrors the reference engine's
+     * adminOutstandingNote()). The Timeline below this section remains the canonical
+     * "when was the recurring charge attempted + did it succeed" feed.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function scheduleRows(): array
+    {
+        $slots = $this->record->payments()->orderBy('sequence')->get();
+        $total = $this->scheduleTotal($slots->count());
+
+        $rows = [];
+        foreach ($slots as $slot) {
+            $statusValue = $slot->status instanceof PaymentStatus
+                ? $slot->status->value
+                : (string) $slot->status;
+
+            $rows[] = [
+                'sequence_label' => $this->sequenceLabel($slot, $total),
+                'amount' => Money::format($slot->amount, $slot->currency ?? Money::DEFAULT_CURRENCY),
+                'scheduled_for' => $this->scheduledDate($slot),
+                'status' => $statusValue,
+                'status_label_key' => 'billing.ledger_status.'.$statusValue,
+                'attempts' => (int) ($slot->attempt_count ?? 0),
+                'charged_at' => optional($slot->charged_at)->format('d M Y, H:i') ?? '—',
+                'admin_note' => $this->adminNote($slot, $statusValue),
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The per-row admin note — a plain-language disposition the merchant reads at a
+     * glance (mirrors the reference engine's adminOutstandingNote()):
+     *   succeeded       → "Paid"
+     *   retry_scheduled → "Attempt N — {error}" / "Retry scheduled for {date}"
+     *   failed          → "Attempt N — {error}"
+     *   pending         → "Awaiting customer" (manual) / "Scheduled"
+     * Resolved here (PHP), never in the Blade.
+     */
+    private function adminNote(InstallmentPayment $slot, string $status): string
+    {
+        $attempts = (int) ($slot->attempt_count ?? 0);
+        $reason = trim((string) ($slot->failure_message ?? $slot->failure_code ?? ''));
+
+        return match ($status) {
+            PaymentStatus::SUCCEEDED->value => __('subscriptions.detail.note.paid'),
+            PaymentStatus::REFUNDED->value => __('subscriptions.detail.note.refunded'),
+            PaymentStatus::FAILED->value => $reason !== ''
+                ? __('subscriptions.detail.note.attempt_error', ['attempt' => max(1, $attempts), 'error' => $reason])
+                : __('subscriptions.detail.note.attempt_failed', ['attempt' => max(1, $attempts)]),
+            PaymentStatus::RETRY_SCHEDULED->value => $slot->next_retry_at !== null
+                ? __('subscriptions.detail.note.retry_on', ['date' => $slot->next_retry_at->format('d M Y')])
+                : __('subscriptions.detail.note.retry_pending'),
+            // pending: a manual-payment plan waits on the customer; an auto plan is queued.
+            default => $this->record->requires_manual_payment
+                ? __('subscriptions.detail.note.awaiting_customer')
+                : __('subscriptions.detail.note.scheduled'),
+        };
+    }
+
+    /**
+     * "N of M" total: the plan's known installment count (meta) when present, else
+     * the number of recorded slots — so the label is stable even before every slot
+     * exists.
+     */
+    private function scheduleTotal(int $slotCount): int
+    {
+        $metaCount = (int) ($this->record->meta['installment_count'] ?? 0);
+
+        return $metaCount > 0 ? $metaCount : max($slotCount, 1);
+    }
+
+    /** Per-slot label: a first deposit shows "Deposit", others show "N of M". */
+    private function sequenceLabel(InstallmentPayment $slot, int $total): string
+    {
+        if ($slot->sequence === 1 && $slot->payment_type === PaymentType::DEPOSIT) {
+            return __('subscriptions.detail.deposit');
+        }
+
+        return __('subscriptions.detail.n_of_m', ['n' => (int) $slot->sequence, 'm' => $total]);
+    }
+
+    /**
+     * The slot's scheduled date: a paid slot shows when it was charged; a pending /
+     * retry slot shows its next attempt date; otherwise the plan's next charge date
+     * for the soonest unpaid slot, else em-dash. Display string only.
+     */
+    private function scheduledDate(InstallmentPayment $slot): string
+    {
+        $when = $slot->charged_at ?? $slot->next_retry_at;
+
+        if ($when === null && $slot->status === PaymentStatus::PENDING) {
+            $when = $this->record->next_charge_at;
+        }
+
+        return $when !== null ? $when->format('d M Y') : '—';
     }
 
     /** @return iterable<PaymentLedger> per-plan ledger rows (immutable money truth) */

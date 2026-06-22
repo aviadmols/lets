@@ -64,6 +64,16 @@ final class FakeProductShopifyClient implements ShopifyAdminApi
         return [];
     }
 
+    public function createDepositDraftOrder(array $input): array
+    {
+        return [
+            'draft_order_gid' => 'gid://shopify/DraftOrder/0',
+            'draft_order_id' => '0',
+            'invoice_url' => 'https://example.test/invoices/0',
+            'name' => '#D0',
+        ];
+    }
+
     public function fetchOrderWithMetafields(string $orderId): array
     {
         return [];

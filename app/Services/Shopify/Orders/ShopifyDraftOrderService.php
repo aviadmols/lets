@@ -6,21 +6,87 @@ use App\Models\InstallmentPlan;
 use App\Services\Shopify\ShopifyAdminApi;
 
 /**
- * The draft-order → complete-as-paid pattern. Ported (lean) + multi-tenant from
- * the reference ShopifyDraftOrderService. This is the locked Shopify shape for
- * the post-purchase UPSELL child order (ARCHITECTURE.md): create a draft linked
- * to the parent, complete it as paid (the money already moved on the saved
- * PayPlus token), yielding a separate linked child order — no order-edit, no
- * external-payment reconciliation issues.
+ * The draft-order pattern, both directions. Ported (lean) + multi-tenant from the
+ * reference ShopifyDraftOrderService. TWO locked Shopify shapes:
  *
- * Exposed now as the SEAM Phase 6 builds on; the full upsell flow (offer
- * resolution, charge, accept/decline) is out of this run's scope.
+ *   1. UPSELL child order  — draft COMPLETED-as-paid (createUpsellChildOrder*):
+ *      the money already moved on the saved PayPlus token, so we complete the draft
+ *      as paid, yielding a separate linked child order — no order-edit, no
+ *      external-payment reconciliation issues.
  *
- * @see DefaultShopifyOrderStrategy::onUpsell() — the Phase-6 call site.
+ *   2. DEPOSIT invoice (W9 Part C) — draft left OPEN (createDepositInvoice): the
+ *      installments-plan first payment. We create an UNPAID deposit draft and hand
+ *      back its hosted invoiceUrl; the customer pays it on PayPlus, and the
+ *      orders/paid webhook then activates the plan (PlanActivationService).
+ *
+ * @see DefaultShopifyOrderStrategy::onUpsell()             — the upsell call site.
+ * @see App\Domain\Installments\Http\Controllers\Storefront\StartInstallmentPlanController — the deposit call site.
  */
 final class ShopifyDraftOrderService
 {
+    // === CONSTANTS ===
+    /** Note/custom attribute keys that link the deposit draft+order back to the plan. */
+    private const ATTR_PLAN_PUBLIC_ID = 'pps_plan_public_id';
+    private const ATTR_ORDER_ROLE = 'pps_order_role';
+    private const ROLE_DEPOSIT = 'installments_deposit';
+
     public function __construct(private readonly ShopifyAdminApi $client) {}
+
+    /**
+     * Create the UNPAID deposit draft order for an installments plan and return the
+     * hosted invoice URL the customer is redirected to to pay the deposit.
+     *
+     * The DEPOSIT case (W9 Part C) — the mirror image of the upsell child order:
+     *   - upsell  = draft COMPLETED-as-paid (money already moved on the saved token);
+     *   - deposit = draft left OPEN (the customer is about to pay it on PayPlus).
+     * We never complete the draft here; orders/paid activates the plan once the
+     * deposit is paid. The line price is the SERVER-computed deposit amount the
+     * controller passed (originalUnitPrice), never a client-sent value — money law.
+     *
+     * The draft + the resulting order carry custom attributes that link back to the
+     * plan (public_id + role), so the orders/paid handler can find the plan by the
+     * draft id OR by these note attributes and activate it.
+     *
+     * @param  array{title: string, deposit_amount: float, quantity?: int, variant_gid?: string}  $lineItem
+     * @return array{draft_order_id: string, draft_order_gid: string, invoice_url: string, name: string}
+     */
+    public function createDepositInvoice(InstallmentPlan $plan, array $lineItem): array
+    {
+        // The draft inherits the shop's store currency (Israeli PayPlus merchants =
+        // ILS); we don't pin presentmentCurrencyCode so multi-currency stores keep
+        // their own resolution. The amount is the server-computed deposit.
+        $email = (string) ($plan->customer_email ?? '');
+
+        // GraphQL DraftOrderInput line item. We send a CUSTOM line item (title +
+        // explicit price, NO variantId) so the invoice charges EXACTLY the deposit,
+        // not the variant's full retail price. The price field is the Money scalar
+        // `originalUnitPrice` (the deposit amount, server-trusted).
+        //
+        // API-VERSION NOTE (verify before a version bump — §11): on DraftOrderLineItemInput,
+        // `originalUnitPrice` (Money string) is the deposit price field; recent
+        // versions also expose `originalUnitPriceWithCurrency` (MoneyInput). Pinned
+        // to 2026-04 where `originalUnitPrice` is accepted. If a future version
+        // removes it, switch to originalUnitPriceWithCurrency:{amount,currencyCode}.
+        $lineInput = array_filter([
+            'title' => (string) $lineItem['title'],
+            'quantity' => (int) ($lineItem['quantity'] ?? 1),
+            'originalUnitPrice' => number_format((float) $lineItem['deposit_amount'], 2, '.', ''),
+            'requiresShipping' => false,
+        ], static fn ($v): bool => $v !== null);
+
+        $input = array_filter([
+            'email' => $email !== '' ? $email : null,
+            'tags' => [(string) (config('shopify.tags.installments_hold') ?? 'installments-hold')],
+            'lineItems' => [$lineInput],
+            'customAttributes' => [
+                ['key' => self::ATTR_ORDER_ROLE, 'value' => self::ROLE_DEPOSIT],
+                ['key' => self::ATTR_PLAN_PUBLIC_ID, 'value' => (string) $plan->public_id],
+            ],
+            'note' => __('storefront.installments.deposit_note', ['plan' => (string) $plan->public_id]),
+        ], static fn ($v): bool => $v !== null && $v !== '');
+
+        return $this->client->createDepositDraftOrder($input);
+    }
 
     /**
      * Create a linked child order for an upsell, as a completed-as-paid draft.

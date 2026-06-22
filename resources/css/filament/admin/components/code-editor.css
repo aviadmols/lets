@@ -1,0 +1,59 @@
+/* code-editor.css — HtmlCodeEditor (merchant email-body HTML source editor)
+   TOKENS: --rc-card --rc-border --rc-border-strong --rc-radius-control
+           --rc-ink --rc-ink-muted --rc-space-2 --rc-space-3 --rc-ring --rc-blue
+   The editor is ALWAYS LTR (code reads left-to-right) even in the Hebrew/RTL
+   admin — direction is set here, never inline. Monospace for source clarity. */
+
+.rc-code {
+    inline-size: 100%;
+}
+
+/* Textarea fallback (pre-CodeMirror / no-JS). Same frame as the live editor so
+   there is no layout jump when CodeMirror upgrades it. */
+.rc-code__area {
+    inline-size: 100%;
+    min-block-size: 240px;
+    direction: ltr;
+    text-align: start;
+    font-family: ui-monospace, "SFMono-Regular", "Menlo", "Consolas", monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--rc-ink);
+    background: var(--rc-card);
+    border: 1px solid var(--rc-border-strong);
+    border-radius: var(--rc-radius-control);
+    padding: var(--rc-space-3);
+    resize: vertical;
+}
+.rc-code__area:focus {
+    outline: none;
+    box-shadow: var(--rc-ring);
+    border-color: var(--rc-blue);
+}
+
+/* CodeMirror instance skin (the .CodeMirror element it injects). It carries its
+   own stylesheet for the gutter/syntax colors; here we only frame it on-token and
+   force LTR so Hebrew admins still edit HTML left-to-right. */
+.rc-code .CodeMirror {
+    direction: ltr;
+    block-size: auto;
+    min-block-size: 240px;
+    font-family: ui-monospace, "SFMono-Regular", "Menlo", "Consolas", monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--rc-ink);
+    background: var(--rc-card);
+    border: 1px solid var(--rc-border-strong);
+    border-radius: var(--rc-radius-control);
+}
+.rc-code .CodeMirror-focused {
+    box-shadow: var(--rc-ring);
+    border-color: var(--rc-blue);
+}
+.rc-code .CodeMirror-gutters {
+    background: var(--rc-bg);
+    border-inline-end: 1px solid var(--rc-border);
+}
+.rc-code .CodeMirror-linenumber {
+    color: var(--rc-ink-muted);
+}
