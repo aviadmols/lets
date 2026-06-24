@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\SubscriptionResource\Pages;
 
+use App\Domain\Lifecycle\ChargeNowService;
 use App\Domain\Lifecycle\SubscriptionLifecycleService;
 use App\Filament\Resources\SubscriptionResource;
 use App\Models\ActivityEvent;
@@ -11,6 +12,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentType;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Modules\PayPlusShopifyInstallments\Services\ChargeOutcome;
 use App\Support\Ui\Money;
 use Filament\Actions;
 use Filament\Forms\Components\Textarea;
@@ -94,6 +96,18 @@ class ViewSubscription extends Page
                         ->maxLength(500),
                 ])
                 ->action(fn (array $data) => $this->applyLifecycle('cancel', $data['reason'] ?? null)),
+
+            Actions\Action::make('chargeNow')
+                ->label(__('subscriptions.action.charge_now.label'))
+                ->icon('heroicon-m-bolt')
+                ->color('primary')
+                ->visible(fn (): bool => $this->canChargeNow())
+                ->requiresConfirmation()
+                ->modalHeading(__('subscriptions.action.charge_now.heading'))
+                ->modalDescription(fn (): string => __('subscriptions.action.charge_now.body', [
+                    'amount' => Money::format((float) $this->record->installment_amount, $this->record->currency ?: Money::DEFAULT_CURRENCY),
+                ]))
+                ->action(fn () => $this->chargeNow()),
         ];
     }
 
@@ -117,6 +131,41 @@ class ViewSubscription extends Page
                 ->title(__('subscriptions.action.'.$op.'.success'))
                 ->success()
                 ->send();
+        } catch (\Throwable $e) {
+            Notification::make()
+                ->title(__('subscriptions.action.failed'))
+                ->body($e->getMessage())
+                ->danger()
+                ->send();
+        }
+    }
+
+    /** Charge-now is offered only for a chargeable plan with a saved token. */
+    private function canChargeNow(): bool
+    {
+        return in_array($this->record->status, [PlanStatus::ACTIVE, PlanStatus::AWAITING_FIRST_PAYMENT], true)
+            && $this->record->activePaymentMethod() !== null;
+    }
+
+    /** Out-of-schedule charge via ChargeNowService (the orchestrator) + a result notice. */
+    protected function chargeNow(): void
+    {
+        try {
+            $outcome = app(ChargeNowService::class)->chargeNow($this->record);
+            $this->record->refresh();
+
+            if ($outcome->isSucceeded()) {
+                Notification::make()->title(__('subscriptions.action.charge_now.success'))->success()->send();
+            } elseif ($outcome->result === ChargeOutcome::RESULT_FAILED) {
+                Notification::make()
+                    ->title($outcome->willRetry
+                        ? __('subscriptions.action.charge_now.failed_retry')
+                        : __('subscriptions.action.charge_now.failed'))
+                    ->danger()
+                    ->send();
+            } else { // skipped — already paid, nothing due, or consent missing
+                Notification::make()->title(__('subscriptions.action.charge_now.skipped'))->warning()->send();
+            }
         } catch (\Throwable $e) {
             Notification::make()
                 ->title(__('subscriptions.action.failed'))

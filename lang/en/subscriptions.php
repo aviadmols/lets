@@ -88,5 +88,14 @@ return [
             'reason' => 'Reason (optional)',
             'success' => 'Subscription cancelled.',
         ],
+        'charge_now' => [
+            'label' => 'Charge now',
+            'heading' => 'Charge this subscription now?',
+            'body' => 'The saved card will be charged :amount immediately.',
+            'success' => 'Charge succeeded.',
+            'failed' => 'Charge failed.',
+            'failed_retry' => 'Charge failed — a retry is scheduled.',
+            'skipped' => 'Nothing to charge right now (already paid or awaiting consent).',
+        ],
     ],
 ];
