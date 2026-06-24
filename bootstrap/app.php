@@ -29,6 +29,14 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Support\Facades\Route::middleware('web')
                 ->group(base_path('routes/upsell.php'));
 
+            // CUSTOMER PORTAL magic-link routes (Phase 6.5). SIGNED links are the
+            // auth (no admin session); the controller binds the tenant from the
+            // signed shop and scopes every query to the signed customer. In the
+            // `web` group so the rendered page gets a session + CSRF token for its
+            // pause/resume/cancel POST forms (the signature stays the primary auth).
+            \Illuminate\Support\Facades\Route::middleware('web')
+                ->group(base_path('routes/portal.php'));
+
             // App-Proxy seam for the checkout/post-purchase EXTENSIONS. Stateless
             // JSON — no session, no CSRF token (server-to-server via the Shopify
             // proxy). VerifyShopifyAppProxy is the auth (Shopify `signature`) and

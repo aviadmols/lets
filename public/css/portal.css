@@ -1,0 +1,236 @@
+/* portal.css — customer self-service portal (Phase 6.5). Customer-facing page,
+   NO admin chrome. Tokens → component classes only. NO inline CSS (the email
+   exemption does NOT apply here). RTL-aware via [dir=rtl] + the .ppp--rtl modifier.
+
+   TOKENS (scoped to the portal root so we never collide with anything else):
+     --ppp-bg --ppp-card --ppp-border --ppp-ink --ppp-ink-muted
+     --ppp-accent --ppp-accent-ink --ppp-danger --ppp-success --ppp-warn
+     --ppp-radius --ppp-shadow --ppp-space-1..6
+*/
+
+.ppp {
+    --ppp-bg: #f5f6f8;
+    --ppp-card: #ffffff;
+    --ppp-border: #e5e7eb;
+    --ppp-ink: #111827;
+    --ppp-ink-muted: #6b7280;
+    --ppp-accent: #4f46e5;
+    --ppp-accent-ink: #ffffff;
+    --ppp-danger: #b91c1c;
+    --ppp-danger-soft: #fef2f2;
+    --ppp-success: #047857;
+    --ppp-success-soft: #ecfdf5;
+    --ppp-warn: #b45309;
+    --ppp-warn-soft: #fffbeb;
+    --ppp-radius: 12px;
+    --ppp-shadow: 0 1px 3px rgba(17, 24, 39, .08), 0 1px 2px rgba(17, 24, 39, .04);
+    --ppp-space-1: 4px;
+    --ppp-space-2: 8px;
+    --ppp-space-3: 12px;
+    --ppp-space-4: 16px;
+    --ppp-space-5: 24px;
+    --ppp-space-6: 32px;
+
+    box-sizing: border-box;
+    max-width: 640px;
+    margin: 0 auto;
+    padding: var(--ppp-space-5) var(--ppp-space-4);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ppp-ink);
+    background: var(--ppp-bg);
+    min-height: 100vh;
+}
+
+.ppp *,
+.ppp *::before,
+.ppp *::after {
+    box-sizing: border-box;
+}
+
+.ppp__header {
+    margin-bottom: var(--ppp-space-5);
+    text-align: center;
+}
+
+.ppp__title {
+    font-size: 24px;
+    font-weight: 700;
+    margin: 0 0 var(--ppp-space-2);
+}
+
+.ppp__subtitle {
+    color: var(--ppp-ink-muted);
+    margin: 0;
+    font-size: 14px;
+}
+
+.ppp__card {
+    background: var(--ppp-card);
+    border: 1px solid var(--ppp-border);
+    border-radius: var(--ppp-radius);
+    box-shadow: var(--ppp-shadow);
+    padding: var(--ppp-space-5);
+    margin-bottom: var(--ppp-space-4);
+}
+
+.ppp__empty {
+    text-align: center;
+}
+
+.ppp__empty-text {
+    color: var(--ppp-ink-muted);
+    margin: 0;
+}
+
+.ppp__plan-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ppp-space-3);
+    margin-bottom: var(--ppp-space-4);
+    flex-wrap: wrap;
+}
+
+.ppp__kind {
+    font-weight: 700;
+    font-size: 16px;
+}
+
+.ppp__ref {
+    display: block;
+    color: var(--ppp-ink-muted);
+    font-size: 12px;
+    margin-top: var(--ppp-space-1);
+}
+
+/* === Status badge === */
+.ppp__badge {
+    display: inline-block;
+    padding: var(--ppp-space-1) var(--ppp-space-3);
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #f3f4f6;
+    color: var(--ppp-ink-muted);
+    white-space: nowrap;
+}
+
+.ppp__badge--active { background: var(--ppp-success-soft); color: var(--ppp-success); }
+.ppp__badge--paused { background: var(--ppp-warn-soft); color: var(--ppp-warn); }
+.ppp__badge--failed { background: var(--ppp-danger-soft); color: var(--ppp-danger); }
+.ppp__badge--cancelled { background: #f3f4f6; color: var(--ppp-ink-muted); }
+.ppp__badge--completed { background: var(--ppp-success-soft); color: var(--ppp-success); }
+.ppp__badge--awaiting_first_payment { background: var(--ppp-warn-soft); color: var(--ppp-warn); }
+.ppp__badge--draft { background: #f3f4f6; color: var(--ppp-ink-muted); }
+
+/* === Facts === */
+.ppp__facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: var(--ppp-space-4);
+    margin: 0 0 var(--ppp-space-4);
+}
+
+.ppp__fact { margin: 0; }
+
+.ppp__fact-label {
+    color: var(--ppp-ink-muted);
+    font-size: 12px;
+    margin-bottom: var(--ppp-space-1);
+}
+
+.ppp__fact-value {
+    margin: 0;
+    font-weight: 600;
+    font-size: 15px;
+}
+
+/* === History === */
+.ppp__history {
+    border-top: 1px solid var(--ppp-border);
+    padding-top: var(--ppp-space-3);
+    margin-bottom: var(--ppp-space-4);
+}
+
+.ppp__history-summary {
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--ppp-accent);
+}
+
+.ppp__table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: var(--ppp-space-3);
+    font-size: 13px;
+}
+
+.ppp__table th,
+.ppp__table td {
+    text-align: start;
+    padding: var(--ppp-space-2) var(--ppp-space-3);
+    border-bottom: 1px solid var(--ppp-border);
+}
+
+.ppp__table th {
+    color: var(--ppp-ink-muted);
+    font-weight: 600;
+}
+
+.ppp__pill {
+    display: inline-block;
+    padding: 2px var(--ppp-space-2);
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    background: #f3f4f6;
+    color: var(--ppp-ink-muted);
+}
+
+.ppp__pill--succeeded { background: var(--ppp-success-soft); color: var(--ppp-success); }
+.ppp__pill--failed { background: var(--ppp-danger-soft); color: var(--ppp-danger); }
+.ppp__pill--refunded { background: #f3f4f6; color: var(--ppp-ink-muted); }
+.ppp__pill--pending { background: var(--ppp-warn-soft); color: var(--ppp-warn); }
+.ppp__pill--retry_scheduled { background: var(--ppp-warn-soft); color: var(--ppp-warn); }
+
+/* === Actions === */
+.ppp__actions {
+    display: flex;
+    gap: var(--ppp-space-3);
+    flex-wrap: wrap;
+    border-top: 1px solid var(--ppp-border);
+    padding-top: var(--ppp-space-4);
+}
+
+.ppp__action { margin: 0; }
+
+.ppp__btn {
+    appearance: none;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: var(--ppp-space-3) var(--ppp-space-5);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.ppp__btn--primary { background: var(--ppp-accent); color: var(--ppp-accent-ink); }
+.ppp__btn--secondary { background: #f3f4f6; color: var(--ppp-ink); border-color: var(--ppp-border); }
+.ppp__btn--danger { background: var(--ppp-card); color: var(--ppp-danger); border-color: var(--ppp-danger); }
+
+.ppp__footer {
+    margin-top: var(--ppp-space-5);
+    text-align: center;
+}
+
+.ppp__footnote {
+    color: var(--ppp-ink-muted);
+    font-size: 12px;
+    margin: 0;
+}
+
+/* RTL: tables already use logical `start`; nothing else needs flipping because the
+   layout is built on flex/grid + logical properties. The modifier is a hook for any
+   future direction-specific tweak. */
+.ppp--rtl .ppp__ref { direction: ltr; unicode-bidi: embed; }

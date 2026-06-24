@@ -454,18 +454,46 @@ final class ChargeOrchestrator
     }
 
     /**
-     * The signed customer-portal URL for the plan, when one can be built. The
-     * SignedUrlService magic-link port lands in Phase 6.5; until then we read an
-     * explicit per-shop portal landing URL from MailSettings if configured.
-     * TODO(phase 6.5): SignedUrlService::portalShowUrl($plan).
+     * The signed customer-portal URL for the plan, when one can be built. Phase 6.5:
+     * prefer the PER-PLAN signed magic link (PortalSignedUrlService::showUrl) so the
+     * email deep-links the customer straight into THEIR portal. Fall back to the
+     * per-shop MailSettings.portal_store_page_url landing page when the plan cannot be
+     * signed (no public_id / no resolvable customer identity), then null.
      */
     private function portalUrlFor(InstallmentPlan $plan): ?string
     {
+        $signed = $this->signedPortalUrlFor($plan);
+        if ($signed !== null) {
+            return $signed;
+        }
+
         $settings = \App\Models\MerchantMailSettings::acrossAllTenants()
             ->where('shop_id', $plan->shop_id)
             ->first();
 
         return $settings?->portal_store_page_url ?: null;
+    }
+
+    /**
+     * The signed per-plan magic link, or null when the plan lacks the identity a
+     * link must bind (public_id + a resolvable customer ref). A mail failure must
+     * never abort the money pipeline, so any error here degrades to the fallback.
+     */
+    private function signedPortalUrlFor(InstallmentPlan $plan): ?string
+    {
+        if (empty($plan->public_id)) {
+            return null;
+        }
+        if (\App\Domain\Portal\PortalSignedUrlService::customerRef($plan)
+            === \App\Domain\Portal\PortalSignedUrlService::CUSTOMER_REF_NONE) {
+            return null;
+        }
+
+        try {
+            return app(\App\Domain\Portal\PortalSignedUrlService::class)->showUrl($plan);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private function findOrCreatePayment(InstallmentPlan $plan, PaymentType $type): InstallmentPayment
