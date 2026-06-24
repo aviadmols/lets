@@ -55,7 +55,7 @@
 
 | Unit | Status | Phase |
 |---|---|---|
-| Settings page + API-key handshake | planned | W11 P1 |
+| Settings page + API-key handshake | built (connect loop e2e) | W11 P1 — plugin signs HMAC; `VerifyWooCommerceSignature` + `/api/woocommerce/install` verify + store + return webhook secret. Product sync (WC REST) next. |
 | Product-page deposit/subscription widget | planned | W11 P2–P3 |
 | Thank-you upsell block | planned | W11 P4 |
 | Full `WC_Payment_Gateway` mode | planned | W11 P5 |

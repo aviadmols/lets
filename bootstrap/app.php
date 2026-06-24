@@ -35,6 +35,10 @@ return Application::configure(basePath: dirname(__DIR__))
             // binds the tenant from the verified shop. The route file applies the
             // proxy middleware itself, so no web/api group is needed.
             \Illuminate\Support\Facades\Route::group([], base_path('routes/proxy.php'));
+
+            // WooCommerce plugin → SaaS connect handshake. Stateless JSON, HMAC-auth
+            // (VerifyWooCommerceSignature) — no web group / no CSRF, like proxy.php.
+            \Illuminate\Support\Facades\Route::group([], base_path('routes/woocommerce.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware) {
