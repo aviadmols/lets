@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\WooCommerce;
 
 use App\Http\Middleware\VerifyWooCommerceSignature;
+use App\Jobs\Products\ImportShopProductsJob;
 use App\Models\Shop;
 use App\Services\WooCommerce\WooCommerceShopProvisioner;
 use Illuminate\Http\JsonResponse;
@@ -49,10 +50,17 @@ final class InstallController
         }
         $shop->save();
 
+        // With WC REST keys present we can read the catalog — backfill products now
+        // (tenant-bound job; idempotent upsert by external id; runs on the sync queue).
+        if (! empty($creds['consumer_key']) && ! empty($creds['consumer_secret'])) {
+            ImportShopProductsJob::dispatch((int) $shop->getKey());
+        }
+
         return response()->json([
             'ok' => true,
             'shop' => $shop->wc_shop_token,
             'wc_webhook_secret' => $creds['wc_webhook_secret'],
+            'products_syncing' => ! empty($creds['consumer_key']),
         ]);
     }
 

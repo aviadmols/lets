@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\WooCommerce;
 
+use App\Jobs\Products\ImportShopProductsJob;
 use App\Services\WooCommerce\WooCommerceShopProvisioner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
@@ -34,6 +36,21 @@ final class WooCommerceInstallTest extends TestCase
         $this->assertNotNull($shop->wooCredential('wc_webhook_secret'));
         $this->assertNotNull($shop->wc_shop_token);
         $this->assertSame('https://store.example.com', $shop->wooCredential('base_url'));
+    }
+
+    public function test_install_with_wc_keys_dispatches_the_product_import(): void
+    {
+        Queue::fake();
+        $result = (new WooCommerceShopProvisioner)->provision('store.example.com');
+        [$key, $secret] = $this->keys($result['connection_token']);
+
+        $this->signedPost($key, $secret, [
+            'base_url' => 'https://store.example.com',
+            'consumer_key' => 'ck_x',
+            'consumer_secret' => 'cs_x',
+        ])->assertOk()->assertJsonPath('products_syncing', true);
+
+        Queue::assertPushed(ImportShopProductsJob::class);
     }
 
     public function test_a_forged_signature_is_rejected(): void

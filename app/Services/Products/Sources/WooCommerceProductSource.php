@@ -2,36 +2,44 @@
 
 namespace App\Services\Products\Sources;
 
+use App\Models\Product;
 use App\Models\Shop;
 use App\Services\Products\Data\ProductData;
 use App\Services\Products\Data\ProductPage;
-use RuntimeException;
+use App\Services\Products\Data\VariantData;
+use App\Services\WooCommerce\WooClientFactory;
+use App\Services\WooCommerce\WooCommerceClient;
+use Carbon\CarbonImmutable;
+use Closure;
 
 /**
- * Stage-2 placeholder. Proves the source abstraction stands for a NON-Shopify
- * upstream without wiring it live. Implementing the interface means the import
- * job + product webhook handler + UI need ZERO changes when Woo goes live — only
- * the factory's switch arm flips.
+ * WooCommerce implementation of ProductSource. Builds a PER-SHOP WC REST client via
+ * WooClientFactory::for($shop) (never global creds), reads /wp-json/wc/v3/products
+ * page by page, and maps the raw WooCommerce shape into the source-agnostic DTOs —
+ * so no Woo shape ever leaks past this file and the import job + upserter + UI need
+ * zero changes (only the ProductSourceFactory switch arm differs from Shopify).
  *
- * Stage-2 implementation sketch:
- *   - Per-shop creds: a WordPress base URL + an encrypted consumer key/secret on
- *     the Shop row (same encrypted-bag pattern as the PayPlus credentials), read
- *     here as constructor state via a WooClientFactory::for($shop) — never global.
- *   - Read: GET {base}/wp-json/wc/v3/products?per_page=100&page={n}  (Basic auth
- *     with ck/cs over HTTPS). Map each product → ProductData: id→externalId,
- *     name→title, slug→handle, status (publish→active / draft→draft / private→
- *     unlisted), catalog_visibility→onlineStoreStatus, images[0].src→imageUrl,
- *     tags[].name→tags, date_modified_gmt→updatedAtExternal, and variations (for
- *     variable products: GET …/products/{id}/variations) → VariantData
- *     (id→externalId, attribute summary→title, sku, price).
- *   - Paginate by page number (Woo returns X-WP-TotalPages); the opaque cursor is
- *     just the next page number as a string. fetchOne = GET …/products/{id}.
- *   - A WordPress/Woo webhook (product.created/updated/deleted) routes to the SAME
- *     ProductWebhookHandler (it is source-agnostic — it calls fetchOne+upsert).
+ * Pagination is by page number (WC returns X-WP-TotalPages); the opaque cursor is just
+ * the next page number as a string. A variable product needs one extra call for its
+ * variations; a simple product yields one variant carrying its own sku + price.
  */
 final class WooCommerceProductSource implements ProductSource
 {
-    private const NOT_IMPLEMENTED = 'WooCommerceProductSource is a Stage-2 placeholder and is not wired live yet.';
+    // === CONSTANTS ===
+    private const PAGE_SIZE = 100;
+
+    /** WooCommerce product status → local Product::STATUS_*. */
+    private const STATUS_MAP = [
+        'publish' => Product::STATUS_ACTIVE,
+        'draft' => Product::STATUS_DRAFT,
+        'pending' => Product::STATUS_DRAFT,
+        'private' => Product::STATUS_UNLISTED,
+    ];
+
+    public function __construct(
+        // Override only in tests; production resolves the per-shop client lazily.
+        private readonly ?Closure $clientResolver = null,
+    ) {}
 
     public function platform(): string
     {
@@ -40,15 +48,148 @@ final class WooCommerceProductSource implements ProductSource
 
     public function fetchPage(Shop $shop, ?string $cursor, array $filters = []): ProductPage
     {
-        // Stage-2: replace with the WC REST /products page read described above.
-        // Returning an empty page keeps an accidental import a safe no-op rather
-        // than a crash; the explicit throw lives on fetchOne so a wired flow fails
-        // loudly if it ever reaches the unimplemented single-fetch path.
-        throw new RuntimeException(self::NOT_IMPLEMENTED);
+        $page = max(1, (int) ($cursor ?: '1'));
+        $result = $this->client($shop)->fetchProductsPage($page, self::PAGE_SIZE);
+
+        $items = [];
+        foreach ((array) ($result['nodes'] ?? []) as $node) {
+            $items[] = $this->mapProduct($shop, (array) $node);
+        }
+
+        $totalPages = (int) ($result['totalPages'] ?? 1);
+        $next = $page < $totalPages ? (string) ($page + 1) : null;
+
+        return new ProductPage(items: $items, nextCursor: $next);
     }
 
     public function fetchOne(Shop $shop, string $externalId): ?ProductData
     {
-        throw new RuntimeException(self::NOT_IMPLEMENTED);
+        $node = $this->client($shop)->fetchProductById($externalId);
+
+        return $node === null ? null : $this->mapProduct($shop, $node);
+    }
+
+    // === Internals ===
+
+    private function client(Shop $shop): WooCommerceClient
+    {
+        if ($this->clientResolver !== null) {
+            return ($this->clientResolver)($shop);
+        }
+
+        return WooClientFactory::for($shop);
+    }
+
+    /** @param array<string, mixed> $node */
+    private function mapProduct(Shop $shop, array $node): ProductData
+    {
+        $id = (string) ($node['id'] ?? '');
+        $variants = $this->variants($shop, $node, $id);
+
+        return new ProductData(
+            externalId: $id,
+            title: (string) ($node['name'] ?? ''),
+            handle: ($node['slug'] ?? '') !== '' ? (string) $node['slug'] : null,
+            status: self::STATUS_MAP[strtolower((string) ($node['status'] ?? ''))] ?? Product::STATUS_DRAFT,
+            onlineStoreStatus: ((string) ($node['catalog_visibility'] ?? 'visible')) === 'hidden'
+                ? Product::ONLINE_UNPUBLISHED
+                : Product::ONLINE_PUBLISHED,
+            imageUrl: $this->imageUrl($node),
+            tags: $this->tags($node['tags'] ?? []),
+            updatedAtExternal: $this->timestamp($node['date_modified_gmt'] ?? ($node['date_modified'] ?? null)),
+            variants: $variants,
+        );
+    }
+
+    /**
+     * A variable product's variations (one extra WC call); a simple product yields a
+     * single variant carrying the product's own sku + price.
+     *
+     * @param  array<string, mixed>  $node
+     * @return array<int, VariantData>
+     */
+    private function variants(Shop $shop, array $node, string $id): array
+    {
+        if ((string) ($node['type'] ?? 'simple') !== 'variable') {
+            return [new VariantData(
+                externalId: $id,
+                title: null,
+                sku: ($node['sku'] ?? '') !== '' ? (string) $node['sku'] : null,
+                price: $this->price($node['price'] ?? null),
+                position: 0,
+            )];
+        }
+
+        $variants = [];
+        $position = 0;
+        foreach ($this->client($shop)->fetchVariations($id) as $variation) {
+            $variation = (array) $variation;
+            $variants[] = new VariantData(
+                externalId: (string) ($variation['id'] ?? ''),
+                title: $this->variationTitle($variation),
+                sku: ($variation['sku'] ?? '') !== '' ? (string) $variation['sku'] : null,
+                price: $this->price($variation['price'] ?? null),
+                position: $position++,
+            );
+        }
+
+        return $variants;
+    }
+
+    /** @param array<string, mixed> $variation */
+    private function variationTitle(array $variation): ?string
+    {
+        $options = [];
+        foreach ((array) ($variation['attributes'] ?? []) as $attribute) {
+            $option = trim((string) (((array) $attribute)['option'] ?? ''));
+            if ($option !== '') {
+                $options[] = $option;
+            }
+        }
+
+        return $options !== [] ? implode(' / ', $options) : null;
+    }
+
+    /** @param array<string, mixed> $node */
+    private function imageUrl(array $node): ?string
+    {
+        $src = data_get($node, 'images.0.src');
+
+        return ($src !== null && $src !== '') ? (string) $src : null;
+    }
+
+    /**
+     * WooCommerce returns tags as [{id, name, slug}]. Normalise to a string[] of names.
+     *
+     * @return array<int, string>
+     */
+    private function tags(mixed $tags): array
+    {
+        if (! is_array($tags)) {
+            return [];
+        }
+
+        return array_values(array_filter(array_map(
+            static fn ($tag): string => trim((string) (((array) $tag)['name'] ?? '')),
+            $tags,
+        ), static fn (string $name): bool => $name !== ''));
+    }
+
+    private function price(mixed $price): string
+    {
+        return ($price === null || $price === '') ? '0' : (string) $price;
+    }
+
+    private function timestamp(mixed $value): ?CarbonImmutable
+    {
+        if (! is_string($value) || $value === '') {
+            return null;
+        }
+
+        try {
+            return CarbonImmutable::parse($value);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 }

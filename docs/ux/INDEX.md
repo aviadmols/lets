@@ -44,7 +44,7 @@
 | Seam | Status | Notes |
 |---|---|---|
 | `Shop.platform` discriminator | built | shopify / woocommerce constants exist. |
-| `ProductSourceFactory` (per-platform product source) | built | Routes `WooCommerceProductSource` (placeholder until W11 P1). |
+| `ProductSourceFactory` (per-platform product source) | built | `WooCommerceProductSource` IMPLEMENTED (WC REST `/products` + variations → DTOs); `WooClientFactory`/`WooCommerceClient`; plugin mints WC keys; products import on connect. |
 | `PlatformOrderStrategyFactory` + `PlatformOrderStrategy` | built (seam; WC impl P2) | `ShopifyOrderStrategy extends` it; orchestrator routes per platform (Shopify byte-identical, suite green 187). `WooCommerceOrderStrategy` added P2. |
 | `PlatformInvoiceServiceFactory` + `PlatformInvoiceService` | built (seam; WC impl P2) | `ShopifyDepositInvoiceAdapter` over a per-shop client; `DepositPlanService` resolves via factory + stores neutral keys. WC PayPlus-page impl P2. |
 | `PaidOrderPlanResolverFactory` + `PaidOrderPlanResolver` | built (seam; WC impl P2) | `ShopifyPaidOrderPlanResolver` (note-attr/draft, tenant-scoped); `PlanActivationService` delegates the lookup. WC order-meta impl P2. |

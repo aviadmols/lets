@@ -107,16 +107,57 @@ add_action('admin_post_lets_payplus_connect', function () {
 });
 
 /**
+ * Ensure a WooCommerce REST API key exists for LETS to read products/orders, and
+ * return its {consumer_key, consumer_secret}. Generated once + cached in an option.
+ * Returns null when WooCommerce is not active (the store still links; product sync
+ * activates once WooCommerce is present and the merchant reconnects).
+ */
+function lets_payplus_ensure_wc_keys()
+{
+    $stored = get_option('lets_payplus_wc_keys', null);
+    if (is_array($stored) && ! empty($stored['consumer_key'])) {
+        return $stored;
+    }
+    if (! function_exists('wc_rand_hash') || ! function_exists('wc_api_hash')) {
+        return null; // WooCommerce inactive
+    }
+
+    global $wpdb;
+    $consumer_key = 'ck_' . wc_rand_hash();
+    $consumer_secret = 'cs_' . wc_rand_hash();
+    $wpdb->insert(
+        $wpdb->prefix . 'woocommerce_api_keys',
+        array(
+            'user_id' => get_current_user_id(),
+            'description' => 'LETS — PayPlus',
+            'permissions' => 'read',
+            'consumer_key' => wc_api_hash($consumer_key), // WC stores the key hashed
+            'consumer_secret' => $consumer_secret,        // and the secret in the clear
+            'truncated_key' => substr($consumer_key, -7),
+        ),
+        array('%d', '%s', '%s', '%s', '%s', '%s')
+    );
+
+    $keys = array('consumer_key' => $consumer_key, 'consumer_secret' => $consumer_secret);
+    update_option('lets_payplus_wc_keys', $keys);
+
+    return $keys;
+}
+
+/**
  * Call the LETS install endpoint, HMAC-signed with the connection api_secret.
  * Returns the decoded JSON body on success, or a WP_Error.
  */
 function lets_payplus_call_install($conn)
 {
+    $keys = lets_payplus_ensure_wc_keys();
     $body = wp_json_encode(array(
         'base_url' => home_url(),
         'plugin_version' => LETS_PAYPLUS_VERSION,
         'wp_version' => get_bloginfo('version'),
         'wc_version' => defined('WC_VERSION') ? WC_VERSION : null,
+        'consumer_key' => is_array($keys) ? ($keys['consumer_key'] ?? null) : null,
+        'consumer_secret' => is_array($keys) ? ($keys['consumer_secret'] ?? null) : null,
     ));
 
     $url = $conn['install_url'];
