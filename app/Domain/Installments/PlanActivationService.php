@@ -9,10 +9,12 @@ use App\Models\CustomerConsent;
 use App\Models\InstallmentPayment;
 use App\Models\InstallmentPaymentMethod;
 use App\Models\InstallmentPlan;
+use App\Models\MerchantBillingSettings;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\LedgerStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentType;
+use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Services\Orders\PaidOrderPlanResolverFactory;
@@ -219,25 +221,44 @@ final class PlanActivationService
         }
     }
 
-    /** Record the consent the customer gave when starting the deposit plan. */
+    /**
+     * Record the consent the customer gave when starting the deposit plan. The
+     * accepted terms version + the cancellation-policy snapshot are taken from THIS
+     * shop's MerchantBillingSettings (the webhook handler bound the tenant), so a
+     * future dispute is answerable against exactly the policy in force at acceptance.
+     */
     private function recordConsent(Shop $shop, InstallmentPlan $plan): void
     {
+        $settings = MerchantBillingSettings::current();
+
+        // The consent_context MUST match what the charge engine's consent gate
+        // (ChargeOrchestrator::consentContextFor) looks up by plan_kind — a recurring
+        // plan carrying an `installments` consent the gate never finds would fail
+        // closed (no_consent) and never charge a cycle. Mirror that mapping exactly.
+        $isRecurring = $plan->plan_kind === PlanKind::RECURRING;
+
         CustomerConsent::query()->firstOrCreate(
             [
                 'shop_id' => (int) $shop->getKey(),
                 'plan_id' => $plan->getKey(),
-                'consent_context' => CustomerConsent::CONTEXT_INSTALLMENTS,
+                'consent_context' => $isRecurring
+                    ? CustomerConsent::CONTEXT_RECURRING
+                    : CustomerConsent::CONTEXT_INSTALLMENTS,
             ],
             [
                 'customer_id' => $plan->customer_id,
                 'shopify_customer_id' => $plan->shopify_customer_id,
                 'customer_email' => $plan->customer_email,
                 'accepted_at' => now(),
-                'billing_amount_description' => sprintf(
-                    '%s × installments after a %s deposit',
-                    (string) $plan->installment_amount,
-                    (string) (data_get($plan->meta, DepositPlanService::META_DEPOSIT_AMOUNT) ?? ''),
-                ),
+                'accepted_terms_version' => $settings->termsVersion(),
+                'cancellation_policy_snapshot' => $settings->cancellationPolicyText(),
+                'billing_amount_description' => $isRecurring
+                    ? sprintf('%s per billing cycle', (string) $plan->installment_amount)
+                    : sprintf(
+                        '%s × installments after a %s deposit',
+                        (string) $plan->installment_amount,
+                        (string) (data_get($plan->meta, DepositPlanService::META_DEPOSIT_AMOUNT) ?? ''),
+                    ),
                 'billing_frequency_description' => (string) ($plan->billing_frequency?->value ?? ''),
             ],
         );

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\WooCommerce\Storefront;
 use App\Domain\Installments\DepositPlanService;
 use App\Domain\Installments\InstallmentQuote;
 use App\Domain\Installments\ProductPriceResolver;
+use App\Models\MerchantBillingSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -53,6 +54,7 @@ final class WooStartInstallmentPlanController extends WooStorefrontController
         $price = round((float) $resolved['variant']->price, 2);
 
         // RECOMPUTE the quote server-side from clamped knobs — authoritative money truth.
+        // The merchant's billing bounds are enforced here at the commit point.
         $quote = InstallmentQuote::build(
             totalAmount: $price,
             depositPercent: (int) $request->input('deposit_percent', InstallmentQuote::DEFAULT_DEPOSIT_PERCENT),
@@ -60,6 +62,7 @@ final class WooStartInstallmentPlanController extends WooStorefrontController
             frequency: DepositPlanService::frequencyFrom($request->input('frequency')),
             paymentDay: (int) $request->input('payment_day', InstallmentQuote::DEFAULT_PAYMENT_DAY),
             currency: (string) ($request->input('currency') ?: config('payplus.currency', 'ILS')),
+            bounds: MerchantBillingSettings::current(),
         );
 
         try {

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\WooCommerce\Storefront;
 use App\Domain\Installments\DepositPlanService;
 use App\Domain\Installments\InstallmentQuote;
 use App\Domain\Installments\ProductPriceResolver;
+use App\Models\MerchantBillingSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -49,6 +50,8 @@ final class WooInstallmentQuoteController extends WooStorefrontController
             frequency: DepositPlanService::frequencyFrom($request->input('frequency')),
             paymentDay: (int) $request->input('payment_day', InstallmentQuote::DEFAULT_PAYMENT_DAY),
             currency: (string) ($request->input('currency') ?: config('payplus.currency', 'ILS')),
+            // Clamp the preview to THIS shop's merchant bounds (HMAC bound the tenant).
+            bounds: MerchantBillingSettings::current(),
         );
 
         return response()->json(['quote' => $quote->toArray()], Response::HTTP_OK);

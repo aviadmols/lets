@@ -5,6 +5,7 @@ namespace App\Domain\Installments\Http\Controllers\Storefront;
 use App\Domain\Installments\DepositPlanService;
 use App\Domain\Installments\InstallmentQuote;
 use App\Domain\Installments\ProductPriceResolver;
+use App\Models\MerchantBillingSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -52,6 +53,9 @@ final class StartInstallmentPlanController extends ProxyInstallmentController
 
         // RECOMPUTE the quote server-side from clamped knobs — the preview the client
         // saw is advisory; this is the authoritative money truth that gets charged.
+        // The merchant's billing bounds (deposit floor, installment ceiling, allowed
+        // frequencies) are enforced HERE, at the commit point, so a tampered request
+        // can never start a plan outside this shop's policy.
         $quote = InstallmentQuote::build(
             totalAmount: $price,
             depositPercent: (int) $request->input('deposit_percent', InstallmentQuote::DEFAULT_DEPOSIT_PERCENT),
@@ -59,6 +63,7 @@ final class StartInstallmentPlanController extends ProxyInstallmentController
             frequency: DepositPlanService::frequencyFrom($request->input('frequency')),
             paymentDay: (int) $request->input('payment_day', InstallmentQuote::DEFAULT_PAYMENT_DAY),
             currency: (string) ($request->input('currency') ?: config('payplus.currency', 'ILS')),
+            bounds: MerchantBillingSettings::current(),
         );
 
         try {

@@ -70,6 +70,14 @@ final class InstallmentQuote
      * Every numeric knob is CLAMPED to its bounds here — a client can never push the
      * deposit to 0% or request 9999 installments. The amount math is derived, never
      * accepted: depositAmount = round(total × pct), remainder split into N slices.
+     *
+     * MERCHANT BOUNDS (money law): when a MerchantBillingSettings row is supplied, the
+     * absolute value-object bounds are TIGHTENED to the merchant's policy — the deposit
+     * floor is raised to min_deposit_percent (and a flat min_deposit_amount when set),
+     * the installment count is capped at max_installments, and the frequency is forced
+     * into allowed_frequencies. The storefront knobs can only ever narrow within both;
+     * a tampered request still yields a schedule the merchant sanctioned. When $bounds
+     * is null (e.g. a bare unit test) only the value-object bounds apply.
      */
     public static function build(
         float $totalAmount,
@@ -79,15 +87,30 @@ final class InstallmentQuote
         int $paymentDay,
         string $currency,
         ?CarbonImmutable $now = null,
+        ?\App\Models\MerchantBillingSettings $bounds = null,
     ): self {
         $total = round(max(0.0, $totalAmount), 2);
 
-        $pct = self::clamp($depositPercent, self::MIN_DEPOSIT_PERCENT, self::MAX_DEPOSIT_PERCENT);
-        $count = self::clamp($installments, self::MIN_INSTALLMENTS, self::MAX_INSTALLMENTS);
+        // Per-merchant floors/ceilings first, then the value-object absolute clamp.
+        $requestedPct = $bounds !== null ? $bounds->clampDepositPercent($depositPercent) : $depositPercent;
+        $requestedCount = $bounds !== null ? $bounds->clampInstallments($installments) : $installments;
+        $requestedFreq = $bounds !== null ? $bounds->resolveFrequency($frequency) : $frequency;
+
+        $pct = self::clamp($requestedPct, self::MIN_DEPOSIT_PERCENT, self::MAX_DEPOSIT_PERCENT);
+        $count = self::clamp($requestedCount, self::MIN_INSTALLMENTS, self::MAX_INSTALLMENTS);
         $day = self::clamp($paymentDay, self::MIN_PAYMENT_DAY, self::MAX_PAYMENT_DAY);
-        $freq = in_array($frequency, self::ALLOWED_FREQUENCIES, true) ? $frequency : self::DEFAULT_FREQUENCY;
+        $freq = in_array($requestedFreq, self::ALLOWED_FREQUENCIES, true) ? $requestedFreq : self::DEFAULT_FREQUENCY;
 
         $deposit = round($total * ($pct / 100), 2);
+
+        // A flat per-merchant minimum deposit amount raises the deposit (and the
+        // recorded percent) when the percentage floor alone falls short.
+        $minDepositAmount = $bounds?->minDepositAmount();
+        if ($minDepositAmount !== null && $minDepositAmount > $deposit && $total > 0) {
+            $deposit = round(min($minDepositAmount, $total), 2);
+            $pct = (int) round(($deposit / $total) * 100);
+        }
+
         // Never let the deposit equal/exceed the total (there must be slices to bill).
         if ($deposit >= $total && $total > 0) {
             $deposit = round($total - 0.01, 2);

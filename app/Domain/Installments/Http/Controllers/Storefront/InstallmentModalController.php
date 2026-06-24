@@ -4,6 +4,7 @@ namespace App\Domain\Installments\Http\Controllers\Storefront;
 
 use App\Domain\Installments\InstallmentQuote;
 use App\Domain\Installments\ProductPriceResolver;
+use App\Models\MerchantBillingSettings;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -51,8 +52,9 @@ final class InstallmentModalController extends ProxyInstallmentController
         $price = round((float) $resolved['variant']->price, 2);
         $currency = $this->currencyFor($request);
 
-        // Seed the UI with a default quote (server-computed). The page recomputes via
-        // the quote endpoint whenever the shopper changes a knob.
+        // Seed the UI with a default quote (server-computed), clamped to THIS shop's
+        // merchant bounds so the modal opens within the merchant's policy. The page
+        // recomputes via the quote endpoint whenever the shopper changes a knob.
         $quote = InstallmentQuote::build(
             totalAmount: $price,
             depositPercent: InstallmentQuote::DEFAULT_DEPOSIT_PERCENT,
@@ -60,6 +62,7 @@ final class InstallmentModalController extends ProxyInstallmentController
             frequency: InstallmentQuote::DEFAULT_FREQUENCY,
             paymentDay: InstallmentQuote::DEFAULT_PAYMENT_DAY,
             currency: $currency,
+            bounds: MerchantBillingSettings::current(),
         );
 
         return response()

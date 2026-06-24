@@ -6,6 +6,7 @@ use App\Domain\Lifecycle\SubscriptionLifecycleService;
 use App\Domain\Portal\PortalSignedUrlService;
 use App\Http\Controllers\Controller;
 use App\Models\InstallmentPlan;
+use App\Models\MerchantBillingSettings;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Support\Tenant;
@@ -257,13 +258,28 @@ final class PortalController extends Controller
         };
     }
 
+    /**
+     * Whether the merchant lets customers pause from the portal. Reads the BOUND
+     * shop's MerchantBillingSettings (these helpers only ever run inside Tenant::run,
+     * so current() resolves the right shop). The platform config value is the
+     * fallback default used until a tenant is bound; current() materialises the row
+     * with the equivalent spec default, so the two agree.
+     */
     private function allowPause(): bool
     {
-        return (bool) config('portal.allow_customer_pause', true);
+        if (! Tenant::check()) {
+            return (bool) config('portal.allow_customer_pause', true);
+        }
+
+        return MerchantBillingSettings::current()->allowsCustomerPause();
     }
 
     private function allowCancel(): bool
     {
-        return (bool) config('portal.allow_customer_cancel', true);
+        if (! Tenant::check()) {
+            return (bool) config('portal.allow_customer_cancel', true);
+        }
+
+        return MerchantBillingSettings::current()->allowsCustomerCancel();
     }
 }

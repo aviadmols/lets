@@ -10,14 +10,13 @@ return [
     'link_ttl_days' => (int) env('PORTAL_LINK_TTL_DAYS', 7),
 
     /*
-     * Per-shop allow flags for customer self-service. Until the merchant settings
-     * screen lands (a separate wave), these are platform-wide DEFAULTS read by the
-     * PortalController. SAFE defaults: allow both. The controller already gates each
-     * action on the plan's current state machine, so a disallowed transition can
-     * never run regardless.
-     *
-     * TODO(settings wave): move these to a per-shop MerchantBillingSettings row and
-     * read them through that model instead of config.
+     * Platform-wide DEFAULTS for customer self-service. These are now the FALLBACK
+     * only: the per-shop App\Models\MerchantBillingSettings row owns the live flags,
+     * and PortalController reads them from there for the bound shop. These config
+     * values seed a shop's row when it is first materialised (MerchantBillingSettings::
+     * current()), so the operator's configured default still applies to a merchant who
+     * never opened the Billing settings screen. SAFE defaults: allow both. The
+     * controller also gates each action on the plan's state machine regardless.
      */
     'allow_customer_pause' => (bool) env('PORTAL_ALLOW_CUSTOMER_PAUSE', true),
     'allow_customer_cancel' => (bool) env('PORTAL_ALLOW_CUSTOMER_CANCEL', true),
