@@ -90,9 +90,23 @@ final class EmbeddedAuthenticate
             return $next($request);
         }
 
-        // Log the shop's merchant user in (Filament's Authenticate now passes) and
-        // bind the verified shop as tenant so BindTenantFromUser respects it.
-        Auth::login($user);
+        // Establish the login ONCE. If the SameSite=None session cookie already
+        // authenticated THIS shop's merchant on a prior request, do NOT call
+        // Auth::login again — it runs session()->migrate(true), which REGENERATES
+        // the session id on EVERY embedded request. Inside Shopify's iframe that
+        // destabilizes the session across the multi-request Livewire action cycle
+        // (open-modal → confirm → save), so a follow-up request lands on a
+        // migrated-away session → CSRF/auth failure rendered raw = the "black
+        // screen" on save / restore-default. Re-login only when unauthenticated or
+        // the session belongs to a DIFFERENT user (security: the shop is still
+        // bound from the verified JWT below, never from the stale session).
+        $alreadyThisMerchant = Auth::check()
+            && (int) (Auth::user()->getAttribute('shop_id') ?? 0) === (int) $shop->getKey();
+
+        if (! $alreadyThisMerchant) {
+            Auth::login($user);
+        }
+
         Tenant::set($shop);
 
         try {

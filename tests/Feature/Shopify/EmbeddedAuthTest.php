@@ -162,6 +162,58 @@ final class EmbeddedAuthTest extends TestCase
         $this->assertSame($shop->getKey(), $boundShopId);
     }
 
+    /**
+     * (e) Already authenticated as THIS shop's merchant (a prior embedded request
+     * logged them in) → the middleware does NOT re-login (which would regenerate the
+     * session every request and break the iframe's multi-request Livewire actions —
+     * the "black screen" on save/restore). It just re-binds the verified tenant and
+     * stays authenticated as the same user.
+     */
+    public function test_already_authenticated_same_shop_merchant_stays_logged_in(): void
+    {
+        Queue::fake();
+        Http::fake(); // no exchange (live shop) and no re-login → nothing sent.
+
+        $shop = $this->makeInstalledShop(self::SHOP);
+        $user = User::factory()->forShop($shop)->create();
+        $jwt = $this->makeJwt(self::SHOP, self::API_KEY, self::API_SECRET);
+
+        $this->actingAs($user)
+            ->getJson('/test/embedded-admin-probe?id_token='.$jwt)
+            ->assertOk()
+            ->assertJsonPath('authenticated', true)
+            ->assertJsonPath('user_id', $user->getKey())
+            ->assertJsonPath('bound_shop_id', $shop->getKey());
+
+        Http::assertNothingSent();
+    }
+
+    /**
+     * (f) Authenticated as a DIFFERENT shop's user when a token for SHOP arrives →
+     * the guard still re-logins to SHOP's merchant (security: never act for the shop
+     * the stale session belongs to). The shop is derived only from the verified JWT.
+     */
+    public function test_authenticated_as_other_shop_user_is_relogged_to_verified_shop(): void
+    {
+        Queue::fake();
+        Http::fake();
+
+        $shop = $this->makeInstalledShop(self::SHOP);
+        $shopUser = User::factory()->forShop($shop)->create();
+
+        $otherShop = $this->makeInstalledShop(self::OTHER_SHOP);
+        $otherUser = User::factory()->forShop($otherShop)->create();
+
+        $jwt = $this->makeJwt(self::SHOP, self::API_KEY, self::API_SECRET);
+
+        $this->actingAs($otherUser)
+            ->getJson('/test/embedded-admin-probe?id_token='.$jwt)
+            ->assertOk()
+            ->assertJsonPath('authenticated', true)
+            ->assertJsonPath('user_id', $shopUser->getKey())   // re-logged to SHOP's user
+            ->assertJsonPath('bound_shop_id', $shop->getKey());
+    }
+
     // === Helpers ===
 
     /** Fake the offline-token exchange POST to the given shop's token endpoint. */
