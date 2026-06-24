@@ -49,5 +49,14 @@ return [
 
         // The note written onto the deposit draft/order (links it to the plan).
         'deposit_note' => 'LETS installments deposit — plan :plan',
+
+        // PayPlus return landing (the page the shopper lands on after paying the deposit).
+        'return_success_title' => 'Your deposit is paid',
+        'return_success_body' => 'Thanks! Your item is reserved. We will bill the remaining installments automatically.',
+        'return_failure_title' => 'Payment did not go through',
+        'return_failure_body' => 'Your deposit was not charged. You can close this window and try again.',
+        'return_cancel_title' => 'Payment cancelled',
+        'return_cancel_body' => 'No problem — nothing was charged. You can close this window.',
+        'return_back' => 'Back to the store',
     ],
 ];

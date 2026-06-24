@@ -1,6 +1,10 @@
 <?php
 
 use App\Http\Controllers\WooCommerce\InstallController;
+use App\Http\Controllers\WooCommerce\Storefront\WooDepositCallbackController;
+use App\Http\Controllers\WooCommerce\Storefront\WooDepositReturnController;
+use App\Http\Controllers\WooCommerce\Storefront\WooInstallmentQuoteController;
+use App\Http\Controllers\WooCommerce\Storefront\WooStartInstallmentPlanController;
 use App\Http\Middleware\VerifyWooCommerceSignature;
 use Illuminate\Support\Facades\Route;
 
@@ -8,11 +12,42 @@ use Illuminate\Support\Facades\Route;
  * WooCommerce plugin → SaaS routes. Stateless JSON (no session, no CSRF token — the
  * request comes server-to-server from the WordPress plugin). VerifyWooCommerceSignature
  * is the auth (per-shop API-key HMAC) and binds the tenant from the verified shop. The
- * connect handshake completes the admin-driven onboarding loop.
+ * connect handshake completes the admin-driven onboarding loop; the installments
+ * endpoints are the deposit + installments selling flow (W11 P2).
  */
 Route::middleware(VerifyWooCommerceSignature::class)
     ->prefix('api/woocommerce')
     ->group(function () {
         Route::post('/install', [InstallController::class, 'install'])->name('woocommerce.install');
         Route::post('/verify-key', [InstallController::class, 'verify'])->name('woocommerce.verify');
+
+        /*
+        |----------------------------------------------------------------------
+        | Deposit + installments storefront entry (W11 P2)
+        |----------------------------------------------------------------------
+        | The plugin's product-page widget previews schedules via /quote and starts
+        | a plan via /start — both HMAC-signed by the plugin SERVER (the shopper's
+        | browser never holds the api_secret). The shop is the HMAC-verified shop on
+        | every call; the money is computed server-side (the client picks only knobs +
+        | a variation id). /start returns the PayPlus hosted-page URL to redirect to.
+        */
+        Route::post('/installments/quote', WooInstallmentQuoteController::class)
+            ->name('woocommerce.installments.quote');
+        Route::post('/installments/start', WooStartInstallmentPlanController::class)
+            ->name('woocommerce.installments.start');
     });
+
+/*
+ * PayPlus → SaaS deposit-payment surfaces. These are NOT plugin-HMAC-signed (PayPlus,
+ * not the plugin, calls them): the opaque {wc_shop_token} path segment resolves the shop
+ * BEFORE any field in the body is trusted (the same fail-closed pattern as the WC webhook
+ * delivery URL). The callback is server-to-server (CSRF-exempt in bootstrap/app.php);
+ * activation records the paid deposit at the plan's STORED amount and is idempotent, so a
+ * replayed/forged callback activates a plan at most once.
+ */
+Route::prefix('woocommerce')->group(function () {
+    Route::post('/deposit/callback/{wc_shop_token}', WooDepositCallbackController::class)
+        ->name('woocommerce.deposit.callback');
+    Route::get('/deposit/return/{wc_shop_token}', WooDepositReturnController::class)
+        ->name('woocommerce.deposit.return');
+});

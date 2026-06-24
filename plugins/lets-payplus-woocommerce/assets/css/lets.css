@@ -1,0 +1,94 @@
+/*
+ * LETS — storefront widget styles (W11 P2). Token-driven, RTL-aware (inherits the
+ * page's dir). No inline styles in the markup; classes only. The plugin owns these
+ * styles (this is the plugin's own storefront asset, not the SaaS admin UI).
+ */
+:root {
+  --lets-pp-fg: #1a1a1a;
+  --lets-pp-muted: #6b7280;
+  --lets-pp-border: #d1d5db;
+  --lets-pp-bg: #f9fafb;
+  --lets-pp-accent: #111827;
+  --lets-pp-err: #b91c1c;
+  --lets-pp-radius: 8px;
+}
+
+.lets-pp {
+  margin: 12px 0;
+}
+
+.lets-pp-open {
+  display: inline-block;
+  border: 1px solid var(--lets-pp-border);
+  background: var(--lets-pp-bg);
+  color: var(--lets-pp-fg);
+  border-radius: var(--lets-pp-radius);
+  padding: 10px 16px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.lets-pp-panel {
+  margin-top: 12px;
+  border: 1px solid var(--lets-pp-border);
+  border-radius: var(--lets-pp-radius);
+  padding: 16px;
+  max-width: 420px;
+}
+
+.lets-pp-title {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.lets-pp-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+
+.lets-pp-field input,
+.lets-pp-field select {
+  width: 120px;
+  padding: 6px 8px;
+  border: 1px solid var(--lets-pp-border);
+  border-radius: 6px;
+}
+
+.lets-pp-schedule {
+  margin: 12px 0;
+  font-size: 14px;
+}
+
+.lets-pp-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  color: var(--lets-pp-muted);
+}
+
+.lets-pp-submit {
+  width: 100%;
+  border: 0;
+  background: var(--lets-pp-accent);
+  color: #fff;
+  border-radius: var(--lets-pp-radius);
+  padding: 12px 16px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.lets-pp-submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.lets-pp-error {
+  margin: 10px 0 0;
+  color: var(--lets-pp-err);
+  font-size: 13px;
+}

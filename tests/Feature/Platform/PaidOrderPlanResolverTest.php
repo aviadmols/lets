@@ -11,6 +11,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Services\Orders\PaidOrderPlanResolver;
 use App\Services\Orders\PaidOrderPlanResolverFactory;
 use App\Services\Shopify\Orders\ShopifyPaidOrderPlanResolver;
+use App\Services\WooCommerce\Orders\WooCommercePaidOrderPlanResolver;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -32,7 +33,7 @@ final class PaidOrderPlanResolverTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_factory_routes_shopify_to_the_shopify_resolver_and_woocommerce_to_null(): void
+    public function test_factory_routes_each_platform_to_its_resolver(): void
     {
         $this->assertInstanceOf(
             ShopifyPaidOrderPlanResolver::class,
@@ -42,7 +43,11 @@ final class PaidOrderPlanResolverTest extends TestCase
             PaidOrderPlanResolver::class,
             PaidOrderPlanResolverFactory::for(new Shop(['platform' => Shop::PLATFORM_SHOPIFY])),
         );
-        $this->assertNull(PaidOrderPlanResolverFactory::for(new Shop(['platform' => Shop::PLATFORM_WOOCOMMERCE])));
+        // W11 P2: WooCommerce now resolves to its own meta/callback resolver (was null).
+        $this->assertInstanceOf(
+            WooCommercePaidOrderPlanResolver::class,
+            PaidOrderPlanResolverFactory::for(new Shop(['platform' => Shop::PLATFORM_WOOCOMMERCE])),
+        );
     }
 
     public function test_resolves_by_plan_public_id_note_attribute(): void

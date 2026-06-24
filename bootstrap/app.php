@@ -83,6 +83,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'shopify/webhooks',
             'shopify/webhooks/*',
             'upsell/accept-api',
+            // PayPlus → SaaS deposit callback (server-to-server; auth is the opaque
+            // wc_shop_token segment + idempotent, amount-gated activation, not CSRF).
+            'woocommerce/deposit/callback/*',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

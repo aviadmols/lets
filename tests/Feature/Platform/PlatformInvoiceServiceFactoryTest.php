@@ -11,6 +11,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Services\Orders\PlatformInvoiceService;
 use App\Services\Orders\PlatformInvoiceServiceFactory;
 use App\Services\Shopify\Orders\ShopifyDepositInvoiceAdapter;
+use App\Services\WooCommerce\Orders\WooCommerceDepositInvoiceService;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -51,9 +52,14 @@ final class PlatformInvoiceServiceFactoryTest extends TestCase
         $this->assertInstanceOf(PlatformInvoiceService::class, $service);
     }
 
-    public function test_woocommerce_shop_has_no_invoice_service_yet(): void
+    public function test_woocommerce_shop_resolves_the_payplus_hosted_page_service(): void
     {
-        $this->assertNull(PlatformInvoiceServiceFactory::for(new Shop(['platform' => Shop::PLATFORM_WOOCOMMERCE])));
+        // W11 P2: WooCommerce now resolves to the PayPlus hosted-page invoice service
+        // (was null in Phase 0). The service needs no per-shop client to be constructed.
+        $service = PlatformInvoiceServiceFactory::for(new Shop(['platform' => Shop::PLATFORM_WOOCOMMERCE]));
+
+        $this->assertInstanceOf(WooCommerceDepositInvoiceService::class, $service);
+        $this->assertInstanceOf(PlatformInvoiceService::class, $service);
     }
 
     public function test_create_builds_a_tenant_scoped_plan_and_stores_the_neutral_invoice_linkage(): void

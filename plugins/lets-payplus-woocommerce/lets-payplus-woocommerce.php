@@ -25,6 +25,8 @@ if (! defined('ABSPATH')) {
 
 define('LETS_PAYPLUS_VERSION', '0.1.0');
 define('LETS_PAYPLUS_OPT', 'lets_payplus_connection'); // wp_option holding the decoded token
+define('LETS_PAYPLUS_FILE', __FILE__);
+define('LETS_PAYPLUS_URL', plugin_dir_url(__FILE__)); // base URL for assets
 
 /** Decode the base64url connection token into its parts, or null when invalid. */
 function lets_payplus_decode_token($token)
@@ -236,3 +238,6 @@ function lets_payplus_render_settings()
     </div>
     <?php
 }
+
+// Storefront: the product-page deposit widget + the nonce-guarded REST proxy (W11 P2).
+require_once __DIR__ . '/includes/class-lets-product-widget.php';

@@ -4,6 +4,7 @@ namespace App\Services\Orders;
 
 use App\Models\Shop;
 use App\Services\Shopify\Orders\ShopifyPaidOrderPlanResolver;
+use App\Services\WooCommerce\Orders\WooCommercePaidOrderPlanResolver;
 
 /**
  * Resolves the PaidOrderPlanResolver for a shop, keyed by the shop's `platform`.
@@ -23,8 +24,8 @@ final class PaidOrderPlanResolverFactory
         }
 
         return match ($shop->platform) {
-            // WooCommercePaidOrderPlanResolver (order meta_data lookup) ships in W11 P2.
-            Shop::PLATFORM_WOOCOMMERCE => null,
+            // WooCommerce: find the plan by the callback's echoed more_info / order meta.
+            Shop::PLATFORM_WOOCOMMERCE => app(WooCommercePaidOrderPlanResolver::class),
             // Default + explicit Shopify resolve to the Shopify note-attr/draft resolver.
             default => app(ShopifyPaidOrderPlanResolver::class),
         };

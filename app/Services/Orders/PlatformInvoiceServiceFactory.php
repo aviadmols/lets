@@ -6,6 +6,7 @@ use App\Models\Shop;
 use App\Services\Shopify\Orders\ShopifyDepositInvoiceAdapter;
 use App\Services\Shopify\Orders\ShopifyDraftOrderService;
 use App\Services\Shopify\ShopifyClientFactory;
+use App\Services\WooCommerce\Orders\WooCommerceDepositInvoiceService;
 
 /**
  * Resolves the PlatformInvoiceService for a shop, keyed by the shop's `platform`.
@@ -29,8 +30,8 @@ final class PlatformInvoiceServiceFactory
         }
 
         return match ($shop->platform) {
-            // WooCommerceDepositInvoiceService (the PayPlus hosted page) ships in W11 P2.
-            Shop::PLATFORM_WOOCOMMERCE => null,
+            // WooCommerce: the PayPlus hosted page is the deposit "invoice" (W11 P2).
+            Shop::PLATFORM_WOOCOMMERCE => new WooCommerceDepositInvoiceService(),
             // Default + explicit Shopify: the draft-order adapter over a per-shop client.
             default => new ShopifyDepositInvoiceAdapter(
                 new ShopifyDraftOrderService(ShopifyClientFactory::for($shop)),
