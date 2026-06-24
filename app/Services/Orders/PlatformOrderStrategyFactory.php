@@ -4,6 +4,7 @@ namespace App\Services\Orders;
 
 use App\Models\Shop;
 use App\Services\Shopify\Orders\ShopifyOrderStrategy;
+use App\Services\WooCommerce\Orders\WooCommerceOrderStrategy;
 
 /**
  * Resolves the PlatformOrderStrategy for a shop, keyed by the shop's `platform`.
@@ -30,9 +31,9 @@ final class PlatformOrderStrategyFactory
         }
 
         return match ($shop->platform) {
-            // WooCommerceOrderStrategy ships in W11 Phase 2; until then a WooCommerce
-            // shop materializes no order (its plans don't exist yet either).
-            Shop::PLATFORM_WOOCOMMERCE => null,
+            // WooCommerce: materialize WC orders per charge_context via the WC REST API.
+            // The strategy resolves its per-shop WC client inside materialize() (no global).
+            Shop::PLATFORM_WOOCOMMERCE => new WooCommerceOrderStrategy(),
             // Default + explicit Shopify resolve to the bound Shopify strategy.
             default => app(ShopifyOrderStrategy::class),
         };

@@ -5,6 +5,7 @@ use App\Http\Controllers\WooCommerce\Storefront\WooDepositCallbackController;
 use App\Http\Controllers\WooCommerce\Storefront\WooDepositReturnController;
 use App\Http\Controllers\WooCommerce\Storefront\WooInstallmentQuoteController;
 use App\Http\Controllers\WooCommerce\Storefront\WooStartInstallmentPlanController;
+use App\Http\Controllers\WooCommerce\Storefront\WooSubscribeController;
 use App\Http\Middleware\VerifyWooCommerceSignature;
 use Illuminate\Support\Facades\Route;
 
@@ -35,6 +36,19 @@ Route::middleware(VerifyWooCommerceSignature::class)
             ->name('woocommerce.installments.quote');
         Route::post('/installments/start', WooStartInstallmentPlanController::class)
             ->name('woocommerce.installments.start');
+
+        /*
+        |----------------------------------------------------------------------
+        | Recurring subscriptions storefront entry (W11 P3)
+        |----------------------------------------------------------------------
+        | The widget's "subscribe" mode posts here. We recompute the per-cycle price
+        | server-side, create a recurring plan + the PayPlus first-payment page, and
+        | return the page URL. On payment the SAME deposit callback activates the plan;
+        | the recurring engine then bills every cycle and materializes a per-cycle WC
+        | order via WooCommerceOrderStrategy.
+        */
+        Route::post('/installments/subscribe', WooSubscribeController::class)
+            ->name('woocommerce.installments.subscribe');
     });
 
 /*

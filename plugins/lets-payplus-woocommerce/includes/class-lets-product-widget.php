@@ -102,6 +102,11 @@ add_action('rest_api_init', function () {
         'callback' => 'lets_payplus_rest_start',
         'permission_callback' => 'lets_payplus_rest_permission',
     ));
+    register_rest_route(LETS_PAYPLUS_REST_NS, '/installments/subscribe', array(
+        'methods' => 'POST',
+        'callback' => 'lets_payplus_rest_subscribe',
+        'permission_callback' => 'lets_payplus_rest_permission',
+    ));
 });
 
 /** Browser → plugin auth: a valid storefront nonce in the X-WP-Nonce header. */
@@ -124,6 +129,14 @@ function lets_payplus_rest_quote(WP_REST_Request $request)
 function lets_payplus_rest_start(WP_REST_Request $request)
 {
     $result = lets_payplus_signed_post('/api/woocommerce/installments/start', lets_payplus_knobs($request));
+
+    return lets_payplus_rest_response($result);
+}
+
+/** POST proxy → SaaS /installments/subscribe (creates a recurring plan + PayPlus page). */
+function lets_payplus_rest_subscribe(WP_REST_Request $request)
+{
+    $result = lets_payplus_signed_post('/api/woocommerce/installments/subscribe', lets_payplus_knobs($request));
 
     return lets_payplus_rest_response($result);
 }
@@ -176,6 +189,7 @@ add_action('woocommerce_after_add_to_cart_button', function () {
     wp_localize_script('lets-payplus-product-widget', 'LetsPayPlus', array(
         'restQuote' => esc_url_raw(rest_url(LETS_PAYPLUS_REST_NS . '/installments/quote')),
         'restStart' => esc_url_raw(rest_url(LETS_PAYPLUS_REST_NS . '/installments/start')),
+        'restSubscribe' => esc_url_raw(rest_url(LETS_PAYPLUS_REST_NS . '/installments/subscribe')),
         'nonce' => wp_create_nonce('wp_rest'),
         'productId' => $product_id,
         'variantId' => $variant_id,
@@ -191,12 +205,19 @@ add_action('woocommerce_after_add_to_cart_button', function () {
             'submit' => __('Continue to pay the deposit', 'lets-payplus'),
             'working' => __('Setting things up…', 'lets-payplus'),
             'error' => __('Something went wrong. Please try again.', 'lets-payplus'),
+            // Subscribe (recurring) mode.
+            'subscribeButton' => __('Subscribe & save', 'lets-payplus'),
+            'subscribeTitle' => __('Subscribe & save', 'lets-payplus'),
+            'subscribeSublabel' => __('Billed automatically until you cancel', 'lets-payplus'),
+            'subscribeSubmit' => __('Continue to subscribe', 'lets-payplus'),
         ),
     ));
 
-    // The calculator markup; the script wires it and posts knobs to the REST proxy.
+    // Two modes side by side: deposit+installments and subscribe (recurring). The script
+    // wires both buttons + the shared calculator panel and posts to the matching proxy.
     echo '<div class="lets-pp" data-lets-widget hidden>'
-        . '<button type="button" class="lets-pp-open" data-lets-open>' . esc_html__('Pay a deposit & reserve it', 'lets-payplus') . '</button>'
+        . '<button type="button" class="lets-pp-open" data-lets-open="deposit">' . esc_html__('Pay a deposit & reserve it', 'lets-payplus') . '</button>'
+        . '<button type="button" class="lets-pp-open lets-pp-open--subscribe" data-lets-open="subscribe">' . esc_html__('Subscribe & save', 'lets-payplus') . '</button>'
         . '<div class="lets-pp-panel" data-lets-panel hidden></div>'
         . '</div>';
 }, 20);

@@ -66,12 +66,63 @@ final class WooCommerceClient
         return array_values((array) $response->json());
     }
 
+    /**
+     * POST /wp-json/wc/v3/orders → the created order array (carries `id`). The caller
+     * (WooCommerceOrderStrategy) owns the WC order SHAPE; this is transport only.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public function createOrder(array $payload): array
+    {
+        $response = $this->post('orders', $payload);
+        $response->throw();
+
+        return (array) $response->json();
+    }
+
+    /**
+     * PUT /wp-json/wc/v3/orders/{id} → the updated order array. Used to advance the
+     * parent installments order (status + meta) as each slice is paid.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public function updateOrder(string $id, array $payload): array
+    {
+        $response = $this->put('orders/'.rawurlencode($id), $payload);
+        $response->throw();
+
+        return (array) $response->json();
+    }
+
     /** @param array<string, mixed> $query */
     private function get(string $path, array $query = []): Response
     {
+        return $this->client()->get($this->url($path), $query);
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function post(string $path, array $payload): Response
+    {
+        return $this->client()->post($this->url($path), $payload);
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function put(string $path, array $payload): Response
+    {
+        return $this->client()->put($this->url($path), $payload);
+    }
+
+    private function client(): \Illuminate\Http\Client\PendingRequest
+    {
         return Http::withBasicAuth($this->consumerKey, $this->consumerSecret)
             ->timeout($this->timeout)
-            ->acceptJson()
-            ->get(rtrim($this->baseUrl, '/').'/wp-json/wc/v3/'.ltrim($path, '/'), $query);
+            ->acceptJson();
+    }
+
+    private function url(string $path): string
+    {
+        return rtrim($this->baseUrl, '/').'/wp-json/wc/v3/'.ltrim($path, '/');
     }
 }

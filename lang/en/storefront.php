@@ -50,6 +50,14 @@ return [
         // The note written onto the deposit draft/order (links it to the plan).
         'deposit_note' => 'LETS installments deposit — plan :plan',
 
+        // The line-item title on a recurring subscription cycle's WC order.
+        'recurring_line' => 'Subscription cycle — plan :plan',
+
+        // Subscribe (recurring) mode on the product widget.
+        'subscribe_button' => 'Subscribe & save',
+        'subscribe_sublabel' => 'Billed automatically until you cancel',
+        'subscribe_submit' => 'Continue to subscribe',
+
         // PayPlus return landing (the page the shopper lands on after paying the deposit).
         'return_success_title' => 'Your deposit is paid',
         'return_success_body' => 'Thanks! Your item is reserved. We will bill the remaining installments automatically.',

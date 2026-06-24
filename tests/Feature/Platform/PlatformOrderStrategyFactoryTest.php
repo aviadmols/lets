@@ -8,6 +8,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\ChargeContext;
 use App\Services\Orders\PlatformOrderStrategy;
 use App\Services\Orders\PlatformOrderStrategyFactory;
 use App\Services\Shopify\Orders\ShopifyOrderStrategy;
+use App\Services\WooCommerce\Orders\WooCommerceOrderStrategy;
 use Tests\TestCase;
 
 /**
@@ -42,11 +43,15 @@ final class PlatformOrderStrategyFactoryTest extends TestCase
         $this->assertInstanceOf(ShopifyOrderStrategy::class, $strategy);
     }
 
-    public function test_woocommerce_shop_has_no_strategy_yet(): void
+    public function test_woocommerce_shop_resolves_the_woocommerce_strategy(): void
     {
-        // W11 Phase 0: the WooCommerce order strategy ships in Phase 2; until then the
-        // factory returns null and the engine runs decoupled for WooCommerce shops.
-        $this->assertNull(PlatformOrderStrategyFactory::for(new Shop(['platform' => Shop::PLATFORM_WOOCOMMERCE])));
+        // W11 P3: the WooCommerce order strategy now materializes WC orders per
+        // charge_context (was null in Phase 0). It resolves its per-shop WC client
+        // inside materialize(), so an unsaved Shop suffices here.
+        $strategy = PlatformOrderStrategyFactory::for(new Shop(['platform' => Shop::PLATFORM_WOOCOMMERCE]));
+
+        $this->assertInstanceOf(WooCommerceOrderStrategy::class, $strategy);
+        $this->assertInstanceOf(PlatformOrderStrategy::class, $strategy);
     }
 
     public function test_fake_overrides_every_resolution(): void
