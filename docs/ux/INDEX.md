@@ -23,7 +23,7 @@
 | Post-Purchase Offers / Flow Builder | [40-post-purchase-offers.md](40-post-purchase-offers.md) | built | planned (W11 P4) | Same flows/triggers/offers; WC thank-you surface differs. |
 | Settings — PayPlus Connection | [50-settings.md](50-settings.md) | built | built | Per-shop PayPlus creds; platform-agnostic. |
 | Settings — Shopify Connection | [50-settings.md](50-settings.md) | built | n/a | Shopify-only. |
-| Settings — **WooCommerce Connection** (API-key issuance) | [70-woocommerce-platform.md](70-woocommerce-platform.md) | n/a | planned (W11 P1) | Mint `{api_key, api_secret}`; show once; status/health. |
+| Admin — **Add WooCommerce store** (Shops list action) | [70-woocommerce-platform.md](70-woocommerce-platform.md) | n/a | built (admin side) | Header action on `/admin/shops`: domain → mint connection token (only sha256 hash + encrypted secret stored) → reveal-once modal (copy + plugin-download link). Plugin connect endpoint next. |
 | Settings — Mail notifications | [50-settings.md](50-settings.md) | built | built | Per-shop; platform-agnostic. |
 | Customer Portal (signed magic link) | [60-customer-portal.md](60-customer-portal.md) | built | planned (W11 P2+) | Same portal; WC plans included. |
 | Platform admin — Shops list | [01-navigation.md](01-navigation.md) | built | built | Shows WC shops once installed (platform badge). |

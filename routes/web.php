@@ -3,6 +3,7 @@
 use App\Filament\Resources\ShopResource;
 use App\Models\User;
 use App\Support\PlatformContext;
+use App\Support\Ui\PanelAccess;
 use Database\Seeders\DemoShopSeeder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -35,6 +36,21 @@ Route::post('/admin/platform/exit', function () {
 
     return redirect(ShopResource::getUrl('index'));
 })->middleware(['web', 'auth'])->name('platform.exit');
+
+/*
+ * WooCommerce plugin download (platform-admin only). Serves the packaged LETS plugin
+ * the merchant installs on their WooCommerce store and connects with the connection
+ * token. Returns 404 until the package is built into storage/app/plugins/ (the plugin
+ * connect skeleton + packaging land in the next W11 Phase-1 unit).
+ */
+Route::get('/admin/woocommerce/plugin/download', function () {
+    abort_unless(PanelAccess::canSeePlatform(), 403);
+
+    $path = storage_path('app/plugins/lets-payplus-woocommerce.zip');
+    abort_unless(is_file($path), 404, 'The WooCommerce plugin package is not available yet.');
+
+    return response()->download($path, 'lets-payplus-woocommerce.zip');
+})->middleware(['web', 'auth'])->name('woocommerce.plugin.download');
 
 /*
  * DEV-ONLY auto-login for local visual verification (Playwright screenshots).
