@@ -223,6 +223,19 @@ class Shop extends Model
             && ! empty($this->wooCredential('consumer_secret'));
     }
 
+    /**
+     * A NON-NULL display label for the shop's domain across platforms: the Shopify
+     * domain, else the WooCommerce domain, else the name, else "Shop #id". The admin
+     * screens use this so a WooCommerce shop (which has no shopify_domain) never yields
+     * a null title — a typed getTitle() returning null 500s.
+     */
+    public function displayDomain(): string
+    {
+        return (string) ($this->shopify_domain
+            ?: $this->woocommerce_domain
+            ?: ($this->name ?: 'Shop #'.$this->getKey()));
+    }
+
     // === Relations (tenant-owned models add the inverse via BelongsToShop) ===
 
     public function ledgerEntries(): HasMany

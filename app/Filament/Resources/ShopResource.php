@@ -96,6 +96,7 @@ class ShopResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('shopify_domain')
                     ->label(__('platform.shops.col.domain'))
+                    ->getStateUsing(fn (Shop $record): string => $record->displayDomain())
                     ->searchable()
                     ->sortable()
                     ->weight('medium'),
@@ -207,7 +208,7 @@ class ShopResource extends Resource
         PlatformContext::enter($shop->getKey());
 
         Notification::make()
-            ->title(__('platform.enter.entered', ['shop' => $shop->shopify_domain]))
+            ->title(__('platform.enter.entered', ['shop' => $shop->displayDomain()]))
             ->success()
             ->send();
 

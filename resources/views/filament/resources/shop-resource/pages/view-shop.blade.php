@@ -29,7 +29,7 @@
                 <div class="rc-section__title">{{ __('platform.overview.account') }}</div>
                 <div class="rc-kv">
                     <span class="rc-muted">{{ __('platform.shops.col.domain') }}</span>
-                    <span class="rc-strong rc-ltr">{{ $record->shopify_domain }}</span>
+                    <span class="rc-strong rc-ltr">{{ $record->displayDomain() }}</span>
 
                     <span class="rc-muted">{{ __('platform.shops.col.name') }}</span>
                     <span class="rc-strong">{{ $record->name ?: __('common.none') }}</span>

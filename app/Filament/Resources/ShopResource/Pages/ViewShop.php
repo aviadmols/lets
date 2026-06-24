@@ -45,7 +45,7 @@ class ViewShop extends Page
 
     public function getTitle(): string|Htmlable
     {
-        return $this->record->shopify_domain;
+        return $this->record->displayDomain();
     }
 
     protected function getHeaderActions(): array
@@ -58,7 +58,7 @@ class ViewShop extends Page
                     PlatformContext::enter($this->record->getKey());
 
                     Notification::make()
-                        ->title(__('platform.enter.entered', ['shop' => $this->record->shopify_domain]))
+                        ->title(__('platform.enter.entered', ['shop' => $this->record->displayDomain()]))
                         ->success()
                         ->send();
 
