@@ -48,6 +48,7 @@
 | `PlatformInvoiceServiceFactory` + `PlatformInvoiceService` | built (seam; WC impl P2) | `ShopifyDepositInvoiceAdapter` over a per-shop client; `DepositPlanService` resolves via factory + stores neutral keys. WC PayPlus-page impl P2. |
 | `PaidOrderPlanResolverFactory` + `PaidOrderPlanResolver` | built (seam; WC impl P2) | `ShopifyPaidOrderPlanResolver` (note-attr/draft, tenant-scoped); `PlanActivationService` delegates the lookup. WC order-meta impl P2. |
 | `ChargeOrchestrator` / `DepositPlanService` / `PlanActivationService` — 3 surgical edits | built | All three seams in; Shopify byte-identical; full suite green (195). Fixed a latent deposit-flow DI bug (per-shop client). |
+| WooCommerce schema (Shop WC creds + `lets_api_*`, `installment_plans.external_*`, `WebhookEvent::SOURCE_WOOCOMMERCE`) | built | Additive migrations; WC creds + api-secret encrypted at rest; `shopify_domain` now nullable; suite green (198). Phase 0 done. |
 
 ## WordPress plugin (`plugins/lets-payplus-woocommerce/`)
 

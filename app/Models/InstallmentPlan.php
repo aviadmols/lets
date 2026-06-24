@@ -74,6 +74,16 @@ class InstallmentPlan extends Model
         return $this->plan_kind === PlanKind::RECURRING;
     }
 
+    /**
+     * The platform-neutral external order id: the WooCommerce/Shopify external order id
+     * (external_order_id) falling back to the legacy shopify_order_id column — so both
+     * platforms resolve uniformly without renaming the original Shopify columns (W11).
+     */
+    public function externalOrderId(): ?string
+    {
+        return $this->external_order_id ?: $this->shopify_order_id;
+    }
+
     // === Relations ===
 
     public function payments(): HasMany

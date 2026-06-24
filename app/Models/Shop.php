@@ -41,6 +41,9 @@ class Shop extends Model
         'payment_page_uid', 'base_url', 'webhook_secret',
     ];
 
+    /** WooCommerce REST credential keys expected inside the encrypted bag (W11). */
+    public const WOOCOMMERCE_KEYS = ['base_url', 'consumer_key', 'consumer_secret', 'wc_webhook_secret'];
+
     protected $fillable = [
         'shopify_domain',
         'name',
@@ -52,18 +55,25 @@ class Shop extends Model
         'shopify_scopes',
         'installed_at',
         'uninstalled_at',
+        'woocommerce_domain',
+        'wc_shop_token',
+        'lets_api_key_hash',
     ];
 
     protected $hidden = [
         'shopify_access_token',
         'payplus_credentials',
+        'woocommerce_credentials',
+        'lets_api_secret',
     ];
 
     protected function casts(): array
     {
         return [
             'payplus_credentials' => EncryptedCredentials::class,
+            'woocommerce_credentials' => EncryptedCredentials::class,
             'shopify_access_token' => 'encrypted',
+            'lets_api_secret' => 'encrypted',
             'trial_ends_at' => 'datetime',
             'installed_at' => 'datetime',
             'uninstalled_at' => 'datetime',
@@ -179,6 +189,38 @@ class Shop extends Model
         return ! empty($this->payplusCredential('api_key'))
             && ! empty($this->payplusCredential('secret_key'))
             && ! empty($this->payplusCredential('terminal_uid'));
+    }
+
+    // === WooCommerce credentials (W11) ===
+
+    /** Read a single WooCommerce REST credential from the encrypted bag. */
+    public function wooCredential(string $key): ?string
+    {
+        return $this->woocommerce_credentials[$key] ?? null;
+    }
+
+    /**
+     * The decrypted WooCommerce REST credential bag (base_url + consumer key/secret +
+     * the per-shop wc_webhook_secret). Mirrors payplusConfig() — decrypted per request,
+     * never read from config(), never shared across shops.
+     */
+    public function wooConfig(): array
+    {
+        $bag = $this->woocommerce_credentials ?: [];
+
+        return [
+            'base_url' => $bag['base_url'] ?? null,
+            'consumer_key' => $bag['consumer_key'] ?? null,
+            'consumer_secret' => $bag['consumer_secret'] ?? null,
+            'wc_webhook_secret' => $bag['wc_webhook_secret'] ?? null,
+        ];
+    }
+
+    /** Has the WooCommerce plugin completed the connect handshake (REST creds present)? */
+    public function hasWooConnection(): bool
+    {
+        return ! empty($this->wooCredential('consumer_key'))
+            && ! empty($this->wooCredential('consumer_secret'));
     }
 
     // === Relations (tenant-owned models add the inverse via BelongsToShop) ===
