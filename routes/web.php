@@ -3,7 +3,6 @@
 use App\Filament\Resources\ShopResource;
 use App\Models\User;
 use App\Support\PlatformContext;
-use App\Support\Ui\PanelAccess;
 use Database\Seeders\DemoShopSeeder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -38,19 +37,38 @@ Route::post('/admin/platform/exit', function () {
 })->middleware(['web', 'auth'])->name('platform.exit');
 
 /*
- * WooCommerce plugin download (platform-admin only). Serves the packaged LETS plugin
- * the merchant installs on their WooCommerce store and connects with the connection
- * token. Returns 404 until the package is built into storage/app/plugins/ (the plugin
- * connect skeleton + packaging land in the next W11 Phase-1 unit).
+ * WooCommerce plugin download. PUBLIC by design: the plugin package carries NO secrets
+ * (the secret connection token is shown separately in the admin), and it is built
+ * on-the-fly from the in-repo plugin source so there is no committed binary. It is
+ * opened in a NEW TAB from the admin — a top-level request that does NOT carry the
+ * partitioned, iframe-only session — so it must NOT require auth: a session-gated route
+ * here redirects to a non-existent `login` route and 500s. A public download is both
+ * correct (no secrets) and avoids that.
  */
 Route::get('/admin/woocommerce/plugin/download', function () {
-    abort_unless(PanelAccess::canSeePlatform(), 403);
+    $src = base_path('plugins/lets-payplus-woocommerce');
+    if (! is_dir($src) || ! class_exists(\ZipArchive::class)) {
+        abort(404, 'The WooCommerce plugin package is not available.');
+    }
 
-    $path = storage_path('app/plugins/lets-payplus-woocommerce.zip');
-    abort_unless(is_file($path), 404, 'The WooCommerce plugin package is not available yet.');
+    $tmp = (string) tempnam(sys_get_temp_dir(), 'lets-plugin');
+    $zip = new \ZipArchive;
+    if ($zip->open($tmp, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
+        abort(500, 'Could not build the plugin package.');
+    }
 
-    return response()->download($path, 'lets-payplus-woocommerce.zip');
-})->middleware(['web', 'auth'])->name('woocommerce.plugin.download');
+    $files = new \RecursiveIteratorIterator(
+        new \RecursiveDirectoryIterator($src, \FilesystemIterator::SKIP_DOTS),
+        \RecursiveIteratorIterator::LEAVES_ONLY,
+    );
+    foreach ($files as $file) {
+        $relative = 'lets-payplus-woocommerce/'.str_replace('\\', '/', ltrim(substr($file->getPathname(), strlen($src)), '/\\'));
+        $zip->addFile($file->getPathname(), $relative);
+    }
+    $zip->close();
+
+    return response()->download($tmp, 'lets-payplus-woocommerce.zip')->deleteFileAfterSend(true);
+})->name('woocommerce.plugin.download');
 
 /*
  * DEV-ONLY auto-login for local visual verification (Playwright screenshots).

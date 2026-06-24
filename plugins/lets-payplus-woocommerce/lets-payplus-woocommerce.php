@@ -1,0 +1,197 @@
+<?php
+/**
+ * Plugin Name: LETS — PayPlus Subscriptions & Installments for WooCommerce
+ * Plugin URI: https://app.lets.co.il
+ * Description: Connect your WooCommerce store to LETS to offer PayPlus deposits + installments, recurring subscriptions, and one-click post-purchase upsells. Paste the connection token from your LETS dashboard to link this store.
+ * Version: 0.1.0
+ * Author: LETS
+ * Author URI: https://app.lets.co.il
+ * Text Domain: lets-payplus
+ * Requires at least: 5.8
+ * Requires PHP: 7.4
+ * WC requires at least: 6.0
+ *
+ * The connect SKELETON (W11 Phase 1): a Settings → LETS page where the merchant pastes
+ * the single connection token generated in the LETS dashboard. The token is a
+ * base64url-encoded JSON {k: api_key, s: api_secret, u: install_url, d: domain}. On
+ * connect, the plugin server signs an HMAC-SHA256(timestamp + method + path + body,
+ * api_secret) request to the LETS install endpoint. The api_secret never leaves the
+ * server; the shopper's browser never sees it.
+ */
+
+if (! defined('ABSPATH')) {
+    exit; // never run outside WordPress
+}
+
+define('LETS_PAYPLUS_VERSION', '0.1.0');
+define('LETS_PAYPLUS_OPT', 'lets_payplus_connection'); // wp_option holding the decoded token
+
+/** Decode the base64url connection token into its parts, or null when invalid. */
+function lets_payplus_decode_token($token)
+{
+    $token = trim((string) $token);
+    if ($token === '') {
+        return null;
+    }
+    $b64 = strtr($token, '-_', '+/');
+    $pad = strlen($b64) % 4;
+    if ($pad > 0) {
+        $b64 .= str_repeat('=', 4 - $pad);
+    }
+    $json = base64_decode($b64, true);
+    if ($json === false) {
+        return null;
+    }
+    $data = json_decode($json, true);
+    if (! is_array($data) || empty($data['k']) || empty($data['s']) || empty($data['u'])) {
+        return null;
+    }
+
+    return array(
+        'api_key' => (string) $data['k'],
+        'api_secret' => (string) $data['s'],
+        'install_url' => (string) $data['u'],
+        'domain' => isset($data['d']) ? (string) $data['d'] : '',
+    );
+}
+
+/** The stored connection (decoded token), or null when not connected. */
+function lets_payplus_connection()
+{
+    $conn = get_option(LETS_PAYPLUS_OPT, null);
+
+    return is_array($conn) && ! empty($conn['api_key']) ? $conn : null;
+}
+
+/** Admin menu: Settings → LETS. */
+add_action('admin_menu', function () {
+    add_options_page(
+        'LETS — PayPlus',
+        'LETS',
+        'manage_options',
+        'lets-payplus',
+        'lets_payplus_render_settings'
+    );
+});
+
+/** Handle the connect form post. */
+add_action('admin_post_lets_payplus_connect', function () {
+    if (! current_user_can('manage_options')) {
+        wp_die('Forbidden', 403);
+    }
+    check_admin_referer('lets_payplus_connect');
+
+    $decoded = lets_payplus_decode_token(isset($_POST['lets_token']) ? wp_unslash($_POST['lets_token']) : '');
+    if ($decoded === null) {
+        update_option('lets_payplus_last_error', 'Invalid connection token. Copy it again from the LETS dashboard.');
+        wp_safe_redirect(admin_url('options-general.php?page=lets-payplus&status=invalid'));
+        exit;
+    }
+
+    update_option(LETS_PAYPLUS_OPT, $decoded);
+    delete_option('lets_payplus_last_error');
+
+    $result = lets_payplus_call_install($decoded);
+    $status = is_wp_error($result) ? 'error' : 'connected';
+    if (is_wp_error($result)) {
+        update_option('lets_payplus_last_error', $result->get_error_message());
+    } else {
+        delete_option('lets_payplus_last_error');
+        if (! empty($result['wc_webhook_secret'])) {
+            update_option('lets_payplus_wc_webhook_secret', (string) $result['wc_webhook_secret']);
+        }
+    }
+
+    wp_safe_redirect(admin_url('options-general.php?page=lets-payplus&status=' . $status));
+    exit;
+});
+
+/**
+ * Call the LETS install endpoint, HMAC-signed with the connection api_secret.
+ * Returns the decoded JSON body on success, or a WP_Error.
+ */
+function lets_payplus_call_install($conn)
+{
+    $body = wp_json_encode(array(
+        'base_url' => home_url(),
+        'plugin_version' => LETS_PAYPLUS_VERSION,
+        'wp_version' => get_bloginfo('version'),
+        'wc_version' => defined('WC_VERSION') ? WC_VERSION : null,
+    ));
+
+    $url = $conn['install_url'];
+    $path = wp_parse_url($url, PHP_URL_PATH);
+    $ts = (string) time();
+    $signature = base64_encode(hash_hmac('sha256', $ts . 'POST' . $path . $body, $conn['api_secret'], true));
+
+    $resp = wp_remote_post($url, array(
+        'timeout' => 20,
+        'headers' => array(
+            'Content-Type' => 'application/json',
+            'X-LETS-Key' => $conn['api_key'],
+            'X-LETS-Timestamp' => $ts,
+            'X-LETS-Signature' => $signature,
+        ),
+        'body' => $body,
+    ));
+
+    if (is_wp_error($resp)) {
+        return $resp;
+    }
+    $code = (int) wp_remote_retrieve_response_code($resp);
+    $json = json_decode(wp_remote_retrieve_body($resp), true);
+    if ($code < 200 || $code >= 300) {
+        $msg = is_array($json) && ! empty($json['error']) ? $json['error'] : ('HTTP ' . $code);
+
+        return new WP_Error('lets_install_failed', 'LETS connection failed: ' . $msg);
+    }
+
+    return is_array($json) ? $json : array();
+}
+
+/** Render the Settings → LETS page. */
+function lets_payplus_render_settings()
+{
+    $conn = lets_payplus_connection();
+    $status = isset($_GET['status']) ? sanitize_key($_GET['status']) : '';
+    $error = get_option('lets_payplus_last_error', '');
+    ?>
+    <div class="wrap">
+        <h1>LETS — PayPlus Subscriptions &amp; Installments</h1>
+
+        <?php if ($status === 'connected') : ?>
+            <div class="notice notice-success"><p>Connected to LETS.</p></div>
+        <?php elseif ($status === 'invalid') : ?>
+            <div class="notice notice-error"><p>That connection token wasn’t valid. Copy it again from your LETS dashboard.</p></div>
+        <?php elseif ($status === 'error' && $error) : ?>
+            <div class="notice notice-error"><p><?php echo esc_html($error); ?></p></div>
+        <?php endif; ?>
+
+        <?php if ($conn) : ?>
+            <p><strong>Status:</strong>
+                <?php echo get_option('lets_payplus_wc_webhook_secret') ? '✅ Connected' : '🟡 Token saved — activation pending'; ?>
+            </p>
+            <p><strong>Store:</strong> <?php echo esc_html($conn['domain'] ?: home_url()); ?></p>
+        <?php else : ?>
+            <p>Paste the <strong>connection token</strong> from your LETS dashboard
+               (Shops → your store → Add WooCommerce store) to link this store.</p>
+        <?php endif; ?>
+
+        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+            <?php wp_nonce_field('lets_payplus_connect'); ?>
+            <input type="hidden" name="action" value="lets_payplus_connect">
+            <table class="form-table" role="presentation">
+                <tr>
+                    <th scope="row"><label for="lets_token">Connection token</label></th>
+                    <td>
+                        <textarea name="lets_token" id="lets_token" rows="4" class="large-text code"
+                                  placeholder="Paste the connection token here"></textarea>
+                        <p class="description">Shown once in your LETS dashboard. Keep it secret.</p>
+                    </td>
+                </tr>
+            </table>
+            <?php submit_button($conn ? 'Reconnect' : 'Connect to LETS'); ?>
+        </form>
+    </div>
+    <?php
+}
