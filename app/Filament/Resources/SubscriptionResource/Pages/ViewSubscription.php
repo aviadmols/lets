@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\SubscriptionResource\Pages;
 
+use App\Domain\Lifecycle\SubscriptionLifecycleService;
 use App\Filament\Resources\SubscriptionResource;
 use App\Models\ActivityEvent;
 use App\Models\InstallmentPayment;
@@ -9,7 +10,11 @@ use App\Models\PaymentLedger;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentType;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
+use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Support\Ui\Money;
+use Filament\Actions;
+use Filament\Forms\Components\Textarea;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
 
@@ -43,6 +48,82 @@ class ViewSubscription extends Page
     public function getTitle(): string|Htmlable
     {
         return 'PLN-' . $this->record->getKey();
+    }
+
+    /**
+     * Subscription lifecycle actions: Pause (active), Resume (paused), Cancel (any
+     * non-terminal). State-only + audited via the guarded state machine; the
+     * money-out actions (Charge now / Refund) ship in their own slice. Gated by plan
+     * state so an illegal move can never be offered.
+     */
+    protected function getHeaderActions(): array
+    {
+        return [
+            Actions\Action::make('pause')
+                ->label(__('subscriptions.action.pause.label'))
+                ->icon('heroicon-m-pause')
+                ->color('gray')
+                ->visible(fn (): bool => $this->record->status === PlanStatus::ACTIVE)
+                ->requiresConfirmation()
+                ->modalHeading(__('subscriptions.action.pause.heading'))
+                ->modalDescription(__('subscriptions.action.pause.body'))
+                ->action(fn () => $this->applyLifecycle('pause')),
+
+            Actions\Action::make('resume')
+                ->label(__('subscriptions.action.resume.label'))
+                ->icon('heroicon-m-play')
+                ->color('gray')
+                ->visible(fn (): bool => $this->record->status === PlanStatus::PAUSED)
+                ->requiresConfirmation()
+                ->modalHeading(__('subscriptions.action.resume.heading'))
+                ->modalDescription(__('subscriptions.action.resume.body'))
+                ->action(fn () => $this->applyLifecycle('resume')),
+
+            Actions\Action::make('cancel')
+                ->label(__('subscriptions.action.cancel.label'))
+                ->icon('heroicon-m-x-circle')
+                ->color('danger')
+                ->visible(fn (): bool => ! $this->record->status->isTerminal())
+                ->requiresConfirmation()
+                ->modalHeading(__('subscriptions.action.cancel.heading'))
+                ->modalDescription(__('subscriptions.action.cancel.body'))
+                ->form([
+                    Textarea::make('reason')
+                        ->label(__('subscriptions.action.cancel.reason'))
+                        ->rows(2)
+                        ->maxLength(500),
+                ])
+                ->action(fn (array $data) => $this->applyLifecycle('cancel', $data['reason'] ?? null)),
+        ];
+    }
+
+    /**
+     * Run a lifecycle op via SubscriptionLifecycleService + notify. Protected so it is
+     * not directly Livewire-callable — only the state-gated header actions invoke it.
+     */
+    protected function applyLifecycle(string $op, ?string $reason = null): void
+    {
+        try {
+            $service = app(SubscriptionLifecycleService::class);
+            match ($op) {
+                'pause' => $service->pause($this->record, $reason),
+                'resume' => $service->resume($this->record, $reason),
+                'cancel' => $service->cancel($this->record, $reason),
+            };
+
+            $this->record->refresh();
+
+            Notification::make()
+                ->title(__('subscriptions.action.'.$op.'.success'))
+                ->success()
+                ->send();
+        } catch (\Throwable $e) {
+            Notification::make()
+                ->title(__('subscriptions.action.failed'))
+                ->body($e->getMessage())
+                ->danger()
+                ->send();
+        }
     }
 
     /** Kind-aware summary line (installments vs recurring). */

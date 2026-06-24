@@ -20,6 +20,7 @@
 | Home / KPI dashboard | [10-home-dashboard.md](10-home-dashboard.md) | built | built | Platform-agnostic; aggregates per bound shop. |
 | Customers | [20-customers.md](20-customers.md) | built | built | Same model; WC customers arrive via sync/activation. |
 | Subscriptions / Installment plans | [30-subscriptions.md](30-subscriptions.md) | built | planned (W11 P2–P3) | Same `InstallmentPlan`; WC plans show alongside Shopify. |
+| Subscription lifecycle actions (Pause/Resume/Cancel) | [30-subscriptions.md](30-subscriptions.md) | built (Wave 1a) | inherits | `SubscriptionLifecycleService` + guarded state machine + cancellation email; buttons on ViewSubscription. Charge-now/Refund = Wave 1b; Send-link too. |
 | Post-Purchase Offers / Flow Builder | [40-post-purchase-offers.md](40-post-purchase-offers.md) | built | planned (W11 P4) | Same flows/triggers/offers; WC thank-you surface differs. |
 | Settings — PayPlus Connection | [50-settings.md](50-settings.md) | built | built | Per-shop PayPlus creds; platform-agnostic. |
 | Settings — Shopify Connection | [50-settings.md](50-settings.md) | built | n/a | Shopify-only. |

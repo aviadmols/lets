@@ -65,4 +65,28 @@ return [
             'scheduled' => 'Scheduled',
         ],
     ],
+
+    // Lifecycle actions (Pause / Resume / Cancel) on the subscription detail page.
+    'action' => [
+        'failed' => 'Action failed. No change was made.',
+        'pause' => [
+            'label' => 'Pause',
+            'heading' => 'Pause this subscription?',
+            'body' => 'No further charges run until you resume it.',
+            'success' => 'Subscription paused.',
+        ],
+        'resume' => [
+            'label' => 'Resume',
+            'heading' => 'Resume this subscription?',
+            'body' => 'The next charge is scheduled again.',
+            'success' => 'Subscription resumed.',
+        ],
+        'cancel' => [
+            'label' => 'Cancel',
+            'heading' => 'Cancel this subscription?',
+            'body' => 'The customer will not be charged again. This cannot be undone.',
+            'reason' => 'Reason (optional)',
+            'success' => 'Subscription cancelled.',
+        ],
+    ],
 ];
