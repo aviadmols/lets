@@ -44,7 +44,7 @@
 |---|---|---|
 | `Shop.platform` discriminator | built | shopify / woocommerce constants exist. |
 | `ProductSourceFactory` (per-platform product source) | built | Routes `WooCommerceProductSource` (placeholder until W11 P1). |
-| `PlatformOrderStrategyFactory` + `PlatformOrderStrategy` | planned (W11 P0) | `ShopifyOrderStrategy` implements it; `WooCommerceOrderStrategy` added P2. |
+| `PlatformOrderStrategyFactory` + `PlatformOrderStrategy` | built (seam; WC impl P2) | `ShopifyOrderStrategy extends` it; orchestrator routes per platform (Shopify byte-identical, suite green 187). `WooCommerceOrderStrategy` added P2. |
 | `PlatformInvoiceServiceFactory` + `PlatformInvoiceService` | planned (W11 P0) | Shopify draft adapter vs WC PayPlus-page impl. |
 | `PaidOrderPlanResolverFactory` + `PaidOrderPlanResolver` | planned (W11 P0) | Shopify note-attr/draft lookup vs WC order-meta lookup. |
 | `ChargeOrchestrator` / `DepositPlanService` / `PlanActivationService` — 3 surgical edits | planned (W11 P0) | Must keep Shopify byte-identical; full suite green. |

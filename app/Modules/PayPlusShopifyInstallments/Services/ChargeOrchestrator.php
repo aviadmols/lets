@@ -13,6 +13,7 @@ use App\Models\CustomerConsent;
 use App\Models\InstallmentPayment;
 use App\Models\InstallmentPlan;
 use App\Models\PaymentLedger;
+use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\ChargeContext;
 use App\Modules\PayPlusShopifyInstallments\Enums\LedgerStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
@@ -23,6 +24,7 @@ use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\GatewayResult;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
 use App\Modules\PayPlusShopifyInstallments\Support\ResponseMasker;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
+use App\Services\Orders\PlatformOrderStrategyFactory;
 use App\Services\Shopify\Orders\ShopifyOrderStrategy;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -219,7 +221,7 @@ final class ChargeOrchestrator
         // fulfillment; recurring creates a new fulfillable order; deposit/first
         // installment update the parent. A Shopify failure is logged, never
         // unwound (the money already moved and is recorded in the ledger).
-        $this->materializeShopify($plan, $type->toChargeContext(), $isFinal);
+        $this->materializePlatformOrder($plan, $type->toChargeContext(), $isFinal);
 
         Timeline::record(
             kind: Timeline::KIND_CHARGE_SUCCEEDED,
@@ -324,25 +326,31 @@ final class ChargeOrchestrator
     // === Helpers ===
 
     /**
-     * Hand off to the Shopify order strategy when one is bound. Wrapped so a
-     * Shopify-side error never propagates into the money pipeline — the ledger row
-     * is already succeeded and is the source of truth. In production the strategy
-     * implementation should itself enqueue the heavy Shopify work on the `sync`
-     * queue rather than block the charge path; here the call is synchronous and
-     * defensive (the scaffold strategy is fast/idempotent).
+     * Hand off to the shop's PLATFORM order strategy when one is bound, AFTER the
+     * ledger row is succeeded (the money truth). Wrapped so a store-side error never
+     * propagates into the money pipeline. Shopify shops use the DI-injected strategy
+     * (so Shopify stays byte-identical and the existing Shopify tests are untouched);
+     * non-Shopify shops resolve their sibling via PlatformOrderStrategyFactory (null
+     * until that platform's strategy ships → the engine runs decoupled for it). In
+     * production the strategy should enqueue heavy store work on the `sync` queue.
      */
-    private function materializeShopify(InstallmentPlan $plan, ChargeContext $context, bool $isFinal): void
+    private function materializePlatformOrder(InstallmentPlan $plan, ChargeContext $context, bool $isFinal): void
     {
-        if ($this->shopifyOrders === null) {
-            return; // engine runs decoupled when the Shopify boundary isn't bound
+        $strategy = $plan->shop->platform === Shop::PLATFORM_WOOCOMMERCE
+            ? PlatformOrderStrategyFactory::for($plan->shop)
+            : $this->shopifyOrders;
+
+        if ($strategy === null) {
+            return; // engine runs decoupled when this platform's boundary isn't bound
         }
 
         try {
-            $this->shopifyOrders->materialize($plan, $context, $isFinal);
+            $strategy->materialize($plan, $context, $isFinal);
         } catch (\Throwable $e) {
-            Log::error('shopify.order_strategy.materialize_failed', [
+            Log::error('platform.order_strategy.materialize_failed', [
                 'plan_id' => $plan->getKey(),
                 'shop_id' => $plan->shop_id,
+                'platform' => $plan->shop->platform,
                 'context' => $context->value,
                 'is_final' => $isFinal,
                 'error' => $e->getMessage(),
