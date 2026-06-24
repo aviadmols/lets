@@ -44,4 +44,13 @@ return [
     'remaining_balance' => 'Remaining balance',
     'total_amount' => 'Total amount',
     'paid_amount' => 'Paid amount',
+
+    // Refund (a row action on a succeeded ledger entry)
+    'refund' => [
+        'label' => 'Refund',
+        'heading' => 'Refund this charge?',
+        'body' => ':amount will be refunded to the customer via PayPlus. This cannot be undone.',
+        'success' => 'Refund processed.',
+        'failed' => 'Refund failed.',
+    ],
 ];

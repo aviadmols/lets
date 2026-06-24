@@ -2,11 +2,13 @@
 
 namespace App\Filament\Resources;
 
+use App\Domain\Lifecycle\RefundService;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Filament\Resources\PaymentLedgerResource\Pages;
 use App\Models\PaymentLedger;
 use App\Support\Ui\Money;
 use App\Support\Ui\StatusBadge;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -93,6 +95,30 @@ class PaymentLedgerResource extends Resource
                         'retry' => __('billing.charge_context.retry'),
                         'manual' => __('billing.charge_context.manual'),
                     ]),
+            ])
+            ->actions([
+                Tables\Actions\Action::make('refund')
+                    ->label(__('billing.refund.label'))
+                    ->icon('heroicon-m-arrow-uturn-left')
+                    ->color('danger')
+                    ->visible(fn (PaymentLedger $record): bool => $record->status === PaymentLedger::STATUS_SUCCEEDED)
+                    ->requiresConfirmation()
+                    ->modalHeading(__('billing.refund.heading'))
+                    ->modalDescription(fn (PaymentLedger $record): string => __('billing.refund.body', [
+                        'amount' => Money::format((float) $record->amount, $record->currency),
+                    ]))
+                    ->action(function (PaymentLedger $record): void {
+                        $result = app(RefundService::class)->refund($record);
+                        if ($result['ok'] ?? false) {
+                            Notification::make()->title(__('billing.refund.success'))->success()->send();
+                        } else {
+                            Notification::make()
+                                ->title(__('billing.refund.failed'))
+                                ->body((string) ($result['message'] ?? ''))
+                                ->danger()
+                                ->send();
+                        }
+                    }),
             ])
             ->defaultSort('created_at', 'desc')
             ->emptyStateHeading(__('subscriptions.detail.ledger_empty'))
