@@ -3,9 +3,13 @@
 use App\Http\Controllers\WooCommerce\InstallController;
 use App\Http\Controllers\WooCommerce\Storefront\WooDepositCallbackController;
 use App\Http\Controllers\WooCommerce\Storefront\WooDepositReturnController;
+use App\Http\Controllers\WooCommerce\Storefront\WooGatewayCallbackController;
+use App\Http\Controllers\WooCommerce\Storefront\WooGatewaySessionController;
 use App\Http\Controllers\WooCommerce\Storefront\WooInstallmentQuoteController;
 use App\Http\Controllers\WooCommerce\Storefront\WooStartInstallmentPlanController;
 use App\Http\Controllers\WooCommerce\Storefront\WooSubscribeController;
+use App\Http\Controllers\WooCommerce\Storefront\WooUpsellAcceptController;
+use App\Http\Controllers\WooCommerce\Storefront\WooUpsellOfferController;
 use App\Http\Middleware\VerifyWooCommerceSignature;
 use Illuminate\Support\Facades\Route;
 
@@ -49,6 +53,32 @@ Route::middleware(VerifyWooCommerceSignature::class)
         */
         Route::post('/installments/subscribe', WooSubscribeController::class)
             ->name('woocommerce.installments.subscribe');
+
+        /*
+        |----------------------------------------------------------------------
+        | Post-purchase / thank-you upsell (W11 P4) — the third pillar
+        |----------------------------------------------------------------------
+        | The plugin's woocommerce_thankyou widget fetches the eligible offer, then
+        | one-click accepts it. /offer resolves via the shared UpsellResolver (records
+        | the impression); /accept reuses UpsellChargeService::accept VERBATIM (charges
+        | the saved token, consent-gated, idempotent) then records a linked paid WC child
+        | order. The shop is the HMAC-verified shop; the amount is server-computed.
+        */
+        Route::get('/upsell/offer', WooUpsellOfferController::class)
+            ->name('woocommerce.upsell.offer');
+        Route::post('/upsell/accept', WooUpsellAcceptController::class)
+            ->name('woocommerce.upsell.accept');
+
+        /*
+        |----------------------------------------------------------------------
+        | Full PayPlus gateway, "mode B" (W11 P4) — normal checkout via PayPlus
+        |----------------------------------------------------------------------
+        | The plugin's WC_Payment_Gateway::process_payment() asks for a PayPlus page for
+        | the order total; we return its URL to redirect to. On payment, the gateway
+        | callback (below, token-segment auth) marks the WC order paid via WC REST.
+        */
+        Route::post('/gateway/session', WooGatewaySessionController::class)
+            ->name('woocommerce.gateway.session');
     });
 
 /*
@@ -64,4 +94,9 @@ Route::prefix('woocommerce')->group(function () {
         ->name('woocommerce.deposit.callback');
     Route::get('/deposit/return/{wc_shop_token}', WooDepositReturnController::class)
         ->name('woocommerce.deposit.return');
+
+    // Full PayPlus gateway (mode B): PayPlus marks the plain WC order paid here. Same
+    // token-segment trust model as the deposit callback (CSRF-exempt in bootstrap/app.php).
+    Route::post('/gateway/callback/{wc_shop_token}', WooGatewayCallbackController::class)
+        ->name('woocommerce.gateway.callback');
 });

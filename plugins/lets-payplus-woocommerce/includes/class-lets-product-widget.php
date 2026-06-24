@@ -74,6 +74,51 @@ function lets_payplus_signed_post($path, $body)
     return is_array($decoded) ? $decoded : array();
 }
 
+/**
+ * Server-side HMAC-signed GET to the SaaS. Signs ts + 'GET' + $path + '' (empty body —
+ * the SaaS VerifyWooCommerceSignature signs the path + raw body, NOT the query string), and
+ * appends $query to the URL. Returns the decoded JSON array on 2xx, or a WP_Error.
+ */
+function lets_payplus_signed_get($path, $query)
+{
+    $conn = lets_payplus_connection();
+    if ($conn === null) {
+        return new WP_Error('lets_not_connected', 'This store is not connected to LETS.');
+    }
+    $origin = lets_payplus_saas_origin($conn);
+    if ($origin === '') {
+        return new WP_Error('lets_bad_origin', 'Could not resolve the LETS endpoint.');
+    }
+
+    $ts = (string) time();
+    // The body is empty for a GET; the signature covers the PATH only (not the query).
+    $signature = base64_encode(hash_hmac('sha256', $ts . 'GET' . $path . '', $conn['api_secret'], true));
+    $url = $origin . $path . (($query !== '') ? ('?' . ltrim($query, '?')) : '');
+
+    $resp = wp_remote_get($url, array(
+        'timeout' => 20,
+        'headers' => array(
+            'Accept' => 'application/json',
+            'X-LETS-Key' => $conn['api_key'],
+            'X-LETS-Timestamp' => $ts,
+            'X-LETS-Signature' => $signature,
+        ),
+    ));
+
+    if (is_wp_error($resp)) {
+        return $resp;
+    }
+    $code = (int) wp_remote_retrieve_response_code($resp);
+    $decoded = json_decode(wp_remote_retrieve_body($resp), true);
+    if ($code < 200 || $code >= 300) {
+        $msg = is_array($decoded) && ! empty($decoded['error']) ? $decoded['error'] : ('HTTP ' . $code);
+
+        return new WP_Error('lets_saas_error', $msg, array('status' => $code));
+    }
+
+    return is_array($decoded) ? $decoded : array();
+}
+
 /** The SaaS origin (scheme://host[:port]) derived from the stored install_url. */
 function lets_payplus_saas_origin($conn)
 {

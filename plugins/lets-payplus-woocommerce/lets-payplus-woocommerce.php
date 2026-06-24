@@ -2,8 +2,8 @@
 /**
  * Plugin Name: LETS — PayPlus Subscriptions & Installments for WooCommerce
  * Plugin URI: https://app.lets.co.il
- * Description: Connect your WooCommerce store to LETS to offer PayPlus deposits + installments, recurring subscriptions, and one-click post-purchase upsells. Paste the connection token from your LETS dashboard to link this store.
- * Version: 0.1.0
+ * Description: Connect your WooCommerce store to LETS to offer PayPlus deposits + installments, recurring subscriptions, one-click post-purchase upsells, and optional full PayPlus checkout. Paste the connection token from your LETS dashboard to link this store.
+ * Version: 0.2.0
  * Author: LETS
  * Author URI: https://app.lets.co.il
  * Text Domain: lets-payplus
@@ -11,19 +11,20 @@
  * Requires PHP: 7.4
  * WC requires at least: 6.0
  *
- * The connect SKELETON (W11 Phase 1): a Settings → LETS page where the merchant pastes
- * the single connection token generated in the LETS dashboard. The token is a
- * base64url-encoded JSON {k: api_key, s: api_secret, u: install_url, d: domain}. On
- * connect, the plugin server signs an HMAC-SHA256(timestamp + method + path + body,
- * api_secret) request to the LETS install endpoint. The api_secret never leaves the
- * server; the shopper's browser never sees it.
+ * Connect (Phase 1): a Settings → LETS page where the merchant pastes the single
+ * connection token from the LETS dashboard (base64url JSON {k,s,u,d}); the plugin server
+ * HMAC-signs the install request (the api_secret never leaves the server).
+ *
+ * Storefront (Phase 2–4): the product-page deposit/subscribe widget, the thank-you
+ * post-purchase upsell, and the optional full PayPlus checkout gateway — each browser call
+ * goes through a nonce-guarded plugin REST proxy that re-signs the HMAC call to LETS.
  */
 
 if (! defined('ABSPATH')) {
     exit; // never run outside WordPress
 }
 
-define('LETS_PAYPLUS_VERSION', '0.1.0');
+define('LETS_PAYPLUS_VERSION', '0.2.0');
 define('LETS_PAYPLUS_OPT', 'lets_payplus_connection'); // wp_option holding the decoded token
 define('LETS_PAYPLUS_FILE', __FILE__);
 define('LETS_PAYPLUS_URL', plugin_dir_url(__FILE__)); // base URL for assets
@@ -239,5 +240,13 @@ function lets_payplus_render_settings()
     <?php
 }
 
-// Storefront: the product-page deposit widget + the nonce-guarded REST proxy (W11 P2).
+// Storefront: the product-page deposit/subscribe widget + the nonce-guarded REST proxy
+// + the shared HMAC signer (W11 P2/P3). The thank-you upsell + gateway reuse the signer,
+// so this MUST load first.
 require_once __DIR__ . '/includes/class-lets-product-widget.php';
+
+// Storefront: the thank-you-page post-purchase upsell (W11 P4).
+require_once __DIR__ . '/includes/class-lets-thankyou.php';
+
+// Optional full PayPlus gateway for normal checkout ("mode B", W11 P4).
+require_once __DIR__ . '/includes/class-lets-gateway.php';

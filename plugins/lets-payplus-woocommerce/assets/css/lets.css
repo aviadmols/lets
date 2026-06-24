@@ -10,6 +10,7 @@
   --lets-pp-bg: #f9fafb;
   --lets-pp-accent: #111827;
   --lets-pp-err: #b91c1c;
+  --lets-pp-ok: #047857;
   --lets-pp-radius: 8px;
 }
 
@@ -102,4 +103,40 @@
   margin: 10px 0 0;
   color: var(--lets-pp-err);
   font-size: 13px;
+}
+
+/* Thank-you post-purchase upsell. */
+.lets-pp-upsell {
+  margin: 16px 0;
+}
+
+.lets-pp-upsell-card {
+  border: 1px solid var(--lets-pp-border);
+  border-radius: var(--lets-pp-radius);
+  padding: 16px;
+  max-width: 420px;
+}
+
+.lets-pp-upsell-price {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+
+.lets-pp-decline {
+  width: 100%;
+  margin-top: 8px;
+  border: 1px solid var(--lets-pp-border);
+  background: #fff;
+  color: var(--lets-pp-fg);
+  border-radius: var(--lets-pp-radius);
+  padding: 10px 16px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.lets-pp-upsell-done {
+  color: var(--lets-pp-ok, #047857);
+  font-size: 14px;
+  font-weight: 600;
 }
