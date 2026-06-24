@@ -11,5 +11,6 @@
 :{$PORT:8080} {
 	root * public/
 	encode zstd gzip
+	header X-Forwarded-Proto https
 	php_server
 }
