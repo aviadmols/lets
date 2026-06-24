@@ -15,6 +15,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentType;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
+use App\Services\Orders\PaidOrderPlanResolverFactory;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -42,10 +43,6 @@ use Illuminate\Support\Facades\Log;
  */
 final class PlanActivationService
 {
-    // === CONSTANTS ===
-    /** The custom-attribute key the deposit draft/order carries (links to the plan). */
-    private const ATTR_PLAN_PUBLIC_ID = 'pps_plan_public_id';
-
     /**
      * The token resolver is OPTIONAL: laravel-backend binds the real
      * PayPlusCustomerTokenResolver; until then activation still records the paid
@@ -148,38 +145,16 @@ final class PlanActivationService
     }
 
     /**
-     * Find the plan this paid order activates: prefer the plan's stored draft id
-     * (DepositPlanService wrote the draft's legacyResourceId into shopify_order_id),
-     * then fall back to the order's pps_plan_public_id note/custom attribute.
+     * Find the plan this paid order activates, via the shop's platform resolver
+     * (PaidOrderPlanResolver — Shopify note-attr/draft lookup, WooCommerce order-meta
+     * lookup). Returns null when the platform has no resolver yet, or the order is not
+     * a LETS deposit we own.
      *
      * @param  array<string, mixed>  $orderPayload
      */
     private function resolvePlan(Shop $shop, array $orderPayload): ?InstallmentPlan
     {
-        // Strongest signal: the order carries our plan public id (copied from the
-        // deposit draft's customAttributes onto the order's note_attributes).
-        $publicId = $this->attribute($orderPayload, self::ATTR_PLAN_PUBLIC_ID);
-        if ($publicId !== null && $publicId !== '') {
-            $plan = InstallmentPlan::query()->where('public_id', $publicId)->first();
-            if ($plan !== null) {
-                return $plan;
-            }
-        }
-
-        // Fallback: the draft that became this order. DepositPlanService stored the
-        // draft's legacyResourceId in the plan meta; orders/paid carries the source
-        // draft id in `draft_order_id`.
-        $draftId = (string) (data_get($orderPayload, 'draft_order_id') ?? '');
-        if ($draftId !== '') {
-            $plan = InstallmentPlan::query()
-                ->where('meta->'.DepositPlanService::META_DRAFT_ID, $draftId)
-                ->first();
-            if ($plan !== null) {
-                return $plan;
-            }
-        }
-
-        return null; // not a LETS deposit order we own
+        return PaidOrderPlanResolverFactory::for($shop)?->resolve($shop, $orderPayload);
     }
 
     /** Vault the captured token as the plan's payment method, or null when none. */
@@ -294,21 +269,5 @@ final class PlanActivationService
         }
 
         return round((float) (data_get($plan->meta, DepositPlanService::META_DEPOSIT_AMOUNT) ?? 0), 2);
-    }
-
-    /**
-     * Read a note/custom attribute by name from the order payload. Shopify exposes
-     * draft customAttributes on the resulting order as `note_attributes`
-     * [{name, value}].
-     */
-    private function attribute(array $orderPayload, string $name): ?string
-    {
-        foreach ((array) data_get($orderPayload, 'note_attributes', []) as $attr) {
-            if (($attr['name'] ?? null) === $name) {
-                return (string) ($attr['value'] ?? '');
-            }
-        }
-
-        return null;
     }
 }

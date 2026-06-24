@@ -8,7 +8,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
-use App\Services\Shopify\Orders\ShopifyDraftOrderService;
+use App\Services\Orders\PlatformInvoiceServiceFactory;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -37,8 +37,6 @@ final class DepositPlanService
     public const META_DEPOSIT_AMOUNT = 'deposit_amount';
     public const META_QUOTE = 'deposit_quote';
 
-    public function __construct(private readonly ShopifyDraftOrderService $draftOrders) {}
-
     /**
      * Create the plan + its unpaid deposit invoice; return the plan and the hosted
      * invoice URL the storefront redirects the parent window to.
@@ -52,6 +50,13 @@ final class DepositPlanService
      */
     public function create(Shop $shop, InstallmentQuote $quote, array $context): array
     {
+        // Resolve the platform's deposit-invoice service up front (Shopify draft order /
+        // WooCommerce PayPlus page) — fail fast before creating a plan we can't invoice.
+        $invoiceService = PlatformInvoiceServiceFactory::for($shop);
+        if ($invoiceService === null) {
+            throw new \RuntimeException("No deposit-invoice service for platform [{$shop->platform}].");
+        }
+
         // Build the plan row inside a txn; the deposit invoice (an external call) is
         // made AFTER commit so a Shopify hiccup never leaves a phantom plan with no
         // way to pay — and a created-but-uninvoiced plan is reconcilable by its
@@ -95,23 +100,23 @@ final class DepositPlanService
             return $plan;
         });
 
-        // Create the UNPAID deposit invoice (GraphQL draftOrderCreate → invoiceUrl).
-        $invoice = $this->draftOrders->createDepositInvoice($plan, [
+        // Create the UNPAID deposit invoice (Shopify draft order / PayPlus hosted page).
+        $invoice = $invoiceService->createDepositInvoice($plan, [
             'title' => (string) $context['item_title'],
             'deposit_amount' => $quote->depositAmount,
             'quantity' => 1,
             'variant_gid' => (string) $context['variant_gid'],
         ]);
 
-        // Persist the draft linkage so orders/paid can find the plan by draft id /
-        // note attribute and activate it.
+        // Persist the invoice linkage so the paid-order webhook can find the plan by
+        // its external ref / note attribute and activate it.
         $meta = (array) ($plan->meta ?? []);
-        $meta[self::META_DRAFT_GID] = $invoice['draft_order_gid'];
-        $meta[self::META_DRAFT_ID] = $invoice['draft_order_id'];
+        $meta[self::META_DRAFT_GID] = $invoice['external_gid'];
+        $meta[self::META_DRAFT_ID] = $invoice['external_ref'];
         $meta[self::META_INVOICE_URL] = $invoice['invoice_url'];
         $plan->meta = $meta;
-        // The deposit draft will become the parent order on payment; record its id.
-        $plan->shopify_order_id = $invoice['draft_order_id'] !== '' ? $invoice['draft_order_id'] : $plan->shopify_order_id;
+        // The deposit invoice's order/draft becomes the parent order on payment.
+        $plan->shopify_order_id = $invoice['external_ref'] !== '' ? $invoice['external_ref'] : $plan->shopify_order_id;
         $plan->save();
 
         Timeline::record(
@@ -121,7 +126,7 @@ final class DepositPlanService
                 'deposit_amount' => $quote->depositAmount,
                 'total_amount' => $quote->totalAmount,
                 'installments' => $quote->installments,
-                'draft_order_id' => $invoice['draft_order_id'],
+                'external_ref' => $invoice['external_ref'],
             ],
             planId: $plan->getKey(),
             shopId: (int) $shop->getKey(),
