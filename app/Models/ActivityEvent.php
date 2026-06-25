@@ -23,6 +23,14 @@ class ActivityEvent extends Model
     public const ACTOR_CUSTOMER = 'customer';
     public const ACTOR_WEBHOOK = 'webhook';
 
+    /**
+     * GDPR privacy-webhook audit kinds. Recorded with NO PII in `details` — only a
+     * salted customer ref hash + per-table redaction counts (RedactionPolicy).
+     */
+    public const KIND_CUSTOMER_REDACTED = 'customer_redacted';
+    public const KIND_SHOP_REDACTED = 'shop_redacted';
+    public const KIND_CUSTOMER_DATA_EXPORTED = 'customer_data_exported';
+
     /** Email kinds that are previewable inline in the Timeline (see EmailPreviewRenderer). */
     public const PREVIEWABLE_EMAIL_KINDS = [
         'first_payment_welcome_email_sent',

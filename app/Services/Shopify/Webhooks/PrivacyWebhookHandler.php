@@ -2,6 +2,9 @@
 
 namespace App\Services\Shopify\Webhooks;
 
+use App\Jobs\Privacy\ExportCustomerData;
+use App\Jobs\Privacy\RedactCustomerData;
+use App\Jobs\Privacy\RedactShopData;
 use App\Models\WebhookEvent;
 use App\Support\Tenant;
 use Illuminate\Support\Facades\Log;
@@ -34,20 +37,23 @@ final class PrivacyWebhookHandler implements WebhookHandler
         Log::info('shopify.privacy_webhook', [
             'topic' => $event->topic,
             'shop_id' => $shop?->id,
+            // NOTE: the raw customer id is logged by the transport for ROUTING
+            // audit only; the data-policy jobs below never log PII.
             'customer_id' => data_get($payload, 'customer.id'),
         ]);
 
-        // TODO(saas-multitenancy-billing): the data policy lives there. Wire its
-        //   listener to act on each topic with the tenant bound:
-        //     customers/redact       → RedactCustomerData::dispatch($shop->id, $payload)
-        //     shop/redact            → RedactShopData::dispatch($shop->id, $payload)
-        //     customers/data_request → ExportCustomerData::dispatch($shop->id, $payload)
-        //   We deliberately do NOT erase here — deletion policy + retention windows
-        //   are the SaaS agent's contract. This transport stays policy-free.
+        if ($shop === null) {
+            return; // job binds the tenant; defensive guard for a malformed dispatch.
+        }
+
+        // The DATA POLICY. Each topic dispatches a tenant-scoped, idempotent job
+        // carrying shop_id EXPLICITLY (never inferred). The job re-binds the tenant
+        // in handle() (jobs don't inherit request tenant) and acts under the
+        // BelongsToShop scope, so it can only ever touch THIS shop's data.
         match ($event->topic) {
-            self::TOPIC_CUSTOMERS_REDACT,
-            self::TOPIC_SHOP_REDACT,
-            self::TOPIC_CUSTOMERS_DATA_REQUEST => null,
+            self::TOPIC_CUSTOMERS_REDACT => RedactCustomerData::dispatch($shop->id, $payload),
+            self::TOPIC_SHOP_REDACT => RedactShopData::dispatch($shop->id, $payload),
+            self::TOPIC_CUSTOMERS_DATA_REQUEST => ExportCustomerData::dispatch($shop->id, $payload),
             default => null,
         };
     }
