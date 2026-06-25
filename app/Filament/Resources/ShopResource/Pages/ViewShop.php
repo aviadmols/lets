@@ -36,11 +36,26 @@ class ViewShop extends Page
 
     public function mount(int|string $record): void
     {
-        // Resolve from the un-scoped Shop model (Shop is the tenant, not
-        // BelongsToShop). Gate is enforced by ShopResource::canAccess(); a missing
-        // id 404s normally (there is no foreign-tenant leak risk — every platform
-        // admin may see every shop by design).
-        $this->record = Shop::query()->findOrFail($record);
+        // Filament route-model-binds the resource {record} param to the Shop before
+        // mount; for a scalar-typed param Livewire hands it over SERIALIZED (a JSON
+        // string of the model), so a bare Shop::find($record) would search for that JSON
+        // text and 404 (the live /admin/shops/{id} 500). Resolve the key from either a
+        // plain id or that bound-model JSON, then load it from the un-scoped Shop model
+        // (Shop is the tenant, not BelongsToShop). Access is gated by
+        // ShopResource::canAccess(); every platform admin may view every shop by design.
+        $this->record = Shop::query()->findOrFail(self::shopKeyFrom($record));
+    }
+
+    /** The shop id from a plain route key or a Filament-bound model's JSON payload. */
+    private static function shopKeyFrom(int|string $record): int|string
+    {
+        if (is_string($record) && str_starts_with($record, '{')) {
+            $decoded = json_decode($record, true);
+
+            return $decoded['id'] ?? $record;
+        }
+
+        return $record;
     }
 
     public function getTitle(): string|Htmlable

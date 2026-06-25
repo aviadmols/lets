@@ -4,6 +4,7 @@ namespace Tests\Feature\Platform;
 
 use App\Filament\Resources\ShopResource\Pages\ViewShop;
 use App\Models\Shop;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -42,5 +43,25 @@ final class ViewShopWooCommerceTest extends TestCase
 
         // The bug returned null here (typed getTitle 500s); now it's the WC domain.
         $this->assertSame('store.example.com', $page->getTitle());
+    }
+
+    public function test_view_shop_page_renders_end_to_end_for_a_woocommerce_shop(): void
+    {
+        // Reproduce the live /admin/shops/{id} 500 for a WC shop by rendering the WHOLE
+        // page (blade + overview() aggregates + recentActivity) through HTTP, with
+        // exceptions surfaced so the real cause shows instead of a generic 500.
+        $this->withoutExceptionHandling();
+
+        $admin = User::factory()->platformAdmin()->create();
+        $wc = Shop::create([
+            'name' => 'WC Store',
+            'status' => Shop::STATUS_INSTALLED,
+            'platform' => Shop::PLATFORM_WOOCOMMERCE,
+            'woocommerce_domain' => 'store.example.com',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(ViewShop::getUrl(['record' => $wc->getKey()]))
+            ->assertOk();
     }
 }
