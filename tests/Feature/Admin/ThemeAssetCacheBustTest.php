@@ -4,16 +4,25 @@ namespace Tests\Feature\Admin;
 
 use App\Models\Shop;
 use App\Models\User;
+use App\Providers\Filament\AdminPanelProvider;
 use App\Support\Tenant;
+use Filament\Panel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\URL;
 use Tests\TestCase;
 
 /**
- * The rc-admin.css theme bundle is registered by URL (not a Filament-managed local
- * asset), so it would otherwise carry NO version query — a browser keeps serving a
- * STALE cached copy after the tokens/components change, and the admin renders with the
- * old CSS (unstyled tabs, giant unsized icons) even though prod serves the right file.
- * AdminPanelProvider::themeAssetUrl() appends a filemtime cache-buster; this guards it.
+ * Theme-asset delivery guards (two live admin-CSS bugs):
+ *
+ *  1. CACHE-BUST — the rc-admin.css bundle is registered by URL (not a Filament local
+ *     asset), so without a ?v= query a browser keeps a STALE cached copy after the CSS
+ *     changes (unstyled tabs/giant icons). themeAssetUrl() appends a filemtime buster.
+ *
+ *  2. HTTPS / MIXED CONTENT — panel() runs in the REGISTER phase, before TrustProxies
+ *     and before AppServiceProvider::boot()'s forceScheme. Behind Railway's TLS proxy
+ *     the register-phase scheme is http, so the asset()/favicon() URLs baked http:// and
+ *     the browser BLOCKED them as mixed content on the https page. panel() now forces
+ *     https first (in production).
  */
 final class ThemeAssetCacheBustTest extends TestCase
 {
@@ -31,7 +40,29 @@ final class ThemeAssetCacheBustTest extends TestCase
 
         $html = $this->get('/admin/post-purchase-offers')->assertOk()->getContent();
 
-        // The bundle is linked AND carries a ?v= query so a content change busts caches.
         $this->assertStringContainsString('css/rc-admin.css?v=', $html);
+    }
+
+    public function test_production_panel_forces_https_so_assets_are_not_mixed_content(): void
+    {
+        // Simulate production: panel() must force https BEFORE it generates the theme +
+        // favicon URLs, or they come out http:// and the browser blocks them on https.
+        $this->app['env'] = 'production';
+
+        (new AdminPanelProvider($this->app))->panel(Panel::make('test-https'));
+
+        $this->assertStringStartsWith('https://', asset(AdminPanelProvider::THEME_ASSET_PATH));
+        $this->assertStringStartsWith('https://', asset('favicon.ico'));
+    }
+
+    public function test_non_production_leaves_the_scheme_untouched(): void
+    {
+        // Local dev (http://localhost) must NOT be forced to https.
+        $this->app['env'] = 'local';
+        URL::forceScheme('http');
+
+        (new AdminPanelProvider($this->app))->panel(Panel::make('test-http'));
+
+        $this->assertStringStartsWith('http://', asset(AdminPanelProvider::THEME_ASSET_PATH));
     }
 }

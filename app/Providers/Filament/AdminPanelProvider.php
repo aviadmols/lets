@@ -22,6 +22,7 @@ use Filament\Support\Colors\Color;
 use Filament\Support\Facades\FilamentAsset;
 use Filament\View\PanelsRenderHook;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\View as ViewFacade;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -94,6 +95,16 @@ class AdminPanelProvider extends PanelProvider
 
     public function panel(Panel $panel): Panel
     {
+        // HTTPS FIRST — panel() runs in the REGISTER phase, BEFORE TrustProxies
+        // (middleware) and BEFORE AppServiceProvider::boot()'s forceScheme. Behind
+        // Railway's TLS-terminating proxy the register-phase request scheme is http,
+        // so the asset()/favicon() URLs below would bake http:// and the browser blocks
+        // them as mixed content on the https page (unstyled admin). Force https here,
+        // before any URL is generated.
+        if ($this->app->environment('production')) {
+            URL::forceScheme('https');
+        }
+
         // The brand blue: re-map Filament's primary onto #3B5BDB so native
         // components inherit it. The full --rc-* ramp is re-pointed in theme.css.
         FilamentAsset::register([
