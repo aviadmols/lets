@@ -354,6 +354,66 @@
     color: var(--rc-blue);
 }
 
+/* code-editor.css — HtmlCodeEditor (merchant email-body HTML source editor)
+   TOKENS: --rc-card --rc-border --rc-border-strong --rc-radius-control
+           --rc-ink --rc-ink-muted --rc-space-2 --rc-space-3 --rc-ring --rc-blue
+   The editor is ALWAYS LTR (code reads left-to-right) even in the Hebrew/RTL
+   admin — direction is set here, never inline. Monospace for source clarity. */
+
+.rc-code {
+    inline-size: 100%;
+}
+
+/* Textarea fallback (pre-CodeMirror / no-JS). Same frame as the live editor so
+   there is no layout jump when CodeMirror upgrades it. */
+.rc-code__area {
+    inline-size: 100%;
+    min-block-size: 240px;
+    direction: ltr;
+    text-align: start;
+    font-family: ui-monospace, "SFMono-Regular", "Menlo", "Consolas", monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--rc-ink);
+    background: var(--rc-card);
+    border: 1px solid var(--rc-border-strong);
+    border-radius: var(--rc-radius-control);
+    padding: var(--rc-space-3);
+    resize: vertical;
+}
+.rc-code__area:focus {
+    outline: none;
+    box-shadow: var(--rc-ring);
+    border-color: var(--rc-blue);
+}
+
+/* CodeMirror instance skin (the .CodeMirror element it injects). It carries its
+   own stylesheet for the gutter/syntax colors; here we only frame it on-token and
+   force LTR so Hebrew admins still edit HTML left-to-right. */
+.rc-code .CodeMirror {
+    direction: ltr;
+    block-size: auto;
+    min-block-size: 240px;
+    font-family: ui-monospace, "SFMono-Regular", "Menlo", "Consolas", monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--rc-ink);
+    background: var(--rc-card);
+    border: 1px solid var(--rc-border-strong);
+    border-radius: var(--rc-radius-control);
+}
+.rc-code .CodeMirror-focused {
+    box-shadow: var(--rc-ring);
+    border-color: var(--rc-blue);
+}
+.rc-code .CodeMirror-gutters {
+    background: var(--rc-bg);
+    border-inline-end: 1px solid var(--rc-border);
+}
+.rc-code .CodeMirror-linenumber {
+    color: var(--rc-ink-muted);
+}
+
 /* =============================================================================
    configure-drawer.css — the Flow-Builder slide-over drawers (docs/ux/40,
    Recharge post-purchase reference). A right-side drawer + scrim opened from a
@@ -782,6 +842,14 @@ a.rc-railed:hover { background: var(--rc-blue-bg); }
     transform: translateY(-1px);
 }
 
+/* Tone accent rail (RTL-safe inline-start) for value-aware cards (Observability
+   §10 §6.6). The accent communicates health at a glance; the tone is decided in
+   PHP (rateTone/failedTone), the class only colors. */
+.rc-kpi--success { border-inline-start: 3px solid var(--rc-green); }
+.rc-kpi--warning { border-inline-start: 3px solid var(--rc-amber); }
+.rc-kpi--danger  { border-inline-start: 3px solid var(--rc-red); }
+.rc-kpi--info    { border-inline-start: 3px solid var(--rc-teal); }
+
 .rc-kpi__label {
     font: var(--rc-type-label);
     text-transform: uppercase;
@@ -831,6 +899,143 @@ a.rc-railed:hover { background: var(--rc-blue-bg); }
 @keyframes rc-shimmer {
     0%   { background-position: 100% 0; }
     100% { background-position: 0 0; }
+}
+
+/* mail-settings.css — Settings → Email notifications (W9 Part A)
+   TOKENS: --rc-card --rc-bg --rc-border --rc-border-strong --rc-radius-control
+           --rc-ink --rc-ink-muted --rc-blue-bg --rc-space-1 --rc-space-2 --rc-space-3
+   Placeholder token chips + the sandboxed email-preview frame. ZERO inline CSS. */
+
+/* Placeholder helper chips: the {tokens} a template supports, shown inline. */
+.rc-token-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--rc-space-2);
+}
+.rc-token {
+    direction: ltr;
+    unicode-bidi: isolate;
+    font-family: ui-monospace, "SFMono-Regular", "Menlo", "Consolas", monospace;
+    font-size: 12px;
+    color: var(--rc-ink);
+    background: var(--rc-blue-bg);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    padding-block: 2px;
+    padding-inline: var(--rc-space-2);
+}
+
+/* The email-preview surface: a framed, sandboxed iframe rendering the email HTML. */
+.rc-preview {
+    background: var(--rc-bg);
+    border: 1px solid var(--rc-border-strong);
+    border-radius: var(--rc-radius-control);
+    padding: var(--rc-space-3);
+}
+.rc-preview__frame {
+    inline-size: 100%;
+    block-size: 520px;
+    border: 0;
+    background: var(--rc-card); /* white email canvas via the card token */
+    border-radius: var(--rc-radius-control);
+}
+
+/* observability.css — Observability dashboard (docs/ux/10 §observability, ARCHITECTURE.md §6.6)
+   TOKENS: --rc-card --rc-border --rc-radius-card --rc-radius-control --rc-shadow-card
+           --rc-space-* --rc-type-label --rc-type-body-strong --rc-ink --rc-ink-muted
+           --rc-green --rc-red --rc-amber --rc-green-bg --rc-red-bg --rc-blue-bg
+   RTL: logical properties only (gap/inline padding) — the strip + plans mirror
+        with the document dir; no left/right anywhere. ZERO inline CSS in the page. */
+
+/* Scope banner — which audience's numbers these are. */
+.rc-obs__scope {
+    display: flex;
+    align-items: center;
+    gap: var(--rc-space-2);
+}
+
+/* Queue + scheduler health strip. */
+.rc-obs__strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--rc-space-4);
+    align-items: stretch;
+}
+
+.rc-obs__health,
+.rc-obs__queue {
+    display: flex;
+    align-items: center;
+    gap: var(--rc-space-2);
+    padding: var(--rc-space-3) var(--rc-space-4);
+    background: var(--rc-card);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+}
+
+.rc-obs__health {
+    gap: var(--rc-space-3);
+}
+.rc-obs__health-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--rc-space-1);
+}
+.rc-obs__health-label {
+    font: var(--rc-type-label);
+    color: var(--rc-ink-muted);
+}
+.rc-obs__health-value {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--rc-space-2);
+    font: var(--rc-type-body-strong);
+    color: var(--rc-ink);
+}
+
+/* Status dot: ok = green, down = red (scheduler liveness). */
+.rc-obs__dot {
+    inline-size: 10px;
+    block-size: 10px;
+    border-radius: var(--rc-radius-pill);
+    flex: 0 0 auto;
+}
+.rc-obs__dot--ok   { background: var(--rc-green); }
+.rc-obs__dot--down { background: var(--rc-red); }
+
+/* Queue chips. */
+.rc-obs__queue {
+    gap: var(--rc-space-3);
+}
+.rc-obs__queue-name {
+    font: var(--rc-type-label);
+    color: var(--rc-ink-muted);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+[dir="rtl"] .rc-obs__queue-name {
+    text-transform: none;
+    letter-spacing: normal;
+}
+.rc-obs__queue-depth {
+    font: var(--rc-type-body-strong);
+    color: var(--rc-ink);
+}
+
+/* Plan breakdown — badge + count pairs. */
+.rc-obs__plans {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--rc-space-4);
+}
+.rc-obs__plan {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--rc-space-2);
+}
+.rc-obs__plan-count {
+    font: var(--rc-type-body-strong);
+    color: var(--rc-ink);
 }
 
 /* platform.css — the platform-admin "Viewing as {shop}" banner (W2).
@@ -1628,6 +1833,21 @@ button.rc-fb-node:focus-visible {
     font: var(--rc-type-caption);
 }
 .rc-timeline__summary { font: var(--rc-type-body); color: var(--rc-ink-muted); }
+
+/* "Preview email" trigger on an email-previewable Timeline row (§6.6). A text
+   button (no chrome) tinted with the brand so it reads as an inline link, not a
+   CTA. RTL-safe: no left/right, inherits the row's logical flow. */
+.rc-timeline__preview {
+    appearance: none;
+    border: none;
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
+    color: var(--rc-link);
+    font: var(--rc-type-caption);
+    text-decoration: underline;
+}
+.rc-timeline__preview:hover { color: var(--rc-blue-600); }
 
 /* empty state for any list region (component §4.13). */
 .rc-empty {

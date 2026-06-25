@@ -41,6 +41,31 @@ final class EventPresenter
     public const FALLBACK = ['info', 'timeline.kind.generic'];
 
     /**
+     * Previewable email-event kind => the MerchantMailSettings template that event
+     * rendered. Lets the Timeline "Preview email" action show the merchant exactly
+     * which template (their custom copy or the platform default) was sent, via
+     * EmailPreviewRenderer. Covers every ActivityEvent::PREVIEWABLE_EMAIL_KINDS; the
+     * two manual variants (sent + resent) both map to the manual template.
+     *
+     * @var array<string, string>
+     */
+    public const EMAIL_TEMPLATE_FOR_KIND = [
+        'first_payment_welcome_email_sent' => 'first_payment_welcome',
+        'manual_payment_email_sent' => 'manual_recurring_payment',
+        'manual_payment_email_resent' => 'manual_recurring_payment',
+        'reminder_email_sent' => 'recurring_payment_reminder',
+        'cancellation_email_sent' => 'plan_cancelled',
+        'charge_succeeded_email_sent' => 'charge_succeeded',
+        'charge_failed_email_sent' => 'charge_failed',
+    ];
+
+    /** The mail template an email-event previews, or null when not previewable. */
+    public static function emailTemplate(ActivityEvent $event): ?string
+    {
+        return self::EMAIL_TEMPLATE_FOR_KIND[$event->kind] ?? null;
+    }
+
+    /**
      * Detail keys that are SAFE to surface in the UI. Anything else (notably
      * invoice_url / document_url / raw token / payplus_* secrets) is dropped.
      */

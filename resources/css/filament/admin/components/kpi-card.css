@@ -27,6 +27,14 @@
     transform: translateY(-1px);
 }
 
+/* Tone accent rail (RTL-safe inline-start) for value-aware cards (Observability
+   §10 §6.6). The accent communicates health at a glance; the tone is decided in
+   PHP (rateTone/failedTone), the class only colors. */
+.rc-kpi--success { border-inline-start: 3px solid var(--rc-green); }
+.rc-kpi--warning { border-inline-start: 3px solid var(--rc-amber); }
+.rc-kpi--danger  { border-inline-start: 3px solid var(--rc-red); }
+.rc-kpi--info    { border-inline-start: 3px solid var(--rc-teal); }
+
 .rc-kpi__label {
     font: var(--rc-type-label);
     text-transform: uppercase;

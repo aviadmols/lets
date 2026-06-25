@@ -13,12 +13,16 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PaymentType;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Services\ChargeOutcome;
+use App\Models\MerchantMailSettings;
+use App\Support\EmailPreviewRenderer;
+use App\Support\Ui\EventPresenter;
 use App\Support\Ui\Money;
 use Filament\Actions;
 use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
+use Illuminate\Contracts\View\View;
 
 /**
  * Subscription detail — the single plan's full record (docs/ux/30-subscriptions.md):
@@ -109,6 +113,79 @@ class ViewSubscription extends Page
                 ]))
                 ->action(fn () => $this->chargeNow()),
         ];
+    }
+
+    /**
+     * The Timeline "Preview email" action (W9 Part A / §6.6). Triggered per-row from
+     * the plan Timeline for an email-previewable event; it opens a modal rendering
+     * the SAME isolated-iframe mail preview as ManageMailSettings (EmailPreviewRenderer
+     * → htmlspecialchars'd srcdoc + sandbox="").
+     *
+     * SECURITY: the event is resolved through resolveScopedEvent(), which queries
+     * ActivityEvent (BelongsToShop global scope = this shop only) AND pins plan_id to
+     * THIS record — so a tampered $arguments['event'] can never preview another plan's
+     * or another shop's event. A non-previewable / foreign id yields no modal content.
+     */
+    public function previewEmailAction(): Actions\Action
+    {
+        return Actions\Action::make('previewEmail')
+            ->label(__('subscriptions.detail.preview_email'))
+            ->icon('heroicon-m-eye')
+            ->modalHeading(__('mail.preview.heading'))
+            ->modalSubmitAction(false)
+            ->modalCancelActionLabel(__('mail.preview.close'))
+            ->modalWidth('3xl')
+            ->modalContent(fn (array $arguments): View => $this->previewModalFor(
+                (int) ($arguments['event'] ?? 0),
+            ));
+    }
+
+    /**
+     * Resolve a previewable Timeline event SCOPED to this plan + shop, then render
+     * the mail-preview partial. When the id is not a previewable event of THIS plan
+     * (foreign / non-email / missing), it renders an inert "unavailable" notice —
+     * the modal opens deterministically but never shows another plan's data
+     * (fail closed, no leak).
+     */
+    private function previewModalFor(int $eventId): View
+    {
+        $event = self::scopedEmailEvent((int) $this->record->getKey(), $eventId);
+        $template = $event !== null ? EventPresenter::emailTemplate($event) : null;
+
+        if ($template === null) {
+            return view('filament.pages.partials.mail-preview-unavailable');
+        }
+
+        // Use the shop's saved custom copy when set, else the platform default —
+        // the same per-shop settings row the live send used (tenant-keyed).
+        $preview = EmailPreviewRenderer::preview($template, MerchantMailSettings::current());
+
+        return view('filament.pages.partials.mail-preview', [
+            'subject' => $preview['subject'],
+            'html' => $preview['html'],
+            'isCustom' => $preview['is_custom'],
+        ]);
+    }
+
+    /**
+     * An ActivityEvent that belongs to BOTH the current shop (BelongsToShop global
+     * scope) AND the given plan (explicit plan_id), and is email-previewable. Anything
+     * else → null. This is the security seam: never preview an event the caller didn't
+     * open this page for. Static + pure so it is unit-testable without rendering the
+     * full Filament page (whose typed $record resists the raw Livewire test harness).
+     */
+    public static function scopedEmailEvent(int $planId, int $eventId): ?ActivityEvent
+    {
+        if ($eventId <= 0 || $planId <= 0) {
+            return null;
+        }
+
+        $event = ActivityEvent::query()
+            ->whereKey($eventId)
+            ->where('plan_id', $planId)
+            ->first();
+
+        return ($event !== null && $event->isEmailPreviewable()) ? $event : null;
     }
 
     /**

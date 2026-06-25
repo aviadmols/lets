@@ -40,6 +40,8 @@ return [
         'payment_ledger' => 'Payment ledger',
         'ledger_empty' => 'No charges yet.',
         'timeline' => 'Timeline',
+        'preview_email' => 'Preview email',
+        'preview_unavailable' => 'This email preview is no longer available.',
         'next_cycle' => 'Next cycle',
         'started' => 'Started',
         'col' => [

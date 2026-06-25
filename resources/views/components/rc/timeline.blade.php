@@ -7,10 +7,16 @@
     whitelists safe detail keys; this Blade only ever prints what it returns.
 
     Props:
-      events — iterable of App\Models\ActivityEvent (already shop-scoped + ordered)
+      events        — iterable of App\Models\ActivityEvent (already shop-scoped + ordered)
+      previewAction — optional Filament action NAME (string) wired on the host page;
+                      when set, a "Preview email" trigger is rendered for every
+                      email-previewable event, passing { event: id } to the action.
+                      The host action resolves the event SCOPED to its own record —
+                      this Blade never decides what may be previewed.
 --}}
 @props([
     'events' => [],
+    'previewAction' => null,
 ])
 @php use App\Support\Ui\EventPresenter; @endphp
 @if(count($events) === 0)
@@ -32,6 +38,13 @@
                     <span class="rc-timeline__meta">
                         <span class="rc-timeline__actor">{{ EventPresenter::actorLabel($event) }}</span>
                         <span class="rc-ltr">{{ optional($event->created_at)->format('d M Y, H:i') }}</span>
+                        @if($previewAction && $event->isEmailPreviewable())
+                            <button
+                                type="button"
+                                class="rc-timeline__preview"
+                                wire:click="mountAction('{{ $previewAction }}', { event: {{ $event->getKey() }} })"
+                            >{{ __('subscriptions.detail.preview_email') }}</button>
+                        @endif
                     </span>
                 </div>
             </div>

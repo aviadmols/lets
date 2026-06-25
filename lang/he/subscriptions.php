@@ -40,6 +40,8 @@ return [
         'payment_ledger' => 'יומן תשלומים',
         'ledger_empty' => 'אין עדיין חיובים.',
         'timeline' => 'ציר זמן',
+        'preview_email' => 'תצוגת אימייל',
+        'preview_unavailable' => 'תצוגת האימייל הזו אינה זמינה עוד.',
         'next_cycle' => 'מחזור הבא',
         'started' => 'התחיל',
         'col' => [

@@ -46,7 +46,7 @@ class AdminDesignSystemTest extends TestCase
 
     public function test_lang_catalogs_mirror_between_en_and_he(): void
     {
-        $files = ['billing', 'common', 'nav', 'dashboard', 'states', 'timeline', 'subscriptions', 'customers', 'settings', 'upsell'];
+        $files = ['billing', 'common', 'nav', 'dashboard', 'states', 'timeline', 'subscriptions', 'customers', 'settings', 'upsell', 'observability'];
 
         foreach ($files as $file) {
             $en = $this->flatten(require base_path("lang/en/$file.php"));

@@ -37,6 +37,21 @@
 }
 .rc-timeline__summary { font: var(--rc-type-body); color: var(--rc-ink-muted); }
 
+/* "Preview email" trigger on an email-previewable Timeline row (§6.6). A text
+   button (no chrome) tinted with the brand so it reads as an inline link, not a
+   CTA. RTL-safe: no left/right, inherits the row's logical flow. */
+.rc-timeline__preview {
+    appearance: none;
+    border: none;
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
+    color: var(--rc-link);
+    font: var(--rc-type-caption);
+    text-decoration: underline;
+}
+.rc-timeline__preview:hover { color: var(--rc-blue-600); }
+
 /* empty state for any list region (component §4.13). */
 .rc-empty {
     display: flex; flex-direction: column; align-items: center; gap: var(--rc-space-3);

@@ -1,0 +1,97 @@
+/* observability.css — Observability dashboard (docs/ux/10 §observability, ARCHITECTURE.md §6.6)
+   TOKENS: --rc-card --rc-border --rc-radius-card --rc-radius-control --rc-shadow-card
+           --rc-space-* --rc-type-label --rc-type-body-strong --rc-ink --rc-ink-muted
+           --rc-green --rc-red --rc-amber --rc-green-bg --rc-red-bg --rc-blue-bg
+   RTL: logical properties only (gap/inline padding) — the strip + plans mirror
+        with the document dir; no left/right anywhere. ZERO inline CSS in the page. */
+
+/* Scope banner — which audience's numbers these are. */
+.rc-obs__scope {
+    display: flex;
+    align-items: center;
+    gap: var(--rc-space-2);
+}
+
+/* Queue + scheduler health strip. */
+.rc-obs__strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--rc-space-4);
+    align-items: stretch;
+}
+
+.rc-obs__health,
+.rc-obs__queue {
+    display: flex;
+    align-items: center;
+    gap: var(--rc-space-2);
+    padding: var(--rc-space-3) var(--rc-space-4);
+    background: var(--rc-card);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+}
+
+.rc-obs__health {
+    gap: var(--rc-space-3);
+}
+.rc-obs__health-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--rc-space-1);
+}
+.rc-obs__health-label {
+    font: var(--rc-type-label);
+    color: var(--rc-ink-muted);
+}
+.rc-obs__health-value {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--rc-space-2);
+    font: var(--rc-type-body-strong);
+    color: var(--rc-ink);
+}
+
+/* Status dot: ok = green, down = red (scheduler liveness). */
+.rc-obs__dot {
+    inline-size: 10px;
+    block-size: 10px;
+    border-radius: var(--rc-radius-pill);
+    flex: 0 0 auto;
+}
+.rc-obs__dot--ok   { background: var(--rc-green); }
+.rc-obs__dot--down { background: var(--rc-red); }
+
+/* Queue chips. */
+.rc-obs__queue {
+    gap: var(--rc-space-3);
+}
+.rc-obs__queue-name {
+    font: var(--rc-type-label);
+    color: var(--rc-ink-muted);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+[dir="rtl"] .rc-obs__queue-name {
+    text-transform: none;
+    letter-spacing: normal;
+}
+.rc-obs__queue-depth {
+    font: var(--rc-type-body-strong);
+    color: var(--rc-ink);
+}
+
+/* Plan breakdown — badge + count pairs. */
+.rc-obs__plans {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--rc-space-4);
+}
+.rc-obs__plan {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--rc-space-2);
+}
+.rc-obs__plan-count {
+    font: var(--rc-type-body-strong);
+    color: var(--rc-ink);
+}
