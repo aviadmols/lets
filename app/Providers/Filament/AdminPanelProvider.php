@@ -76,12 +76,28 @@ class AdminPanelProvider extends PanelProvider
         });
     }
 
+    /**
+     * The theme stylesheet URL with a content cache-buster. The bundle is registered
+     * by URL (not a Filament-managed local asset), so without a ?v= query a browser
+     * keeps serving a STALE rc-admin.css after the tokens/components change — the page
+     * then renders with the OLD CSS (unstyled tabs, unsized icons) even though prod
+     * serves the correct file. filemtime changes on every deploy, so the URL changes
+     * whenever the bundle does and the browser re-fetches; it stays cacheable otherwise.
+     */
+    private static function themeAssetUrl(): string
+    {
+        $url = asset(self::THEME_ASSET_PATH);
+        $path = public_path(self::THEME_ASSET_PATH);
+
+        return is_file($path) ? $url.'?v='.filemtime($path) : $url;
+    }
+
     public function panel(Panel $panel): Panel
     {
         // The brand blue: re-map Filament's primary onto #3B5BDB so native
         // components inherit it. The full --rc-* ramp is re-pointed in theme.css.
         FilamentAsset::register([
-            Css::make(self::THEME_ASSET_ID, asset(self::THEME_ASSET_PATH)),
+            Css::make(self::THEME_ASSET_ID, self::themeAssetUrl()),
         ]);
 
         // RTL is automatic: Filament reads <html dir> from the translation key
