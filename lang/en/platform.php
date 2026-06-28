@@ -90,5 +90,11 @@ return [
         'step_install' => 'Activate the plugin, then open Settings → LETS.',
         'step_paste' => 'Paste the connection token and click Connect.',
         'done' => 'Done',
+        // Shop detail page (W11 addendum): persistent connect tooling + WP status.
+        'section_title' => 'WooCommerce connection',
+        'connection_status' => 'WordPress connection',
+        'token_action' => 'Connection token',
+        'token_regen_warning' => 'A fresh connection token is generated and any previous one stops working — the merchant must paste the new token into the plugin.',
+        'detail_hint' => 'Use “Connection token” above to issue the token to paste into the WordPress plugin, or “Download plugin” to get the installer.',
     ],
 ];

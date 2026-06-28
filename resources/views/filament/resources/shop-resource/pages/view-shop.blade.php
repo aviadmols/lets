@@ -16,6 +16,24 @@
                 <x-rc.kpi label="platform.overview.revenue" :value="$o['revenue']" />
             </div>
 
+            {{-- WooCommerce connect (WC shops only): status + how to issue the token /
+                 download the plugin. The interactive bits are header actions
+                 ("Connection token", "Download plugin"); this shows the live status. --}}
+            @if($o['is_woo'])
+                <div class="rc-section">
+                    <div class="rc-section__title">{{ __('platform.woo.section_title') }}</div>
+                    <div class="rc-kv">
+                        <span class="rc-muted">{{ __('platform.woo.connection_status') }}</span>
+                        <span>
+                            <x-rc.badge
+                                :tone="$o['woo_connected'] ? 'green' : 'gray'"
+                                :label="$o['woo_connected'] ? 'platform.overview.connected' : 'platform.overview.not_connected'" />
+                        </span>
+                    </div>
+                    <p class="rc-muted">{{ __('platform.woo.detail_hint') }}</p>
+                </div>
+            @endif
+
             {{-- Recent activity (tenant-scoped Timeline for this shop). --}}
             <div class="rc-section">
                 <div class="rc-section__title">{{ __('platform.overview.recent_activity') }}</div>
@@ -46,8 +64,14 @@
                     <span class="rc-muted">{{ __('platform.overview.payplus') }}</span>
                     <span class="rc-strong">{{ $o['payplus_connected'] ? __('platform.overview.connected') : __('platform.overview.not_connected') }}</span>
 
-                    <span class="rc-muted">{{ __('platform.overview.shopify') }}</span>
-                    <span class="rc-strong">{{ $o['shopify_connected'] ? __('platform.overview.connected') : __('platform.overview.not_connected') }}</span>
+                    @if($o['is_woo'])
+                        {{-- WC shop: the WordPress-plugin connection is the relevant link. --}}
+                        <span class="rc-muted">{{ __('platform.woo.connection_status') }}</span>
+                        <span class="rc-strong">{{ $o['woo_connected'] ? __('platform.overview.connected') : __('platform.overview.not_connected') }}</span>
+                    @else
+                        <span class="rc-muted">{{ __('platform.overview.shopify') }}</span>
+                        <span class="rc-strong">{{ $o['shopify_connected'] ? __('platform.overview.connected') : __('platform.overview.not_connected') }}</span>
+                    @endif
 
                     <span class="rc-muted">{{ __('platform.shops.col.installed_at') }}</span>
                     <span class="rc-strong rc-ltr">{{ optional($record->installed_at)->format('d M Y') ?? __('common.none') }}</span>

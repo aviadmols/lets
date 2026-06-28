@@ -62,6 +62,32 @@ final class ViewShopWooCommerceTest extends TestCase
 
         $this->actingAs($admin)
             ->get(ViewShop::getUrl(['record' => $wc->getKey()]))
-            ->assertOk();
+            ->assertOk()
+            // The WooCommerce connect surface is present: the section, the live WP
+            // connection status, and the plugin-download link (header action url).
+            ->assertSee(__('platform.woo.section_title'))
+            ->assertSee(__('platform.woo.connection_status'))
+            ->assertSee('/admin/woocommerce/plugin/download');
+    }
+
+    public function test_woocommerce_connect_surface_is_hidden_for_a_shopify_shop(): void
+    {
+        $this->withoutExceptionHandling();
+
+        $admin = User::factory()->platformAdmin()->create();
+        $shopify = Shop::create([
+            'shopify_domain' => 'sf.myshopify.com',
+            'name' => 'SF',
+            'status' => Shop::STATUS_ACTIVE,
+            'platform' => Shop::PLATFORM_SHOPIFY,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(ViewShop::getUrl(['record' => $shopify->getKey()]))
+            ->assertOk()
+            // A Shopify shop never shows the WooCommerce connect tooling.
+            ->assertDontSee(__('platform.woo.section_title'))
+            ->assertDontSee('/admin/woocommerce/plugin/download')
+            ->assertSee(__('platform.overview.shopify'));
     }
 }
