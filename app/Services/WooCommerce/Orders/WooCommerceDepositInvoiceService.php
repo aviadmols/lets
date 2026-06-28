@@ -34,8 +34,18 @@ use RuntimeException;
 final class WooCommerceDepositInvoiceService implements PlatformInvoiceService
 {
     // === CONSTANTS ===
-    /** PayPlus charge_method: 0 = charge (capture now), the deposit is captured immediately. */
-    private const CHARGE_METHOD_CHARGE = 0;
+    /**
+     * PayPlus generateLink charge_method config key + DEFAULT.
+     *
+     * 0 = immediate capture/charge per current PayPlus understanding (the deposit is
+     * captured now and the card token vaulted) — the unchanged default. VERIFY against
+     * the real PayPlus terminal: if 0 turns out to be authorize-only on this account,
+     * the owner sets WOOCOMMERCE_CHARGE_METHOD to the value the terminal uses for an
+     * immediate charge. It is config-driven (not a hardcoded literal) precisely so that
+     * adjustment is an env flip, not a code change. @see config/woocommerce.php
+     */
+    private const CONFIG_CHARGE_METHOD = 'woocommerce.charge_method';
+    private const CHARGE_METHOD_DEFAULT = 0;
 
     /** generateLink response keys (confirmed against the reference PayPlusInstallmentGateway:55-56). */
     private const RESP_PAGE_LINK = 'data.payment_page_link';
@@ -62,7 +72,10 @@ final class WooCommerceDepositInvoiceService implements PlatformInvoiceService
         $result = PayPlusGatewayFactory::for($shop)->generateLink([
             'amount' => $amount,
             'product_name' => $productName !== '' ? $productName : __('storefront.installments.default_item'),
-            'charge_method' => self::CHARGE_METHOD_CHARGE,
+            // 0 = immediate capture/charge per current PayPlus understanding; verify
+            // against the terminal, adjust via WOOCOMMERCE_CHARGE_METHOD if 0 turns out
+            // to be authorize-only. No behaviour change by default.
+            'charge_method' => (int) config(self::CONFIG_CHARGE_METHOD, self::CHARGE_METHOD_DEFAULT),
             // more_info is the correlation marker PayPlus echoes back on the callback;
             // WooCommercePaidOrderPlanResolver finds the plan by it (= public_id).
             'more_info' => $publicId,

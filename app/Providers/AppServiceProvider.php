@@ -2,10 +2,12 @@
 
 namespace App\Providers;
 
+use App\Domain\Installments\Contracts\DepositTokenResolver;
 use App\Events\ChargeFailed;
 use App\Events\ChargeSucceeded;
 use App\Listeners\SendChargeFailedNotification;
 use App\Listeners\SendChargeSucceededNotification;
+use App\Services\Orders\PlatformDepositTokenResolver;
 use App\Services\Shopify\Orders\DefaultShopifyOrderStrategy;
 use App\Services\Shopify\Orders\ShopifyOrderStrategy;
 use Illuminate\Support\Facades\Event;
@@ -25,6 +27,14 @@ class AppServiceProvider extends ServiceProvider
         // after a succeeded ledger row — without the engine depending on a
         // concrete Shopify class. Swap the binding (or null it) to decouple.
         $this->app->bind(ShopifyOrderStrategy::class, DefaultShopifyOrderStrategy::class);
+
+        // The deposit token-capture seam. PlanActivationService takes an OPTIONAL
+        // DepositTokenResolver; binding the platform router here lets it capture the
+        // reusable PayPlus token from a paid deposit and vault it as the plan's payment
+        // method. The router dispatches on the verified shop's platform: WooCommerce →
+        // WooDepositTokenResolver (extracts the token from the PayPlus callback body),
+        // Shopify/unknown → null (unchanged — no token via this seam, as before).
+        $this->app->bind(DepositTokenResolver::class, PlatformDepositTokenResolver::class);
     }
 
     /**

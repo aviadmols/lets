@@ -31,6 +31,13 @@ final class WooGatewayCallbackController
     private const HASH_HEADER = 'hash';
     private const MORE_INFO_PREFIX = 'gw:';
 
+    /**
+     * Config flag: when TRUE, a callback WITHOUT a valid signature is rejected (401);
+     * when FALSE (default), the signature is verified only when present (today's
+     * behaviour). @see config/woocommerce.php
+     */
+    private const CONFIG_REQUIRE_SIGNATURE = 'woocommerce.require_callback_signature';
+
     public function __invoke(Request $request, string $wc_shop_token): JsonResponse
     {
         $shop = Shop::query()
@@ -42,9 +49,26 @@ final class WooGatewayCallbackController
             return response()->json(['error' => 'not_found'], Response::HTTP_NOT_FOUND);
         }
 
-        // OPTIONAL signature check: enforced only when PayPlus sent a hash header.
+        // Signature check, selected by config('woocommerce.require_callback_signature'):
+        //   OPTIONAL (default, FALSE): verify only when PayPlus sent a hash header.
+        //   MANDATORY (TRUE): a callback that LACKS a valid signature is rejected (401);
+        //   an empty per-shop secret (cannot verify) → 503 (fail-closed).
         $sentHash = (string) $request->header(self::HASH_HEADER, '');
         $secret = (string) ($shop->payplusCredential('secret_key') ?? '');
+        $requireSignature = (bool) config(self::CONFIG_REQUIRE_SIGNATURE, false);
+
+        if ($requireSignature && $secret === '') {
+            Log::error('woocommerce.gateway.callback_missing_secret', ['shop_id' => $shop->getKey()]);
+
+            return response()->json(['error' => 'service_unavailable'], Response::HTTP_SERVICE_UNAVAILABLE);
+        }
+
+        if ($requireSignature && $sentHash === '') {
+            Log::warning('woocommerce.gateway.callback_unsigned_rejected', ['shop_id' => $shop->getKey()]);
+
+            return response()->json(['error' => 'unauthorized'], Response::HTTP_UNAUTHORIZED);
+        }
+
         if ($sentHash !== '' && $secret !== '') {
             $expected = base64_encode(hash_hmac('sha256', $request->getContent(), $secret, true));
             if (! hash_equals($expected, $sentHash)) {

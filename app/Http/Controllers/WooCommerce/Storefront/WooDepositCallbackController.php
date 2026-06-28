@@ -45,6 +45,14 @@ final class WooDepositCallbackController
     /** The header PayPlus uses to sign the raw callback body (when the account emits it). */
     private const HASH_HEADER = 'hash';
 
+    /**
+     * Config flag: when TRUE, a callback WITHOUT a valid signature is rejected (401);
+     * when FALSE (default), the signature is verified only when present (today's
+     * behaviour). Flip to TRUE only once the owner has confirmed PayPlus signs WC
+     * callbacks on this terminal. @see config/woocommerce.php
+     */
+    private const CONFIG_REQUIRE_SIGNATURE = 'woocommerce.require_callback_signature';
+
     public function __invoke(Request $request, string $wc_shop_token): JsonResponse
     {
         $shop = Shop::query()
@@ -57,12 +65,33 @@ final class WooDepositCallbackController
             return response()->json(['error' => 'not_found'], Response::HTTP_NOT_FOUND);
         }
 
-        // OPTIONAL signature check: only enforced when PayPlus sent a hash header. A
-        // present-but-wrong signature fails closed; an absent one falls through to the
-        // money-gated activation (the body can only ever activate the plan it names, once).
+        // Signature check. Two modes, selected by config('woocommerce.require_callback_signature'):
+        //
+        //   OPTIONAL (default, FALSE): verify only when PayPlus sent a hash header. A
+        //   present-but-wrong signature fails closed; an ABSENT one falls through to the
+        //   money-gated activation (the body can only ever activate the plan it names, once).
+        //
+        //   MANDATORY (TRUE — once the owner confirms PayPlus signs WC callbacks): a
+        //   callback that LACKS a valid signature is rejected. An absent/empty signature
+        //   → 401; an empty per-shop secret (cannot verify) → 503 (fail-closed).
         $raw = $request->getContent();
         $sentHash = (string) $request->header(self::HASH_HEADER, '');
         $secret = (string) ($shop->payplusCredential('secret_key') ?? '');
+        $requireSignature = (bool) config(self::CONFIG_REQUIRE_SIGNATURE, false);
+
+        if ($requireSignature && $secret === '') {
+            // Cannot verify what we are told to enforce → refuse rather than trust.
+            Log::error('woocommerce.deposit.callback_missing_secret', ['shop_id' => $shop->getKey()]);
+
+            return response()->json(['error' => 'service_unavailable'], Response::HTTP_SERVICE_UNAVAILABLE);
+        }
+
+        if ($requireSignature && $sentHash === '') {
+            Log::warning('woocommerce.deposit.callback_unsigned_rejected', ['shop_id' => $shop->getKey()]);
+
+            return response()->json(['error' => 'unauthorized'], Response::HTTP_UNAUTHORIZED);
+        }
+
         if ($sentHash !== '' && $secret !== '') {
             $expected = base64_encode(hash_hmac('sha256', $raw, $secret, true));
             if (! hash_equals($expected, $sentHash)) {
