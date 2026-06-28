@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Casts\EncryptedCredentials;
+use App\Casts\EncryptedString;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -73,7 +74,10 @@ class Shop extends Model
             'payplus_credentials' => EncryptedCredentials::class,
             'woocommerce_credentials' => EncryptedCredentials::class,
             'shopify_access_token' => 'encrypted',
-            'lets_api_secret' => 'encrypted',
+            // Resilient cast: a stale-key ciphertext degrades to null on read AND never
+            // gets decrypted during save()'s dirty-check, so re-minting a shop whose old
+            // secret is undecryptable can't 500 (see EncryptedString).
+            'lets_api_secret' => EncryptedString::class,
             'trial_ends_at' => 'datetime',
             'installed_at' => 'datetime',
             'uninstalled_at' => 'datetime',

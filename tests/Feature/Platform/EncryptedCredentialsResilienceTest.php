@@ -73,6 +73,34 @@ final class EncryptedCredentialsResilienceTest extends TestCase
         $this->assertNotNull($fresh->lets_api_key_hash);
     }
 
+    public function test_mint_token_survives_an_undecryptable_lets_api_secret(): void
+    {
+        $shop = Shop::create([
+            'woocommerce_domain' => 'store2.example.com',
+            'name' => 'WC2',
+            'status' => Shop::STATUS_INSTALLED,
+            'platform' => Shop::PLATFORM_WOOCOMMERCE,
+        ]);
+
+        // The exact prod failure: an OLD lets_api_secret encrypted under a stale key.
+        // save()'s dirty-check on the built-in 'encrypted' cast decrypted this to compare
+        // → DecryptException → 500 on re-mint. The resilient EncryptedString cast compares
+        // raw ciphertext instead, so re-minting (which overwrites it) can't crash.
+        $foreign = (new Encrypter(random_bytes(32), 'AES-256-CBC'))->encryptString('old-secret');
+        DB::table('shops')->where('id', $shop->getKey())->update(['lets_api_secret' => $foreign]);
+
+        $shop = Shop::query()->findOrFail($shop->getKey());
+        $this->assertNull($shop->lets_api_secret); // stale secret reads as null, not a throw
+
+        $token = app(WooCommerceShopProvisioner::class)->mintToken($shop);
+        $this->assertNotEmpty($token);
+
+        // The new secret is freshly encrypted + decryptable with the current key.
+        $fresh = Shop::query()->findOrFail($shop->getKey());
+        $this->assertNotNull($fresh->lets_api_secret);
+        $this->assertNotSame('old-secret', $fresh->lets_api_secret);
+    }
+
     public function test_shop_detail_renders_with_corrupt_creds(): void
     {
         $this->withoutExceptionHandling();
