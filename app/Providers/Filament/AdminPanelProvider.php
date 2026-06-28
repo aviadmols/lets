@@ -180,17 +180,24 @@ class AdminPanelProvider extends PanelProvider
                 DispatchServingFilamentEvent::class,
                 SetAdminLocale::class,   // resolves en/he + ?locale override
                 DevAutoLogin::class,     // DEV-ONLY: sign in the demo admin (gated by isLocal + dev_tenant)
+                // PRODUCTION tenant binding — deliberately in the PERSISTENT panel
+                // middleware (NOT authMiddleware) so it ALSO runs on Livewire
+                // /livewire/update requests. In authMiddleware it bound only the initial
+                // page GET, so a table/header action's Livewire POST lost the tenant →
+                // ShopScopedScreen::canAccess() (= Tenant::check()) was false → Filament
+                // 403'd the action (e.g. "Refresh products" for an entered platform admin
+                // or a direct-login merchant). It safely no-ops for an unauthenticated
+                // request (runs before Authenticate) and respects an already-bound
+                // embedded session (EmbeddedAuthenticate ran above). BindDevTenant stays
+                // a dev-only no-op once a real tenant is bound.
+                BindTenantFromUser::class,
+                BindDevTenant::class,
             ])
             ->authMiddleware([
-                // 1. Require an authenticated user (redirects to login otherwise).
+                // Require an authenticated user (redirects to login otherwise). The
+                // tenant binding moved to the PERSISTENT ->middleware() above so it runs
+                // on Livewire updates too — authMiddleware is not persistent in Filament.
                 Authenticate::class,
-                // 2. PRODUCTION tenant binding: bind the user's own shop, or deny a
-                //    shopless merchant. Respects an already-bound embedded session.
-                //    This is the seam that isolates each merchant to their store.
-                BindTenantFromUser::class,
-                // 3. DEV-ONLY safety net: binds the demo shop locally ONLY when no
-                //    real tenant was bound above (no-op in production / when bound).
-                BindDevTenant::class,
             ]);
     }
 
