@@ -59,7 +59,7 @@
                     <span class="rc-strong">{{ __('platform.platform.' . $record->platform) }}</span>
 
                     <span class="rc-muted">{{ __('platform.shops.col.plan') }}</span>
-                    <span class="rc-strong">{{ $record->plan ?: __('common.none') }}</span>
+                    <span class="rc-strong">{{ $record->billingPlan()->label() }}</span>
 
                     <span class="rc-muted">{{ __('platform.overview.payplus') }}</span>
                     <span class="rc-strong">{{ $o['payplus_connected'] ? __('platform.overview.connected') : __('platform.overview.not_connected') }}</span>

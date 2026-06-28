@@ -2,6 +2,8 @@
 
 namespace App\Filament\Pages;
 
+use App\Domain\Billing\BillingPlan;
+use App\Domain\Billing\PlanGate;
 use App\Domain\Upsell\Enums\UpsellFlowStatus;
 use App\Domain\Upsell\Models\UpsellFlow;
 use App\Filament\Concerns\ShopScopedScreen;
@@ -245,6 +247,22 @@ class PostPurchaseOffers extends Page
     public function createFlow(): void
     {
         if (! Tenant::check()) {
+            return;
+        }
+
+        // PLAN GATE (representative example seam, plan §6). A merchant may only
+        // create up to their tier's max upsell flows. NON-BLOCKING for FREE: the
+        // FREE tier's max_upsell_flows is UNLIMITED, so within() is always true and
+        // nothing changes for a current shop. When a paid tier caps this, a denial
+        // surfaces an upgrade prompt instead of throwing past the seam (never a 500).
+        $existingFlows = (int) UpsellFlow::query()->count();
+        if (! PlanGate::for(Tenant::current())->within(BillingPlan::LIMIT_MAX_UPSELL_FLOWS, $existingFlows)) {
+            Notification::make()
+                ->title(__('billing.gate.upsell_flows.title'))
+                ->body(__('billing.gate.upsell_flows.body'))
+                ->warning()
+                ->send();
+
             return;
         }
 

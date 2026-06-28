@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Domain\Billing\BillingPlan;
 use App\Filament\Resources\ShopResource\Pages;
 use App\Models\InstallmentPlan;
 use App\Models\PaymentLedger;
@@ -119,7 +120,9 @@ class ShopResource extends Resource
 
                 Tables\Columns\TextColumn::make('plan')
                     ->label(__('platform.shops.col.plan'))
-                    ->formatStateUsing(fn (?string $state): string => $state ?: __('common.none'))
+                    // Render the resolved SaaS tier label ("Free"), matching ViewShop.
+                    // A null/blank/unknown column resolves to FREE (fail-safe).
+                    ->formatStateUsing(fn (?string $state): string => BillingPlan::fromCode($state)->label())
                     ->sortable(),
 
                 Tables\Columns\IconColumn::make('payplus_connected')

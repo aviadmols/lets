@@ -2,6 +2,22 @@
 
 // Billing / subscription domain strings. Mirror every key in lang/he/billing.php.
 return [
+    // SaaS tier display names (App\Domain\Billing\BillingPlan). Today only "free".
+    // Paid tiers add a key here matching the new enum case value.
+    'plan_tier' => [
+        'free' => 'Free',
+        // 'starter' => 'Starter', 'growth' => 'Growth', 'pro' => 'Pro',
+    ],
+
+    // Plan-gate prompts: shown (as an upgrade nudge) when a tier limit is hit.
+    // Never reached on FREE (everything is unlimited); wired for paid tiers.
+    'gate' => [
+        'upsell_flows' => [
+            'title' => 'Upsell flow limit reached',
+            'body' => 'Your current plan does not allow another upsell flow. Upgrade to add more.',
+        ],
+    ],
+
     // plan kinds
     'plan_kind' => [
         'installments' => 'Installments',

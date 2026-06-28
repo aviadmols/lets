@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Casts\EncryptedCredentials;
 use App\Casts\EncryptedString;
+use App\Domain\Billing\BillingPlan;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -100,6 +101,28 @@ class Shop extends Model
                 ? (string) $value
                 : self::PLATFORM_SHOPIFY,
         );
+    }
+
+    // === SaaS billing plan (the tier the merchant pays the app vendor for) ===
+
+    /**
+     * The shop's SaaS tier, resolved from the `plan` column to a BillingPlan case.
+     * Defaults to FREE when the column is null, blank, or holds an unknown value —
+     * so a shop is never left without a tier and an unknown stored value can never
+     * silently grant a paid tier. This is the seam PlanGate reads through.
+     *
+     * Today every shop is FREE (unlimited / all features on); paid tiers slot in by
+     * adding a BillingPlan case — no change here.
+     */
+    public function billingPlan(): BillingPlan
+    {
+        return BillingPlan::fromCode($this->plan);
+    }
+
+    /** Convenience: is this shop on a paid tier (drives AppSubscription needs)? */
+    public function isOnPaidPlan(): bool
+    {
+        return $this->billingPlan()->isPaid();
     }
 
     // === Shopify credentials + lifecycle ===
