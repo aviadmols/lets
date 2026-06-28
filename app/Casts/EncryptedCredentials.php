@@ -5,6 +5,7 @@ namespace App\Casts;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Encryption\Encrypter;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Encrypts a JSON credentials bag (PayPlus keys, etc.) using a DEDICATED key
@@ -36,7 +37,24 @@ final class EncryptedCredentials implements CastsAttributes
             return [];
         }
 
-        $decrypted = $this->encrypter()->decryptString($value);
+        try {
+            $decrypted = $this->encrypter()->decryptString($value);
+        } catch (\Throwable $e) {
+            // Ciphertext that can't be decrypted — e.g. a bag encrypted under a
+            // ROTATED/old TENANT_CREDENTIALS_KEY → "The MAC is invalid" — must NOT crash
+            // every read of this attribute (it would 500 the shop's admin pages and block
+            // re-minting). Degrade to "unset": the shop reads as not-connected and the
+            // credentials can simply be re-entered/re-minted (which overwrites the bag
+            // with a fresh, decryptable ciphertext). Logged for visibility.
+            Log::channel('stderr')->warning('encrypted_credentials.decrypt_failed', [
+                'model' => $model::class,
+                'model_id' => $model->getKey(),
+                'attribute' => $key,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
 
         return json_decode($decrypted, true) ?: [];
     }
