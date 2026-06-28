@@ -16,6 +16,7 @@ use Filament\Resources\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Read-only account overview for ONE shop (platform-admin only). Shows connection
@@ -56,12 +57,33 @@ class ViewShop extends Page
     /** Has the WordPress plugin completed the connect handshake (REST creds present)? */
     public function wooConnected(): bool
     {
-        return $this->record->hasWooConnection();
+        // An OPTIONAL status field must never 500 the whole account overview. If reading
+        // the (encrypted) WooCommerce creds throws — e.g. a credential bag that can't be
+        // decrypted — surface the cause to stderr (Railway logs) and degrade to "unknown".
+        try {
+            return $this->record->hasWooConnection();
+        } catch (\Throwable $e) {
+            Log::channel('stderr')->warning('viewshop.woo_connected_failed', [
+                'shop_id' => $this->record->getKey(),
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
     }
 
     public function pluginDownloadUrl(): string
     {
-        return route('woocommerce.plugin.download');
+        try {
+            return route('woocommerce.plugin.download');
+        } catch (\Throwable $e) {
+            Log::channel('stderr')->warning('viewshop.plugin_url_failed', [
+                'shop_id' => $this->record->getKey(),
+                'error' => $e->getMessage(),
+            ]);
+
+            return url('/admin/woocommerce/plugin/download');
+        }
     }
 
     public function mount(int|string $record): void
@@ -190,7 +212,7 @@ class ViewShop extends Page
             'is_woo' => $this->isWoo(),
             'payplus_connected' => $this->record->hasPayplusConnection(),
             'shopify_connected' => $this->record->hasShopifyConnection(),
-            'woo_connected' => $this->record->hasWooConnection(),
+            'woo_connected' => $this->wooConnected(),
             'products' => ShopResource::productCount($this->record),
             'active_subscriptions' => ShopResource::activeSubscriptionCount($this->record),
             'revenue' => ShopResource::processedRevenue($this->record),
