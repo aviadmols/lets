@@ -97,4 +97,12 @@ return [
         'token_regen_warning' => 'A fresh connection token is generated and any previous one stops working — the merchant must paste the new token into the plugin.',
         'detail_hint' => 'Use “Connection token” above to issue the token to paste into the WordPress plugin, or “Download plugin” to get the installer.',
     ],
+
+    // Top-bar shop switcher (W12): the platform admin sees/changes the entered shop.
+    'switcher' => [
+        'select' => 'Select a shop',
+        'heading' => 'Switch shop',
+        'view_all' => 'View all shops →',
+        'exit' => 'Exit to platform',
+    ],
 ];

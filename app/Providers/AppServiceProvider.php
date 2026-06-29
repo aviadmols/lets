@@ -10,9 +10,12 @@ use App\Listeners\SendChargeSucceededNotification;
 use App\Services\Orders\PlatformDepositTokenResolver;
 use App\Services\Shopify\Orders\DefaultShopifyOrderStrategy;
 use App\Services\Shopify\Orders\ShopifyOrderStrategy;
+use App\Http\Middleware\BindDevTenant;
+use App\Http\Middleware\BindTenantFromUser;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
+use Livewire\Livewire;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -57,5 +60,20 @@ class AppServiceProvider extends ServiceProvider
         // wiring is greppable.
         Event::listen(ChargeSucceeded::class, SendChargeSucceededNotification::class);
         Event::listen(ChargeFailed::class, SendChargeFailedNotification::class);
+
+        // TENANT BINDING ON LIVEWIRE UPDATES. Filament does NOT make the panel's
+        // ->middleware() persistent for /livewire/update requests (only a hardcoded
+        // Filament set is). Without this, BindTenantFromUser binds the tenant on the
+        // initial page GET but NOT on a table/header-action POST → Tenant is unbound on
+        // the action → ShopScopedScreen::canAccess() (= Tenant::check()) is false →
+        // Filament 403s the action (e.g. "Refresh products", "Create new") for an
+        // entered platform admin / a direct-login merchant. Registering them persistent
+        // re-runs them on every Livewire update. Both safely no-op without an authed
+        // user and respect an already-bound embedded session, so this never weakens
+        // tenant isolation — it only restores the binding the page load already had.
+        Livewire::addPersistentMiddleware([
+            BindTenantFromUser::class,
+            BindDevTenant::class,
+        ]);
     }
 }

@@ -1,8 +1,11 @@
 <?php
 
+use App\Filament\Pages\HomeDashboard;
 use App\Filament\Resources\ShopResource;
+use App\Models\Shop;
 use App\Models\User;
 use App\Support\PlatformContext;
+use App\Support\Ui\PanelAccess;
 use Database\Seeders\DemoShopSeeder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -35,6 +38,21 @@ Route::post('/admin/platform/exit', function () {
 
     return redirect(ShopResource::getUrl('index'));
 })->middleware(['web', 'auth'])->name('platform.exit');
+
+/*
+ * Platform-admin "Enter shop" — the top-bar shop switcher (W12). POST, gated to a
+ * platform admin; parks the shop selection in the session (PlatformContext) and lands
+ * on the per-shop Home. Mirrors platform.exit. A merchant is DENIED (403), and the
+ * binding middleware ignores a non-admin's session key anyway, so a merchant can never
+ * escape their own shop through this seam. {shop} is route-model-bound (404 if missing).
+ */
+Route::post('/admin/platform/enter/{shop}', function (Shop $shop) {
+    abort_unless(PanelAccess::canSeePlatform(), 403);
+
+    PlatformContext::enter($shop->getKey());
+
+    return redirect(HomeDashboard::getUrl());
+})->middleware(['web', 'auth'])->name('platform.enter');
 
 /*
  * WooCommerce plugin download. PUBLIC by design: the plugin package carries NO secrets

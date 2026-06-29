@@ -13,7 +13,9 @@
     $shopName = null;
     if (PanelAccess::isPlatformAdmin() && PlatformContext::isEntered()) {
         $shop = Shop::query()->whereKey(PlatformContext::enteredShopId())->first();
-        $shopName = $shop?->shopify_domain;
+        // displayDomain() is never-null + platform-neutral: a WooCommerce shop has no
+        // shopify_domain, so reading that left the banner blank for WC shops.
+        $shopName = $shop?->displayDomain();
     }
 @endphp
 

@@ -54,3 +54,86 @@
     background: var(--rc-amber);
     color: var(--rc-ink-on-primary);
 }
+
+/* ---------------------------------------------- Shop switcher (W12) --- */
+/* A Shopify-style store switcher in the top bar (platform admin only). TOKENS:
+   --rc-blue --rc-blue-bg --rc-border --rc-ink --rc-ink-muted --rc-bg --rc-red
+   --rc-radius-control --rc-space-* --rc-type-body --rc-type-body-strong --rc-type-caption */
+.rc-shop-switcher__trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--rc-space-2);
+    max-inline-size: 220px;
+    padding-block: var(--rc-space-2);
+    padding-inline: var(--rc-space-3);
+    background: transparent;
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    color: var(--rc-ink);
+    font: var(--rc-type-body-strong);
+    cursor: pointer;
+    transition: background .12s ease, border-color .12s ease;
+}
+.rc-shop-switcher__trigger:hover { background: var(--rc-bg); }
+.rc-shop-switcher__trigger--entered {
+    background: var(--rc-blue-bg);
+    border-color: var(--rc-blue);
+    color: var(--rc-blue);
+}
+.rc-shop-switcher__icon { inline-size: 16px; block-size: 16px; flex: 0 0 auto; }
+.rc-shop-switcher__chevron { inline-size: 14px; block-size: 14px; flex: 0 0 auto; opacity: .55; }
+.rc-shop-switcher__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.rc-shop-switcher__menu { min-inline-size: 240px; padding: var(--rc-space-2); }
+.rc-shop-switcher__heading {
+    padding-block: var(--rc-space-1);
+    padding-inline: var(--rc-space-3);
+    font: var(--rc-type-caption);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--rc-ink-muted);
+}
+.rc-shop-switcher__form { margin: 0; }
+.rc-shop-switcher__item {
+    display: flex;
+    align-items: center;
+    gap: var(--rc-space-2);
+    inline-size: 100%;
+    text-align: start;
+    padding-block: var(--rc-space-2);
+    padding-inline: var(--rc-space-3);
+    background: transparent;
+    border: 0;
+    border-radius: var(--rc-radius-control);
+    color: var(--rc-ink);
+    font: var(--rc-type-body);
+    cursor: pointer;
+}
+.rc-shop-switcher__item:hover { background: var(--rc-bg); }
+.rc-shop-switcher__item--current { color: var(--rc-blue); font: var(--rc-type-body-strong); cursor: default; }
+.rc-shop-switcher__item--current:hover { background: transparent; }
+.rc-shop-switcher__check { inline-size: 16px; block-size: 16px; flex: 0 0 auto; }
+.rc-shop-switcher__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-shop-switcher__viewall {
+    display: block;
+    margin-block-start: var(--rc-space-1);
+    padding-block: var(--rc-space-2);
+    padding-inline: var(--rc-space-3);
+    border-block-start: 1px solid var(--rc-border);
+    color: var(--rc-blue);
+    font: var(--rc-type-body-strong);
+}
+.rc-shop-switcher__viewall:hover { background: var(--rc-bg); }
+.rc-shop-switcher__exit {
+    inline-size: 100%;
+    text-align: start;
+    padding-block: var(--rc-space-2);
+    padding-inline: var(--rc-space-3);
+    background: transparent;
+    border: 0;
+    border-radius: var(--rc-radius-control);
+    color: var(--rc-red);
+    font: var(--rc-type-body);
+    cursor: pointer;
+}
+.rc-shop-switcher__exit:hover { background: var(--rc-amber-bg); }

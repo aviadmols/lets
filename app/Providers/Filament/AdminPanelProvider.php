@@ -144,6 +144,15 @@ class AdminPanelProvider extends PanelProvider
                 PanelsRenderHook::HEAD_START,
                 fn (): View => ViewFacade::make('filament.embedded.app-bridge'),
             )
+            // Platform-admin SHOP SWITCHER in the top bar, just left of the user menu.
+            // The Blade renders nothing for a merchant (one shop, no switching), so only
+            // the owner sees it. Lets the owner see + change which shop they are entered
+            // into from ANY page (the Shopify-style store switcher). rc-token classes
+            // only — zero inline CSS.
+            ->renderHook(
+                PanelsRenderHook::USER_MENU_BEFORE,
+                fn (): View => ViewFacade::make('filament.platform.shop-switcher'),
+            )
             ->navigationGroups($this->navigationGroups())
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
