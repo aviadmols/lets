@@ -6,7 +6,9 @@ use App\Domain\Upsell\Enums\UpsellFlowStatus;
 use App\Domain\Upsell\Models\UpsellFlow;
 use App\Domain\Upsell\Models\UpsellFlowOffer;
 use App\Domain\Upsell\Models\UpsellFlowTrigger;
+use App\Filament\Concerns\PicksProducts;
 use App\Filament\Concerns\ShopScopedScreen;
+use App\Models\Product;
 use App\Support\Ui\Money;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
@@ -35,6 +37,7 @@ use Illuminate\Contracts\Support\Htmlable;
  */
 class FlowBuilder extends Page
 {
+    use PicksProducts;   // reusable catalog search/select seam for both drawers
     use ShopScopedScreen; // denied unless a tenant shop is bound (W2)
 
     // === CONSTANTS ===
@@ -88,6 +91,30 @@ class FlowBuilder extends Page
     public string $shippingFeeMode = UpsellFlowOffer::SHIPPING_FREE;
 
     public bool $showTimer = true;
+
+    // === Product picker (shared seam, used by BOTH drawers) ===
+    /** Live search term bound to the picker input (debounced in the Blade). */
+    public string $productSearch = '';
+
+    /** The local Product id the merchant picked in the OFFER drawer (0 = none). */
+    public int $offerProductId = 0;
+
+    /** The chosen variant id under that product (0 = the product's primary variant). */
+    public int $offerVariantId = 0;
+
+    /** Display label for the offer's currently-selected product (read-only echo). */
+    public string $offerProductLabel = '';
+
+    /** Editable price/title bound in the drawer (auto-filled from the pick). */
+    public string $offerBasePrice = '';
+
+    public string $offerTitle = '';
+
+    /** The local Product id the merchant picked for the TRIGGER rule (0 = none). */
+    public int $triggerProductId = 0;
+
+    /** Display label for the trigger's currently-selected product (read-only echo). */
+    public string $triggerProductLabel = '';
 
     // === "Configure trigger" drawer state ===
     /** The trigger being configured, or 0 when the drawer is closed. */
@@ -316,6 +343,21 @@ class FlowBuilder extends Page
         $this->applyDiscountOnTop = (bool) $offer->apply_discount_on_top;
         $this->shippingFeeMode = $offer->shipping_fee_mode ?: UpsellFlowOffer::SHIPPING_FREE;
         $this->showTimer = (bool) $offer->show_timer;
+
+        // Picker: reset the search + load the offer's stored title/price into the
+        // editable fields, plus a read-only label echoing the saved product. The
+        // local Product id isn't stored on the offer (only the platform gid is), so
+        // there's no pre-selected row to re-bind — the merchant re-picks to change
+        // it; the saved gid/title/price persist until they do.
+        $this->productSearch = '';
+        $this->offerProductId = 0;
+        $this->offerVariantId = 0;
+        $this->offerTitle = (string) ($offer->offer_title ?? '');
+        $this->offerBasePrice = $this->formatPrice((float) $offer->base_price);
+        $this->offerProductLabel = $offer->offer_product_gid
+            ? ($offer->offer_title ?: $offer->productNumericId())
+            : '';
+
         $this->drawerOpen = true;
     }
 
@@ -323,6 +365,64 @@ class FlowBuilder extends Page
     {
         $this->drawerOpen = false;
         $this->configOfferId = 0;
+        $this->resetPickerState();
+    }
+
+    /**
+     * The tenant-scoped picker results for the OFFER drawer. A wire-callable
+     * computed-style method (called from the Blade) so the list re-renders as the
+     * merchant types — empty under the 3-char minimum, capped + active-only.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function offerPickerResults(): array
+    {
+        return $this->pickerResults($this->productSearch)
+            ->map(fn (Product $p): array => $this->presentPickerRow($p))
+            ->all();
+    }
+
+    /**
+     * Select a product (and optionally a specific variant) in the OFFER drawer.
+     * Tenant-scoped: a foreign/nonexistent product id resolves to null and is a
+     * silent no-op. AUTO-FILLS the title (only when the merchant hasn't typed a
+     * custom one) + base_price (from the chosen/primary variant) — both remain
+     * EDITABLE; the gids are derived + persisted on save in the platform format.
+     */
+    public function selectOfferProduct(int $productId, int $variantId = 0): void
+    {
+        $product = $this->pickedProduct($productId);
+
+        if ($product === null) {
+            return; // reject — never trust the id, never write
+        }
+
+        $variant = $this->pickedVariant($product, $variantId) ?? $product->primaryVariant();
+
+        $this->offerProductId = $product->getKey();
+        $this->offerVariantId = $variant?->getKey() ?? 0;
+        $this->offerProductLabel = $product->title;
+
+        // Auto-fill the title only when the merchant hasn't authored a custom one.
+        if (trim($this->offerTitle) === '') {
+            $this->offerTitle = (string) $product->title;
+        }
+
+        // Auto-fill base_price from the chosen (or primary) variant. base_price is
+        // the editable money input the discount math reads — discountedPrice() still
+        // derives the charge from it.
+        if ($variant !== null) {
+            $this->offerBasePrice = $this->formatPrice((float) $variant->price);
+        }
+
+        $this->productSearch = '';
+    }
+
+    /** "Refresh products" — re-sync the catalog, then the next search hits fresh rows. */
+    public function refreshOfferProducts(): void
+    {
+        $this->refreshPickerCatalog();
+        $this->productSearch = '';
     }
 
     /**
@@ -347,8 +447,40 @@ class FlowBuilder extends Page
         $offer->shipping_fee_mode = $this->sanitize($this->shippingFeeMode, UpsellFlowOffer::SHIPPING_MODES, UpsellFlowOffer::SHIPPING_FREE);
         $offer->show_timer = $this->showTimer;
 
+        // === Product picker → the platform-format gids the charge engine expects ===
+        // When a product was picked this open, RE-DERIVE the gids/title/price from
+        // the tenant-scoped catalog row (never trust raw input). A foreign id
+        // resolved to null at select time, so $offerProductId is only ever one of
+        // THIS shop's products — re-confirm under the global scope here too.
+        if ($this->offerProductId > 0) {
+            $product = $this->pickedProduct($this->offerProductId);
+
+            if ($product !== null) {
+                $variant = $this->pickedVariant($product, $this->offerVariantId) ?? $product->primaryVariant();
+
+                $offer->offer_product_gid = $this->productIdentifier($product);
+                $offer->offer_variant_gid = $this->variantIdentifier($product, $variant);
+            }
+        }
+
+        // Title: the editable field (auto-filled from the pick; merchant may override).
+        // Only write a non-empty title — never blank an existing one to "".
+        $title = trim($this->offerTitle);
+        if ($title !== '') {
+            $offer->offer_title = $title;
+        }
+
+        // base_price: the editable money input the discount math reads. Sanitize to a
+        // non-negative 2dp number from the field; discountedPrice() derives the charge
+        // from it. Only overwrite with a valid positive value (a blank/garbage field
+        // leaves the stored price intact — money is never silently zeroed).
+        $price = round((float) str_replace([',', ' '], '', $this->offerBasePrice), 2);
+        if ($price > 0) {
+            $offer->base_price = $price;
+        }
+
         // The "%" input is the single discount control in the drawer: 0 ⇒ no
-        // discount; >0 ⇒ a percent discount. We never touch base_price here.
+        // discount; >0 ⇒ a percent discount. We never touch base_price via discount.
         $offer->discount_type = $percent > 0 ? UpsellFlowOffer::DISCOUNT_PERCENT : UpsellFlowOffer::DISCOUNT_NONE;
         $offer->discount_value = $percent;
 
@@ -358,6 +490,7 @@ class FlowBuilder extends Page
         $this->hydrateGraph();
         $this->drawerOpen = false;
         $this->configOfferId = 0;
+        $this->resetPickerState();
 
         Notification::make()->title(__('upsell.admin.configure.saved'))->success()->send();
     }
@@ -405,6 +538,14 @@ class FlowBuilder extends Page
         $this->triggerMinOrderValue = $trigger->min_order_value !== null
             ? (string) (float) $trigger->min_order_value
             : '';
+
+        // Picker: reset the search + echo the stored product identifier as the
+        // read-only label (the trigger stores only the matched identifier, not a
+        // local Product id, so there's no row to pre-select — re-pick to change).
+        $this->productSearch = '';
+        $this->triggerProductId = 0;
+        $this->triggerProductLabel = $this->triggerProductGid;
+
         $this->triggerDrawerOpen = true;
     }
 
@@ -412,6 +553,50 @@ class FlowBuilder extends Page
     {
         $this->triggerDrawerOpen = false;
         $this->configTriggerId = 0;
+        $this->resetPickerState();
+    }
+
+    /**
+     * The tenant-scoped picker results for the TRIGGER drawer (same seam as the
+     * offer drawer). The trigger matches at PRODUCT granularity, so the rows show
+     * the product only (no per-variant pick).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function triggerPickerResults(): array
+    {
+        return $this->pickerResults($this->productSearch)
+            ->map(fn (Product $p): array => $this->presentPickerRow($p))
+            ->all();
+    }
+
+    /**
+     * Select the product the "specific product" trigger should match. Stores the
+     * identifier in the SAME format the upsell resolver compares against
+     * PurchaseContext::$purchasedProductGids — Shopify gid for shopify shops, raw
+     * numeric external_id for woocommerce — so the flow actually fires for that
+     * purchase. Tenant-scoped: a foreign id is a silent no-op.
+     */
+    public function selectTriggerProduct(int $productId): void
+    {
+        $product = $this->pickedProduct($productId);
+
+        if ($product === null) {
+            return; // reject — never trust the id, never write
+        }
+
+        $this->triggerProductId = $product->getKey();
+        $this->triggerProductLabel = $product->title;
+        // The match identifier the resolver compares (gid for shopify / numeric for woo).
+        $this->triggerProductGid = $this->productIdentifier($product);
+        $this->productSearch = '';
+    }
+
+    /** "Refresh products" inside the trigger drawer. */
+    public function refreshTriggerProducts(): void
+    {
+        $this->refreshPickerCatalog();
+        $this->productSearch = '';
     }
 
     /**
@@ -452,6 +637,7 @@ class FlowBuilder extends Page
         $this->hydrateGraph();
         $this->triggerDrawerOpen = false;
         $this->configTriggerId = 0;
+        $this->resetPickerState();
 
         Notification::make()->title(__('upsell.admin.trigger_config.saved'))->success()->send();
     }
@@ -463,6 +649,53 @@ class FlowBuilder extends Page
     }
 
     // === Internals (presentation only) ===
+
+    /**
+     * Shape one catalog product for a picker result row (display only). The
+     * primary variant carries the headline price/sku; variant rows let the offer
+     * drawer target a specific variant. shop_id/status/source are read straight
+     * off the tenant-scoped model — never echoed back from input.
+     *
+     * @return array<string, mixed>
+     */
+    private function presentPickerRow(Product $product): array
+    {
+        $primary = $product->primaryVariant();
+
+        return [
+            'id' => $product->getKey(),
+            'title' => (string) $product->title,
+            'image_url' => $product->image_url,
+            'sku' => $primary?->sku,
+            'price' => $primary !== null ? Money::format((float) $primary->price) : null,
+            'variants' => $product->variants
+                ->map(fn ($v): array => [
+                    'id' => $v->getKey(),
+                    'title' => (string) ($v->title ?? ''),
+                    'sku' => $v->sku,
+                    'price' => Money::format((float) $v->price),
+                ])->all(),
+        ];
+    }
+
+    /** Clear every picker prop so a stale pick can't leak into the next drawer open. */
+    private function resetPickerState(): void
+    {
+        $this->productSearch = '';
+        $this->offerProductId = 0;
+        $this->offerVariantId = 0;
+        $this->offerProductLabel = '';
+        $this->offerTitle = '';
+        $this->offerBasePrice = '';
+        $this->triggerProductId = 0;
+        $this->triggerProductLabel = '';
+    }
+
+    /** Plain 2dp string for the editable base_price input (no currency glyph). */
+    private function formatPrice(float $value): string
+    {
+        return number_format(round(max($value, 0), 2), 2, '.', '');
+    }
 
     /** Tenant-scoped lookup of an offer that belongs to THIS flow. */
     private function offerModel(int $offerId): ?UpsellFlowOffer

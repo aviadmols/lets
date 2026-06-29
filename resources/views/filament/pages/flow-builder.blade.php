@@ -239,21 +239,40 @@
                                     <input type="radio" wire:model="productSelectionMode" value="specific">
                                     <span class="rc-pp-radio__body">
                                         <span class="rc-pp-radio__title">{{ __('upsell.admin.configure.specific_products') }}</span>
-                                        @if($productSelectionMode === 'specific')
-                                            <span class="rc-drawer__product">
-                                                <span class="rc-fb-offer__thumb">
-                                                    <x-filament::icon icon="heroicon-o-cube" class="rc-fb-offer__thumb-icon" />
-                                                </span>
-                                                <span class="rc-drawer__product-info">
-                                                    <span class="rc-fb-offer__name">{{ $cfg->offer_title ?: __('upsell.offer_default_title') }}</span>
-                                                    <span class="rc-fb-offer__meta rc-ltr">{{ __('upsell.admin.configure.product_id', ['id' => $cfg->productNumericId()]) }}</span>
-                                                </span>
-                                            </span>
-                                        @endif
                                     </span>
                                 </label>
                             </div>
+
+                            {{-- Searchable product picker (replaces the read-only "Product ID").
+                                 Selecting a product/variant stores the platform-format gids +
+                                 auto-fills the title + base_price below. Shown for "specific". --}}
+                            @if($productSelectionMode === 'specific')
+                                @include('filament.pages.partials.product-picker', [
+                                    'searchModel' => 'productSearch',
+                                    'resultsMethod' => 'offerPickerResults',
+                                    'selectMethod' => 'selectOfferProduct',
+                                    'refreshMethod' => 'refreshOfferProducts',
+                                    'selectedLabel' => $offerProductLabel,
+                                    'withVariants' => true,
+                                ])
+                            @endif
                         </fieldset>
+
+                        {{-- Offer title (auto-filled from the pick; editable) --}}
+                        <div class="rc-field">
+                            <label class="rc-field__label" for="rc-offer-title">{{ __('upsell.admin.configure.offer_title_label') }}</label>
+                            <input id="rc-offer-title" type="text" class="rc-input" wire:model="offerTitle" placeholder="{{ __('upsell.offer_default_title') }}">
+                        </div>
+
+                        {{-- Base price (auto-filled from the chosen variant; editable — the
+                             discount math reads this; discountedPrice() is the money truth). --}}
+                        <div class="rc-field">
+                            <label class="rc-field__label" for="rc-offer-price">{{ __('upsell.admin.configure.base_price_label') }}</label>
+                            <div class="rc-input-prefix">
+                                <span class="rc-input-prefix__unit">{{ __('upsell.admin.trigger_config.currency_symbol') }}</span>
+                                <input id="rc-offer-price" type="number" min="0" step="0.01" class="rc-input rc-ltr" wire:model="offerBasePrice">
+                            </div>
+                        </div>
 
                         {{-- Variant selection --}}
                         <fieldset class="rc-field">
@@ -435,15 +454,22 @@
                                     </span>
                                 </label>
 
-                                {{-- A specific product --}}
+                                {{-- A specific product — pick it from the synced catalog --}}
                                 <label class="rc-pp-radio">
                                     <input type="radio" wire:model="triggerMatchType" value="specific_product" x-on:change="mt = $event.target.value">
                                     <span class="rc-pp-radio__body">
                                         <span class="rc-pp-radio__title">{{ __('upsell.admin.trigger_config.specific_product') }}</span>
                                         <span class="rc-pp-radio__hint">{{ __('upsell.admin.trigger_config.specific_product_hint') }}</span>
                                         <span class="rc-drawer__subfield" x-show="mt === 'specific_product'" x-cloak>
-                                            <label class="rc-label" for="rc-trigger-product">{{ __('upsell.admin.trigger_config.product_gid_label') }}</label>
-                                            <input id="rc-trigger-product" type="text" class="rc-input rc-ltr" placeholder="gid://shopify/Product/123" wire:model="triggerProductGid">
+                                            <span class="rc-label">{{ __('upsell.admin.trigger_config.product_pick_label') }}</span>
+                                            @include('filament.pages.partials.product-picker', [
+                                                'searchModel' => 'productSearch',
+                                                'resultsMethod' => 'triggerPickerResults',
+                                                'selectMethod' => 'selectTriggerProduct',
+                                                'refreshMethod' => 'refreshTriggerProducts',
+                                                'selectedLabel' => $triggerProductLabel,
+                                                'withVariants' => false,
+                                            ])
                                         </span>
                                     </span>
                                 </label>

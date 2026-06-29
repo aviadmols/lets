@@ -161,6 +161,8 @@ return [
             'smart_select_hint' => 'יצירה אוטומטית של ההצעה לפי תוכן העגלה, כך שכל לקוח יראה מוצר רלוונטי.',
             'specific_products' => 'מוצרים ספציפיים',
             'product_id' => 'מזהה מוצר: :id',
+            'offer_title_label' => 'כותרת ההצעה',
+            'base_price_label' => 'מחיר בסיס',
             'how_variants' => 'כיצד נבחרות הווריאציות?',
             'variant_customer' => 'הלקוח בוחר וריאציה',
             'variant_merchant' => 'המוכר בוחר וריאציה עבור הלקוח',
@@ -185,6 +187,21 @@ return [
             'view_post_purchase' => 'תצוגה מקדימה לאחר רכישה',
         ],
 
+        // בורר המוצרים הניתן לחיפוש, משותף למגירות ההצעה והטריגר.
+        'picker' => [
+            'search_label' => 'חיפוש מוצרים',
+            'search_placeholder' => 'חיפוש לפי שם או מק"ט',
+            'min_chars' => 'הקלידו לפחות 3 תווים כדי לחפש במוצרים שלכם.',
+            'refresh' => 'רענון מוצרים',
+            'refresh_queued' => 'מרענן מוצרים מהחנות שלכם…',
+            'selected' => 'מוצר נבחר',
+            'change' => 'שינוי',
+            'sku' => 'מק"ט: :sku',
+            'default_variant' => 'ברירת מחדל',
+            'empty_title' => 'לא נמצאו מוצרים',
+            'empty_hint' => 'אין התאמה. נסו מונח אחר, או רעננו כדי לסנכרן את הקטלוג תחילה.',
+        ],
+
         // מגירת "הגדרת טריגר" (נפתחת מצומת הטריגר הירוק).
         'trigger_config' => [
             'open' => 'הגדרת טריגר',
@@ -201,6 +218,7 @@ return [
             'specific_product' => 'מוצר ספציפי',
             'specific_product_hint' => 'הצגת ההצעה רק כאשר מוצר זה נרכש.',
             'product_gid_label' => 'מזהה מוצר ב-Shopify',
+            'product_pick_label' => 'איזה מוצר?',
             'collection' => 'קולקציה ספציפית',
             'collection_hint' => 'הצגת ההצעה רק כאשר נרכש מוצר מקולקציה זו.',
             'collection_gid_label' => 'מזהה קולקציה ב-Shopify',

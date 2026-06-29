@@ -1746,6 +1746,157 @@ button.rc-fb-node:focus-visible {
 /* Issues chip in toolbar */
 .rc-fb-issues { text-transform: none; }
 
+/* =================================================== PRODUCT PICKER ======
+   Searchable catalog picker inside the Flow-Builder drawers (offer + trigger).
+   A search bar → a results list (thumbnail + title + sku + price) + an optional
+   per-variant chooser, the currently-selected product, a "Refresh products"
+   link, and an empty state. Logical properties only; mirrors cleanly in RTL.
+   ========================================================================== */
+.rc-picker {
+    display: flex;
+    flex-direction: column;
+    gap: var(--rc-space-3);
+}
+
+/* Currently-selected product (echoes the saved pick + a "change" link) */
+.rc-picker__selected {
+    display: flex;
+    align-items: center;
+    gap: var(--rc-space-3);
+    padding: var(--rc-space-3);
+    background: var(--rc-bg);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+}
+.rc-picker__selected-info { display: flex; flex-direction: column; gap: 1px; flex: 1 1 auto; min-inline-size: 0; }
+.rc-picker__change {
+    flex: 0 0 auto;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    font: var(--rc-type-body-strong);
+}
+
+/* Search area */
+.rc-picker__search {
+    display: flex;
+    flex-direction: column;
+    gap: var(--rc-space-2);
+}
+.rc-picker__searchbar {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+.rc-picker__search-icon {
+    position: absolute;
+    inset-inline-start: var(--rc-space-3);
+    inline-size: 16px;
+    block-size: 16px;
+    color: var(--rc-ink-muted);
+    pointer-events: none;
+}
+.rc-picker__input {
+    padding-inline-start: var(--rc-space-6);
+}
+.rc-picker__refresh {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--rc-space-1);
+    align-self: flex-start;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    font: var(--rc-type-caption);
+}
+.rc-picker__refresh-icon { inline-size: 14px; block-size: 14px; }
+
+.rc-picker__hint {
+    font: var(--rc-type-caption);
+    margin: 0;
+}
+
+/* Results list */
+.rc-picker__results {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--rc-space-1);
+    max-block-size: 320px;
+    overflow-y: auto;
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+}
+.rc-picker__result { border-block-end: 1px solid var(--rc-border); }
+.rc-picker__result:last-child { border-block-end: 0; }
+.rc-picker__option {
+    inline-size: 100%;
+    display: flex;
+    align-items: center;
+    gap: var(--rc-space-3);
+    padding: var(--rc-space-3);
+    background: transparent;
+    border: 0;
+    text-align: start;
+    cursor: pointer;
+}
+.rc-picker__option:hover { background: var(--rc-blue-bg); }
+.rc-picker__option:focus-visible { outline: none; box-shadow: var(--rc-ring); }
+.rc-picker__option-info { display: flex; flex-direction: column; gap: 1px; min-inline-size: 0; }
+.rc-picker__option-price { margin-inline-start: var(--rc-space-2); color: var(--rc-ink); }
+.rc-picker__thumb-img {
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+    border-radius: var(--rc-radius-control);
+}
+
+/* Per-variant chooser (offer drawer; products with > 1 variant) */
+.rc-picker__variants {
+    list-style: none;
+    margin: 0;
+    padding-block: 0;
+    padding-inline-start: var(--rc-space-6);
+    padding-inline-end: var(--rc-space-3);
+    padding-block-end: var(--rc-space-2);
+    display: flex;
+    flex-direction: column;
+    gap: var(--rc-space-1);
+}
+.rc-picker__variant {
+    inline-size: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--rc-space-2);
+    padding-block: var(--rc-space-1);
+    padding-inline: var(--rc-space-2);
+    background: var(--rc-bg);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    cursor: pointer;
+    font: var(--rc-type-caption);
+    color: var(--rc-ink);
+}
+.rc-picker__variant:hover { border-color: var(--rc-blue); }
+.rc-picker__variant-price { color: var(--rc-ink-muted); }
+
+/* Empty state */
+.rc-picker__empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--rc-space-2);
+    padding: var(--rc-space-5);
+    border: 1px dashed var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    text-align: center;
+}
+.rc-picker__empty-icon { inline-size: 28px; block-size: 28px; color: var(--rc-ink-muted); }
+.rc-picker__empty-title { font: var(--rc-type-body-strong); color: var(--rc-ink); }
+
 /* =============================================================================
    products.css — the Products screen (Work Package W1, plan §E). The LIST's
    "Markets" info banner, the DETAIL page (product header, details card, per-

@@ -170,6 +170,8 @@ return [
             'smart_select_hint' => 'Automatically generate the offer from the contents of the cart so each customer sees a relevant product.',
             'specific_products' => 'Specific products',
             'product_id' => 'Product ID: :id',
+            'offer_title_label' => 'Offer title',
+            'base_price_label' => 'Base price',
             'how_variants' => 'How are variants selected?',
             'variant_customer' => 'Customer selects a variant',
             'variant_merchant' => 'Merchant selects a variant for the customer',
@@ -194,6 +196,21 @@ return [
             'view_post_purchase' => 'View post-purchase',
         ],
 
+        // The searchable product picker shared by the offer + trigger drawers.
+        'picker' => [
+            'search_label' => 'Search products',
+            'search_placeholder' => 'Search by name or SKU',
+            'min_chars' => 'Type at least 3 characters to search your products.',
+            'refresh' => 'Refresh products',
+            'refresh_queued' => 'Refreshing products from your store…',
+            'selected' => 'Selected product',
+            'change' => 'Change',
+            'sku' => 'SKU: :sku',
+            'default_variant' => 'Default',
+            'empty_title' => 'No products found',
+            'empty_hint' => 'Nothing matched. Try another term, or refresh to sync your catalog first.',
+        ],
+
         // The "Configure trigger" slide-over drawer (opened from the green Trigger node).
         'trigger_config' => [
             'open' => 'Configure trigger',
@@ -210,6 +227,7 @@ return [
             'specific_product' => 'A specific product',
             'specific_product_hint' => 'Only show the offer when this product was purchased.',
             'product_gid_label' => 'Shopify product ID',
+            'product_pick_label' => 'Which product?',
             'collection' => 'A specific collection',
             'collection_hint' => 'Only show the offer when a product from this collection was purchased.',
             'collection_gid_label' => 'Shopify collection ID',
