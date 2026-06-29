@@ -251,6 +251,20 @@ class Shop extends Model
     }
 
     /**
+     * Can this shop's catalog actually be pulled right now? A WooCommerce shop needs
+     * its REST creds (the plugin handshake), a Shopify shop needs its access token.
+     * The "Refresh products" actions check this so an UNCONNECTED shop gets a clear
+     * "connect first" message instead of silently queueing a job that fails with
+     * "no WooCommerce REST credentials".
+     */
+    public function canSyncProducts(): bool
+    {
+        return $this->platform === self::PLATFORM_WOOCOMMERCE
+            ? $this->hasWooConnection()
+            : $this->hasShopifyConnection();
+    }
+
+    /**
      * A NON-NULL display label for the shop's domain across platforms: the Shopify
      * domain, else the WooCommerce domain, else the name, else "Shop #id". The admin
      * screens use this so a WooCommerce shop (which has no shopify_domain) never yields

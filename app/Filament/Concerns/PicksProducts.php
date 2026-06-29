@@ -161,6 +161,13 @@ trait PicksProducts
             return;
         }
 
+        // An unconnected shop has no catalog to pull — the sync would just fail.
+        if (! $shop->canSyncProducts()) {
+            Notification::make()->title(__('upsell.admin.picker.refresh_needs_connection'))->warning()->send();
+
+            return;
+        }
+
         app(ProductRefreshService::class)->refreshAll($shop);
 
         Notification::make()->title(__('upsell.admin.picker.refresh_queued'))->success()->send();

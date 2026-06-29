@@ -13,6 +13,7 @@ return [
     'markets_banner' => 'Plans and pricing here apply to your primary market. Per-market overrides are coming soon.',
     'refresh' => 'Refresh products',
     'refreshed' => 'Refreshing products from Shopify — this runs in the background.',
+    'refresh_needs_connection' => 'Connect the store first — there are no credentials to pull products with yet.',
     'refreshed_one' => 'Product refreshed.',
 
     // --- List columns ---

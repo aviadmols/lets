@@ -203,6 +203,7 @@ return [
             'min_chars' => 'Type at least 3 characters to search your products.',
             'refresh' => 'Refresh products',
             'refresh_queued' => 'Refreshing products from your store…',
+            'refresh_needs_connection' => 'Connect the store first — there are no products to pull yet.',
             'selected' => 'Selected product',
             'change' => 'Change',
             'sku' => 'SKU: :sku',

@@ -261,6 +261,14 @@ class ProductResource extends Resource
             return;
         }
 
+        // No creds → the sync job would just fail ("no REST credentials"). Tell the
+        // merchant to connect the store first instead of queueing a doomed job.
+        if (! $shop->canSyncProducts()) {
+            Notification::make()->title(__('products.refresh_needs_connection'))->warning()->send();
+
+            return;
+        }
+
         app(ProductRefreshService::class)->refreshAll($shop);
 
         Notification::make()->title(__('products.refreshed'))->success()->send();

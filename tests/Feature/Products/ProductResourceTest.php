@@ -34,6 +34,9 @@ final class ProductResourceTest extends TestCase
             'shopify_domain' => 'prod-list.myshopify.com',
             'name' => 'Prod List',
             'status' => Shop::STATUS_ACTIVE,
+            // A live access token → hasShopifyConnection() is true, so "Refresh products"
+            // is allowed to sync (the refresh guard blocks an UNCONNECTED shop).
+            'shopify_access_token' => 'shpat_test_token',
         ]);
         Tenant::set($this->shop);
 
