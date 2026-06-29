@@ -130,6 +130,14 @@ class AdminPanelProvider extends PanelProvider
                 'gray' => Color::Slate,
             ])
             ->font('Inter')
+            // SPA navigation (wire:navigate): swap only the page content over AJAX +
+            // keep the shell, assets, fonts, and (when embedded) App Bridge alive across
+            // tab switches — instead of a FULL page reload per navigation (re-downloading
+            // assets, re-running the whole middleware stack, re-rendering the shell + its
+            // per-page Shop queries). This is the big nav-latency win. The external
+            // /horizon link is a normal new-tab link (shouldOpenInNewTab), so SPA never
+            // tries to intercept it.
+            ->spa()
             // Persistent "Viewing as {shop} — Exit" banner: rendered at the top of
             // the panel body ONLY while a platform admin is entered into a shop
             // (PlatformContext). The Blade renders nothing otherwise, so a merchant
