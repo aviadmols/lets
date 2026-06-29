@@ -105,4 +105,9 @@ return [
         'view_all' => 'View all shops →',
         'exit' => 'Exit to platform',
     ],
+
+    // Background-jobs (Horizon) nav link — platform admin only.
+    'jobs' => [
+        'nav' => 'Background jobs',
+    ],
 ];

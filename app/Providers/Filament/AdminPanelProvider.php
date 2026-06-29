@@ -13,8 +13,10 @@ use BezhanSalleh\FilamentLanguageSwitch\LanguageSwitch;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
+use App\Support\Ui\PanelAccess;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Filament\Navigation\NavigationGroup;
+use Filament\Navigation\NavigationItem;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Assets\Css;
@@ -154,6 +156,19 @@ class AdminPanelProvider extends PanelProvider
                 fn (): View => ViewFacade::make('filament.platform.shop-switcher'),
             )
             ->navigationGroups($this->navigationGroups())
+            // Platform-admin link to the Horizon dashboard (queues, throughput, FAILED
+            // jobs) — "see every background run + whether it works". A separate SPA at
+            // /horizon (gated by HorizonServiceProvider's viewHorizon → isPlatformAdmin);
+            // merchants never see the link, and the gate denies them the URL too.
+            ->navigationItems([
+                NavigationItem::make('horizon')
+                    ->label(__('platform.jobs.nav'))
+                    ->url('/horizon', shouldOpenInNewTab: true)
+                    ->icon('heroicon-o-cpu-chip')
+                    ->group(__('nav.group.platform'))
+                    ->sort(99)
+                    ->visible(fn (): bool => PanelAccess::isPlatformAdmin()),
+            ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')

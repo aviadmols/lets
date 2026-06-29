@@ -199,7 +199,13 @@ return [
     'defaults' => [
         'supervisor-1' => [
             'connection' => 'redis',
-            'queue' => ['default'],
+            // Process EVERY queue the app dispatches to, in priority order — money
+            // first. Jobs are split across named queues (TenantContext::QUEUE_*):
+            // charges (ChargeJob — recurring/installments), webhooks (Shopify + GDPR
+            // privacy), invoices, upsell, sync (product import). A supervisor bound to
+            // ONLY ['default'] silently strands ALL of them — no charges, no product
+            // sync, no webhook processing. 'auto' balance spreads the pool by demand.
+            'queue' => ['charges', 'webhooks', 'invoices', 'upsell', 'sync', 'default'],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
             'maxProcesses' => 1,
