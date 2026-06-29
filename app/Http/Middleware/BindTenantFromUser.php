@@ -79,15 +79,7 @@ final class BindTenantFromUser
                 return $next($request);
             }
 
-            Tenant::set($shop);
-
-            try {
-                return $next($request);
-            } finally {
-                // Long-lived workers (Octane/FrankPHP) share a process — clear so the
-                // next request never inherits this entered shop.
-                Tenant::clear();
-            }
+            return $this->bindForRequest($shop, $request, $next);
         }
 
         // 2. Merchant user: must be bound to exactly one live shop. Fail closed.
@@ -103,14 +95,26 @@ final class BindTenantFromUser
             abort(Response::HTTP_FORBIDDEN, __('Your account is not linked to an active store.'));
         }
 
+        return $this->bindForRequest($shop, $request, $next);
+    }
+
+    /**
+     * Bind the shop for THIS request and continue. Critically, we do NOT clear in a
+     * `finally` around $next: Livewire re-runs persistent middleware through a pipeline
+     * whose $next is a NO-OP (it only "applies" the binding — see Livewire's
+     * Utils::applyMiddleware), so a finally-clear would unbind the tenant the instant
+     * that no-op returns — BEFORE the component hydrates and re-checks canAccess() →
+     * a 403 on every table/header/form action of an entered platform admin or a
+     * direct-login merchant. Instead we clear on app `terminate()` — the real end of the
+     * request, after the response is sent — so the binding lasts through hydrate + render,
+     * yet a long-lived worker (Octane/FrankenPHP) still never leaks it to the next request.
+     */
+    private function bindForRequest(Shop $shop, Request $request, Closure $next): Response
+    {
         Tenant::set($shop);
 
-        try {
-            return $next($request);
-        } finally {
-            // Web requests can share a process (Octane/FrankPHP); clear so the next
-            // request never inherits this shop. Jobs use TenantContext separately.
-            Tenant::clear();
-        }
+        app()->terminating(static fn () => Tenant::clear());
+
+        return $next($request);
     }
 }

@@ -6,7 +6,9 @@ use App\Http\Middleware\BindTenantFromUser;
 use App\Models\Shop;
 use App\Models\User;
 use App\Support\PlatformContext;
+use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Response;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -44,6 +46,33 @@ final class ShopSwitcherTest extends TestCase
         // The core 403 fix: without this, BindTenantFromUser never runs on a Livewire
         // action request → Tenant::check() is false → ShopScopedScreen 403s the action.
         $this->assertContains(BindTenantFromUser::class, Livewire::getPersistentMiddleware());
+    }
+
+    public function test_binding_survives_a_no_op_next_then_clears_on_terminate(): void
+    {
+        // Livewire re-runs persistent middleware through a pipeline whose $next is a
+        // NO-OP (it only "applies" the binding). The OLD finally-clear unbound the tenant
+        // the instant that no-op returned — BEFORE the component hydrated + re-checked
+        // canAccess() → 403 on every Livewire action. The fix keeps it bound (cleared on
+        // terminate instead), so the canAccess re-check now passes.
+        $admin = User::factory()->platformAdmin()->create();
+        $shop = $this->wcShop();
+        PlatformContext::enter($shop->getKey());
+
+        // The middleware reads $request->user(); set the resolver as the real auth
+        // middleware would (a bare unit call has no user resolver on the request).
+        $request = request();
+        $request->setUserResolver(fn () => $admin);
+
+        (new BindTenantFromUser)->handle($request, fn () => new Response);
+
+        // Still bound after the no-op next — Filament's hydrateCanAuthorizeAccess passes.
+        $this->assertTrue(Tenant::check());
+        $this->assertSame((int) $shop->getKey(), (int) Tenant::id());
+
+        // …and the terminate-time clear runs, so a worker never leaks it to the next request.
+        $this->app->terminate();
+        $this->assertFalse(Tenant::check());
     }
 
     public function test_platform_admin_can_enter_a_shop_via_the_switcher_route(): void
