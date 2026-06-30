@@ -75,5 +75,34 @@ class AppServiceProvider extends ServiceProvider
             BindTenantFromUser::class,
             BindDevTenant::class,
         ]);
+
+        // TEMP perf trace (gated by the PERF_TRACE=1 env var, read from the live OS env so
+        // it works under cached config). Logs, per request, the total wall time, the DB
+        // query count + time, peak memory, and whether OPcache is actually active — to
+        // pinpoint where slow admin page loads spend their time. Remove once diagnosed.
+        if (getenv('PERF_TRACE') === '1') {
+            $start = defined('LARAVEL_START') ? LARAVEL_START : microtime(true);
+            $queries = 0;
+            $queryMs = 0.0;
+            \Illuminate\Support\Facades\DB::listen(function ($q) use (&$queries, &$queryMs): void {
+                $queries++;
+                $queryMs += (float) $q->time;
+            });
+            $this->app->terminating(function () use ($start, &$queries, &$queryMs): void {
+                $ocOn = false;
+                if (function_exists('opcache_get_status')) {
+                    $st = @opcache_get_status(false);
+                    $ocOn = is_array($st) && ! empty($st['opcache_enabled']);
+                }
+                \Illuminate\Support\Facades\Log::channel('stderr')->info('perf.request', [
+                    'path' => request()->path(),
+                    'total_ms' => round((microtime(true) - $start) * 1000),
+                    'db_queries' => $queries,
+                    'db_ms' => round($queryMs, 1),
+                    'mem_mb' => round(memory_get_peak_usage(true) / 1048576, 1),
+                    'opcache' => $ocOn ? 'on' : 'off',
+                ]);
+            });
+        }
     }
 }
