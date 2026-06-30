@@ -24,7 +24,7 @@ if (! defined('ABSPATH')) {
     exit; // never run outside WordPress
 }
 
-define('LETS_PAYPLUS_VERSION', '0.2.0');
+define('LETS_PAYPLUS_VERSION', '0.3.0');
 define('LETS_PAYPLUS_OPT', 'lets_payplus_connection'); // wp_option holding the decoded token
 define('LETS_PAYPLUS_FILE', __FILE__);
 define('LETS_PAYPLUS_URL', plugin_dir_url(__FILE__)); // base URL for assets
@@ -250,3 +250,7 @@ require_once __DIR__ . '/includes/class-lets-thankyou.php';
 
 // Optional full PayPlus gateway for normal checkout ("mode B", W11 P4).
 require_once __DIR__ . '/includes/class-lets-gateway.php';
+
+// Read-only status endpoint so the SaaS "Test connection" button can confirm the plugin
+// is installed with the correct token (GET /wp-json/lets-payplus/v1/status).
+require_once __DIR__ . '/includes/class-lets-status.php';

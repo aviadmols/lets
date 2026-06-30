@@ -96,6 +96,35 @@ final class WooCommerceClient
         return (array) $response->json();
     }
 
+    /**
+     * Lightweight authenticated health check: GET /products?per_page=1. Proves the store
+     * is reachable AND the saved consumer key/secret are accepted — exactly what the
+     * product sync + charges need. Never throws: a transport failure (DNS/timeout/TLS)
+     * is reported as 'unreachable', an auth rejection as 'unauthorized'.
+     *
+     * @return array{ok: bool, reason?: string, status?: int, message?: string}
+     */
+    public function ping(): array
+    {
+        try {
+            $response = $this->get('products', ['per_page' => 1]);
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'reason' => 'unreachable', 'message' => $e->getMessage()];
+        }
+
+        $status = $response->status();
+
+        if (in_array($status, [401, 403], true)) {
+            return ['ok' => false, 'reason' => 'unauthorized', 'status' => $status];
+        }
+
+        if (! $response->successful()) {
+            return ['ok' => false, 'reason' => 'error', 'status' => $status];
+        }
+
+        return ['ok' => true, 'status' => $status];
+    }
+
     /** @param array<string, mixed> $query */
     private function get(string $path, array $query = []): Response
     {

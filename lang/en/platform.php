@@ -103,6 +103,23 @@ return [
         'token_action' => 'Connection token',
         'token_regen_warning' => 'A fresh connection token is generated and any previous one stops working — the merchant must paste the new token into the plugin.',
         'detail_hint' => 'Use “Connection token” above to issue the token to paste into the WordPress plugin, or “Download plugin” to get the installer.',
+        // Live connection check (Test connection button + verdict lines).
+        'test' => [
+            'action' => 'Test connection',
+            'title_ok' => 'Connection is healthy',
+            'title_warn' => 'Connection needs attention',
+            'title_fail' => 'Connection problem',
+            'no_credentials' => '• Not connected yet — install the plugin on the store and paste the connection token.',
+            'wc_ok' => '✓ WooCommerce REST is reachable and the saved keys work.',
+            'wc_unauthorized' => '✗ WooCommerce rejected the saved keys (401) — re-mint the token and re-connect the plugin.',
+            'wc_unreachable' => '✗ Could not reach the store — the site may be down or the domain wrong.',
+            'wc_error' => '✗ WooCommerce returned an unexpected response (status :status).',
+            'plugin_ok' => '✓ LETS plugin v:version is installed with the correct token.',
+            'plugin_mismatch' => '✗ The plugin is installed but holds a DIFFERENT token — re-mint and paste the new one.',
+            'plugin_not_connected' => '• LETS plugin v:version is installed but has not completed the handshake yet.',
+            'plugin_not_found' => '• Could not read the LETS plugin status (it may be inactive or older than v0.3). The WooCommerce check above reflects the live connection.',
+            'plugin_unreachable' => '• Could not reach the LETS plugin status endpoint on the store.',
+        ],
     ],
 
     // Top-bar shop switcher (W12): the platform admin sees/changes the entered shop.

@@ -69,7 +69,8 @@ class AdminDesignSystemTest extends TestCase
         $this->assertFileExists($path, 'Run `npm run build` to publish the theme asset.');
 
         $css = file_get_contents($path);
-        $this->assertStringContainsString('--rc-blue: #3B5BDB', $css);
+        // The brand accent token is published (re-skinned to the Horizon violet).
+        $this->assertStringContainsString('--rc-blue: #7746EC', $css);
     }
 
     /** @return list<string> dot-flattened key paths */

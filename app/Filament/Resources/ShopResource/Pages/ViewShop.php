@@ -6,6 +6,7 @@ use App\Filament\Resources\ShopResource;
 use App\Models\ActivityEvent;
 use App\Models\Shop;
 use App\Services\WooCommerce\WooCommerceShopProvisioner;
+use App\Services\WooCommerce\WooConnectionTester;
 use App\Support\PlatformContext;
 use App\Support\Tenant;
 use App\Support\Ui\Money;
@@ -17,6 +18,7 @@ use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\HtmlString;
 
 /**
  * Read-only account overview for ONE shop (platform-admin only). Shows connection
@@ -121,10 +123,50 @@ class ViewShop extends Page
         // reveal action is mountable only right after a mint (its prop is set).
         return array_values(array_filter([
             $this->enterAction(),
+            $this->isWoo() ? $this->wooTestAction() : null,
             $this->isWoo() ? $this->wooTokenAction() : null,
             $this->isWoo() ? $this->wooDownloadAction() : null,
             $this->isWoo() ? $this->revealWooConnectionAction() : null,
         ]));
+    }
+
+    /**
+     * Live connection check: does the saved WooCommerce REST key work, and is the LETS
+     * plugin installed with THIS shop's token? Runs WooConnectionTester and reports each
+     * line as a persistent notice the owner can read. Platform-admin only.
+     */
+    private function wooTestAction(): Actions\Action
+    {
+        return Actions\Action::make('wooTest')
+            ->label(__('platform.woo.test.action'))
+            ->icon('heroicon-o-signal')
+            ->color('gray')
+            ->action(function (): void {
+                if (! PanelAccess::canSeePlatform()) {
+                    return;
+                }
+
+                $result = app(WooConnectionTester::class)->test($this->record);
+
+                $title = match ($result['level']) {
+                    'success' => __('platform.woo.test.title_ok'),
+                    'danger' => __('platform.woo.test.title_fail'),
+                    default => __('platform.woo.test.title_warn'),
+                };
+
+                $notification = Notification::make()
+                    ->title($title)
+                    ->body(new HtmlString(implode('<br>', array_map('e', $result['lines']))))
+                    ->persistent();
+
+                match ($result['level']) {
+                    'success' => $notification->success(),
+                    'danger' => $notification->danger(),
+                    default => $notification->warning(),
+                };
+
+                $notification->send();
+            });
     }
 
     private function enterAction(): Actions\Action
