@@ -12,6 +12,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN install-php-extensions \
         intl zip pdo_pgsql gd bcmath pcntl sockets opcache redis
 
+# OPcache production tuning. WITHOUT this the default 10k-file limit thrashes on a
+# ~20k-file Laravel+Filament app, recompiling a big chunk of the codebase on every
+# request (the bulk of the slow admin page loads). See docker/opcache.ini.
+COPY docker/opcache.ini /usr/local/etc/php/conf.d/zz-opcache.ini
+
 # Composer from the official image.
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
