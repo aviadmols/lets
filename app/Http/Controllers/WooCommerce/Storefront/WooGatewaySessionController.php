@@ -59,6 +59,15 @@ final class WooGatewaySessionController extends WooStorefrontController
             return response()->json(['error' => 'payplus_not_connected'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
+        // PayPlus can't mint a hosted card page without a payment_page_uid. Catch the
+        // common "terminal selected but no payment page chosen" case up front and return
+        // a SPECIFIC reason, so the plugin can tell the merchant to finish the connection.
+        if (empty($shop->payplusConfig()['payment_page_uid'])) {
+            Log::warning('woocommerce.gateway.no_payment_page_uid', ['shop_id' => $shop->getKey(), 'order_id' => $orderId]);
+
+            return response()->json(['error' => 'payplus_no_payment_page'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
         $currency = (string) ($request->input('currency') ?: config('payplus.currency', 'ILS'));
 
         try {

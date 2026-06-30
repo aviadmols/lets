@@ -107,22 +107,21 @@ add_action('plugins_loaded', function () {
                 // silently staying on checkout with no payment page.
                 $code   = is_wp_error($result) ? $result->get_error_code() : 'no_redirect_url';
                 $status = is_wp_error($result) ? (int) ($result->get_error_data()['status'] ?? 0) : 0;
-                $detail = is_wp_error($result) ? $result->get_error_message() : __('the server returned no payment page', 'lets-payplus');
+                $detail = is_wp_error($result) ? $result->get_error_message() : 'no_redirect_url';
 
                 if ('lets_not_connected' === $code || 'lets_bad_origin' === $code) {
                     $reason = __('This store is not connected to LETS yet. Please contact the store — the LETS connection token needs to be set in Settings → LETS.', 'lets-payplus');
+                } elseif ('payplus_not_connected' === $detail) {
+                    $reason = __('The store’s PayPlus account is not connected. Please contact the store to enter its PayPlus API key and secret.', 'lets-payplus');
+                } elseif ('payplus_no_payment_page' === $detail) {
+                    $reason = __('The store’s PayPlus payment page is not set up yet. Please contact the store to finish the PayPlus connection (choose a Payment Page).', 'lets-payplus');
                 } elseif (401 === $status || 403 === $status) {
                     $reason = __('LETS could not authenticate this store (the connection token may be out of date). Please contact the store to re-connect the plugin.', 'lets-payplus');
-                } elseif ('no_redirect_url' === $code) {
-                    $reason = __('PayPlus did not return a payment page. The store’s PayPlus connection may be missing or incorrect — please contact the store.', 'lets-payplus');
                 } elseif ($status >= 500) {
                     $reason = __('The payment service is temporarily unavailable. Please try again in a few minutes.', 'lets-payplus');
                 } else {
-                    /* translators: %s: the underlying error detail. */
-                    $reason = sprintf(__('Could not open the PayPlus payment page: %s', 'lets-payplus'), $detail);
+                    $reason = __('Could not open the PayPlus payment page. Please try again, or contact the store if it keeps happening.', 'lets-payplus');
                 }
-
-                wc_add_notice($reason, 'error');
 
                 if (function_exists('wc_get_logger')) {
                     wc_get_logger()->error(
@@ -137,7 +136,11 @@ add_action('plugins_loaded', function () {
                     );
                 }
 
-                return array('result' => 'failure');
+                // Surface the error on BOTH classic AND block checkout. A failure RETURN is
+                // silently ignored by the block (Store API) checkout — only a thrown
+                // exception is rendered there — so we add the notice (classic) AND throw.
+                wc_add_notice($reason, 'error');
+                throw new \Exception(esc_html($reason));
             }
 
             // Mark awaiting payment; reduce stock holds per WC defaults.

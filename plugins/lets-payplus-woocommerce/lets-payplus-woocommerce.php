@@ -24,7 +24,7 @@ if (! defined('ABSPATH')) {
     exit; // never run outside WordPress
 }
 
-define('LETS_PAYPLUS_VERSION', '0.3.1');
+define('LETS_PAYPLUS_VERSION', '0.3.2');
 define('LETS_PAYPLUS_OPT', 'lets_payplus_connection'); // wp_option holding the decoded token
 define('LETS_PAYPLUS_FILE', __FILE__);
 define('LETS_PAYPLUS_URL', plugin_dir_url(__FILE__)); // base URL for assets
