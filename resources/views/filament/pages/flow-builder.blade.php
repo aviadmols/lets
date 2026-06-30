@@ -264,6 +264,18 @@
                             <input id="rc-offer-title" type="text" class="rc-input" wire:model="offerTitle" placeholder="{{ __('upsell.offer_default_title') }}">
                         </div>
 
+                        {{-- Headline — the customer-facing copy. Required to activate the flow. --}}
+                        <div class="rc-field">
+                            <label class="rc-field__label" for="rc-offer-headline">{{ __('upsell.admin.configure.headline_label') }}</label>
+                            <input id="rc-offer-headline" type="text" class="rc-input" wire:model="offerHeadline" placeholder="{{ __('upsell.admin.configure.headline_placeholder') }}">
+                        </div>
+
+                        {{-- Accept button label (the CTA). Required to activate the flow. --}}
+                        <div class="rc-field">
+                            <label class="rc-field__label" for="rc-offer-cta">{{ __('upsell.admin.configure.accept_cta_label') }}</label>
+                            <input id="rc-offer-cta" type="text" class="rc-input" wire:model="offerAcceptCta" placeholder="{{ __('upsell.accept_cta') }}">
+                        </div>
+
                         {{-- Base price (auto-filled from the chosen variant; editable — the
                              discount math reads this; discountedPrice() is the money truth). --}}
                         <div class="rc-field">

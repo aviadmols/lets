@@ -110,6 +110,12 @@ class FlowBuilder extends Page
 
     public string $offerTitle = '';
 
+    /** Customer-facing copy the storefront widget shows. BOTH are required to
+        activate the flow (the "needs a headline and a button label" issue). */
+    public string $offerHeadline = '';
+
+    public string $offerAcceptCta = '';
+
     /** The local Product id the merchant picked for the TRIGGER rule (0 = none). */
     public int $triggerProductId = 0;
 
@@ -353,6 +359,11 @@ class FlowBuilder extends Page
         $this->offerProductId = 0;
         $this->offerVariantId = 0;
         $this->offerTitle = (string) ($offer->offer_title ?? '');
+        // Headline + button label — what the customer actually sees on the offer.
+        // Pre-fill sensible defaults when empty so saving immediately clears the
+        // "needs a headline and a button label" issue (the merchant can edit them).
+        $this->offerHeadline = (string) ($offer->headline ?: ($offer->offer_title ?? ''));
+        $this->offerAcceptCta = (string) ($offer->accept_cta ?: __('upsell.accept_cta'));
         $this->offerBasePrice = $this->formatPrice((float) $offer->base_price);
         $this->offerProductLabel = $offer->offer_product_gid
             ? ($offer->offer_title ?: $offer->productNumericId())
@@ -469,6 +480,15 @@ class FlowBuilder extends Page
         if ($title !== '') {
             $offer->offer_title = $title;
         }
+
+        // Customer-facing copy. Both gate activation, so store exactly what's typed
+        // (trimmed) — null when blanked so the "needs a headline and a button label"
+        // issue correctly re-appears.
+        $headline = trim($this->offerHeadline);
+        $offer->headline = $headline !== '' ? $headline : null;
+
+        $acceptCta = trim($this->offerAcceptCta);
+        $offer->accept_cta = $acceptCta !== '' ? $acceptCta : null;
 
         // base_price: the editable money input the discount math reads. Sanitize to a
         // non-negative 2dp number from the field; discountedPrice() derives the charge
@@ -686,6 +706,8 @@ class FlowBuilder extends Page
         $this->offerVariantId = 0;
         $this->offerProductLabel = '';
         $this->offerTitle = '';
+        $this->offerHeadline = '';
+        $this->offerAcceptCta = '';
         $this->offerBasePrice = '';
         $this->triggerProductId = 0;
         $this->triggerProductLabel = '';
