@@ -49,6 +49,16 @@ final class WooGatewaySessionController extends WooStorefrontController
             return response()->json(['error' => 'invalid_order'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
+        // PayPlus must be connected on this shop to mint a hosted page. Without decryptable
+        // credentials (api_key/secret), fail CLEAN here — not as an "Undefined array key"
+        // 500 deep in the gateway — so the plugin can tell the shopper the store's PayPlus
+        // connection needs attention (re-enter the keys in Settings → PayPlus Connection).
+        if (! $shop->hasPayplusConnection()) {
+            Log::warning('woocommerce.gateway.payplus_not_connected', ['shop_id' => $shop->getKey(), 'order_id' => $orderId]);
+
+            return response()->json(['error' => 'payplus_not_connected'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
         $currency = (string) ($request->input('currency') ?: config('payplus.currency', 'ILS'));
 
         try {

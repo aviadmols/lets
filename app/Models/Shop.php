@@ -206,8 +206,10 @@ class Shop extends Model
             'cashier_uid' => $bag['cashier_uid'] ?? null,
             'payment_page_uid' => $bag['payment_page_uid'] ?? null,
             'webhook_secret' => $bag['webhook_secret'] ?? null,
-            // Per-shop base_url override; falls back to the platform default.
-            'base_url' => $bag['base_url'] ?: config('payplus.base_url'),
+            // Per-shop base_url override; falls back to the platform default. Use ?? so a
+            // missing key (e.g. an undecryptable/empty bag) doesn't raise an "Undefined
+            // array key" — which Laravel turns into an ErrorException and 500s the charge.
+            'base_url' => ($bag['base_url'] ?? null) ?: config('payplus.base_url'),
         ];
     }
 
