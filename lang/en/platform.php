@@ -10,6 +10,13 @@ return [
         'model' => 'Shop',
         'view' => 'View',
         'empty' => 'No shops have installed the app yet.',
+        'delete' => [
+            'action' => 'Delete',
+            'heading' => 'Delete :shop?',
+            'warning' => 'This permanently deletes the shop and EVERYTHING it owns — all plans, payments, products, upsell flows, settings, and its merchant login. This cannot be undone. Use it to wipe a shop and set it up again.',
+            'confirm' => 'Delete shop',
+            'done' => ':shop and all its data were deleted.',
+        ],
         'col' => [
             'domain' => 'Store domain',
             'name' => 'Name',

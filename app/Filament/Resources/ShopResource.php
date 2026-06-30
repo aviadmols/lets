@@ -9,6 +9,7 @@ use App\Models\PaymentLedger;
 use App\Models\Product;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Services\Platform\ShopEraser;
 use App\Support\PlatformContext;
 use App\Support\Tenant;
 use App\Support\Ui\Money;
@@ -191,6 +192,20 @@ class ShopResource extends Resource
 
                 Tables\Actions\ViewAction::make()
                     ->label(__('platform.shops.view')),
+
+                // Hard-delete a shop + ALL its data + its login, so the owner can re-create
+                // it cleanly. Destructive → a confirm modal with a clear warning. Platform
+                // admin only (hidden otherwise; the resource is platform-gated too).
+                Tables\Actions\Action::make('delete')
+                    ->label(__('platform.shops.delete.action'))
+                    ->icon('heroicon-o-trash')
+                    ->color('danger')
+                    ->visible(fn (): bool => PanelAccess::canSeePlatform())
+                    ->requiresConfirmation()
+                    ->modalHeading(fn (Shop $record): string => __('platform.shops.delete.heading', ['shop' => $record->displayDomain()]))
+                    ->modalDescription(__('platform.shops.delete.warning'))
+                    ->modalSubmitActionLabel(__('platform.shops.delete.confirm'))
+                    ->action(fn (Shop $record) => self::eraseShop($record)),
             ])
             ->defaultSort('installed_at', 'desc')
             ->emptyStateHeading(__('platform.shops.empty'))
@@ -216,6 +231,28 @@ class ShopResource extends Resource
             ->send();
 
         return redirect(\App\Filament\Pages\HomeDashboard::getUrl());
+    }
+
+    /**
+     * Hard-delete a shop + all its data + its merchant logins (via ShopEraser), so the
+     * owner can wipe and re-create it. Platform-admin gated (also hidden + the resource is
+     * platform-only). Lands back on the Shops list.
+     */
+    public static function eraseShop(Shop $shop): mixed
+    {
+        if (! PanelAccess::canSeePlatform()) {
+            return null;
+        }
+
+        $domain = $shop->displayDomain();
+        app(ShopEraser::class)->erase($shop);
+
+        Notification::make()
+            ->title(__('platform.shops.delete.done', ['shop' => $domain]))
+            ->success()
+            ->send();
+
+        return redirect(self::getUrl('index'));
     }
 
     // === Per-shop aggregates (reuse the tenant-scoped queries; no cross-tenant SQL) ===
