@@ -82,6 +82,23 @@ final class WooGatewaySessionController extends WooStorefrontController
 
         $pageLink = (string) (data_get($result->raw, self::RESP_PAGE_LINK) ?? '');
         if (! $result->success || $pageLink === '') {
+            // PayPlus accepted the request but returned no hosted-page link. Surface WHY
+            // (PayPlus's own status/description) + whether the terminal/payment-page UIDs
+            // were discovered — the usual cause is an incomplete PayPlus connection
+            // (api_key/secret entered, but no payment_page_uid). No secrets are logged.
+            $cfg = $shop->payplusConfig();
+            Log::warning('woocommerce.gateway.no_payment_page', [
+                'shop_id' => $shop->getKey(),
+                'order_id' => $orderId,
+                'payplus_status' => data_get($result->raw, 'results.status'),
+                'payplus_code' => data_get($result->raw, 'results.code'),
+                'payplus_message' => data_get($result->raw, 'results.description')
+                    ?? data_get($result->raw, 'results.message'),
+                'has_terminal_uid' => ! empty($cfg['terminal_uid']),
+                'has_payment_page_uid' => ! empty($cfg['payment_page_uid']),
+                'has_cashier_uid' => ! empty($cfg['cashier_uid']),
+            ]);
+
             return response()->json(['error' => 'gateway_unavailable'], Response::HTTP_BAD_GATEWAY);
         }
 
