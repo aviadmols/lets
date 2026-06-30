@@ -126,10 +126,12 @@ class AdminPanelProvider extends PanelProvider
             ->brandName(self::BRAND_NAME)
             ->favicon(asset('favicon.ico'))
             ->colors([
-                'primary' => Color::hex('#3B5BDB'),
-                'gray' => Color::Slate,
+                // Horizon palette: violet primary + Tailwind's cool "gray" ramp
+                // (#6B7280 / #111827 — exactly Horizon's neutrals).
+                'primary' => Color::hex('#7746EC'),
+                'gray' => Color::Gray,
             ])
-            ->font('Inter')
+            ->font('Figtree')
             // SPA navigation (wire:navigate): swap only the page content over AJAX +
             // keep the shell, assets, fonts, and (when embedded) App Bridge alive across
             // tab switches — instead of a FULL page reload per navigation (re-downloading
