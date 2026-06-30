@@ -88,4 +88,27 @@ final class ImportShopProductsJob implements ShouldQueue
             'pages' => $pages,
         ]);
     }
+
+    /**
+     * Surface WHY the import failed — tagged to the shop, in both stderr and Horizon's
+     * failed-job detail — so it never reads as a cryptic stack trace. By far the most
+     * common cause is a store that isn't actually connected: its credentials bag can't
+     * be decrypted (e.g. it was encrypted under an old key) → the client factory reports
+     * "no … credentials". Turn that into an actionable hint instead of a mystery.
+     */
+    public function failed(\Throwable $e): void
+    {
+        $message = $e->getMessage();
+        $credentialsIssue = str_contains($message, 'credentials')
+            || str_contains($message, 'access token');
+
+        Log::error('products.import.failed', [
+            'shop_id' => $this->shopId,
+            'error' => $message,
+            'hint' => $credentialsIssue
+                ? 'The store is not connected, or its stored credentials cannot be read. '
+                    .'Re-connect the plugin / re-mint the connection token, then refresh products.'
+                : null,
+        ]);
+    }
 }
