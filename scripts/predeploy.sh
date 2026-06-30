@@ -36,5 +36,10 @@ fi
 # no `settings:migrate` command, so it is intentionally not invoked here.)
 php artisan config:cache || true
 php artisan event:cache || true
+# Precompile Blade views + cache Filament's components and Blade ICONS. Without this the
+# panel re-reads + re-parses every heroicon SVG from disk on EVERY render — the bulk of
+# the slow admin page loads under classic FrankenPHP (no persistent worker). Big, safe win.
+php artisan view:cache || true
+php artisan filament:optimize || true
 
 echo "predeploy: ok"

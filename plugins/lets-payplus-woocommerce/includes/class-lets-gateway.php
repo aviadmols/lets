@@ -102,8 +102,40 @@ add_action('plugins_loaded', function () {
             $result = lets_payplus_signed_post('/api/woocommerce/gateway/session', $body);
 
             if (is_wp_error($result) || empty($result['redirect_url'])) {
-                $msg = is_wp_error($result) ? $result->get_error_message() : __('Payment could not be started.', 'lets-payplus');
-                wc_add_notice($msg, 'error');
+                // Turn the failure into a CLEAR, reason-specific message for the shopper —
+                // and a detailed line in the WooCommerce log for the merchant — instead of
+                // silently staying on checkout with no payment page.
+                $code   = is_wp_error($result) ? $result->get_error_code() : 'no_redirect_url';
+                $status = is_wp_error($result) ? (int) ($result->get_error_data()['status'] ?? 0) : 0;
+                $detail = is_wp_error($result) ? $result->get_error_message() : __('the server returned no payment page', 'lets-payplus');
+
+                if ('lets_not_connected' === $code || 'lets_bad_origin' === $code) {
+                    $reason = __('This store is not connected to LETS yet. Please contact the store — the LETS connection token needs to be set in Settings → LETS.', 'lets-payplus');
+                } elseif (401 === $status || 403 === $status) {
+                    $reason = __('LETS could not authenticate this store (the connection token may be out of date). Please contact the store to re-connect the plugin.', 'lets-payplus');
+                } elseif ('no_redirect_url' === $code) {
+                    $reason = __('PayPlus did not return a payment page. The store’s PayPlus connection may be missing or incorrect — please contact the store.', 'lets-payplus');
+                } elseif ($status >= 500) {
+                    $reason = __('The payment service is temporarily unavailable. Please try again in a few minutes.', 'lets-payplus');
+                } else {
+                    /* translators: %s: the underlying error detail. */
+                    $reason = sprintf(__('Could not open the PayPlus payment page: %s', 'lets-payplus'), $detail);
+                }
+
+                wc_add_notice($reason, 'error');
+
+                if (function_exists('wc_get_logger')) {
+                    wc_get_logger()->error(
+                        sprintf(
+                            'LETS gateway: could not start payment for order %d — code=%s status=%d detail=%s',
+                            (int) $order->get_id(),
+                            (string) $code,
+                            $status,
+                            (string) $detail
+                        ),
+                        array('source' => 'lets-payplus')
+                    );
+                }
 
                 return array('result' => 'failure');
             }

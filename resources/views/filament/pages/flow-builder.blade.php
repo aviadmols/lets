@@ -386,7 +386,7 @@
                                 {{ __('upsell.admin.configure.view_post_purchase') }}
                             </button>
                         @endif
-                        <x-rc.cta variant="primary" wire:click="saveOfferConfig">{{ __('upsell.admin.configure.close') }}</x-rc.cta>
+                        <x-rc.cta variant="primary" wire:click="saveOfferConfig">{{ __('upsell.admin.configure.save') }}</x-rc.cta>
                     </div>
                 </div>
             </div>

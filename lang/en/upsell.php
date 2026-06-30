@@ -163,6 +163,7 @@ return [
             'price' => 'Price: :price',
             'title' => 'Configure cross-sell',
             'close' => 'Close',
+            'save' => 'Save',
             'saved' => 'Cross-sell saved.',
             'subtitle' => 'Highlight product offerings on the post-purchase page to encourage customers to add more products to the order they just completed.',
             'what_product' => 'What product do you want to offer as a post-purchase cross-sell?',
