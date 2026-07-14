@@ -268,9 +268,12 @@
 
                         @if($planIsSubscription)
                             {{-- Price summary (read-only, server-computed) --}}
+                            {{-- The summary is a translated SENTENCE — never force it LTR, or the
+                                 Hebrew copy renders backwards. The money token inside it is already
+                                 bidi-safe (Money::format), exactly as the plan rows above do. --}}
                             <div class="rc-pp-info rc-plan-price-summary">
                                 <x-filament::icon icon="heroicon-o-tag" class="rc-pp-info__icon" />
-                                <span class="rc-ltr">{{ $this->planPriceSummary() }}</span>
+                                <span>{{ $this->planPriceSummary() }}</span>
                             </div>
 
                             {{-- Collapsible: Charge and cut-off schedule --}}

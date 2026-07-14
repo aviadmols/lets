@@ -18,6 +18,9 @@ return [
         'item' => 'Item',
         'total' => 'Total',
         'default_item' => 'Item',
+        // Product name on the "Test payment page" PROBE page (never paid) — named so the
+        // merchant can recognise it in their PayPlus dashboard.
+        'probe_item' => 'LETS connection test',
 
         // Controls.
         'down_payment' => 'Down payment',

@@ -29,11 +29,21 @@ final class PayPlusAccountDiscovery
     /** Defensive response-wrapper keys: PayPlus may return a bare array OR {data:[...]}. */
     private const WRAPPER_KEYS = ['data', 'results', 'terminals', 'payment_pages'];
 
+    /** How deep to hunt for the row list inside a wrapped envelope. */
+    private const MAX_UNWRAP_DEPTH = 4;
+
+    /** Chars of the response body kept in a failure log (a PayPlus RESPONSE — no secrets of ours). */
+    private const LOG_BODY_CHARS = 400;
+
     /** Typed failure reasons surfaced to the UI (NEVER the secret/raw body). */
     public const REASON_NONE = null;
     public const REASON_AUTH = 'auth';
     public const REASON_TRANSPORT = 'transport';
     public const REASON_MALFORMED = 'malformed';
+
+    /** The call SUCCEEDED but PayPlus has no rows (e.g. no payment page on this terminal).
+        Distinct from a failure: the merchant must CREATE one in the PayPlus dashboard. */
+    public const REASON_EMPTY = 'empty';
 
     /** Last fail-closed reason from terminals()/paymentPages(), for the screen. */
     public ?string $lastReason = self::REASON_NONE;
@@ -166,12 +176,24 @@ final class PayPlusAccountDiscovery
         }
 
         if ($response->unauthorized() || $response->forbidden()) {
+            // PayPlus rejected the api-key/secret-key pair.
+            Log::warning('payplus.discovery.auth_failed', [
+                'path' => $path,
+                'status' => $response->status(),
+            ]);
             $this->lastReason = self::REASON_AUTH;
 
             return null;
         }
 
         if (! $response->successful()) {
+            // 404/405/500 — e.g. a wrong verb or path. Log the STATUS + a snippet of
+            // PayPlus's own response so the real cause is visible (never our secrets).
+            Log::warning('payplus.discovery.http_error', [
+                'path' => $path,
+                'status' => $response->status(),
+                'body' => $this->snippet($response->body()),
+            ]);
             $this->lastReason = self::REASON_TRANSPORT;
 
             return null;
@@ -181,14 +203,34 @@ final class PayPlusAccountDiscovery
         $rows = $this->unwrap($body);
 
         if ($rows === null) {
+            // 200, but we could not find a row list. Log the ENVELOPE SHAPE (top-level
+            // keys only) — this is what silently produced an empty payment-page list.
+            Log::warning('payplus.discovery.malformed', [
+                'path' => $path,
+                'top_level_keys' => is_array($body) ? array_keys($body) : gettype($body),
+                'body' => $this->snippet($response->body()),
+            ]);
             $this->lastReason = self::REASON_MALFORMED;
+
+            return null;
+        }
+
+        if ($rows === []) {
+            // A genuine "no rows" answer — NOT a failure. The merchant has no payment
+            // page on this terminal and must create one in the PayPlus dashboard.
+            Log::info('payplus.discovery.empty', ['path' => $path]);
+            $this->lastReason = self::REASON_EMPTY;
         }
 
         return $rows;
     }
 
     /**
-     * Accept either a bare JSON array OR a wrapped object (e.g. {results, data:[...]}).
+     * Find the row list inside PayPlus's envelope. PayPlus really answers
+     * {"results":{status,code},"data":{...}} and the rows can sit a level DEEPER than
+     * the wrapper key (e.g. data.payment_pages[]) — the old one-level lookup returned
+     * null there and silently produced an empty list. Search depth-bounded, preferring
+     * the known wrapper keys, and only accept a list whose elements are ROWS (objects).
      *
      * @return list<mixed>|null
      */
@@ -203,13 +245,56 @@ final class PayPlusAccountDiscovery
             return $body;
         }
 
+        return $this->findRowList($body, 0);
+    }
+
+    /** @return list<mixed>|null */
+    private function findRowList(array $node, int $depth): ?array
+    {
+        if ($depth > self::MAX_UNWRAP_DEPTH) {
+            return null;
+        }
+
+        // Prefer the documented wrapper keys at this level.
         foreach (self::WRAPPER_KEYS as $key) {
-            if (isset($body[$key]) && is_array($body[$key]) && array_is_list($body[$key])) {
-                return $body[$key];
+            if ($this->isRowList($node[$key] ?? null)) {
+                return $node[$key];
+            }
+        }
+
+        // Otherwise descend: {"data": {"payment_pages": [ {...} ]}} and friends.
+        foreach ($node as $child) {
+            if (! is_array($child)) {
+                continue;
+            }
+
+            if ($this->isRowList($child)) {
+                return $child;
+            }
+
+            if (! array_is_list($child)) {
+                $found = $this->findRowList($child, $depth + 1);
+                if ($found !== null) {
+                    return $found;
+                }
             }
         }
 
         return null;
+    }
+
+    /** A list of ROWS (objects) — or a legitimately empty list. Not a list of scalars. */
+    private function isRowList(mixed $value): bool
+    {
+        return is_array($value)
+            && array_is_list($value)
+            && ($value === [] || is_array($value[0]));
+    }
+
+    /** A short, safe excerpt of a PayPlus RESPONSE body for failure logs. */
+    private function snippet(string $body): string
+    {
+        return mb_substr(trim($body), 0, self::LOG_BODY_CHARS);
     }
 
     /** Mirror PayPlusGateway::endpoint(): rtrim(base) . api_prefix . path. */

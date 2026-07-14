@@ -72,6 +72,61 @@ final class ProductDetailPageTest extends TestCase
             ->assertSee(__('products.detail.add_subscription_plan'));
     }
 
+    /**
+     * The drawer summary read "₪73.26 every 2 year" — products.unit.* is singular-only and the
+     * summary used a plain __(). It must pluralise via trans_choice (products.unit_choice.*).
+     */
+    public function test_the_price_summary_pluralises_the_unit(): void
+    {
+        $component = Livewire::test(ProductDetail::class, ['product' => $this->product->id])
+            ->set('frequencyUnit', 'yearly')
+            ->set('intervalCount', 2);
+
+        $summary = $component->instance()->planPriceSummary();
+
+        $this->assertStringContainsString('years', $summary);
+        $this->assertStringNotContainsString('2 year ', $summary.' ');
+
+        // …and a single interval stays singular.
+        $single = Livewire::test(ProductDetail::class, ['product' => $this->product->id])
+            ->set('frequencyUnit', 'yearly')
+            ->set('intervalCount', 1)
+            ->instance()
+            ->planPriceSummary();
+
+        $this->assertStringContainsString('year', $single);
+        $this->assertStringNotContainsString('years', $single);
+    }
+
+    /** `biweekly` is ALREADY plural — a naive ":unit + s" would print "two weekss". */
+    public function test_an_already_plural_unit_is_not_double_pluralised(): void
+    {
+        $summary = Livewire::test(ProductDetail::class, ['product' => $this->product->id])
+            ->set('frequencyUnit', 'biweekly')
+            ->set('intervalCount', 3)
+            ->instance()
+            ->planPriceSummary();
+
+        $this->assertStringNotContainsString('weekss', $summary);
+    }
+
+    /**
+     * Regression guard for the 5-chevron bug: `.rc-pp-select` must be declared EXACTLY ONCE in
+     * the published bundle. It was declared in BOTH post-purchase.css and products.css, and
+     * because build-theme.mjs concatenates alphabetically the later `background:` shorthand
+     * reset background-repeat → Filament's chevron TILED across the control.
+     */
+    public function test_the_select_skin_is_declared_exactly_once_in_the_bundle(): void
+    {
+        $css = (string) file_get_contents(public_path('css/rc-admin.css'));
+
+        $this->assertSame(
+            1,
+            preg_match_all('/^\s*\.rc-pp-select\s*\{/m', $css),
+            '.rc-pp-select must have ONE owner (post-purchase.css) — a second declaration silently wins the cascade.'
+        );
+    }
+
     public function test_missing_product_redirects_to_list_instead_of_404(): void
     {
         Livewire::test(ProductDetail::class, ['product' => 999999])

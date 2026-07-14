@@ -218,6 +218,113 @@ final class PayPlusAccountDiscoveryTest extends TestCase
             ->assertSet('data.cashier_uid', self::CASHIER_UID);
     }
 
+    // === E. The bug that shipped: an unusable connection saved as "Connected" ===
+
+    /**
+     * PayPlus really answers {"results":{...},"data":{...}} and the row list can sit a level
+     * DEEPER than the wrapper key. The old one-level unwrap() returned null here → MALFORMED →
+     * an empty page list → payment_page_uid was never discovered. THIS is what broke checkout.
+     */
+    public function test_payment_pages_parses_a_nested_envelope(): void
+    {
+        Http::fake([
+            '*/PaymentPages/list*' => Http::response([
+                'results' => ['status' => 'success', 'code' => 0],
+                'data' => [
+                    'payment_pages' => [
+                        ['uid' => self::PAGE_UID, 'name' => 'Nested page', 'cashier_uid' => self::CASHIER_UID],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $discovery = $this->discovery();
+        $pages = $discovery->paymentPages(self::TERMINAL_UID);
+
+        $this->assertCount(1, $pages);
+        $this->assertSame(self::PAGE_UID, $pages[0]['uid']);
+        $this->assertSame(self::CASHIER_UID, $pages[0]['cashier_uid']);
+        $this->assertNull($discovery->lastReason);
+    }
+
+    /** A 200 with a genuinely empty list is NOT a failure — the merchant has no page to pick. */
+    public function test_an_empty_page_list_is_reported_as_empty_not_as_a_failure(): void
+    {
+        Http::fake(['*/PaymentPages/list*' => Http::response(['data' => []], 200)]);
+
+        $discovery = $this->discovery();
+
+        $this->assertSame([], $discovery->paymentPages(self::TERMINAL_UID));
+        $this->assertSame(PayPlusAccountDiscovery::REASON_EMPTY, $discovery->lastReason);
+    }
+
+    /** A shop with keys + terminal but NO payment page cannot charge → it is NOT connected. */
+    public function test_a_shop_without_a_payment_page_is_not_connected(): void
+    {
+        $shop = $this->makeShop('nopage.myshopify.com');
+        $shop->payplus_credentials = [
+            'api_key' => self::API_KEY,
+            'secret_key' => self::SECRET_KEY,
+            'terminal_uid' => self::TERMINAL_UID,
+            // payment_page_uid deliberately absent — PayPlus cannot mint a card page.
+        ];
+        $shop->save();
+
+        $this->assertFalse($shop->fresh()->hasPayplusConnection());
+    }
+
+    /** Save must REFUSE an unusable connection instead of persisting nulls + saying "saved". */
+    public function test_save_is_blocked_without_a_payment_page(): void
+    {
+        $shop = $this->makeShop('blocked.myshopify.com');
+        Tenant::set($shop);
+        $this->actingAs(User::factory()->forShop($shop)->create());
+
+        Livewire::test(ManagePayPlusConnection::class)
+            ->set('data.api_key', self::API_KEY)
+            ->set('data.secret_key', self::SECRET_KEY)
+            ->set('data.base_url', self::BASE_URL)
+            ->set('data.terminal_uid', self::TERMINAL_UID)
+            ->set('data.payment_page_uid', null)
+            ->call('save');
+
+        // Nothing persisted — the shop is not left half-configured.
+        $this->assertSame([], $shop->fresh()->payplus_credentials);
+        $this->assertFalse($shop->fresh()->hasPayplusConnection());
+    }
+
+    /**
+     * A failed/empty page discovery must NEVER wipe a working payment_page_uid. The old code
+     * nulled it up-front, so one flaky PayPlus call silently un-configured a live shop.
+     */
+    public function test_a_failed_page_discovery_does_not_destroy_an_existing_payment_page(): void
+    {
+        Http::fake(['*/PaymentPages/list*' => Http::response('boom', 500)]);
+
+        $shop = $this->makeShop('keepit.myshopify.com');
+        $shop->payplus_credentials = [
+            'api_key' => self::API_KEY,
+            'secret_key' => self::SECRET_KEY,
+            'terminal_uid' => self::TERMINAL_UID,
+            'payment_page_uid' => self::PAGE_UID,
+            'cashier_uid' => self::CASHIER_UID,
+        ];
+        $shop->save();
+
+        Tenant::set($shop);
+        $this->actingAs(User::factory()->forShop($shop)->create());
+
+        Livewire::test(ManagePayPlusConnection::class)
+            ->call('onTerminalSelected', self::TERMINAL_UID)
+            // The good page survives the failed discovery…
+            ->assertSet('data.payment_page_uid', self::PAGE_UID)
+            ->call('save');
+
+        // …and a subsequent save still persists a USABLE connection.
+        $this->assertSame(self::PAGE_UID, $shop->fresh()->payplus_credentials['payment_page_uid']);
+        $this->assertTrue($shop->fresh()->hasPayplusConnection());
+    }
+
     // === Helpers ===
 
     private function discovery(): PayPlusAccountDiscovery

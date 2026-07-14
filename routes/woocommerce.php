@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\WooCommerce\DiagnosticsController;
 use App\Http\Controllers\WooCommerce\InstallController;
 use App\Http\Controllers\WooCommerce\Storefront\WooDepositCallbackController;
 use App\Http\Controllers\WooCommerce\Storefront\WooDepositReturnController;
@@ -25,6 +26,20 @@ Route::middleware(VerifyWooCommerceSignature::class)
     ->group(function () {
         Route::post('/install', [InstallController::class, 'install'])->name('woocommerce.install');
         Route::post('/verify-key', [InstallController::class, 'verify'])->name('woocommerce.verify');
+
+        /*
+        |----------------------------------------------------------------------
+        | Merchant diagnostics for the plugin's Settings → LETS screen (W13)
+        |----------------------------------------------------------------------
+        | "Test connection" reports what is (and isn't) configured downstream of the
+        | HMAC auth; "Test payment page" asks PayPlus for a REAL hosted page and returns
+        | its URL — or PayPlus's verbatim rejection. The probe writes no order and no
+        | ledger row (see DiagnosticsController).
+        */
+        Route::post('/diagnostics', [DiagnosticsController::class, 'report'])
+            ->name('woocommerce.diagnostics');
+        Route::post('/diagnostics/payment-page', [DiagnosticsController::class, 'paymentPage'])
+            ->name('woocommerce.diagnostics.payment_page');
 
         /*
         |----------------------------------------------------------------------

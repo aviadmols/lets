@@ -81,6 +81,14 @@
     flex-direction: column;
     gap: var(--rc-space-5);
 }
+/* Children must NEVER absorb the overflow — the BODY scrolls instead.
+   Per CSS Flexbox §4.5 a flex item whose `overflow` is not `visible` has an automatic
+   minimum size of ZERO. `.rc-accordion` sets `overflow: hidden`, so it was the only
+   shrinkable child: once the drawer content exceeded the panel height, 100% of the
+   overflow was absorbed by CRUSHING the accordions to ~0px (their headings clipped away,
+   leaving two empty pills) and `overflow-y: auto` never even engaged. That also made the
+   charge-day / expiry / channel controls unreachable — a functional bug, not a cosmetic one. */
+.rc-drawer__body > * { flex: 0 0 auto; }
 .rc-drawer__subtitle { font: var(--rc-type-body); color: var(--rc-ink-muted); margin: 0; }
 
 /* DEV-ONLY screenshot mode (?shot=1): expand to full content height so the

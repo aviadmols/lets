@@ -247,8 +247,19 @@ class ProductDetail extends Page
 
         return __('products.detail.ship_every', [
             'count' => $count,
-            'unit' => __('products.unit.' . $unitKey),
+            'unit' => $this->unitLabel($unitKey, $count),
         ]);
+    }
+
+    /**
+     * The billing-frequency unit, PLURALISED for the count ("year" vs "years"). products.unit.*
+     * is singular-only by design, so a plain __() produced "every 2 year". A naive `.'s'` hack
+     * would be wrong too — `biweekly` is already plural ("two weeks" → "two weekss") — hence a
+     * real choice map (products.unit_choice.*) resolved through trans_choice.
+     */
+    private function unitLabel(string $unitKey, int $count): string
+    {
+        return trans_choice('products.unit_choice.' . $unitKey, $count);
     }
 
     private function discountLabel(ProductSubscriptionPlan $plan): string
@@ -528,8 +539,8 @@ class ProductDetail extends Page
         $base = $this->primaryPrice();
         $percent = $this->offerDiscount ? max(0, min(100, (int) $this->discountPercent)) : 0;
         $price = round($base * (1 - $percent / 100), 2);
-        $unit = __('products.unit.' . $this->sanitizeFrequency($this->frequencyUnit)->value);
         $count = max(self::MIN_INTERVAL, (int) $this->intervalCount);
+        $unit = $this->unitLabel($this->sanitizeFrequency($this->frequencyUnit)->value, $count);
 
         if ($count > 1) {
             return __('products.plan_drawer.price_summary', [

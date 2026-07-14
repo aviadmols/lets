@@ -209,10 +209,25 @@ class ManagePayPlusConnection extends Page implements HasForms
                     ->options(fn (): array => $this->pageOptions)
                     ->native(false)
                     ->live()
+                    // PayPlus cannot mint a card page without this — it is NOT optional.
+                    ->required()
                     ->afterStateUpdated(function (?string $state): void {
                         $this->onPageSelected($state);
                     })
                     ->visible(fn (): bool => count($this->pageOptions) > 0),
+                // Page discovery failed (or PayPlus has none) → say so loudly and let the
+                // merchant retry, instead of leaving a silently unusable connection.
+                Placeholder::make('pages_missing')
+                    ->label('')
+                    ->content(fn (): string => __('settings.payplus.needs_payment_page_help'))
+                    ->visible(fn (Get $get): bool => filled($get('terminal_uid')) && $this->pageOptions === []),
+                Actions::make([
+                    Action::make('rediscoverPages')
+                        ->label(__('settings.payplus.rediscover'))
+                        ->icon('heroicon-m-arrow-path')
+                        ->color('gray')
+                        ->action('rediscoverPages'),
+                ])->visible(fn (Get $get): bool => filled($get('terminal_uid')) && $this->pageOptions === []),
                 // Discovered, non-editable: the cashier rides along with the page.
                 Placeholder::make('connected_summary')
                     ->label(__('settings.payplus.connected_label'))
@@ -317,10 +332,7 @@ class ManagePayPlusConnection extends Page implements HasForms
     {
         $this->pageOptions = [];
         $this->pageMeta = [];
-        $this->data['payment_page_uid'] = null;
-        $this->data['cashier_uid'] = null;
         $this->connectedTerminalName = $this->terminalLabel($terminalUid);
-        $this->connectedPageName = null;
 
         if (! $terminalUid) {
             return;
@@ -337,11 +349,19 @@ class ManagePayPlusConnection extends Page implements HasForms
         $pages = $discovery->paymentPages($terminalUid);
 
         if ($pages === []) {
+            // NEVER null an existing payment_page_uid/cashier_uid here. A failed — or
+            // simply empty — discovery must not destroy a working connection (the old
+            // code cleared them up-front, so one flaky call silently un-configured the
+            // shop and the next Save persisted the nulls). Keep what we have and tell
+            // the merchant the REAL reason. REASON_EMPTY means PayPlus genuinely has no
+            // payment page on this terminal → they must create one in PayPlus.
             Notification::make()
                 ->title(__('settings.payplus.pages_failed', [
                     'reason' => __('settings.payplus.reason.'.($discovery->lastReason ?? 'transport')),
                 ]))
+                ->body(__('settings.payplus.pages_failed_help'))
                 ->warning()
+                ->persistent()
                 ->send();
 
             return;
@@ -355,12 +375,32 @@ class ManagePayPlusConnection extends Page implements HasForms
             ];
         }
 
+        // The already-selected page still belongs to this terminal → keep it (a
+        // re-Connect must not silently drop a working page).
+        $current = (string) ($this->data['payment_page_uid'] ?? '');
+        if ($current !== '' && isset($this->pageMeta[$current])) {
+            $this->onPageSelected($current);
+
+            return;
+        }
+
+        // Only now — we KNOW this terminal's real page list and the old page isn't in it.
+        $this->data['payment_page_uid'] = null;
+        $this->data['cashier_uid'] = null;
+        $this->connectedPageName = null;
+
         // Auto-select a sole page (and its cashier).
         if (count($this->pageOptions) === 1) {
             $only = array_key_first($this->pageOptions);
             $this->data['payment_page_uid'] = $only;
             $this->onPageSelected($only);
         }
+    }
+
+    /** Retry page discovery for the currently-selected terminal (a flaky call is recoverable). */
+    public function rediscoverPages(): void
+    {
+        $this->onTerminalSelected((string) ($this->data['terminal_uid'] ?? '') ?: null);
     }
 
     /** Payment page selected → capture its cashier_uid + names for the summary. */
@@ -386,6 +426,21 @@ class ManagePayPlusConnection extends Page implements HasForms
 
         $bag = $shop->payplus_credentials ?: [];
         $input = $this->form->getState();
+
+        // A PayPlus connection WITHOUT a payment_page_uid cannot mint a hosted card page —
+        // checkout dies with "no payment page". Refuse the save (and never report success)
+        // rather than hard-committing an unusable connection that then reports "Connected".
+        // This is the exact state shop 2 was left in.
+        if (blank($this->data['payment_page_uid'] ?? null)) {
+            Notification::make()
+                ->title(__('settings.payplus.needs_payment_page'))
+                ->body(__('settings.payplus.needs_payment_page_help'))
+                ->danger()
+                ->persistent()
+                ->send();
+
+            return;
+        }
 
         // Plain (discovered) fields are read from the raw Livewire state ($this->data),
         // NOT getState(): the discovery section is conditionally visible, and hidden

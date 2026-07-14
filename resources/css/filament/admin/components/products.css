@@ -3,8 +3,13 @@
    "Markets" info banner, the DETAIL page (product header, details card, per-
    variant plan groupings + reorder, side column, tag chips), and the small extras
    the "Edit subscription plan" slide-over needs on top of configure-drawer.css
-   (the stepper row, the read-only price summary, a small ghost CTA, the native
-   <select> skin .rc-pp-select).
+   (the stepper row, the read-only price summary, a small ghost CTA).
+   NOTE: .rc-pp-select is owned SOLELY by post-purchase.css — do NOT re-declare it
+   here. build-theme.mjs concatenates components/*.css ALPHABETICALLY, so a rule in
+   this file lands AFTER post-purchase.css at equal specificity and silently wins.
+   A `background:` SHORTHAND here reset background-repeat/position/size to their
+   initial values while Filament's higher-specificity `select:not(.choices)` kept
+   supplying the chevron image — which then TILED (~5 chevrons under the label).
    TOKENS: --rc-card --rc-bg --rc-border --rc-border-strong --rc-blue --rc-blue-bg
            --rc-ink --rc-ink-muted --rc-radius-card --rc-radius-control
            --rc-radius-pill --rc-shadow-card --rc-ring --rc-space-* --rc-type-*
@@ -15,20 +20,6 @@
 
 /* ---- List: "Markets" info banner -------------------------------------- */
 .rc-products-banner { margin-block-end: var(--rc-space-4); }
-
-/* ---- Native <select> skin (drawer purchase/frequency/charge-day) ------- */
-.rc-pp-select {
-    inline-size: 100%;
-    padding-block: var(--rc-space-2);
-    padding-inline: var(--rc-space-3);
-    border: 1px solid var(--rc-border);
-    border-radius: var(--rc-radius-control);
-    background: var(--rc-card);
-    font: var(--rc-type-body);
-    color: var(--rc-ink);
-    cursor: pointer;
-}
-.rc-pp-select:focus-visible { outline: none; border-color: var(--rc-blue); box-shadow: var(--rc-ring); }
 
 /* ---- Detail: header --------------------------------------------------- */
 .rc-prod-header { margin-block-end: var(--rc-space-5); gap: var(--rc-space-4); }

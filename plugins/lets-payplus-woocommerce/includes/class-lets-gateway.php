@@ -136,10 +136,16 @@ add_action('plugins_loaded', function () {
                     );
                 }
 
-                // Surface the error on BOTH classic AND block checkout. A failure RETURN is
-                // silently ignored by the block (Store API) checkout — only a thrown
-                // exception is rendered there — so we add the notice (classic) AND throw.
-                wc_add_notice($reason, 'error');
+                // Mirror it into the merchant-visible log on Settings → LETS, so a failed
+                // checkout is diagnosable without digging through WooCommerce → Status → Logs.
+                if (function_exists('lets_payplus_log_error')) {
+                    lets_payplus_log_error($reason, 'checkout');
+                }
+
+                // THROW — do not also wc_add_notice(). WooCommerce catches an exception from
+                // process_payment() and adds the notice itself, so doing both printed the
+                // message TWICE on classic checkout. Throwing is also the only form the block
+                // (Store API) checkout renders — a ['result' => 'failure'] return is silent.
                 throw new \Exception(esc_html($reason));
             }
 

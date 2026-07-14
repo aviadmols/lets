@@ -108,7 +108,7 @@ return [
         ],
     ],
 
-    // --- Billing-frequency unit labels (singular; used with :count in ship_every) ---
+    // --- Billing-frequency unit labels (singular; used where no count is shown) ---
     'unit' => [
         'daily' => 'day',
         'weekly' => 'week',
@@ -116,6 +116,18 @@ return [
         'monthly' => 'month',
         'quarterly' => 'quarter',
         'yearly' => 'year',
+    ],
+
+    // --- The SAME units, pluralised for a count (trans_choice) ---
+    // Used by ship_every / price_summary so "every 2 year" reads "every 2 years".
+    // NOTE `biweekly` is already plural — a naive ":unit + s" would give "two weekss".
+    'unit_choice' => [
+        'daily' => 'day|days',
+        'weekly' => 'week|weeks',
+        'biweekly' => 'two weeks|two-week periods',
+        'monthly' => 'month|months',
+        'quarterly' => 'quarter|quarters',
+        'yearly' => 'year|years',
     ],
 
     // --- "Edit subscription plan" slide-over drawer ---

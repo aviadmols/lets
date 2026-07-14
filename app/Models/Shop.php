@@ -213,11 +213,18 @@ class Shop extends Model
         ];
     }
 
+    /**
+     * Is PayPlus actually USABLE on this shop? payment_page_uid is required, not optional:
+     * PayPlus cannot mint a hosted card page without it, so a shop that has keys + a terminal
+     * but no payment page can take NO money. Reporting such a shop as "connected" is what let
+     * checkout fail with "no payment page" while the admin showed a green Connected badge.
+     */
     public function hasPayplusConnection(): bool
     {
         return ! empty($this->payplusCredential('api_key'))
             && ! empty($this->payplusCredential('secret_key'))
-            && ! empty($this->payplusCredential('terminal_uid'));
+            && ! empty($this->payplusCredential('terminal_uid'))
+            && ! empty($this->payplusCredential('payment_page_uid'));
     }
 
     // === WooCommerce credentials (W11) ===

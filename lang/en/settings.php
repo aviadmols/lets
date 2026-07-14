@@ -59,10 +59,16 @@ return [
         'connected_label' => 'Connected to',
         'advanced' => 'Advanced',
         'advanced_intro' => 'Optional. The webhook secret is not discoverable via the API — paste it only if PayPlus gave you one.',
+        // A payment page is REQUIRED — PayPlus cannot create a card page without it.
+        'needs_payment_page' => 'Choose a payment page before saving.',
+        'needs_payment_page_help' => 'PayPlus cannot create a credit-card page without a payment page, so checkout would fail. If no payment pages are listed, create one in your PayPlus dashboard under this terminal, then click “Reload payment pages”.',
+        'pages_failed_help' => 'Your existing payment page (if any) was kept. Fix the cause above and reload — nothing was changed.',
+        'rediscover' => 'Reload payment pages',
         'reason' => [
             'auth' => 'invalid API key or secret',
             'transport' => 'network or server error',
             'malformed' => 'unexpected response',
+            'empty' => 'PayPlus returned no payment pages for this terminal — create one in your PayPlus dashboard',
         ],
     ],
 

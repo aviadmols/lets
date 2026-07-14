@@ -24,7 +24,7 @@ if (! defined('ABSPATH')) {
     exit; // never run outside WordPress
 }
 
-define('LETS_PAYPLUS_VERSION', '0.3.2');
+define('LETS_PAYPLUS_VERSION', '0.4.0');
 define('LETS_PAYPLUS_OPT', 'lets_payplus_connection'); // wp_option holding the decoded token
 define('LETS_PAYPLUS_FILE', __FILE__);
 define('LETS_PAYPLUS_URL', plugin_dir_url(__FILE__)); // base URL for assets
@@ -236,6 +236,13 @@ function lets_payplus_render_settings()
             </table>
             <?php submit_button($conn ? 'Reconnect' : 'Connect to LETS'); ?>
         </form>
+
+        <?php
+        // Merchant self-service: Test connection · Test payment page · Recent errors.
+        if (function_exists('lets_payplus_render_diagnostics')) {
+            lets_payplus_render_diagnostics();
+        }
+        ?>
     </div>
     <?php
 }
@@ -254,3 +261,7 @@ require_once __DIR__ . '/includes/class-lets-gateway.php';
 // Read-only status endpoint so the SaaS "Test connection" button can confirm the plugin
 // is installed with the correct token (GET /wp-json/lets-payplus/v1/status).
 require_once __DIR__ . '/includes/class-lets-status.php';
+
+// Merchant diagnostics on Settings → LETS: Test connection · Test payment page · error log.
+// Loads AFTER the signer (class-lets-product-widget) whose lets_payplus_signed_post() it uses.
+require_once __DIR__ . '/includes/class-lets-diagnostics.php';
