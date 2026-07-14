@@ -4,6 +4,7 @@ namespace App\Http\Controllers\WooCommerce\Storefront;
 
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
+use App\Services\PayPlus\PayPlusPageOptions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\Request;
@@ -72,6 +73,11 @@ final class WooGatewaySessionController extends WooStorefrontController
 
         try {
             $result = PayPlusGatewayFactory::for($shop)->generateLink([
+                // The merchant's page options (language, installments, Bit/PayPal, receipts,
+                // create_token…). Spread FIRST so the money + correlation keys below always
+                // win; PayPlusPageOptions can only emit documented, allow-listed keys, and
+                // PayPlusGateway forces payment_page_uid/terminal_uid to this shop's own creds.
+                ...app(PayPlusPageOptions::class)->for($shop),
                 'amount' => $amount,
                 'currency_code' => $currency,
                 'product_name' => (string) ($request->input('product_name') ?: __('storefront.installments.default_item')),

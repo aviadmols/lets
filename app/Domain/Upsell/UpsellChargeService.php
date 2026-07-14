@@ -10,6 +10,7 @@ use App\Domain\Upsell\Models\UpsellFlowOffer;
 use App\Domain\Upsell\Models\UpsellOfferEvent;
 use App\Models\CustomerConsent;
 use App\Models\InstallmentPaymentMethod;
+use App\Models\MerchantBillingSettings;
 use App\Models\PaymentLedger;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\LedgerStatus;
@@ -100,6 +101,14 @@ final class UpsellChargeService
 
                 return UpsellChargeResult::noMethod($key);
             }
+
+            // The "Add to my order" click IS the authorization: the shopper was shown the
+            // exact price and told it goes on the card they just used, and they clicked.
+            // Record that consent NOW — before any gateway call — so the money-safety law
+            // below is satisfied by an explicit, auditable act. (Nothing in production ever
+            // wrote an UPSELL consent row, so accept() always failed closed with no_consent
+            // and the one-click upsell could never charge.)
+            $this->recordUpsellConsent($shopId, $req, $offer, $method);
 
             // Money-safety law: NO saved-token charge without a stored UPSELL
             // consent row. Fail closed — no ledger row, no gateway call.
@@ -363,6 +372,48 @@ final class UpsellChargeService
             })
             ->latest('id')
             ->first();
+    }
+
+    /**
+     * Record the customer's UPSELL consent, captured from their explicit "Add to my order"
+     * click. Written BEFORE the gateway call so the consent gate below can never be satisfied
+     * by anything but a real, auditable authorization.
+     *
+     * Idempotent (firstOrCreate on shop + context + customer): a double-click records one
+     * consent, exactly as it charges once. Snapshots the price shown and the policy in force,
+     * so a future dispute is answerable. Mirrors PlanActivationService::recordConsent.
+     */
+    private function recordUpsellConsent(
+        int $shopId,
+        AcceptUpsellRequest $req,
+        UpsellFlowOffer $offer,
+        InstallmentPaymentMethod $method,
+    ): void {
+        $settings = MerchantBillingSettings::current();
+        $customerRef = $method->shopify_customer_id ?: $req->customerRef;
+
+        CustomerConsent::query()->firstOrCreate(
+            [
+                'shop_id' => $shopId,
+                'consent_context' => CustomerConsent::CONTEXT_UPSELL,
+                'shopify_customer_id' => $customerRef,
+            ],
+            [
+                'customer_id' => $method->customer_id,
+                'plan_id' => null, // an upsell is a charge CONTEXT, never a plan
+                'accepted_at' => now(),
+                'accepted_terms_version' => $settings->termsVersion(),
+                'cancellation_policy_snapshot' => $settings->cancellationPolicyText(),
+                // The money the shopper actually agreed to, server-computed — never a
+                // client-supplied amount.
+                'billing_amount_description' => sprintf(
+                    'One-time post-purchase charge of %s for "%s" on the saved card',
+                    (string) $offer->discountedPrice(),
+                    (string) ($offer->offer_title ?? ''),
+                ),
+                'billing_frequency_description' => 'one-time',
+            ],
+        );
     }
 
     /** Is there a stored UPSELL consent for this customer? Required before charge. */

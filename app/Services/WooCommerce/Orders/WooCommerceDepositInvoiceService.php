@@ -6,6 +6,7 @@ use App\Models\InstallmentPlan;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
 use App\Services\Orders\PlatformInvoiceService;
+use App\Services\PayPlus\PayPlusPageOptions;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
@@ -70,6 +71,10 @@ final class WooCommerceDepositInvoiceService implements PlatformInvoiceService
         // merges payment_page_uid/terminal_uid/currency_code; we pass the money + the
         // return/callback URLs + more_info (the plan public_id echoed on the callback).
         $result = PayPlusGatewayFactory::for($shop)->generateLink([
+            // The merchant's page options (language, installments, methods, receipts…) —
+            // the SAME config as normal checkout, so the deposit page can't drift from it.
+            // Spread FIRST: the money/correlation keys below always win.
+            ...app(PayPlusPageOptions::class)->for($shop),
             'amount' => $amount,
             'product_name' => $productName !== '' ? $productName : __('storefront.installments.default_item'),
             // 0 = immediate capture/charge per current PayPlus understanding; verify

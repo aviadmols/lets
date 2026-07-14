@@ -44,6 +44,15 @@ final class UpsellEngineTest extends TestCase
 
     public int $payplusCalls = 0;
 
+    /**
+     * MONEY-SAFETY PROBE: how many UPSELL consent rows existed at the INSTANT PayPlus was
+     * called. The law is "no saved-token charge without a stored consent row" — consent must
+     * precede the money. Since consent is now captured FROM the shopper's explicit "Add to my
+     * order" click, asserting a pre-existing row proves nothing; asserting the row already
+     * exists when the gateway is entered proves the law.
+     */
+    public ?int $upsellConsentRowsAtChargeTime = null;
+
     public RecordingShopifyClient $shopifyClient;
 
     protected function setUp(): void
@@ -51,6 +60,7 @@ final class UpsellEngineTest extends TestCase
         parent::setUp();
 
         $this->payplusCalls = 0;
+        $this->upsellConsentRowsAtChargeTime = null;
         $test = $this;
 
         // Fake PayPlus: every charge succeeds with a unique txn uid; count calls.
@@ -60,6 +70,11 @@ final class UpsellEngineTest extends TestCase
             public function chargeWithReference($method, float $amount, string $idempotencyKey, array $meta = []): GatewayResult
             {
                 $n = ++$this->test->payplusCalls;
+
+                // Snapshot the consent state as the money leaves — see the property docblock.
+                $this->test->upsellConsentRowsAtChargeTime ??= CustomerConsent::withoutGlobalScopes()
+                    ->where('consent_context', CustomerConsent::CONTEXT_UPSELL)
+                    ->count();
 
                 return GatewayResult::fromResponse([
                     'results' => ['status' => 'success', 'code' => 0],
@@ -202,21 +217,59 @@ final class UpsellEngineTest extends TestCase
         });
     }
 
-    public function test_accept_without_consent_fails_closed_with_no_charge(): void
+    /**
+     * The shopper's explicit "Add to my order" click IS the authorization, so accept() RECORDS
+     * the upsell consent — but the money-safety law still holds: the consent row must exist
+     * BEFORE PayPlus is called. (Previously nothing in production ever wrote an UPSELL consent,
+     * so accept() always failed closed and the one-click upsell could never charge.)
+     */
+    public function test_accept_records_consent_from_the_click_before_charging(): void
     {
         $shop = $this->makeShop();
 
         Tenant::run($shop, function () use ($shop): void {
-            // Flow + saved token, but NO consent row.
+            // Flow + saved token, and NO pre-existing consent row.
             [$flow, $offer] = $this->makeFlowAndOffer($shop, base: 50.0);
             $this->makeActiveToken($shop, 'cust-77');
+            $this->assertSame(0, CustomerConsent::where('consent_context', CustomerConsent::CONTEXT_UPSELL)->count());
 
             $req = new AcceptUpsellRequest($flow, $offer, 'P-1', 'cust-77', 'x@y.com');
             $result = $this->chargeService()->accept($shop, $req);
 
-            $this->assertSame(UpsellChargeResult::RESULT_NO_CONSENT, $result->result);
-            $this->assertSame(0, $this->payplusCalls, 'No PayPlus call without consent.');
+            $this->assertSame(UpsellChargeResult::RESULT_CHARGED, $result->result);
+            $this->assertSame(1, $this->payplusCalls);
+
+            // THE LAW: consent already existed at the instant the money moved.
+            $this->assertSame(
+                1,
+                $this->upsellConsentRowsAtChargeTime,
+                'A saved-token charge ran with NO consent row in place — money-safety violation.',
+            );
+
+            // …and it snapshots what the shopper actually authorised.
+            $consent = CustomerConsent::where('consent_context', CustomerConsent::CONTEXT_UPSELL)->sole();
+            $this->assertSame('cust-77', $consent->shopify_customer_id);
+            $this->assertStringContainsString('saved card', (string) $consent->billing_amount_description);
+        });
+    }
+
+    /** No vaulted card = no charge. This fail-closed guarantee is unchanged. */
+    public function test_accept_without_a_saved_token_fails_closed_with_no_charge(): void
+    {
+        $shop = $this->makeShop();
+
+        Tenant::run($shop, function () use ($shop): void {
+            // Flow, but NO vaulted payment method for this customer.
+            [$flow, $offer] = $this->makeFlowAndOffer($shop, base: 50.0);
+
+            $req = new AcceptUpsellRequest($flow, $offer, 'P-1', 'cust-none', 'x@y.com');
+            $result = $this->chargeService()->accept($shop, $req);
+
+            $this->assertSame(UpsellChargeResult::RESULT_NO_METHOD, $result->result);
+            $this->assertSame(0, $this->payplusCalls, 'No PayPlus call without a saved card.');
             $this->assertSame(0, PaymentLedger::where('status', LedgerStatus::SUCCEEDED->value)->count());
+            // And no consent is manufactured for a charge that never happens.
+            $this->assertSame(0, CustomerConsent::where('consent_context', CustomerConsent::CONTEXT_UPSELL)->count());
         });
     }
 

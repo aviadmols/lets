@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\WooCommerce\CheckoutSettingsController;
 use App\Http\Controllers\WooCommerce\DiagnosticsController;
 use App\Http\Controllers\WooCommerce\InstallController;
 use App\Http\Controllers\WooCommerce\Storefront\WooDepositCallbackController;
@@ -40,6 +41,20 @@ Route::middleware(VerifyWooCommerceSignature::class)
             ->name('woocommerce.diagnostics');
         Route::post('/diagnostics/payment-page', [DiagnosticsController::class, 'paymentPage'])
             ->name('woocommerce.diagnostics.payment_page');
+
+        /*
+        |----------------------------------------------------------------------
+        | PayPlus payment-page options (W15)
+        |----------------------------------------------------------------------
+        | The merchant edits these in the plugin, but LETS stores them per shop and
+        | PayPlusPageOptions applies them to EVERY PayPlus page (checkout, deposit,
+        | subscription, probe) so the pages can never drift apart. Every field is
+        | allow-listed + clamped server-side — the signed body is still merchant input.
+        */
+        Route::get('/checkout-settings', [CheckoutSettingsController::class, 'show'])
+            ->name('woocommerce.checkout_settings.show');
+        Route::post('/checkout-settings', [CheckoutSettingsController::class, 'update'])
+            ->name('woocommerce.checkout_settings.update');
 
         /*
         |----------------------------------------------------------------------

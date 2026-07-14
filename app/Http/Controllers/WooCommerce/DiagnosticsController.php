@@ -5,6 +5,7 @@ namespace App\Http\Controllers\WooCommerce;
 use App\Http\Controllers\WooCommerce\Storefront\WooStorefrontController;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
+use App\Services\PayPlus\PayPlusPageOptions;
 use App\Services\WooCommerce\WooConnectionTester;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -85,9 +86,13 @@ final class DiagnosticsController extends WooStorefrontController
 
         try {
             $result = PayPlusGatewayFactory::for($shop)->generateLink([
+                // Probe the page the SHOPPER would actually see — same merchant options.
+                ...app(PayPlusPageOptions::class)->for($shop),
                 'amount' => self::PROBE_AMOUNT,
                 'product_name' => __('storefront.installments.probe_item'),
                 'charge_method' => 0,
+                // Never vault a card from a probe, whatever the merchant's setting says.
+                'create_token' => false,
                 // No refURL_callback on purpose — a probe page must be able to mark nothing.
                 'more_info' => self::MORE_INFO_PREFIX.$shop->getKey(),
             ]);

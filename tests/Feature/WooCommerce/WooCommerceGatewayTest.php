@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\WooCommerce;
 
+use App\Models\InstallmentPaymentMethod;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Contracts\PayPlusGatewayInterface;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\GatewayResult;
@@ -79,6 +80,86 @@ final class WooCommerceGatewayTest extends TestCase
                 && ($b['status'] ?? null) === 'processing'
                 && ($b['set_paid'] ?? null) === true;
         });
+    }
+
+    /**
+     * THE gap that made the one-click upsell "green and dead": a plain checkout vaulted NOTHING,
+     * so the thank-you page could never charge a saved card. The callback must now vault the
+     * reusable token — keyed by the SAME customer ref the thank-you widget sends (WC customer id,
+     * else the billing email), or the two can never be matched.
+     */
+    public function test_the_gateway_callback_vaults_the_reusable_payplus_token(): void
+    {
+        Http::fake(['*/wp-json/wc/v3/orders/5150' => Http::response([
+            'id' => 5150, 'status' => 'processing',
+            'customer_id' => 77, 'billing' => ['email' => 'buyer@example.com'],
+        ], 200)]);
+        [$shop] = $this->connectedShop('gw-vault.example.com');
+
+        $this->postJson('/woocommerce/gateway/callback/'.(string) $shop->wc_shop_token, [
+            'transaction' => [
+                'more_info' => 'gw:5150', 'status_code' => '000',
+                'token_uid' => 'tok-live-1', 'customer_uid' => 'pp-cust-9',
+                'four_digits' => '4242', 'brand_name' => 'Visa',
+            ],
+        ])->assertOk()->assertJsonPath('paid', true);
+
+        Tenant::run($shop, function (): void {
+            $method = InstallmentPaymentMethod::sole();
+
+            $this->assertSame('tok-live-1', $method->payplus_card_token_uid);
+            $this->assertSame('pp-cust-9', $method->payplus_customer_uid);
+            $this->assertSame('4242', $method->card_last_four);
+            $this->assertSame(InstallmentPaymentMethod::STATUS_ACTIVE, $method->status);
+            // The registered customer's WC id — exactly what class-lets-thankyou.php sends.
+            $this->assertSame('77', $method->shopify_customer_id);
+        });
+    }
+
+    /** A guest has no WC customer id — the billing email is the ref, on BOTH sides. */
+    public function test_a_guest_checkout_vaults_the_token_against_the_billing_email(): void
+    {
+        Http::fake(['*/wp-json/wc/v3/orders/5151' => Http::response([
+            'id' => 5151, 'status' => 'processing',
+            'customer_id' => 0, 'billing' => ['email' => 'guest@example.com'],
+        ], 200)]);
+        [$shop] = $this->connectedShop('gw-guest.example.com');
+
+        $this->postJson('/woocommerce/gateway/callback/'.(string) $shop->wc_shop_token, [
+            'transaction' => ['more_info' => 'gw:5151', 'status_code' => '000', 'token_uid' => 'tok-guest'],
+        ])->assertOk();
+
+        Tenant::run($shop, function (): void {
+            $this->assertSame('guest@example.com', InstallmentPaymentMethod::sole()->shopify_customer_id);
+        });
+    }
+
+    /** A replayed callback must not vault the same card twice. */
+    public function test_a_replayed_callback_vaults_the_card_only_once(): void
+    {
+        Http::fake(['*/wp-json/wc/v3/orders/5152' => Http::response([
+            'id' => 5152, 'status' => 'processing', 'customer_id' => 5, 'billing' => ['email' => 'r@e.com'],
+        ], 200)]);
+        [$shop] = $this->connectedShop('gw-replay.example.com');
+        $body = ['transaction' => ['more_info' => 'gw:5152', 'status_code' => '000', 'token_uid' => 'tok-once']];
+
+        $this->postJson('/woocommerce/gateway/callback/'.(string) $shop->wc_shop_token, $body)->assertOk();
+        $this->postJson('/woocommerce/gateway/callback/'.(string) $shop->wc_shop_token, $body)->assertOk();
+
+        Tenant::run($shop, fn () => $this->assertSame(1, InstallmentPaymentMethod::count()));
+    }
+
+    /** No token in the callback (create_token off) → the order is STILL paid; nothing vaulted. */
+    public function test_a_callback_without_a_token_still_pays_the_order(): void
+    {
+        Http::fake(['*/wp-json/wc/v3/orders/5153' => Http::response(['id' => 5153, 'customer_id' => 1], 200)]);
+        [$shop] = $this->connectedShop('gw-notok.example.com');
+
+        $this->postJson('/woocommerce/gateway/callback/'.(string) $shop->wc_shop_token, [
+            'transaction' => ['more_info' => 'gw:5153', 'status_code' => '000'],
+        ])->assertOk()->assertJsonPath('paid', true);
+
+        Tenant::run($shop, fn () => $this->assertSame(0, InstallmentPaymentMethod::count()));
     }
 
     public function test_a_non_gateway_callback_does_not_mark_anything_paid(): void

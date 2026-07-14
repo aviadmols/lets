@@ -132,14 +132,19 @@ final class WooCommerceUpsellFlowTest extends TestCase
         });
     }
 
-    public function test_accept_without_consent_fails_closed_with_no_charge(): void
+    /**
+     * The shopper's explicit "Add to my order" click IS the authorization: accept() RECORDS the
+     * upsell consent (before charging) rather than requiring a row nothing in production ever
+     * wrote. The remaining fail-closed guarantee is the SAVED CARD — see the next test.
+     */
+    public function test_accept_records_upsell_consent_from_the_click(): void
     {
         Http::fake();
-        [$shop, $key, $secret] = $this->connectedShop('up-noconsent.example.com');
+        [$shop, $key, $secret] = $this->connectedShop('up-consent.example.com');
 
         [$flow, $offer] = Tenant::run($shop, function () use ($shop): array {
             $flow = $this->makeFlow($shop, 'gid://shopify/Product/1', 50.0);
-            // Saved token but NO consent.
+            // A vaulted card, and NO pre-existing consent row.
             InstallmentPaymentMethod::create([
                 'shopify_customer_id' => 'cust-1', 'payplus_card_token_uid' => 'tok',
                 'card_last_four' => '4242', 'status' => InstallmentPaymentMethod::STATUS_ACTIVE,
@@ -150,7 +155,29 @@ final class WooCommerceUpsellFlowTest extends TestCase
 
         $this->signedPost($key, $secret, self::ACCEPT, [
             'flow_id' => $flow->id, 'offer_id' => $offer->id, 'parent_order' => 'WC-1', 'customer' => 'cust-1',
-        ])->assertStatus(422)->assertJsonPath('result', 'no_consent');
+        ])->assertOk()->assertJsonPath('result', 'charged');
+
+        Tenant::run($shop, function (): void {
+            $consent = CustomerConsent::where('consent_context', CustomerConsent::CONTEXT_UPSELL)->sole();
+            $this->assertSame('cust-1', $consent->shopify_customer_id);
+        });
+    }
+
+    /** No vaulted card = no charge, no ledger, and no manufactured consent. */
+    public function test_accept_without_a_saved_card_fails_closed_with_no_charge(): void
+    {
+        Http::fake();
+        [$shop, $key, $secret] = $this->connectedShop('up-nocard.example.com');
+
+        [$flow, $offer] = Tenant::run($shop, function () use ($shop): array {
+            $flow = $this->makeFlow($shop, 'gid://shopify/Product/1', 50.0);
+
+            return [$flow, $flow->offers()->first()];
+        });
+
+        $this->signedPost($key, $secret, self::ACCEPT, [
+            'flow_id' => $flow->id, 'offer_id' => $offer->id, 'parent_order' => 'WC-1', 'customer' => 'cust-1',
+        ])->assertStatus(422)->assertJsonPath('result', 'no_payment_method');
 
         $this->assertSame(0, $this->payplusCalls);
         Http::assertNothingSent(); // no child order without a charge

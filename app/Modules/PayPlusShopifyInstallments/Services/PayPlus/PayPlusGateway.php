@@ -106,11 +106,18 @@ final class PayPlusGateway implements PayPlusGatewayInterface
 
     public function generateLink(array $payload): GatewayResult
     {
-        $payload = array_merge([
-            'payment_page_uid' => $this->cred('payment_page_uid'),
-            'terminal_uid' => $this->cred('terminal_uid'),
-            'currency_code' => $this->currency,
-        ], $payload);
+        // SECURITY: the identity of the page is OURS, never the caller's. This used to be
+        // array_merge([defaults], $payload) — with the caller LAST, so any caller-supplied
+        // key silently overrode payment_page_uid / terminal_uid. Merchant-supplied page
+        // options (W15) travel through here, so the shop's own credentials must WIN.
+        $payload = array_merge(
+            ['currency_code' => $this->currency],
+            $payload,
+            [
+                'payment_page_uid' => $this->cred('payment_page_uid'),
+                'terminal_uid' => $this->cred('terminal_uid'),
+            ],
+        );
 
         return $this->post(self::PATH_GENERATE_LINK, $payload, $payload['more_info'] ?? null);
     }
