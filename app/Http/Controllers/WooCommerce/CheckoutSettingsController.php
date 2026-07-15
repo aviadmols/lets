@@ -38,6 +38,8 @@ final class CheckoutSettingsController extends WooStorefrontController
         'send_email_failure',
         'secure3d',
         'create_token',
+        'send_customer_success_sms',
+        'send_customer_failure_sms',
     ];
 
     /** GET /api/woocommerce/checkout-settings — what the plugin renders in its form. */
@@ -105,6 +107,27 @@ final class CheckoutSettingsController extends WooStorefrontController
                     : null;
             }
 
+            // --- W16 Part B: amounts (blank/zero → null), card allow-list, extra text ---
+            if ($request->has('payments_first_amount')) {
+                $amt = round((float) $request->input('payments_first_amount'), 2);
+                $settings->payments_first_amount = $amt > 0 ? $amt : null;
+            }
+            if ($request->has('non_voucher_minimum_amount')) {
+                $amt = round((float) $request->input('non_voucher_minimum_amount'), 2);
+                $settings->non_voucher_minimum_amount = $amt > 0 ? $amt : null;
+            }
+            if ($request->has('allowed_cards')) {
+                $cards = (array) $request->input('allowed_cards', []);
+                $settings->allowed_cards = array_values(array_intersect(
+                    array_map(static fn ($c): string => (string) $c, $cards),
+                    MerchantCheckoutSettings::ALLOWED_CARDS,
+                ));
+            }
+            if ($request->has('more_info_text')) {
+                $text = trim((string) $request->input('more_info_text'));
+                $settings->more_info_text = $text !== '' ? mb_substr($text, 0, 255) : null;
+            }
+
             // --- Booleans ---
             foreach (self::BOOL_FIELDS as $field) {
                 if ($request->has($field)) {
@@ -146,9 +169,18 @@ final class CheckoutSettingsController extends WooStorefrontController
                 'secure3d' => (bool) $s->secure3d,
                 'create_token' => $s->createToken(),
 
+                // W16 Part B.
+                'payments_first_amount' => $s->paymentsFirstAmount(),
+                'non_voucher_minimum_amount' => $s->nonVoucherMinimumAmount(),
+                'allowed_cards' => $s->allowedCards(),
+                'send_customer_success_sms' => $s->sendCustomerSuccessSms(),
+                'send_customer_failure_sms' => $s->sendCustomerFailureSms(),
+                'more_info_text' => $s->moreInfoText(),
+
                 // Catalogues the plugin renders its selects from (so the two can never drift).
                 'available_methods' => MerchantCheckoutSettings::CHARGE_METHODS,
                 'available_languages' => MerchantCheckoutSettings::LANGUAGES,
+                'available_cards' => MerchantCheckoutSettings::ALLOWED_CARDS,
                 'max_payments_ceiling' => MerchantCheckoutSettings::MAX_PAYMENTS,
             ];
         });

@@ -38,6 +38,21 @@ function lets_payplus_method_label($method)
     return isset($labels[$method]) ? $labels[$method] : $method;
 }
 
+/** Human labels for the documented PayPlus card brands (W16 Part B). */
+function lets_payplus_card_label($brand)
+{
+    $labels = array(
+        'visa'       => 'Visa',
+        'mastercard' => 'Mastercard',
+        'isracard'   => __('Isracard', 'lets-payplus'),
+        'amex'       => 'American Express',
+        'diners'     => 'Diners',
+        'discover'   => 'Discover',
+    );
+
+    return isset($labels[$brand]) ? $labels[$brand] : $brand;
+}
+
 add_action('admin_post_lets_payplus_save_page_settings', function () {
     lets_payplus_diag_guard(); // manage_options + nonce (shared with the diagnostics screen)
 
@@ -60,6 +75,13 @@ add_action('admin_post_lets_payplus_save_page_settings', function () {
         'expiry_minutes'            => isset($_POST['expiry_minutes']) ? (int) $_POST['expiry_minutes'] : 0,
         'secure3d'                  => ! empty($_POST['secure3d']),
         'create_token'              => ! empty($_POST['create_token']),
+        // W16 Part B — further documented page options.
+        'payments_first_amount'     => isset($_POST['payments_first_amount']) ? (float) $_POST['payments_first_amount'] : 0,
+        'non_voucher_minimum_amount' => isset($_POST['non_voucher_minimum_amount']) ? (float) $_POST['non_voucher_minimum_amount'] : 0,
+        'allowed_cards'             => isset($_POST['allowed_cards']) ? array_map('sanitize_text_field', (array) wp_unslash($_POST['allowed_cards'])) : array(),
+        'send_customer_success_sms' => ! empty($_POST['send_customer_success_sms']),
+        'send_customer_failure_sms' => ! empty($_POST['send_customer_failure_sms']),
+        'more_info_text'            => isset($_POST['more_info_text']) ? sanitize_text_field(wp_unslash($_POST['more_info_text'])) : '',
     );
 
     $result = lets_payplus_signed_post('/api/woocommerce/checkout-settings', $body);
@@ -121,6 +143,8 @@ function lets_payplus_render_page_settings()
     $languages = isset($s['available_languages']) ? (array) $s['available_languages'] : array('he', 'en');
     $ceiling = isset($s['max_payments_ceiling']) ? (int) $s['max_payments_ceiling'] : 36;
     $allowed = isset($s['allowed_charge_methods']) ? (array) $s['allowed_charge_methods'] : array();
+    $cards = isset($s['available_cards']) ? (array) $s['available_cards'] : array();
+    $allowedCards = isset($s['allowed_cards']) ? (array) $s['allowed_cards'] : array();
     ?>
     <hr>
     <h2><?php esc_html_e('Payment page', 'lets-payplus'); ?></h2>
@@ -199,6 +223,34 @@ function lets_payplus_render_page_settings()
                         <input type="checkbox" name="payments_credit" value="1" <?php checked(! empty($s['payments_credit'])); ?>>
                         <?php esc_html_e('Allow credit (ribit) transactions', 'lets-payplus'); ?>
                     </label>
+                    <br>
+                    <label>
+                        <?php esc_html_e('First payment amount:', 'lets-payplus'); ?>
+                        <input type="number" min="0" step="0.01" name="payments_first_amount" class="small-text"
+                               value="<?php echo esc_attr(isset($s['payments_first_amount']) ? $s['payments_first_amount'] : ''); ?>">
+                        <span class="description"><?php esc_html_e('(0 = equal payments)', 'lets-payplus'); ?></span>
+                    </label>
+                </td>
+            </tr>
+
+            <tr>
+                <th scope="row"><?php esc_html_e('Card brands', 'lets-payplus'); ?></th>
+                <td>
+                    <fieldset>
+                        <?php foreach ($cards as $brand) : ?>
+                            <label style="display:inline-block;margin-inline-end:14px">
+                                <input type="checkbox" name="allowed_cards[]" value="<?php echo esc_attr($brand); ?>"
+                                    <?php checked(in_array($brand, $allowedCards, true)); ?>>
+                                <?php echo esc_html(lets_payplus_card_label($brand)); ?>
+                            </label>
+                        <?php endforeach; ?>
+                        <p class="description"><?php esc_html_e('Leave all unticked to accept every brand PayPlus supports.', 'lets-payplus'); ?></p>
+                        <label>
+                            <?php esc_html_e('Minimum order value for a card charge:', 'lets-payplus'); ?>
+                            <input type="number" min="0" step="0.01" name="non_voucher_minimum_amount" class="small-text"
+                                   value="<?php echo esc_attr(isset($s['non_voucher_minimum_amount']) ? $s['non_voucher_minimum_amount'] : ''); ?>">
+                        </label>
+                    </fieldset>
                 </td>
             </tr>
 
@@ -221,6 +273,10 @@ function lets_payplus_render_page_settings()
                         <?php esc_html_e('PayPlus emails the customer on success', 'lets-payplus'); ?></label><br>
                     <label><input type="checkbox" name="send_email_failure" value="1" <?php checked(! empty($s['send_email_failure'])); ?>>
                         <?php esc_html_e('PayPlus emails the customer on failure', 'lets-payplus'); ?></label><br>
+                    <label><input type="checkbox" name="send_customer_success_sms" value="1" <?php checked(! empty($s['send_customer_success_sms'])); ?>>
+                        <?php esc_html_e('PayPlus texts the customer (SMS) on success', 'lets-payplus'); ?></label><br>
+                    <label><input type="checkbox" name="send_customer_failure_sms" value="1" <?php checked(! empty($s['send_customer_failure_sms'])); ?>>
+                        <?php esc_html_e('PayPlus texts the customer (SMS) on failure', 'lets-payplus'); ?></label><br>
                     <label><input type="checkbox" name="secure3d" value="1" <?php checked(! empty($s['secure3d'])); ?>>
                         <?php esc_html_e('Require 3-D Secure', 'lets-payplus'); ?></label><br>
                     <label>
@@ -229,6 +285,15 @@ function lets_payplus_render_page_settings()
                                value="<?php echo esc_attr(isset($s['expiry_minutes']) ? (int) $s['expiry_minutes'] : 0); ?>">
                         <?php esc_html_e('minutes (0 = never)', 'lets-payplus'); ?>
                     </label>
+                </td>
+            </tr>
+
+            <tr>
+                <th scope="row"><label for="more_info_text"><?php esc_html_e('Extra text on the page', 'lets-payplus'); ?></label></th>
+                <td>
+                    <input type="text" name="more_info_text" id="more_info_text" class="regular-text" maxlength="255"
+                           value="<?php echo esc_attr(isset($s['more_info_text']) ? $s['more_info_text'] : ''); ?>">
+                    <p class="description"><?php esc_html_e('An extra line shown on the PayPlus page (optional).', 'lets-payplus'); ?></p>
                 </td>
             </tr>
 

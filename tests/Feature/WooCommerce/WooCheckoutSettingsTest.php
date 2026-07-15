@@ -85,6 +85,50 @@ final class WooCheckoutSettingsTest extends TestCase
         });
     }
 
+    public function test_w16b_further_options_map_to_documented_keys_and_clamp(): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop('cs-w16b.example.com');
+
+        $this->signed('POST', $key, $secret, self::PATH, [
+            'max_payments' => 6,                          // >1 so payments_first_amount emits
+            'payments_first_amount' => 40,
+            'non_voucher_minimum_amount' => 25.5,
+            'allowed_cards' => ['visa', 'mastercard', 'BOGUS-BRAND'],
+            'send_customer_success_sms' => true,
+            'send_customer_failure_sms' => true,
+            'more_info_text' => '  Pay in comfort  ',
+        ])->assertOk();
+
+        Tenant::run($shop, function () use ($shop): void {
+            $opts = app(PayPlusPageOptions::class)->for($shop);
+
+            $this->assertSame(40.0, $opts['payments_first_amount']);
+            $this->assertSame(25.5, $opts['non_voucher_minimum_amount']);
+            $this->assertSame(['visa', 'mastercard'], $opts['allowed_cards']); // bogus brand dropped
+            $this->assertTrue($opts['send_customer_success_sms']);
+            $this->assertTrue($opts['send_customer_failure_sms']);
+            $this->assertSame('Pay in comfort', $opts['show_more_info']); // trimmed
+
+            // STILL nothing outside the documented allow-list can be emitted.
+            $this->assertEmpty(array_diff(array_keys($opts), PayPlusPageOptions::ALLOWED_KEYS));
+        });
+    }
+
+    public function test_payments_first_amount_is_not_emitted_without_installments(): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop('cs-first.example.com');
+
+        // A first-payment amount but max_payments left at 1 (no installments) → not emitted.
+        $this->signed('POST', $key, $secret, self::PATH, [
+            'max_payments' => 1,
+            'payments_first_amount' => 40,
+        ])->assertOk();
+
+        Tenant::run($shop, function () use ($shop): void {
+            $this->assertArrayNotHasKey('payments_first_amount', app(PayPlusPageOptions::class)->for($shop));
+        });
+    }
+
     public function test_a_bogus_language_falls_back_and_a_bogus_method_is_dropped(): void
     {
         [$shop, $key, $secret] = $this->connectedShop('cs-bogus.example.com');

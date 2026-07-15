@@ -43,6 +43,13 @@ final class PayPlusPageOptions
         'expiry_datetime',
         'secure3d',
         'create_token',
+        // W16 Part B — further documented options.
+        'payments_first_amount',
+        'non_voucher_minimum_amount',
+        'allowed_cards',
+        'send_customer_success_sms',
+        'send_customer_failure_sms',
+        'show_more_info',
     ];
 
     /**
@@ -117,6 +124,31 @@ final class PayPlusPageOptions
         // --- The upsell enabler: PayPlus must hand back a reusable token ---
         if ($settings->createToken()) {
             $options['create_token'] = true;
+        }
+
+        // --- W16 Part B: further documented options ---
+        // First-installment amount, only meaningful when installments are actually offered.
+        if ($payments > 1 && ($first = $settings->paymentsFirstAmount()) !== null) {
+            $options['payments_first_amount'] = $first;
+        }
+        if (($minCard = $settings->nonVoucherMinimumAmount()) !== null) {
+            $options['non_voucher_minimum_amount'] = $minCard;
+        }
+        if (($cards = $settings->allowedCards()) !== []) {
+            $options['allowed_cards'] = $cards;
+        }
+        // SMS receipts + extra page text. NOTE: verify the exact PayPlus key names against a live
+        // page before relying on them — an UNKNOWN key is simply ignored by PayPlus (harmless), so
+        // these are safe to emit but may be a no-op until confirmed. The allow-list below caps the
+        // blast radius to exactly these keys regardless.
+        if ($settings->sendCustomerSuccessSms()) {
+            $options['send_customer_success_sms'] = true;
+        }
+        if ($settings->sendCustomerFailureSms()) {
+            $options['send_customer_failure_sms'] = true;
+        }
+        if (($moreInfo = $settings->moreInfoText()) !== null) {
+            $options['show_more_info'] = $moreInfo;
         }
 
         // Belt and braces: nothing outside the allow-list can ever escape this class.

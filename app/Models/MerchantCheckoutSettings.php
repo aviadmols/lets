@@ -54,6 +54,9 @@ class MerchantCheckoutSettings extends Model
     /** PayPlus `language_code` values we expose. */
     public const LANGUAGES = ['he', 'en', 'ar', 'ru'];
 
+    /** Card brands the page may be restricted to (PayPlus `allowed_cards`). W16 Part B. */
+    public const ALLOWED_CARDS = ['visa', 'mastercard', 'isracard', 'amex', 'diners', 'discover'];
+
     /** Hard ceiling on installments offered on the page (PayPlus `payments`). */
     public const MAX_PAYMENTS = 36;
 
@@ -84,6 +87,12 @@ class MerchantCheckoutSettings extends Model
             'expiry_minutes' => 'integer',
             'secure3d' => 'boolean',
             'create_token' => 'boolean',
+            // W16 Part B — further documented page options.
+            'payments_first_amount' => 'decimal:2',
+            'non_voucher_minimum_amount' => 'decimal:2',
+            'allowed_cards' => 'array',
+            'send_customer_success_sms' => 'boolean',
+            'send_customer_failure_sms' => 'boolean',
         ];
     }
 
@@ -110,6 +119,12 @@ class MerchantCheckoutSettings extends Model
                 'expiry_minutes' => null,
                 'secure3d' => false,
                 'create_token' => self::DEFAULT_CREATE_TOKEN,
+                'payments_first_amount' => null,
+                'non_voucher_minimum_amount' => null,
+                'allowed_cards' => [],
+                'send_customer_success_sms' => false,
+                'send_customer_failure_sms' => false,
+                'more_info_text' => null,
             ],
         );
     }
@@ -182,5 +197,56 @@ class MerchantCheckoutSettings extends Model
     public function createToken(): bool
     {
         return (bool) $this->create_token;
+    }
+
+    // === W16 Part B accessors + clamps ===
+
+    /** First-installment amount, or null. Positive 2dp only. */
+    public function paymentsFirstAmount(): ?float
+    {
+        $value = $this->payments_first_amount;
+
+        return ($value !== null && (float) $value > 0) ? round((float) $value, 2) : null;
+    }
+
+    /** Minimum order value for a card charge, or null. Positive 2dp only. */
+    public function nonVoucherMinimumAmount(): ?float
+    {
+        $value = $this->non_voucher_minimum_amount;
+
+        return ($value !== null && (float) $value > 0) ? round((float) $value, 2) : null;
+    }
+
+    /** @return list<string> only documented card brands survive */
+    public function allowedCards(): array
+    {
+        $value = $this->allowed_cards;
+
+        if (! is_array($value)) {
+            return [];
+        }
+
+        return array_values(array_intersect(
+            array_map(static fn ($c): string => (string) $c, $value),
+            self::ALLOWED_CARDS,
+        ));
+    }
+
+    public function sendCustomerSuccessSms(): bool
+    {
+        return (bool) $this->send_customer_success_sms;
+    }
+
+    public function sendCustomerFailureSms(): bool
+    {
+        return (bool) $this->send_customer_failure_sms;
+    }
+
+    /** Extra page text, or null. Trimmed + capped. */
+    public function moreInfoText(): ?string
+    {
+        $text = is_string($this->more_info_text) ? trim($this->more_info_text) : '';
+
+        return $text !== '' ? mb_substr($text, 0, 255) : null;
     }
 }
