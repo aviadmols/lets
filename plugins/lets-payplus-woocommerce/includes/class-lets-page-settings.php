@@ -41,6 +41,9 @@ function lets_payplus_method_label($method)
 add_action('admin_post_lets_payplus_save_page_settings', function () {
     lets_payplus_diag_guard(); // manage_options + nonce (shared with the diagnostics screen)
 
+    // Local (not a SaaS setting): email the admin on payment/iframe errors.
+    update_option(LETS_PAYPLUS_NOTIFY_OPT, empty($_POST["lets_notify_on_error"]) ? "0" : "1");
+
     $body = array(
         'language_code'             => isset($_POST['language_code']) ? sanitize_text_field(wp_unslash($_POST['language_code'])) : 'he',
         'charge_default'            => isset($_POST['charge_default']) ? sanitize_text_field(wp_unslash($_POST['charge_default'])) : '',
@@ -238,6 +241,19 @@ function lets_payplus_render_page_settings()
                     </label>
                     <p class="description">
                         <?php esc_html_e('Required for the thank-you-page upsell: PayPlus returns a reusable token so the customer can add products in one click, with no card re-entry. They authorise each extra charge by clicking “Add to my order”.', 'lets-payplus'); ?>
+                    </p>
+                </td>
+            </tr>
+
+            <tr>
+                <th scope="row"><?php esc_html_e('Error alerts', 'lets-payplus'); ?></th>
+                <td>
+                    <label>
+                        <input type="checkbox" name="lets_notify_on_error" value="1" <?php checked(lets_payplus_notify_enabled()); ?>>
+                        <?php esc_html_e('Email the site admin when a payment fails or the payment page can’t load', 'lets-payplus'); ?>
+                    </label>
+                    <p class="description">
+                        <?php echo esc_html(sprintf(__('Alerts go to %s (Settings → General).', 'lets-payplus'), get_option('admin_email'))); ?>
                     </p>
                 </td>
             </tr>

@@ -210,6 +210,16 @@ add_action('plugins_loaded', function () {
             return;
         }
 
+        // Load guard: report a never-loading iframe (admin email + activity log).
+        wp_enqueue_script('lets-payplus-iframe-guard', LETS_PAYPLUS_URL . 'assets/js/iframe-guard.js', array(), LETS_PAYPLUS_VERSION, true);
+        wp_localize_script('lets-payplus-iframe-guard', 'LetsPayPlusIframeGuard', array(
+            'reportUrl' => esc_url_raw(rest_url(LETS_PAYPLUS_REST_NS . '/iframe-error')),
+            'nonce'     => wp_create_nonce('wp_rest'),
+            'orderId'   => (int) $order->get_id(),
+            'orderKey'  => (string) $order->get_order_key(),
+            'timeoutMs' => 15000,
+        ));
+
         echo '<div class="lets-payplus-iframe-wrap" style="position:relative;width:100%;min-height:720px">';
         echo '<iframe src="' . esc_url($url) . '" title="' . esc_attr__('Secure PayPlus payment', 'lets-payplus') . '"'
             . ' style="width:100%;min-height:720px;border:0" allow="payment"></iframe>';

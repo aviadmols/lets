@@ -3,7 +3,7 @@
  * Plugin Name: LETS — PayPlus Subscriptions & Installments for WooCommerce
  * Plugin URI: https://app.lets.co.il
  * Description: Connect your WooCommerce store to LETS to offer PayPlus deposits + installments, recurring subscriptions, one-click post-purchase upsells, and optional full PayPlus checkout. Paste the connection token from your LETS dashboard to link this store.
- * Version: 0.6.0
+ * Version: 0.7.0
  * Author: LETS
  * Author URI: https://app.lets.co.il
  * Text Domain: lets-payplus
@@ -24,7 +24,7 @@ if (! defined('ABSPATH')) {
     exit; // never run outside WordPress
 }
 
-define('LETS_PAYPLUS_VERSION', '0.6.0');
+define('LETS_PAYPLUS_VERSION', '0.7.0');
 define('LETS_PAYPLUS_OPT', 'lets_payplus_connection'); // wp_option holding the decoded token
 define('LETS_PAYPLUS_FILE', __FILE__);
 define('LETS_PAYPLUS_URL', plugin_dir_url(__FILE__)); // base URL for assets
@@ -269,6 +269,9 @@ require_once __DIR__ . '/includes/class-lets-status.php';
 // Merchant diagnostics on Settings → LETS: Test connection · Test payment page · error log.
 // Loads AFTER the signer (class-lets-product-widget) whose lets_payplus_signed_post() it uses.
 require_once __DIR__ . '/includes/class-lets-diagnostics.php';
+
+// Inbound notifications (SaaS-signed /notify + browser /iframe-error) → activity log + admin email.
+require_once __DIR__ . '/includes/class-lets-notify.php';
 
 // PayPlus payment-page options on Settings → LETS (edited here, stored in LETS). Loads AFTER
 // diagnostics: reuses its guard/redirect/notice helpers, and the signer for the settings API.

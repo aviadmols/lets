@@ -23,14 +23,16 @@ if (! defined('ABSPATH')) {
 
 // === CONSTANTS ===
 define('LETS_PAYPLUS_ERROR_LOG_OPT', 'lets_payplus_error_log');
-define('LETS_PAYPLUS_ERROR_LOG_MAX', 20);
+define('LETS_PAYPLUS_ERROR_LOG_MAX', 50);
 define('LETS_PAYPLUS_DIAG_TRANSIENT', 'lets_payplus_diag');
+define('LETS_PAYPLUS_NOTIFY_OPT', 'lets_payplus_notify_on_error'); // '1' (default) or '0'
 
 /**
- * Append a timestamped failure to the capped, merchant-visible error log. Called from the
- * gateway (a failed checkout) and from the diagnostics handlers.
+ * Append a timestamped row to the capped, merchant-visible ACTIVITY log. $level is one of
+ * info|success|error (legacy rows without a level render as error). Called from the gateway,
+ * the diagnostics handlers, verify-on-return, and the SaaS→plugin notify route.
  */
-function lets_payplus_log_error($message, $context = '')
+function lets_payplus_log_event($message, $context = '', $level = 'error')
 {
     $log = get_option(LETS_PAYPLUS_ERROR_LOG_OPT, array());
     if (! is_array($log)) {
@@ -39,11 +41,45 @@ function lets_payplus_log_error($message, $context = '')
 
     array_unshift($log, array(
         'time'    => current_time('mysql'),
+        'level'   => in_array($level, array('info', 'success', 'error'), true) ? $level : 'error',
         'context' => (string) $context,
         'message' => (string) $message,
     ));
 
     update_option(LETS_PAYPLUS_ERROR_LOG_OPT, array_slice($log, 0, LETS_PAYPLUS_ERROR_LOG_MAX), false);
+}
+
+/** Back-compat wrapper: an error-level event (existing call sites keep working). */
+function lets_payplus_log_error($message, $context = '')
+{
+    lets_payplus_log_event($message, $context, 'error');
+}
+
+/** Whether the merchant wants an admin email on payment/iframe errors (default: yes). */
+function lets_payplus_notify_enabled()
+{
+    return get_option(LETS_PAYPLUS_NOTIFY_OPT, '1') !== '0';
+}
+
+/**
+ * Email the WordPress site admin about a payment/iframe error (best-effort, gated by the
+ * "notify on error" setting). Sent with the site's own mail (wp_mail) to admin_email.
+ */
+function lets_payplus_notify_admin($subject, $message)
+{
+    if (! lets_payplus_notify_enabled()) {
+        return;
+    }
+    $to = (string) get_option('admin_email');
+    if ($to === '') {
+        return;
+    }
+    $site = wp_specialchars_decode((string) get_option('blogname'), ENT_QUOTES);
+    wp_mail(
+        $to,
+        sprintf('[%s] %s', $site, (string) $subject),
+        (string) $message . "\n\n" . sprintf(__('Site: %s', 'lets-payplus'), home_url())
+    );
 }
 
 /** Turn a machine reason from the SaaS into text a merchant can act on. */
@@ -236,19 +272,21 @@ function lets_payplus_render_error_log()
         return;
     }
     ?>
-    <h2 style="margin-top:24px"><?php esc_html_e('Recent errors', 'lets-payplus'); ?></h2>
+    <h2 style="margin-top:24px"><?php esc_html_e('Activity log', 'lets-payplus'); ?></h2>
     <table class="widefat striped" style="max-width:760px">
         <thead>
             <tr>
                 <th style="width:160px"><?php esc_html_e('When', 'lets-payplus'); ?></th>
-                <th style="width:150px"><?php esc_html_e('Where', 'lets-payplus'); ?></th>
-                <th><?php esc_html_e('Error', 'lets-payplus'); ?></th>
+                <th style="width:70px"></th>
+                <th style="width:130px"><?php esc_html_e('Where', 'lets-payplus'); ?></th>
+                <th><?php esc_html_e('Message', 'lets-payplus'); ?></th>
             </tr>
         </thead>
         <tbody>
         <?php foreach ($log as $row) : ?>
             <tr>
                 <td><?php echo esc_html(isset($row['time']) ? $row['time'] : ''); ?></td>
+                <td style="text-align:center"><?php $lv = isset($row['level']) ? $row['level'] : 'error'; echo 'success' === $lv ? '✅' : ('info' === $lv ? 'ℹ️' : '⛔'); ?></td>
                 <td><code><?php echo esc_html(isset($row['context']) ? $row['context'] : ''); ?></code></td>
                 <td><?php echo esc_html(isset($row['message']) ? $row['message'] : ''); ?></td>
             </tr>
