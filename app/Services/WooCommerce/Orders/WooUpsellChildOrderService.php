@@ -50,6 +50,23 @@ final class WooUpsellChildOrderService
         }
 
         try {
+            // Link the REAL product (raw numeric WC id, as PicksProducts stores it for Woo) so
+            // WooCommerce decrements stock, shows the product, and can fulfil it. `total` still
+            // pins the server-computed discounted price, so the product's own price can't
+            // override the money that was actually charged. A non-numeric gid (e.g. a Shopify
+            // shop mis-routed here) simply yields a name-only line — never a wrong product.
+            $lineItem = [
+                'name' => (string) ($offer->offer_title ?? __('upsell.offer_default_title')),
+                'quantity' => 1,
+                'total' => number_format(round($amount, 2), 2, '.', ''),
+            ];
+            if (($productId = $this->numericId($offer->offer_product_gid)) > 0) {
+                $lineItem['product_id'] = $productId;
+            }
+            if (($variationId = $this->numericId($offer->offer_variant_gid)) > 0) {
+                $lineItem['variation_id'] = $variationId;
+            }
+
             $order = WooClientFactory::for($shop)->createOrder([
                 'status' => self::STATUS_COMPLETED,   // a fulfillable, paid add-on order
                 'set_paid' => true,                   // the money already moved through PayPlus
@@ -57,11 +74,7 @@ final class WooUpsellChildOrderService
                 'billing' => array_filter([
                     'email' => (string) ($customerEmail ?? ''),
                 ], static fn ($v): bool => $v !== ''),
-                'line_items' => [[
-                    'name' => (string) ($offer->offer_title ?? __('upsell.offer_default_title')),
-                    'quantity' => 1,
-                    'total' => number_format(round($amount, 2), 2, '.', ''),
-                ]],
+                'line_items' => [$lineItem],
                 'meta_data' => [
                     ['key' => self::META_ORDER_ROLE, 'value' => self::ROLE_UPSELL_CHILD],
                     ['key' => self::META_PARENT_ORDER_ID, 'value' => $parentOrderId],
@@ -83,5 +96,13 @@ final class WooUpsellChildOrderService
 
             return null;
         }
+    }
+
+    /** A positive WooCommerce numeric id from a stored identifier, or 0 if it isn't one. */
+    private function numericId(?string $identifier): int
+    {
+        $identifier = trim((string) $identifier);
+
+        return ctype_digit($identifier) ? (int) $identifier : 0;
     }
 }

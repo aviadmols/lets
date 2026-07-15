@@ -163,6 +163,30 @@ final class WooCommerceUpsellFlowTest extends TestCase
         });
     }
 
+    /** "No thanks" records the DECLINED funnel event (parity with Shopify) and never charges. */
+    public function test_decline_records_the_declined_event_and_never_charges(): void
+    {
+        Http::fake();
+        [$shop, $key, $secret] = $this->connectedShop('up-decline.example.com');
+
+        [$flow, $offer] = Tenant::run($shop, function () use ($shop): array {
+            $flow = $this->makeFlow($shop, 'gid://shopify/Product/1', 50.0);
+
+            return [$flow, $flow->offers()->first()];
+        });
+
+        $this->signedPost($key, $secret, '/api/woocommerce/upsell/decline', [
+            'flow_id' => $flow->id, 'offer_id' => $offer->id, 'parent_order' => 'WC-1', 'customer' => 'cust-1',
+        ])->assertOk();
+
+        Tenant::run($shop, function () use ($shop, $flow): void {
+            $this->assertDatabaseHas('upsell_offer_events', [
+                'shop_id' => $shop->id, 'flow_id' => $flow->id, 'event_type' => 'declined',
+            ]);
+            $this->assertSame(0, PaymentLedger::where('shop_id', $shop->id)->count());
+        });
+    }
+
     /** No vaulted card = no charge, no ledger, and no manufactured consent. */
     public function test_accept_without_a_saved_card_fails_closed_with_no_charge(): void
     {

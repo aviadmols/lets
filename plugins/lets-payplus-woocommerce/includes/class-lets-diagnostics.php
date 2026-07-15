@@ -177,6 +177,12 @@ function lets_payplus_render_diag_result($diag)
         return;
     }
 
+    if ('ok' === $type) {
+        echo '<div class="notice notice-success"><p>' . esc_html($diag['message']) . '</p></div>';
+
+        return;
+    }
+
     if ('report' !== $type || empty($diag['report']) || ! is_array($diag['report'])) {
         return;
     }

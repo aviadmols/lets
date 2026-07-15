@@ -66,6 +66,16 @@ add_action('plugins_loaded', function () {
                     'type' => 'textarea',
                     'default' => __('You will be redirected to PayPlus to complete your payment securely.', 'lets-payplus'),
                 ),
+                'display_mode' => array(
+                    'title' => __('Display', 'lets-payplus'),
+                    'type' => 'select',
+                    'default' => 'redirect',
+                    'options' => array(
+                        'redirect' => __('Redirect to PayPlus (recommended)', 'lets-payplus'),
+                        'iframe' => __('Embed the PayPlus page on my site (iframe)', 'lets-payplus'),
+                    ),
+                    'description' => __('“Redirect” sends the shopper to PayPlus’s secure page. “Embed” keeps them on your site by showing that same page in an iframe. PayPlus has no iframe API — this is a display choice; the card form is still served by PayPlus.', 'lets-payplus'),
+                ),
             );
         }
 
@@ -152,10 +162,48 @@ add_action('plugins_loaded', function () {
             // Mark awaiting payment; reduce stock holds per WC defaults.
             $order->update_status('pending', __('Awaiting PayPlus payment via LETS.', 'lets-payplus'));
 
+            $payplusUrl = (string) $result['redirect_url'];
+
+            // IFRAME mode: keep the shopper on our site. Park the PayPlus URL on the order and
+            // send them to WooCommerce's order-pay page, whose receipt hook (below) embeds it.
+            // PayPlus completion still fires refURL_callback → the SaaS marks the order paid, and
+            // refURL_success returns the shopper to the WooCommerce "order received" page.
+            if ($this->get_option('display_mode', 'redirect') === 'iframe') {
+                $order->update_meta_data('_lets_payplus_page_url', $payplusUrl);
+                $order->save();
+
+                return array(
+                    'result' => 'success',
+                    'redirect' => $order->get_checkout_payment_url(true),
+                );
+            }
+
+            // REDIRECT mode (default): straight to the PayPlus hosted page.
             return array(
                 'result' => 'success',
-                'redirect' => (string) $result['redirect_url'],
+                'redirect' => $payplusUrl,
             );
         }
     }
+
+    // Receipt (order-pay) page for iframe mode: render the PayPlus page embedded. Guarded so
+    // it only shows for THIS order's owner and only in iframe mode.
+    add_action('woocommerce_receipt_lets_payplus', function ($order_id) {
+        $order = wc_get_order($order_id);
+        if (! $order) {
+            return;
+        }
+
+        $url = (string) $order->get_meta('_lets_payplus_page_url');
+        if ($url === '') {
+            return;
+        }
+
+        echo '<div class="lets-payplus-iframe-wrap" style="position:relative;width:100%;min-height:720px">';
+        echo '<iframe src="' . esc_url($url) . '" title="' . esc_attr__('Secure PayPlus payment', 'lets-payplus') . '"'
+            . ' style="width:100%;min-height:720px;border:0" allow="payment"></iframe>';
+        echo '<p style="margin-top:10px"><a href="' . esc_url($url) . '" target="_blank" rel="noopener">'
+            . esc_html__('Trouble seeing the payment form? Open it in a new tab.', 'lets-payplus') . '</a></p>';
+        echo '</div>';
+    });
 }, 11);

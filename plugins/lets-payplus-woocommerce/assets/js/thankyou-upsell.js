@@ -49,7 +49,22 @@
     mount.hidden = false;
 
     mount.querySelector('[data-lets-accept]').addEventListener('click', function () { accept(offer); });
-    mount.querySelector('[data-lets-decline]').addEventListener('click', function () { mount.hidden = true; });
+    mount.querySelector('[data-lets-decline]').addEventListener('click', function () { decline(offer); });
+  }
+
+  // "No thanks": hide immediately (never block the shopper), and best-effort record the
+  // DECLINED funnel event so the merchant's conversion stats are complete.
+  function decline(offer) {
+    mount.hidden = true;
+    if (!cfg.restDecline) {
+      return;
+    }
+    post(cfg.restDecline, {
+      order_id: cfg.orderId,
+      order_key: cfg.orderKey,
+      flow_id: offer.flow_id,
+      offer_id: offer.offer_id
+    }).catch(function () { /* analytics only — a failure must never surface to the shopper */ });
   }
 
   function accept(offer) {

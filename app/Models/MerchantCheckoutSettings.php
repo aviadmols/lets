@@ -94,7 +94,9 @@ class MerchantCheckoutSettings extends Model
             ['shop_id' => Tenant::id()],
             [
                 'language_code' => self::DEFAULT_LANGUAGE,
-                'charge_default' => self::METHOD_CREDIT_CARD,
+                // Null = "let PayPlus use the page's own default method" → nothing is emitted,
+                // so a shop that never opened the form sends exactly what it sends today.
+                'charge_default' => null,
                 'allowed_charge_methods' => [],
                 'hide_other_charge_methods' => false,
                 'max_payments' => self::DEFAULT_MAX_PAYMENTS,

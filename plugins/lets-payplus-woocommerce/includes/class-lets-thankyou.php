@@ -29,6 +29,11 @@ add_action('rest_api_init', function () {
         'callback' => 'lets_payplus_rest_upsell_accept',
         'permission_callback' => 'lets_payplus_rest_permission',
     ));
+    register_rest_route(LETS_PAYPLUS_REST_NS, '/upsell/decline', array(
+        'methods' => 'POST',
+        'callback' => 'lets_payplus_rest_upsell_decline',
+        'permission_callback' => 'lets_payplus_rest_permission',
+    ));
 });
 
 /**
@@ -47,9 +52,29 @@ function lets_payplus_thankyou_facts($order_id, $order_key)
     }
 
     $product_ids = array();
+    $collections = array(); // WooCommerce product categories (slugs) — the "collection" analogue
+    $tags = array();        // WooCommerce product tags (slugs)
     foreach ($order->get_items() as $item) {
-        if (method_exists($item, 'get_product_id')) {
-            $product_ids[] = (int) $item->get_product_id();
+        if (! method_exists($item, 'get_product_id')) {
+            continue;
+        }
+        $pid = (int) $item->get_product_id();
+        if ($pid <= 0) {
+            continue;
+        }
+        $product_ids[] = $pid;
+
+        // So collection/tag triggers can fire on WooCommerce. Slugs are stable + human-set,
+        // which is what a merchant would type into a tag/collection trigger.
+        if (function_exists('wp_get_post_terms')) {
+            $cat_slugs = wp_get_post_terms($pid, 'product_cat', array('fields' => 'slugs'));
+            $tag_slugs = wp_get_post_terms($pid, 'product_tag', array('fields' => 'slugs'));
+            if (is_array($cat_slugs)) {
+                $collections = array_merge($collections, $cat_slugs);
+            }
+            if (is_array($tag_slugs)) {
+                $tags = array_merge($tags, $tag_slugs);
+            }
         }
     }
 
@@ -58,6 +83,8 @@ function lets_payplus_thankyou_facts($order_id, $order_key)
         'customer' => (string) ($order->get_customer_id() ?: $order->get_billing_email()),
         'subtotal' => (string) $order->get_subtotal(),
         'products' => implode(',', array_filter($product_ids)),
+        'collections' => implode(',', array_unique(array_filter($collections))),
+        'tags' => implode(',', array_unique(array_filter($tags))),
         'email' => (string) $order->get_billing_email(),
     );
 }
@@ -98,6 +125,27 @@ function lets_payplus_rest_upsell_accept(WP_REST_Request $request)
     return lets_payplus_rest_response($result);
 }
 
+/** POST proxy → SaaS POST /upsell/decline (record the DECLINED funnel event; no charge). */
+function lets_payplus_rest_upsell_decline(WP_REST_Request $request)
+{
+    $facts = lets_payplus_thankyou_facts($request->get_param('order_id'), (string) $request->get_param('order_key'));
+    if ($facts === null) {
+        return new WP_REST_Response(array('error' => 'invalid_order'), 422);
+    }
+
+    $body = array(
+        'flow_id' => (int) $request->get_param('flow_id'),
+        'offer_id' => (int) $request->get_param('offer_id'),
+        'parent_order' => $facts['parent_order'],
+        'customer' => $facts['customer'],
+        'email' => $facts['email'],
+    );
+
+    $result = lets_payplus_signed_post('/api/woocommerce/upsell/decline', $body);
+
+    return lets_payplus_rest_response($result);
+}
+
 /** Render the thank-you upsell mount + enqueue the widget on the order-received page. */
 add_action('woocommerce_thankyou', function ($order_id) {
     if (lets_payplus_connection() === null || ! get_option('lets_payplus_wc_webhook_secret')) {
@@ -113,6 +161,7 @@ add_action('woocommerce_thankyou', function ($order_id) {
     wp_localize_script('lets-payplus-thankyou', 'LetsPayPlusUpsell', array(
         'restOffer' => esc_url_raw(rest_url(LETS_PAYPLUS_REST_NS . '/upsell/offer')),
         'restAccept' => esc_url_raw(rest_url(LETS_PAYPLUS_REST_NS . '/upsell/accept')),
+        'restDecline' => esc_url_raw(rest_url(LETS_PAYPLUS_REST_NS . '/upsell/decline')),
         'nonce' => wp_create_nonce('wp_rest'),
         'orderId' => (int) $order_id,
         'orderKey' => (string) $order->get_order_key(),

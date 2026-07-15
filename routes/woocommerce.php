@@ -11,6 +11,7 @@ use App\Http\Controllers\WooCommerce\Storefront\WooInstallmentQuoteController;
 use App\Http\Controllers\WooCommerce\Storefront\WooStartInstallmentPlanController;
 use App\Http\Controllers\WooCommerce\Storefront\WooSubscribeController;
 use App\Http\Controllers\WooCommerce\Storefront\WooUpsellAcceptController;
+use App\Http\Controllers\WooCommerce\Storefront\WooUpsellDeclineController;
 use App\Http\Controllers\WooCommerce\Storefront\WooUpsellOfferController;
 use App\Http\Middleware\VerifyWooCommerceSignature;
 use Illuminate\Support\Facades\Route;
@@ -98,6 +99,8 @@ Route::middleware(VerifyWooCommerceSignature::class)
             ->name('woocommerce.upsell.offer');
         Route::post('/upsell/accept', WooUpsellAcceptController::class)
             ->name('woocommerce.upsell.accept');
+        Route::post('/upsell/decline', WooUpsellDeclineController::class)
+            ->name('woocommerce.upsell.decline');
 
         /*
         |----------------------------------------------------------------------
