@@ -38,13 +38,27 @@
 
   function render(offer) {
     var price = money(offer.price, offer.currency);
+    var addLabel = offer.cta || i18n.add;
+
+    var media = offer.product_image
+      ? '<div class="lets-pp-media"><img class="lets-pp-img" src="' + esc(offer.product_image) + '" alt="' + esc(offer.product_name || offer.title) + '" loading="lazy"></div>'
+      : '';
+
+    // Headline (merchant copy) + the real product name underneath, so the shopper sees
+    // exactly what they're adding.
+    var name = offer.product_name ? '<p class="lets-pp-product">' + esc(offer.product_name) + '</p>' : '';
+
     mount.innerHTML =
       '<div class="lets-pp-upsell-card">' +
+      media +
+      '<div class="lets-pp-body">' +
       '<h3 class="lets-pp-title">' + esc(offer.title) + '</h3>' +
+      name +
       '<p class="lets-pp-upsell-price">' + price + '</p>' +
-      '<button type="button" class="lets-pp-submit" data-lets-accept>' + esc(i18n.add) + '</button>' +
+      '<button type="button" class="lets-pp-submit" data-lets-accept>' + esc(addLabel) + '</button>' +
       '<button type="button" class="lets-pp-decline" data-lets-decline>' + esc(i18n.no_thanks) + '</button>' +
       '<p class="lets-pp-error" data-lets-error hidden></p>' +
+      '</div>' +
       '</div>';
     mount.hidden = false;
 

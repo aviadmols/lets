@@ -3,6 +3,7 @@
 namespace App\Domain\Upsell\Models;
 
 use App\Models\Concerns\BelongsToShop;
+use App\Models\Product;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -17,6 +18,10 @@ class UpsellFlowOffer extends Model
 
     // === CONSTANTS — discount taxonomy ===
     protected $table = 'upsell_flow_offers';
+
+    /** Request-scoped memo for resolveProduct() (false = looked up, none found). A declared
+        property so Eloquent's __get/__set treat it as state, not a model attribute. */
+    protected Product|false|null $resolvedProduct = null;
 
     public const DISCOUNT_NONE = 'none';
     public const DISCOUNT_PERCENT = 'percent';
@@ -71,6 +76,30 @@ class UpsellFlowOffer extends Model
         }
 
         return (string) $this->offer_product_gid;
+    }
+
+    /**
+     * The local catalog Product this offer points at, resolved by external id from
+     * offer_product_gid (WooCommerce stores the raw numeric id; Shopify a gid — both reduce
+     * to the numeric external_id via productNumericId()). Tenant-scoped by the global scope,
+     * so it only ever returns THIS shop's product. Memoised for the request. Null when the
+     * offer has no product or the catalog row isn't synced.
+     *
+     * Used to show the REAL product name + image on the offer card and in the Flow Builder
+     * (which otherwise fall back to the merchant's headline text).
+     */
+    public function resolveProduct(): ?Product
+    {
+        if ($this->resolvedProduct !== null) {
+            return $this->resolvedProduct === false ? null : $this->resolvedProduct;
+        }
+
+        $externalId = $this->productNumericId();
+        $product = $externalId === '' ? null : Product::query()->where('external_id', $externalId)->first();
+
+        $this->resolvedProduct = $product ?? false;
+
+        return $product;
     }
 
     /** Percent discount value for the drawer's "%" number input (0 = no discount). */

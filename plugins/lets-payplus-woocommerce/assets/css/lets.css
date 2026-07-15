@@ -140,3 +140,24 @@
   font-size: 14px;
   font-weight: 600;
 }
+
+/* W16 — product media + name on the thank-you upsell card (functional; the full
+   redesign lands separately). */
+.lets-pp-media {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+.lets-pp-img {
+  max-width: 220px;
+  max-height: 220px;
+  width: auto;
+  height: auto;
+  border-radius: 12px;
+  object-fit: cover;
+}
+.lets-pp-product {
+  margin: 2px 0 6px;
+  font-size: 14px;
+  color: var(--lets-pp-muted, #6b7280);
+}

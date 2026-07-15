@@ -104,7 +104,11 @@ add_action('plugins_loaded', function () {
                 'amount' => (float) $order->get_total(),
                 'currency' => (string) $order->get_currency(),
                 'product_name' => sprintf(__('Order %s', 'lets-payplus'), $order->get_order_number()),
+                // Prefill the PayPlus card page with the shopper's details from the order.
+                'first_name' => (string) $order->get_billing_first_name(),
+                'last_name' => (string) $order->get_billing_last_name(),
                 'email' => (string) $order->get_billing_email(),
+                'phone' => (string) $order->get_billing_phone(),
                 'return_url' => $this->get_return_url($order),
                 'cancel_url' => $order->get_cancel_order_url_raw(),
             );

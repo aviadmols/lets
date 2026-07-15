@@ -6,6 +6,7 @@ use App\Models\InstallmentPaymentMethod;
 use App\Models\Shop;
 use App\Services\WooCommerce\Orders\WooDepositTokenResolver;
 use App\Services\WooCommerce\WooClientFactory;
+use App\Services\WooCommerce\WooPluginNotifier;
 use App\Support\Tenant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -93,8 +94,37 @@ final class WooGatewayCallbackController
             ?? ''
         ));
 
-        // Only our gateway orders (gw:{id}) on a SUCCESS status mark an order paid.
-        if (! str_starts_with($moreInfo, self::MORE_INFO_PREFIX) || ! in_array($statusCode, self::SUCCESS_CODES, true)) {
+        // Not one of our gateway orders → nothing to do.
+        if (! str_starts_with($moreInfo, self::MORE_INFO_PREFIX)) {
+            return response()->json(['ok' => true, 'paid' => false]);
+        }
+
+        // A FAILED gateway payment (send_failure_callback made PayPlus call us on decline too).
+        // Until W16 this returned silently; now we log it and notify the plugin so the site
+        // admin gets an email + the activity log records it. Never a charge, never marks paid.
+        if (! in_array($statusCode, self::SUCCESS_CODES, true)) {
+            $failedOrderId = substr($moreInfo, strlen(self::MORE_INFO_PREFIX));
+            Log::warning('woocommerce.gateway.payment_failed', [
+                'shop_id' => $shop->getKey(),
+                'order_id' => $failedOrderId,
+                'status_code' => $statusCode,
+            ]);
+
+            // Fire-and-forget: a notification problem must never change the callback outcome.
+            try {
+                app(WooPluginNotifier::class)->paymentFailed(
+                    $shop,
+                    $failedOrderId,
+                    $statusCode,
+                    (string) (data_get($payload, 'transaction.status_description')
+                        ?? data_get($payload, 'status_description') ?? ''),
+                );
+            } catch (\Throwable $e) {
+                Log::warning('woocommerce.gateway.notify_failed', [
+                    'shop_id' => $shop->getKey(), 'order_id' => $failedOrderId, 'error' => $e->getMessage(),
+                ]);
+            }
+
             return response()->json(['ok' => true, 'paid' => false]);
         }
 

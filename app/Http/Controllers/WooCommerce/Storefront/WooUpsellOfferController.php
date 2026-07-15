@@ -59,11 +59,19 @@ final class WooUpsellOfferController extends WooStorefrontController
         $flow = $resolution->flow;
         $currency = (string) ($offer->currency ?? config('payplus.currency', self::DEFAULT_CURRENCY));
 
+        // The REAL catalog product behind the offer — so the card can show its name + image
+        // instead of only the merchant's headline text.
+        $product = $offer->resolveProduct();
+
         return response()->json([
             'offer' => [
                 'flow_id' => (int) $flow->getKey(),
                 'offer_id' => (int) $offer->getKey(),
-                'title' => (string) ($offer->offer_title ?? __('upsell.offer_default_title')),
+                // headline = the merchant's marketing copy; product_name = the real product.
+                'title' => (string) ($offer->headline ?: $offer->offer_title ?: __('upsell.offer_default_title')),
+                'product_name' => $product?->title,
+                'product_image' => $product?->image_url,
+                'cta' => (string) ($offer->accept_cta ?: __('upsell.accept_cta')),
                 // Server-computed money truth — never trust a client amount.
                 'price' => $resolution->discountedPrice(),
                 'base_price' => round((float) $offer->base_price, 2),

@@ -248,6 +248,62 @@ final class WooCommerceUpsellFlowTest extends TestCase
         return [$shop->fresh(), $key, $secret];
     }
 
+    public function test_the_offer_returns_the_real_product_name_and_image(): void
+    {
+        Http::fake();
+        [$shop, $key, $secret] = $this->connectedShop('up-productinfo.example.com');
+
+        $flow = Tenant::run($shop, function () use ($shop): UpsellFlow {
+            // The catalog row the offer_product_gid (…/Product/77) points at.
+            (new \App\Models\Product)->forceFill([
+                'shop_id' => $shop->id, 'source' => \App\Models\Product::SOURCE_WOOCOMMERCE,
+                'external_id' => '77', 'title' => 'The Real Book',
+                'image_url' => 'https://img.example/77.jpg',
+                'status' => \App\Models\Product::STATUS_ACTIVE, 'online_store_status' => 'published',
+            ])->save();
+
+            return $this->makeFlow($shop, 'gid://shopify/Product/1', 50.0);
+        });
+
+        $this->signedGet($key, $secret, self::OFFER, http_build_query([
+            'parent_order' => 'WC-9', 'customer' => 'c', 'subtotal' => '120',
+            'products' => 'gid://shopify/Product/1', // matches the trigger so the offer resolves
+        ]))
+            ->assertOk()
+            ->assertJsonPath('offer.product_name', 'The Real Book')
+            ->assertJsonPath('offer.product_image', 'https://img.example/77.jpg');
+    }
+
+    public function test_accept_with_an_email_customer_ref_resolves_the_token_without_a_500(): void
+    {
+        // The prod bug: resolvePaymentMethod compared the BIGINT customer_id to an email string
+        // → Postgres 22P02 → 500 → "could not add". The vault is keyed by shopify_customer_id
+        // (a string) which holds the guest email; customer_id must be matched only when numeric.
+        Http::fake(['*/wp-json/wc/v3/orders' => Http::response(['id' => 9001], 201)]);
+        [$shop, $key, $secret] = $this->connectedShop('up-email.example.com');
+
+        [$flow, $offer] = Tenant::run($shop, function () use ($shop): array {
+            $flow = $this->makeFlow($shop, 'gid://shopify/Product/1', 50.0);
+            // A vault keyed by the guest EMAIL, plus a decoy keyed by a numeric customer_id
+            // that must NOT be matched by an email ref.
+            InstallmentPaymentMethod::create([
+                'shopify_customer_id' => 'buyer@example.com', 'payplus_card_token_uid' => 'tok-mail',
+                'status' => InstallmentPaymentMethod::STATUS_ACTIVE,
+            ]);
+            InstallmentPaymentMethod::create([
+                'customer_id' => 5, 'shopify_customer_id' => 'someone-else',
+                'payplus_card_token_uid' => 'tok-decoy', 'status' => InstallmentPaymentMethod::STATUS_ACTIVE,
+            ]);
+
+            return [$flow, $flow->offers()->first()];
+        });
+
+        $this->signedPost($key, $secret, self::ACCEPT, [
+            'flow_id' => $flow->id, 'offer_id' => $offer->id,
+            'parent_order' => 'WC-1', 'customer' => 'buyer@example.com', 'email' => 'buyer@example.com',
+        ])->assertOk()->assertJsonPath('charged', true);
+    }
+
     private function makeFlow(Shop $shop, string $productGid, float $base): UpsellFlow
     {
         $flow = new UpsellFlow(['name' => 'Flow', 'priority' => 5]);

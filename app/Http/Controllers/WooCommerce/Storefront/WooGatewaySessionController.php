@@ -84,10 +84,15 @@ final class WooGatewaySessionController extends WooStorefrontController
                 'charge_method' => self::CHARGE_METHOD_CHARGE,
                 // more_info carries the WC order id (prefixed) — the callback marks it paid.
                 'more_info' => self::MORE_INFO_PREFIX.$orderId,
+                // Prefill the card page with the shopper's details from the WC order.
+                'customer' => $this->customer($request),
                 'refURL_success' => (string) $request->input('return_url', ''),
                 'refURL_failure' => (string) $request->input('cancel_url', $request->input('return_url', '')),
                 'refURL_cancel' => (string) $request->input('cancel_url', $request->input('return_url', '')),
                 'refURL_callback' => route('woocommerce.gateway.callback', ['wc_shop_token' => (string) $shop->wc_shop_token]),
+                // Ask PayPlus to call the callback on FAILURE too — otherwise a decline
+                // produces no server-side signal at all (no log, no admin email). W16.
+                'send_failure_callback' => true,
             ]);
         } catch (\Throwable $e) {
             Log::error('woocommerce.gateway.session_failed', ['shop_id' => $shop->getKey(), 'order_id' => $orderId, 'error' => $e->getMessage()]);
@@ -118,5 +123,24 @@ final class WooGatewaySessionController extends WooStorefrontController
         }
 
         return response()->json(['redirect_url' => $pageLink], Response::HTTP_OK);
+    }
+
+    /**
+     * The PayPlus `customer` object, built from the WC order fields the plugin sends
+     * (first/last name, email, phone). Each value is sanitised; empty subkeys are dropped so
+     * PayPlus doesn't receive blank fields. Returns [] when the plugin sent nothing — an old
+     * plugin (pre-W16) simply gets no customer object, exactly as before.
+     *
+     * @return array<string, string>
+     */
+    private function customer(Request $request): array
+    {
+        $name = trim(((string) $this->cleanString($request->input('first_name'))).' '.((string) $this->cleanString($request->input('last_name'))));
+
+        return array_filter([
+            'customer_name' => $name,
+            'email' => (string) $this->cleanEmail($request->input('email')),
+            'phone' => (string) $this->cleanString($request->input('phone')),
+        ], static fn (string $v): bool => $v !== '');
     }
 }

@@ -367,8 +367,15 @@ final class UpsellChargeService
         return InstallmentPaymentMethod::query()
             ->where('status', InstallmentPaymentMethod::STATUS_ACTIVE)
             ->where(function ($q) use ($customerRef): void {
-                $q->where('shopify_customer_id', $customerRef)
-                    ->orWhere('customer_id', $customerRef);
+                // shopify_customer_id is a STRING (holds the WC customer id OR a guest email);
+                // customer_id is a BIGINT. Comparing the bigint column to an email string is a
+                // Postgres error (SQLSTATE 22P02) — so only match customer_id when the ref is
+                // numeric. (sqlite is loosely typed, which is why this passed tests but 500'd
+                // in production on a guest/email ref.)
+                $q->where('shopify_customer_id', $customerRef);
+                if (ctype_digit($customerRef)) {
+                    $q->orWhere('customer_id', (int) $customerRef);
+                }
             })
             ->latest('id')
             ->first();

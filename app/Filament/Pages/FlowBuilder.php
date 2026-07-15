@@ -365,8 +365,11 @@ class FlowBuilder extends Page
         $this->offerHeadline = (string) ($offer->headline ?: ($offer->offer_title ?? ''));
         $this->offerAcceptCta = (string) ($offer->accept_cta ?: __('upsell.accept_cta'));
         $this->offerBasePrice = $this->formatPrice((float) $offer->base_price);
+        // Show the REAL selected product's name (resolved from the saved offer_product_gid),
+        // NOT the marketing headline — otherwise the picker always reads "הצעה מיוחד" and the
+        // merchant thinks their pick wasn't saved (it was; only the label was wrong).
         $this->offerProductLabel = $offer->offer_product_gid
-            ? ($offer->offer_title ?: $offer->productNumericId())
+            ? ($offer->resolveProduct()?->title ?: ('#'.$offer->productNumericId()))
             : '';
 
         $this->drawerOpen = true;
