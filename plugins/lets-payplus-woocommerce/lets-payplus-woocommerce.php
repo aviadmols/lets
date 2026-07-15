@@ -3,7 +3,7 @@
  * Plugin Name: LETS — PayPlus Subscriptions & Installments for WooCommerce
  * Plugin URI: https://app.lets.co.il
  * Description: Connect your WooCommerce store to LETS to offer PayPlus deposits + installments, recurring subscriptions, one-click post-purchase upsells, and optional full PayPlus checkout. Paste the connection token from your LETS dashboard to link this store.
- * Version: 0.9.1
+ * Version: 0.9.2
  * Author: LETS
  * Author URI: https://app.lets.co.il
  * Text Domain: lets-payplus
@@ -24,7 +24,7 @@ if (! defined('ABSPATH')) {
     exit; // never run outside WordPress
 }
 
-define('LETS_PAYPLUS_VERSION', '0.9.1');
+define('LETS_PAYPLUS_VERSION', '0.9.2');
 define('LETS_PAYPLUS_OPT', 'lets_payplus_connection'); // wp_option holding the decoded token
 define('LETS_PAYPLUS_FILE', __FILE__);
 define('LETS_PAYPLUS_URL', plugin_dir_url(__FILE__)); // base URL for assets
@@ -133,7 +133,10 @@ function lets_payplus_ensure_wc_keys()
         array(
             'user_id' => get_current_user_id(),
             'description' => 'LETS — PayPlus',
-            'permissions' => 'read',
+            // READ/WRITE is REQUIRED: LETS must WRITE to mark orders paid (set_paid) after a
+            // PayPlus charge. A read-only key reads products fine but 401s on the paid update,
+            // so the order stays "pending" even though the card was charged.
+            'permissions' => 'read_write',
             'consumer_key' => wc_api_hash($consumer_key), // WC stores the key hashed
             'consumer_secret' => $consumer_secret,        // and the secret in the clear
             'truncated_key' => substr($consumer_key, -7),
@@ -146,6 +149,37 @@ function lets_payplus_ensure_wc_keys()
 
     return $keys;
 }
+
+/**
+ * One-time upgrade: promote an EXISTING LETS WooCommerce API key from read-only to read_write.
+ * Early installs (≤ v0.9.1) minted a read-only key, so LETS could read products but 401'd when
+ * marking an order paid — the card was charged yet the order stayed "pending". This repairs the
+ * stored key in place on the next admin page load, so the merchant only has to update the plugin
+ * (no WooCommerce key juggling). Idempotent + gated by an option so it runs at most once.
+ */
+add_action('admin_init', function () {
+    if ('1' === get_option('lets_payplus_keys_rw_fixed', '0')) {
+        return;
+    }
+
+    $stored = get_option('lets_payplus_wc_keys', null);
+    if (! is_array($stored) || empty($stored['consumer_key'])) {
+        return; // nothing minted yet — the new key will already be read_write
+    }
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'woocommerce_api_keys';
+    // Match the exact active key by its truncated tail (how WC identifies it in the list too).
+    $wpdb->update(
+        $table,
+        array('permissions' => 'read_write'),
+        array('truncated_key' => substr((string) $stored['consumer_key'], -7)),
+        array('%s'),
+        array('%s')
+    );
+
+    update_option('lets_payplus_keys_rw_fixed', '1');
+});
 
 /**
  * Call the LETS install endpoint, HMAC-signed with the connection api_secret.
