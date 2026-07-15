@@ -36,6 +36,8 @@ final class WooGatewaySessionController extends WooStorefrontController
 
     /** generateLink response keys (same as the deposit page). */
     private const RESP_PAGE_LINK = 'data.payment_page_link';
+    /** The page-request id we hand back so the plugin can verify-on-return (W16). */
+    private const RESP_PAGE_REQUEST_UID = 'data.page_request_uid';
 
     public function __invoke(Request $request): JsonResponse
     {
@@ -122,7 +124,12 @@ final class WooGatewaySessionController extends WooStorefrontController
             return response()->json(['error' => 'gateway_unavailable'], Response::HTTP_BAD_GATEWAY);
         }
 
-        return response()->json(['redirect_url' => $pageLink], Response::HTTP_OK);
+        return response()->json([
+            'redirect_url' => $pageLink,
+            // The plugin stores this + sends it back to /gateway/verify on the thank-you page,
+            // so the order is confirmed even if PayPlus never pushes the callback.
+            'page_request_uid' => (string) (data_get($result->raw, self::RESP_PAGE_REQUEST_UID) ?? ''),
+        ], Response::HTTP_OK);
     }
 
     /**

@@ -182,6 +182,60 @@ final class WooCommerceGatewayTest extends TestCase
         ])->assertStatus(404);
     }
 
+    /**
+     * VERIFY-ON-RETURN (the fix for orders stuck "pending"): the plugin confirms the payment
+     * from the thank-you page. When PayPlus's IPN says approved, we mark the WC order paid AND
+     * vault the token — exactly as the push callback would, via the shared finalizer.
+     */
+    public function test_verify_on_return_marks_the_order_paid_and_vaults_the_token(): void
+    {
+        Http::fake([
+            '*/PaymentPages/ipn' => Http::response([
+                'results' => ['status' => 'success'],
+                'data' => ['transaction' => ['status_code' => '000', 'token_uid' => 'tok-verify', 'customer_uid' => 'cu-9']],
+            ], 200),
+            '*/wp-json/wc/v3/orders/8080' => Http::response([
+                'id' => 8080, 'status' => 'processing', 'customer_id' => 42, 'billing' => ['email' => 'b@e.com'],
+            ], 200),
+        ]);
+        [$shop, $key, $secret] = $this->connectedShop('gw-verify.example.com');
+
+        $this->signedPost($key, $secret, '/api/woocommerce/gateway/verify', [
+            'order_id' => '8080', 'page_request_uid' => 'PRU-1',
+        ])->assertOk()->assertJsonPath('paid', true);
+
+        Http::assertSent(fn (HttpRequest $req): bool => str_contains($req->url(), '/wp-json/wc/v3/orders/8080')
+            && $req->method() === 'PUT' && ($req->data()['set_paid'] ?? null) === true);
+        Tenant::run($shop, function (): void {
+            $method = InstallmentPaymentMethod::sole();
+            $this->assertSame('tok-verify', $method->payplus_card_token_uid);
+            $this->assertSame('42', $method->shopify_customer_id);
+        });
+    }
+
+    /** A not-approved IPN must NOT mark paid or vault anything. */
+    public function test_verify_on_return_does_nothing_when_not_approved(): void
+    {
+        Http::fake(['*/PaymentPages/ipn' => Http::response([
+            'results' => ['status' => 'error'],
+            'data' => ['transaction' => ['status_code' => 'declined']],
+        ], 200)]);
+        [$shop, $key, $secret] = $this->connectedShop('gw-verify-no.example.com');
+
+        $this->signedPost($key, $secret, '/api/woocommerce/gateway/verify', [
+            'order_id' => '8081', 'page_request_uid' => 'PRU-2',
+        ])->assertOk()->assertJsonPath('paid', false);
+
+        Http::assertNotSent(fn (HttpRequest $req): bool => str_contains($req->url(), '/wp-json/wc/v3/orders/'));
+        Tenant::run($shop, fn () => $this->assertSame(0, InstallmentPaymentMethod::count()));
+    }
+
+    public function test_an_unsigned_verify_is_rejected_401(): void
+    {
+        $this->postJson('/api/woocommerce/gateway/verify', ['order_id' => '1', 'page_request_uid' => 'x'])
+            ->assertStatus(401);
+    }
+
     // === Helpers ===
 
     /** @return array{0:Shop,1:string,2:string} */

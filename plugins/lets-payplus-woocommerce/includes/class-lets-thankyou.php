@@ -146,6 +146,35 @@ function lets_payplus_rest_upsell_decline(WP_REST_Request $request)
     return lets_payplus_rest_response($result);
 }
 
+/**
+ * VERIFY-ON-RETURN: confirm a still-pending gateway payment directly with PayPlus, so the order
+ * is marked paid + the card vaulted even when PayPlus never pushed refURL_callback (which left
+ * orders stuck "pending"). Runs at priority 4 — BEFORE the upsell mount (5) — so the token exists
+ * by the time the offer is shown. Best-effort + server-side; a failure never disrupts the page.
+ */
+add_action('woocommerce_thankyou', function ($order_id) {
+    if (lets_payplus_connection() === null) {
+        return;
+    }
+    $order = function_exists('wc_get_order') ? wc_get_order((int) $order_id) : null;
+    if (! $order || $order->get_payment_method() !== 'lets_payplus' || ! $order->needs_payment()) {
+        return; // not our gateway order, or already paid
+    }
+    $uid = (string) $order->get_meta('_lets_payplus_page_request_uid');
+    if ($uid === '') {
+        return;
+    }
+
+    $result = lets_payplus_signed_post('/api/woocommerce/gateway/verify', array(
+        'order_id' => (string) $order->get_id(),
+        'page_request_uid' => $uid,
+    ));
+
+    if (is_wp_error($result) && function_exists('lets_payplus_log_error')) {
+        lets_payplus_log_error($result->get_error_message(), 'verify');
+    }
+}, 4);
+
 /** Render the thank-you upsell mount + enqueue the widget on the order-received page. */
 add_action('woocommerce_thankyou', function ($order_id) {
     if (lets_payplus_connection() === null || ! get_option('lets_payplus_wc_webhook_secret')) {

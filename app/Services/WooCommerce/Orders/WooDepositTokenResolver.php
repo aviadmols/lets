@@ -70,8 +70,10 @@ final class WooDepositTokenResolver implements DepositTokenResolver
         'token_uid',
         'transaction.token_uid',
         'data.token_uid',
+        'data.transaction.token_uid',
         'card_token',
         'transaction.card_token',
+        'data.transaction.card_token',
     ];
 
     /** Candidate paths for the PayPlus customer reference (charge can use this alone). */
@@ -79,6 +81,7 @@ final class WooDepositTokenResolver implements DepositTokenResolver
         'customer_uid',
         'transaction.customer_uid',
         'data.customer_uid',
+        'data.transaction.customer_uid',
     ];
 
     /** Candidate paths for the card last-four digits (display only). */

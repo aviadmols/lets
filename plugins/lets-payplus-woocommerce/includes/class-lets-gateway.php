@@ -166,6 +166,13 @@ add_action('plugins_loaded', function () {
             // Mark awaiting payment; reduce stock holds per WC defaults.
             $order->update_status('pending', __('Awaiting PayPlus payment via LETS.', 'lets-payplus'));
 
+            // Store the page-request id so we can VERIFY-ON-RETURN on the thank-you page — the
+            // reliable way to mark the order paid when PayPlus doesn't push the callback.
+            if (! empty($result['page_request_uid'])) {
+                $order->update_meta_data('_lets_payplus_page_request_uid', (string) $result['page_request_uid']);
+                $order->save();
+            }
+
             $payplusUrl = (string) $result['redirect_url'];
 
             // IFRAME mode: keep the shopper on our site. Park the PayPlus URL on the order and

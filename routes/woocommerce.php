@@ -10,6 +10,7 @@ use App\Http\Controllers\WooCommerce\Storefront\WooGatewaySessionController;
 use App\Http\Controllers\WooCommerce\Storefront\WooInstallmentQuoteController;
 use App\Http\Controllers\WooCommerce\Storefront\WooStartInstallmentPlanController;
 use App\Http\Controllers\WooCommerce\Storefront\WooSubscribeController;
+use App\Http\Controllers\WooCommerce\Storefront\WooGatewayVerifyController;
 use App\Http\Controllers\WooCommerce\Storefront\WooUpsellAcceptController;
 use App\Http\Controllers\WooCommerce\Storefront\WooUpsellDeclineController;
 use App\Http\Controllers\WooCommerce\Storefront\WooUpsellOfferController;
@@ -112,6 +113,10 @@ Route::middleware(VerifyWooCommerceSignature::class)
         */
         Route::post('/gateway/session', WooGatewaySessionController::class)
             ->name('woocommerce.gateway.session');
+        // Verify-on-return: the plugin confirms a gateway payment from the thank-you page when
+        // PayPlus didn't push the callback (orders stuck "pending"). Same HMAC group.
+        Route::post('/gateway/verify', WooGatewayVerifyController::class)
+            ->name('woocommerce.gateway.verify');
     });
 
 /*
