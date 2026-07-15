@@ -58,20 +58,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | charge_method  (FOLLOW-UP 2 — defensive, default 0)
+    | charge_method  (W17 — default 1 = immediate capture)
     |--------------------------------------------------------------------------
     |
-    | The PayPlus generateLink charge_method passed when creating the deposit hosted
-    | page. Per current PayPlus understanding:
-    |     0 = immediate capture/charge (the deposit is taken now and the card token
-    |         vaulted) — this is the CURRENT, unchanged behaviour.
+    | The PayPlus generateLink charge_method passed when creating EVERY PayPlus page
+    | (normal gateway checkout, deposit, and the subscription first payment). PayPlus:
+    |     1 = immediate CHARGE/capture — money is taken now and the card token vaulted.
+    |     0 = authorize/verify-only — a "success" screen but NO capture (the W17 bug:
+    |         orders showed paid on-screen yet stayed unpaid with nothing in the PayPlus
+    |         dashboard). This was the old default; 1 is now correct.
     |
-    | VERIFY against the real PayPlus terminal: if 0 turns out to be authorize-only on
-    | this account (i.e. it places a hold rather than capturing), the owner sets
-    | WOOCOMMERCE_CHARGE_METHOD to the value the terminal uses for an immediate charge.
-    | Kept as config (not a hardcoded literal) precisely so that adjustment needs an env
-    | flip, not a code change. No behaviour change by default.
+    | Config-driven (not a hardcoded literal) so a terminal that uses a different code for
+    | an immediate charge can be re-tuned with an env flip, not a deploy. If a live test
+    | shows 1 still doesn't capture on a specific terminal, try 2.
     */
-    'charge_method' => (int) env('WOOCOMMERCE_CHARGE_METHOD', 0),
+    'charge_method' => (int) env('WOOCOMMERCE_CHARGE_METHOD', 1),
 
 ];

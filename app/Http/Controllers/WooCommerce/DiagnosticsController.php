@@ -90,7 +90,9 @@ final class DiagnosticsController extends WooStorefrontController
                 ...app(PayPlusPageOptions::class)->for($shop),
                 'amount' => self::PROBE_AMOUNT,
                 'product_name' => __('storefront.installments.probe_item'),
-                'charge_method' => 0,
+                // Render the SAME page the shopper will see (W17) — a generic probe page then
+                // reproduces the real "generic page" symptom instead of masking it.
+                'charge_method' => (int) config('woocommerce.charge_method', 1),
                 // Never vault a card from a probe, whatever the merchant's setting says.
                 'create_token' => false,
                 // No refURL_callback on purpose — a probe page must be able to mark nothing.
@@ -140,11 +142,13 @@ final class DiagnosticsController extends WooStorefrontController
     }
 
     /**
-     * What this shop has configured (BOOLEANS only — never the values) and whether PayPlus
-     * can actually mint a card page, with a machine-readable reason when it cannot. The
-     * plugin maps these reasons to clear shopper/merchant text.
+     * What this shop has configured (BOOLEANS only — never the secret values) and whether PayPlus
+     * can actually mint a card page, with a machine-readable reason when it cannot. Plus three
+     * non-secret facts that answer the W17 "generic page / not capturing" questions: which
+     * ENVIRONMENT the shop is on, a MASKED payment_page_uid (last 4, so the merchant can confirm
+     * it's the page they designed), and the effective charge_method (1 = captures).
      *
-     * @return array{ready:bool,reason:?string,has_api_key:bool,has_secret_key:bool,has_terminal_uid:bool,has_payment_page_uid:bool,has_cashier_uid:bool}
+     * @return array<string, mixed>
      */
     private function payplusReport(Shop $shop): array
     {
@@ -166,6 +170,31 @@ final class DiagnosticsController extends WooStorefrontController
             default => null,
         };
 
-        return ['ready' => $reason === null, 'reason' => $reason] + $has;
+        return [
+            'ready' => $reason === null,
+            'reason' => $reason,
+            'environment' => $this->environment((string) ($cfg['base_url'] ?? '')),
+            'payment_page_uid_masked' => $this->mask((string) ($cfg['payment_page_uid'] ?? '')),
+            'charge_method' => (int) config('woocommerce.charge_method', 1),
+        ] + $has;
+    }
+
+    /** production when the base URL is PayPlus's production host, else sandbox. */
+    private function environment(string $baseUrl): string
+    {
+        $host = (string) (parse_url($baseUrl ?: (string) config('payplus.base_url'), PHP_URL_HOST) ?? '');
+
+        return str_contains($host, 'restapidev') ? 'sandbox' : 'production';
+    }
+
+    /** Show only the last 4 chars of an id, so the merchant can recognise it without leaking it. */
+    private function mask(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+
+        return mb_strlen($value) <= 4 ? str_repeat('•', mb_strlen($value)) : '••••'.mb_substr($value, -4);
     }
 }

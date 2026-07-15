@@ -28,6 +28,9 @@ final class WooCommerceGatewayTest extends TestCase
 
     private const SESSION = '/api/woocommerce/gateway/session';
 
+    /** @var array<int, array<string, mixed>> captured generateLink payloads (W17) */
+    public array $gatewayPayloads = [];
+
     protected function tearDown(): void
     {
         PayPlusGatewayFactory::clearFake();
@@ -46,6 +49,34 @@ final class WooCommerceGatewayTest extends TestCase
 
         $response->assertOk();
         $this->assertSame('https://pay.example/page/GW-1', $response->json('redirect_url'));
+    }
+
+    public function test_session_sends_immediate_capture_charge_method_and_returns_page_request_uid(): void
+    {
+        // W17: the gateway must send charge_method=1 (capture), not 0 (verify-only — the bug),
+        // and hand back the page_request_uid so verify-on-return can confirm the order.
+        [, $key, $secret] = $this->connectedShop('gw-charge.example.com');
+        $this->fakeGatewayPage('https://pay.example/page/GW-1');
+
+        $response = $this->signedPost($key, $secret, self::SESSION, [
+            'order_id' => '4243', 'amount' => 50.0, 'currency' => 'ILS', 'return_url' => 'https://gw-charge.example.com/thanks',
+        ]);
+
+        $response->assertOk()->assertJsonPath('page_request_uid', 'GW-1');
+        $this->assertSame(1, $this->gatewayPayloads[0]['charge_method']);
+    }
+
+    public function test_session_charge_method_honours_the_configured_value(): void
+    {
+        config()->set('woocommerce.charge_method', 2);
+        [, $key, $secret] = $this->connectedShop('gw-charge2.example.com');
+        $this->fakeGatewayPage('https://pay.example/page/GW-2');
+
+        $this->signedPost($key, $secret, self::SESSION, [
+            'order_id' => '4244', 'amount' => 50.0, 'currency' => 'ILS',
+        ])->assertOk();
+
+        $this->assertSame(2, $this->gatewayPayloads[0]['charge_method']);
     }
 
     public function test_session_rejects_a_zero_amount_order(): void
@@ -257,9 +288,10 @@ final class WooCommerceGatewayTest extends TestCase
 
     private function fakeGatewayPage(string $url): void
     {
-        PayPlusGatewayFactory::fake(fn (Shop $shop): PayPlusGatewayInterface => new class($url) implements PayPlusGatewayInterface
+        $test = $this;
+        PayPlusGatewayFactory::fake(fn (Shop $shop): PayPlusGatewayInterface => new class($url, $test) implements PayPlusGatewayInterface
         {
-            public function __construct(private string $url) {}
+            public function __construct(private string $url, private WooCommerceGatewayTest $test) {}
 
             public function chargeWithReference($method, float $amount, string $idempotencyKey, array $meta = []): GatewayResult
             {
@@ -273,6 +305,8 @@ final class WooCommerceGatewayTest extends TestCase
 
             public function generateLink(array $payload): GatewayResult
             {
+                $this->test->gatewayPayloads[] = $payload;
+
                 return GatewayResult::fromResponse([
                     'results' => ['status' => 'success', 'code' => 0],
                     'data' => ['page_request_uid' => 'GW-1', 'payment_page_link' => $this->url],

@@ -240,6 +240,33 @@ function lets_payplus_render_diag_result($diag)
         ! empty($pp['has_payment_page_uid']),
         empty($pp['has_payment_page_uid']) ? lets_payplus_reason_text('payplus_no_payment_page') : ''
     );
+
+    // W17 — the three facts that answer "am I on production, is THIS the page I designed, and will
+    // checkout actually capture money?". A generic page or missing dashboard txns usually means the
+    // environment is sandbox OR the charge mode is 0 (verify-only).
+    $env = isset($pp['environment']) ? (string) $pp['environment'] : '';
+    $masked_uid = isset($pp['payment_page_uid_masked']) ? (string) $pp['payment_page_uid_masked'] : '';
+    $charge_method = isset($pp['charge_method']) ? (int) $pp['charge_method'] : null;
+    if ('' !== $env || '' !== $masked_uid || null !== $charge_method) {
+        $detail = array();
+        if ('' !== $env) {
+            /* translators: %s: PayPlus environment (PRODUCTION / SANDBOX). */
+            $detail[] = sprintf(__('Environment: %s', 'lets-payplus'), strtoupper($env));
+        }
+        if ('' !== $masked_uid) {
+            /* translators: %s: masked payment-page id. */
+            $detail[] = sprintf(__('Payment page: %s (confirm this is the page you designed)', 'lets-payplus'), $masked_uid);
+        }
+        if (null !== $charge_method) {
+            $detail[] = (0 !== $charge_method)
+                /* translators: %d: PayPlus charge_method code. */
+                ? sprintf(__('Charge mode: %d (captures money)', 'lets-payplus'), $charge_method)
+                : __('Charge mode: 0 — WARNING: verify-only, NO money is captured', 'lets-payplus');
+        }
+        $row_ok = ('production' === $env) && (0 !== $charge_method);
+        lets_payplus_diag_row(__('Environment & charge mode', 'lets-payplus'), $row_ok, implode(' · ', $detail));
+    }
+
     echo '</tbody></table>';
 
     if (empty($pp['ready'])) {

@@ -72,6 +72,24 @@ final class WooCommerceDiagnosticsTest extends TestCase
         $response->assertOk();
         $this->assertTrue($response->json('payplus.ready'));
         $this->assertNull($response->json('payplus.reason'));
+
+        // W17: the three facts that answer the "generic page / not capturing" questions.
+        $this->assertSame('production', $response->json('payplus.environment'));
+        $this->assertSame(1, $response->json('payplus.charge_method'));
+        $this->assertNotEmpty($response->json('payplus.payment_page_uid_masked'));
+    }
+
+    public function test_the_report_masks_the_payment_page_uid(): void
+    {
+        [, $key, $secret] = $this->shopWithPayplus('diag-mask.example.com', [
+            'api_key' => 'pk', 'secret_key' => 'sk', 'terminal_uid' => 't', 'payment_page_uid' => 'page-secret-9999',
+        ]);
+
+        $body = (string) $this->signedPost($key, $secret, self::REPORT, [])->getContent();
+
+        // The full uid is never leaked; only the last 4 appear (masked).
+        $this->assertStringNotContainsString('page-secret-9999', $body);
+        $this->assertStringContainsString('9999', $body);
     }
 
     /** The report NEVER leaks a secret — only booleans about what is set. */

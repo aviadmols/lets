@@ -28,16 +28,21 @@ use Symfony\Component\HttpFoundation\Response;
 final class WooGatewaySessionController extends WooStorefrontController
 {
     // === CONSTANTS ===
-    /** PayPlus charge_method 0 = charge (capture now). */
-    private const CHARGE_METHOD_CHARGE = 0;
+    /** PayPlus charge_method config key + default (W17: 1 = immediate capture; 0 was verify-only). */
+    private const CONFIG_CHARGE_METHOD = 'woocommerce.charge_method';
+    private const CHARGE_METHOD_DEFAULT = 1;
 
     /** more_info prefix marking a plain-gateway order (vs. a LETS plan public id). */
     public const MORE_INFO_PREFIX = 'gw:';
 
     /** generateLink response keys (same as the deposit page). */
     private const RESP_PAGE_LINK = 'data.payment_page_link';
-    /** The page-request id we hand back so the plugin can verify-on-return (W16). */
-    private const RESP_PAGE_REQUEST_UID = 'data.page_request_uid';
+    /** Where the page-request id can appear (searched in order) — the plugin verifies-on-return with it. */
+    private const RESP_PAGE_REQUEST_UID_PATHS = [
+        'data.page_request_uid',
+        'page_request_uid',
+        'data.page_request.uid',
+    ];
 
     public function __invoke(Request $request): JsonResponse
     {
@@ -83,7 +88,9 @@ final class WooGatewaySessionController extends WooStorefrontController
                 'amount' => $amount,
                 'currency_code' => $currency,
                 'product_name' => (string) ($request->input('product_name') ?: __('storefront.installments.default_item')),
-                'charge_method' => self::CHARGE_METHOD_CHARGE,
+                // 1 = immediate CHARGE/capture (W17). Config-driven + env-overridable; the SAME
+                // value the deposit page uses, so the two pages can never disagree.
+                'charge_method' => (int) config(self::CONFIG_CHARGE_METHOD, self::CHARGE_METHOD_DEFAULT),
                 // more_info carries the WC order id (prefixed) — the callback marks it paid.
                 'more_info' => self::MORE_INFO_PREFIX.$orderId,
                 // Prefill the card page with the shopper's details from the WC order.
@@ -124,11 +131,28 @@ final class WooGatewaySessionController extends WooStorefrontController
             return response()->json(['error' => 'gateway_unavailable'], Response::HTTP_BAD_GATEWAY);
         }
 
+        // The plugin stores this + sends it back to /gateway/verify on the thank-you page, so the
+        // order is confirmed even when PayPlus never pushes the callback. Search the known shapes;
+        // an empty uid SILENTLY disables verify-on-return, so surface it in the log.
+        $pageRequestUid = '';
+        foreach (self::RESP_PAGE_REQUEST_UID_PATHS as $path) {
+            $value = (string) (data_get($result->raw, $path) ?? '');
+            if ($value !== '') {
+                $pageRequestUid = $value;
+                break;
+            }
+        }
+        if ($pageRequestUid === '') {
+            Log::warning('woocommerce.gateway.no_page_request_uid', [
+                'shop_id' => $shop->getKey(),
+                'order_id' => $orderId,
+                'top_level_keys' => is_array($result->raw) ? array_keys($result->raw) : [],
+            ]);
+        }
+
         return response()->json([
             'redirect_url' => $pageLink,
-            // The plugin stores this + sends it back to /gateway/verify on the thank-you page,
-            // so the order is confirmed even if PayPlus never pushes the callback.
-            'page_request_uid' => (string) (data_get($result->raw, self::RESP_PAGE_REQUEST_UID) ?? ''),
+            'page_request_uid' => $pageRequestUid,
         ], Response::HTTP_OK);
     }
 

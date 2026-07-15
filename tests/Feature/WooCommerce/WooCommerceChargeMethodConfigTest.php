@@ -17,11 +17,9 @@ use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
- * FOLLOW-UP 2 — charge_method is config-driven, default 0 (unchanged).
- *
- * The deposit hosted-page generateLink payload carries config('woocommerce.charge_method',
- * 0). Default keeps today's behaviour (0 = immediate capture); a flipped env changes the
- * value with no code edit, so the owner can adjust once verified against the terminal.
+ * W17 — charge_method is config-driven, default 1 (immediate CAPTURE). 0 was verify-only (no
+ * money captured — the bug). The deposit hosted-page generateLink payload carries
+ * config('woocommerce.charge_method', 1); a flipped env changes the value with no code edit.
  */
 final class WooCommerceChargeMethodConfigTest extends TestCase
 {
@@ -37,21 +35,22 @@ final class WooCommerceChargeMethodConfigTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_charge_method_defaults_to_zero(): void
+    public function test_charge_method_defaults_to_one(): void
     {
         $payload = $this->runDeposit();
 
-        $this->assertSame(0, $payload['charge_method']);
+        // 1 = immediate capture (W17). Was 0 (verify-only) — the bug.
+        $this->assertSame(1, $payload['charge_method']);
     }
 
     public function test_charge_method_reads_the_configured_value(): void
     {
         // Owner verified the terminal needs a different immediate-charge code.
-        config()->set('woocommerce.charge_method', 1);
+        config()->set('woocommerce.charge_method', 2);
 
         $payload = $this->runDeposit();
 
-        $this->assertSame(1, $payload['charge_method']);
+        $this->assertSame(2, $payload['charge_method']);
     }
 
     // === Helpers ===

@@ -110,9 +110,26 @@ final class PayPlusPageStatus
         }
 
         // Help confirm the real PayPlus IPN shape against a live transaction (no secrets logged).
+        // Emits a shallow key-map of the nested objects + whether a token/amount surfaced, so ONE
+        // real transaction confirms STATUS_PATHS, SUCCESS_CODES, and the token path in
+        // WooDepositTokenResolver::TOKEN_PATHS all at once. Adjust the constants only if this shows
+        // a path we don't already read.
         Log::info('payplus.page_status.checked', [
             'status_code' => $statusCode,
+            'approved' => in_array($statusCode, self::SUCCESS_CODES, true),
             'top_level_keys' => array_keys($body),
+            'data_keys' => is_array($d = data_get($body, 'data')) ? array_keys($d) : null,
+            'transaction_keys' => is_array($t = data_get($body, 'data.transaction')) ? array_keys($t) : null,
+            'results_keys' => is_array($r = data_get($body, 'results')) ? array_keys($r) : null,
+            // Did a token field surface anywhere we look? (boolean only — never the token itself.)
+            'has_token' => (bool) (
+                data_get($body, 'data.transaction.token_uid')
+                ?? data_get($body, 'data.token_uid')
+                ?? data_get($body, 'transaction.token_uid')
+                ?? data_get($body, 'token_uid')
+            ),
+            // The captured amount, to eyeball against the order total (not a secret).
+            'amount' => data_get($body, 'data.transaction.amount') ?? data_get($body, 'data.amount') ?? data_get($body, 'amount'),
         ]);
 
         return [
