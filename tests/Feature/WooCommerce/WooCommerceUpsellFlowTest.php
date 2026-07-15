@@ -274,6 +274,36 @@ final class WooCommerceUpsellFlowTest extends TestCase
             ->assertJsonPath('offer.product_image', 'https://img.example/77.jpg');
     }
 
+    /**
+     * Phase 3: the offer JSON carries the FULL shared card view-model (content + appearance) the
+     * renderer consumes — the SAME presenter the admin preview uses — so the storefront card and
+     * the preview are identical. Additive: the legacy flat keys stay for older plugin builds.
+     */
+    public function test_offer_carries_the_shared_card_view_model(): void
+    {
+        Http::fake();
+        [$shop, $key, $secret] = $this->connectedShop('up-card.example.com');
+        Tenant::run($shop, fn () => $this->makeFlow($shop, 'gid://shopify/Product/1', 50.0));
+
+        $response = $this->signedGet($key, $secret, self::OFFER, http_build_query([
+            'parent_order' => 'WC-1', 'customer' => 'c', 'subtotal' => '120',
+            'products' => 'gid://shopify/Product/1',
+        ]))
+            ->assertOk()
+            // The full card view-model is present and shaped as the renderer expects.
+            ->assertJsonPath('offer.card.platform', 'woocommerce')
+            ->assertJsonStructure(['offer' => ['card' => [
+                'content' => ['price', 'price_display', 'disclosure', 'accept_cta'],
+                'appearance' => ['accent', 'elements'],
+            ]]])
+            // Legacy flat keys still present (backward-compat).
+            ->assertJsonPath('offer.title', 'Add-on');
+
+        // Money is the server-computed price (JSON serializes 50.0 as 50 — compare as float).
+        $this->assertEqualsWithDelta(50.0, (float) $response->json('offer.card.content.price'), 0.001);
+        $this->assertEqualsWithDelta(50.0, (float) $response->json('offer.price'), 0.001);
+    }
+
     public function test_accept_with_an_email_customer_ref_resolves_the_token_without_a_500(): void
     {
         // The prod bug: resolvePaymentMethod compared the BIGINT customer_id to an email string

@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\WooCommerce\Storefront;
 
 use App\Domain\Upsell\PurchaseContext;
+use App\Domain\Upsell\Rendering\UpsellCardPresenter;
 use App\Domain\Upsell\UpsellResolver;
+use App\Models\MerchantUpsellAppearance;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -30,7 +32,10 @@ final class WooUpsellOfferController extends WooStorefrontController
     /** Default display currency when neither offer nor config pins one. */
     private const DEFAULT_CURRENCY = 'ILS';
 
-    public function __construct(private readonly UpsellResolver $resolver) {}
+    public function __construct(
+        private readonly UpsellResolver $resolver,
+        private readonly UpsellCardPresenter $presenter,
+    ) {}
 
     public function __invoke(Request $request): JsonResponse
     {
@@ -63,6 +68,11 @@ final class WooUpsellOfferController extends WooStorefrontController
         // instead of only the merchant's headline text.
         $product = $offer->resolveProduct();
 
+        // The FULL card view-model (content + appearance) the shared renderer consumes — the SAME
+        // presenter the Filament preview uses, so the storefront card and the preview are identical
+        // by construction. Additive: the legacy flat keys below stay for backward-compat.
+        $card = $this->presenter->forOffer($offer, MerchantUpsellAppearance::current(), UpsellCardPresenter::PLATFORM_WOOCOMMERCE);
+
         return response()->json([
             'offer' => [
                 'flow_id' => (int) $flow->getKey(),
@@ -80,6 +90,9 @@ final class WooUpsellOfferController extends WooStorefrontController
                 // re-signs the HMAC accept call; the shop stays the verified shop).
                 'parent_order' => $context->parentOrderId,
                 'customer' => $context->customerRef,
+                // The beautiful shared card — {platform, content, appearance}. The plugin renders
+                // from here; the flat keys above remain for older plugin builds.
+                'card' => $card,
             ],
         ], Response::HTTP_OK);
     }

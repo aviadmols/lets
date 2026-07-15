@@ -6,6 +6,7 @@ use App\Domain\Upsell\Enums\UpsellFlowStatus;
 use App\Domain\Upsell\Models\UpsellFlow;
 use App\Domain\Upsell\Models\UpsellFlowOffer;
 use App\Domain\Upsell\Models\UpsellFlowTrigger;
+use App\Domain\Upsell\Rendering\UpsellCardPresenter;
 use App\Filament\Concerns\PicksProducts;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Models\Product;
@@ -524,18 +525,28 @@ class FlowBuilder extends Page
         return $this->configOfferId > 0 ? $this->offerModel($this->configOfferId) : null;
     }
 
-    /** Signed dev-only preview URL for the configured offer ("View post-purchase"). */
+    /**
+     * The tenant-scoped preview URL for the configured offer ("View post-purchase"). Points at the
+     * Filament-authed, tenant-scoped preview route (Phase 3) which renders the REAL shared card —
+     * the same one the customer sees — not the old dev-only widget. Gated on a product being
+     * chosen (the button stays disabled until then), NOT on the dev environment: this is a
+     * production feature now.
+     */
     public function previewUrl(): ?string
     {
         if ($this->configOfferId <= 0) {
             return null;
         }
 
-        if (! (app()->isLocal() && config('app.dev_tenant', false))) {
-            return null;
+        $offer = $this->configuredOffer();
+        if ($offer === null || (string) $offer->offer_product_gid === '') {
+            return null; // no product picked yet → keep the button disabled
         }
 
-        return route('upsell.dev_preview', ['offer' => $this->configOfferId]);
+        return route('filament.admin.upsell.preview', [
+            'platform' => UpsellCardPresenter::PLATFORM_WOOCOMMERCE,
+            'offer' => $offer->getKey(),
+        ]);
     }
 
     // === "Configure trigger" drawer (UI config — no charge-engine change) ===

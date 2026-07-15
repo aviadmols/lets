@@ -1,0 +1,434 @@
+/* =====================================================================
+ * LETS post-purchase upsell card — the ONE canonical stylesheet.
+ * (Phase 3.) Rendered byte-identically by the live WooCommerce widget
+ * AND the Filament preview. Build-copied verbatim into the plugin by
+ * bin/build-plugin.sh — never edit the plugin copy by hand.
+ *
+ * House language (tabuzzco): Heebo, dramatic Light 300 ↔ Black 900 weight
+ * contrast, the price as the oversized Black-900 anchor, sharp-corner CTA,
+ * 7px image/card radius with a layered shadow, slow 0.5s transitions,
+ * monochrome by default (the "wow" comes from TYPE, not colour).
+ *
+ * TOKEN REFERENCE (all dynamic values are custom properties set on the root
+ * only — never per-element inline styles; the sanctioned tokens→properties seam):
+ *   --lets-ppu-accent        accent colour (solid CTA fill / outline stroke)
+ *   --lets-ppu-accent-text   text ON the accent (solid CTA)
+ *   --lets-ppu-btn-radius    CTA border-radius (px)
+ * ENUM STATE via data-attributes on the root:
+ *   data-theme=light|dark  data-button=solid|outline  data-layout=stacked|media_side
+ *   data-ratio=natural|square  data-decline=link|button  data-shadow=none|soft|elevated
+ * STATE via a root class: .is-loading .is-accepting .is-done .is-error
+ * ===================================================================== */
+
+.lets-ppu,
+.lets-ppu * {
+  box-sizing: border-box;
+}
+
+.lets-ppu {
+  /* --- palette (light) --- */
+  --lets-ppu-ink: #14161a;
+  --lets-ppu-muted: #6b7076;
+  --lets-ppu-paper: #ffffff;
+  --lets-ppu-rule: rgba(0, 0, 0, 0.09);
+  --lets-ppu-skeleton: rgba(0, 0, 0, 0.06);
+  --lets-ppu-skeleton-sheen: rgba(0, 0, 0, 0.11);
+  --lets-ppu-warn: #c0392b;
+  /* --- brand tokens (JS overrides accent + radius) --- */
+  --lets-ppu-accent: #000000;
+  --lets-ppu-accent-text: #ffffff;
+  --lets-ppu-btn-radius: 0px;
+  --lets-ppu-card-shadow: 0 47px 46px -27px rgba(0, 0, 0, 0.16), 0 2px 12px 0 rgba(0, 0, 0, 0.06);
+
+  /* --- shell --- */
+  position: relative;
+  box-sizing: border-box;
+  inline-size: 100%;
+  max-inline-size: 460px;
+  margin-block: 20px;
+  margin-inline: auto;
+  padding: 28px;
+  background: var(--lets-ppu-paper);
+  border: 1px solid var(--lets-ppu-rule);
+  border-radius: 7px;
+  box-shadow: var(--lets-ppu-card-shadow);
+  color: var(--lets-ppu-ink);
+  font-family: "Heebo", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  line-height: 1.4;
+  text-align: start;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Host the system font instead of the webfont when the shop chose it. */
+.lets-ppu[data-font="system"] {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+/* --- theme: dark --- */
+.lets-ppu[data-theme="dark"] {
+  --lets-ppu-ink: #f3f4f6;
+  --lets-ppu-muted: #a1a6ad;
+  --lets-ppu-paper: #17191d;
+  --lets-ppu-rule: rgba(255, 255, 255, 0.12);
+  --lets-ppu-skeleton: rgba(255, 255, 255, 0.07);
+  --lets-ppu-skeleton-sheen: rgba(255, 255, 255, 0.13);
+  --lets-ppu-card-shadow: 0 47px 46px -27px rgba(0, 0, 0, 0.55), 0 2px 12px 0 rgba(0, 0, 0, 0.4);
+}
+
+/* --- card shadow variants --- */
+.lets-ppu[data-shadow="none"] {
+  --lets-ppu-card-shadow: none;
+}
+.lets-ppu[data-shadow="elevated"] {
+  --lets-ppu-card-shadow: 0 64px 62px -34px rgba(0, 0, 0, 0.24), 0 6px 18px 0 rgba(0, 0, 0, 0.1);
+}
+
+/* --- entrance --- */
+@media (prefers-reduced-motion: no-preference) {
+  .lets-ppu {
+    animation: lets-ppu-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
+@keyframes lets-ppu-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ============================ HEAD ROW ============================ */
+.lets-ppu__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-block-end: 16px;
+  min-block-size: 20px;
+}
+
+.lets-ppu__eyebrow {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: var(--lets-ppu-muted);
+}
+/* Hebrew tracking is gentler. */
+[dir="rtl"] .lets-ppu__eyebrow { letter-spacing: 2px; }
+
+.lets-ppu__badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--lets-ppu-accent) 12%, transparent);
+  color: var(--lets-ppu-accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.lets-ppu[data-theme="dark"] .lets-ppu__badge {
+  background: color-mix(in srgb, var(--lets-ppu-accent) 26%, transparent);
+}
+
+.lets-ppu__timer {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding-block-end: 2px;
+  border-block-end: 1px solid var(--lets-ppu-accent);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--lets-ppu-ink);
+  font-variant-numeric: tabular-nums;
+  unicode-bidi: isolate;
+  white-space: nowrap;
+}
+.lets-ppu__timer.is-urgent { color: var(--lets-ppu-warn); border-block-end-color: var(--lets-ppu-warn); }
+.lets-ppu__timer-label {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--lets-ppu-muted);
+}
+
+/* ============================ MEDIA ============================ */
+.lets-ppu__media {
+  margin-block-end: 20px;
+  border-radius: 7px;
+  overflow: hidden;
+  box-shadow: 0 18px 28px -18px rgba(0, 0, 0, 0.35);
+  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.5s ease;
+}
+.lets-ppu__img {
+  display: block;
+  inline-size: 100%;
+  block-size: auto;
+  object-fit: cover;
+}
+.lets-ppu[data-ratio="square"] .lets-ppu__img {
+  aspect-ratio: 1 / 1;
+  block-size: auto;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .lets-ppu__media:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 30px 40px -20px rgba(0, 0, 0, 0.42);
+  }
+}
+
+/* ============================ TYPE ============================ */
+.lets-ppu__headline {
+  margin: 0 0 8px;
+  font-size: 27px;
+  font-weight: 300;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  color: var(--lets-ppu-ink);
+}
+
+.lets-ppu__product {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--lets-ppu-muted);
+}
+
+.lets-ppu__subcopy {
+  margin: 0 0 18px;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--lets-ppu-muted);
+}
+
+/* ============================ PRICE ============================ */
+.lets-ppu__price {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 12px;
+  margin-block: 6px 4px;
+}
+.lets-ppu__price-now {
+  font-size: 44px;
+  font-weight: 900;
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+  color: var(--lets-ppu-ink);
+  unicode-bidi: isolate;
+}
+.lets-ppu__price-was {
+  font-size: 18px;
+  font-weight: 300;
+  color: var(--lets-ppu-muted);
+  text-decoration: line-through;
+  unicode-bidi: isolate;
+}
+
+.lets-ppu__save {
+  display: inline-block;
+  margin-block: 10px 4px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--lets-ppu-accent);
+}
+.lets-ppu[data-theme="dark"] .lets-ppu__save { color: var(--lets-ppu-ink); }
+@media (prefers-reduced-motion: no-preference) {
+  .lets-ppu__save { animation: lets-ppu-pop 0.5s 0.15s cubic-bezier(0.16, 1, 0.3, 1) both; }
+}
+@keyframes lets-ppu-pop {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ============================ TRUST ============================ */
+.lets-ppu__trust {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-block: 14px 0;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  color: var(--lets-ppu-muted);
+}
+.lets-ppu__trust svg { flex: none; inline-size: 13px; block-size: 13px; }
+
+/* ============================ ACTIONS ============================ */
+.lets-ppu__actions {
+  margin-block-start: 22px;
+}
+.lets-ppu__accept {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  inline-size: 100%;
+  padding: 15px 18px;
+  border: 1px solid var(--lets-ppu-accent);
+  border-radius: var(--lets-ppu-btn-radius);
+  background: var(--lets-ppu-accent);
+  color: var(--lets-ppu-accent-text);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.5s ease, color 0.5s ease, transform 0.2s ease, box-shadow 0.5s ease;
+}
+.lets-ppu[data-button="outline"] .lets-ppu__accept {
+  background: transparent;
+  color: var(--lets-ppu-accent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .lets-ppu__accept:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 22px -12px color-mix(in srgb, var(--lets-ppu-accent) 60%, transparent);
+  }
+}
+.lets-ppu[data-button="outline"] .lets-ppu__accept:hover:not(:disabled) {
+  background: var(--lets-ppu-accent);
+  color: var(--lets-ppu-accent-text);
+}
+.lets-ppu__accept:disabled { cursor: default; opacity: 0.85; }
+
+.lets-ppu__decline {
+  display: block;
+  inline-size: 100%;
+  margin-block-start: 12px;
+  padding: 10px;
+  border: 0;
+  background: none;
+  color: var(--lets-ppu-muted);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  text-align: center;
+  cursor: pointer;
+  transition: color 0.3s ease;
+}
+.lets-ppu__decline:hover { color: var(--lets-ppu-ink); text-decoration: underline; }
+.lets-ppu[data-decline="button"] .lets-ppu__decline {
+  border: 1px solid var(--lets-ppu-rule);
+  border-radius: var(--lets-ppu-btn-radius);
+}
+.lets-ppu[data-decline="button"] .lets-ppu__decline:hover { text-decoration: none; border-color: var(--lets-ppu-ink); }
+
+/* ============================ DISCLOSURE ============================ */
+.lets-ppu__disclosure {
+  margin-block-start: 16px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--lets-ppu-muted);
+}
+
+/* ============================ ERROR ============================ */
+.lets-ppu__error {
+  margin-block-start: 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--lets-ppu-warn) 10%, transparent);
+  color: var(--lets-ppu-warn);
+  font-size: 13px;
+  text-align: center;
+}
+.lets-ppu__error[hidden] { display: none; }
+
+/* ============================ SUCCESS ============================ */
+.lets-ppu__done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding-block: 24px;
+  text-align: center;
+}
+.lets-ppu__done-title {
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  color: var(--lets-ppu-ink);
+}
+.lets-ppu__done-sub { font-size: 14px; color: var(--lets-ppu-muted); }
+.lets-ppu__check {
+  inline-size: 46px;
+  block-size: 46px;
+  color: var(--lets-ppu-accent);
+}
+.lets-ppu[data-theme="dark"] .lets-ppu__check { color: var(--lets-ppu-ink); }
+.lets-ppu__check path {
+  stroke-dasharray: 48;
+  stroke-dashoffset: 48;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .lets-ppu__check path { animation: lets-ppu-draw 0.5s 0.05s ease forwards; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lets-ppu__check path { stroke-dashoffset: 0; }
+}
+@keyframes lets-ppu-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+/* ============================ DECLINING (fade + collapse) ============================ */
+.lets-ppu.is-declining {
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lets-ppu.is-declining { transition: none; }
+}
+
+/* ============================ ACCEPTING (spinner) ============================ */
+.lets-ppu__spinner {
+  inline-size: 16px;
+  block-size: 16px;
+  border: 2px solid currentColor;
+  border-block-start-color: transparent;
+  border-radius: 50%;
+  animation: lets-ppu-spin 0.7s linear infinite;
+}
+@keyframes lets-ppu-spin { to { transform: rotate(360deg); } }
+
+/* ============================ LOADING SKELETON ============================ */
+.lets-ppu.is-loading { pointer-events: none; }
+.lets-ppu__skel {
+  border-radius: 6px;
+  background: linear-gradient(100deg, var(--lets-ppu-skeleton) 30%, var(--lets-ppu-skeleton-sheen) 50%, var(--lets-ppu-skeleton) 70%);
+  background-size: 200% 100%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .lets-ppu__skel { animation: lets-ppu-shimmer 1.4s ease-in-out infinite; }
+}
+@keyframes lets-ppu-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+.lets-ppu__skel--media { block-size: 190px; margin-block-end: 20px; }
+.lets-ppu__skel--line { block-size: 16px; margin-block-end: 12px; }
+.lets-ppu__skel--line.w-70 { inline-size: 70%; }
+.lets-ppu__skel--line.w-45 { inline-size: 45%; }
+.lets-ppu__skel--price { block-size: 40px; inline-size: 55%; margin-block: 8px 20px; }
+.lets-ppu__skel--btn { block-size: 48px; }
+
+/* ============================ LAYOUT: media beside content ============================ */
+@media (min-width: 440px) {
+  .lets-ppu[data-layout="media_side"] {
+    max-inline-size: 620px;
+  }
+  .lets-ppu[data-layout="media_side"] .lets-ppu__body {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 24px;
+    align-items: start;
+  }
+  .lets-ppu[data-layout="media_side"] .lets-ppu__media {
+    margin-block-end: 0;
+  }
+}

@@ -26,6 +26,26 @@ EXCLUDES=(
   ".git/*" ".github/*" ".DS_Store" "*/.DS_Store" "*.map" "*.zip"
 )
 
+# === Sync the shared upsell renderer from the SaaS canonical source ===
+# public/upsell/lets-ppu.{css,js} is the SINGLE source of truth. Copy it into the plugin so the
+# storefront card is byte-identical to the admin preview, then hard-fail if any copy drifted.
+CANON_DIR="$(cd "$PLUGIN_DIR/../.." && pwd)/public/upsell"
+declare -a SHARED=("lets-ppu.css:assets/css/lets-ppu.css" "lets-ppu.js:assets/js/lets-ppu.js")
+for pair in "${SHARED[@]}"; do
+  name="${pair%%:*}"; rel="${pair##*:}"
+  if [[ -f "$CANON_DIR/$name" ]]; then
+    mkdir -p "$(dirname "$PLUGIN_DIR/$rel")"
+    cp "$CANON_DIR/$name" "$PLUGIN_DIR/$rel"
+  fi
+done
+for pair in "${SHARED[@]}"; do
+  name="${pair%%:*}"; rel="${pair##*:}"
+  if [[ -f "$CANON_DIR/$name" ]] && ! cmp -s "$CANON_DIR/$name" "$PLUGIN_DIR/$rel"; then
+    echo "ERROR: $rel drifted from public/upsell/$name — re-run build to re-sync" >&2
+    exit 1
+  fi
+done
+
 # Read the version from the plugin header (single source of truth).
 VERSION="$(grep -iE '^[[:space:]]*\*?[[:space:]]*Version:' "$MAIN_FILE" | head -n1 | sed -E 's/.*Version:[[:space:]]*//; s/[[:space:]]*$//')"
 if [[ -z "$VERSION" ]]; then

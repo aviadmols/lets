@@ -2,6 +2,8 @@
 
 namespace App\Providers\Filament;
 
+use App\Domain\Upsell\Http\Controllers\AdminUpsellPreviewController;
+use App\Domain\Upsell\Rendering\UpsellCardPresenter;
 use App\Http\Middleware\BindDevTenant;
 use App\Http\Middleware\BindTenantFromUser;
 use App\Http\Middleware\DevAutoLogin;
@@ -9,6 +11,7 @@ use App\Http\Middleware\EmbeddedAuthenticate;
 use App\Http\Middleware\EnsureEmbeddedSession;
 use App\Http\Middleware\PersistEmbeddedContext;
 use App\Http\Middleware\SetAdminLocale;
+use Illuminate\Support\Facades\Route;
 use BezhanSalleh\FilamentLanguageSwitch\LanguageSwitch;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
@@ -165,6 +168,18 @@ class AdminPanelProvider extends PanelProvider
                 PanelsRenderHook::USER_MENU_BEFORE,
                 fn (): View => ViewFacade::make('filament.platform.shop-switcher'),
             )
+            // Tenant-scoped, Filament-authed PREVIEW of the post-purchase card (Phase 3). Registered
+            // on the panel so it inherits the persistent middleware (session + BindTenantFromUser +
+            // SetAdminLocale); the explicit Authenticate is a belt on top. `platform` is constrained
+            // to woocommerce for now (shopify added later); offer=0 renders the built-in sample.
+            //   → GET /admin/upsell/preview/{platform}/{offer}  (name filament.admin.upsell.preview)
+            ->routes(function (): void {
+                Route::get('upsell/preview/{platform}/{offer}', AdminUpsellPreviewController::class)
+                    ->middleware(Authenticate::class)
+                    ->whereIn('platform', [UpsellCardPresenter::PLATFORM_WOOCOMMERCE])
+                    ->whereNumber('offer')
+                    ->name('upsell.preview');
+            })
             ->navigationGroups($this->navigationGroups())
             // Platform-admin link to the Horizon dashboard (queues, throughput, FAILED
             // jobs) — "see every background run + whether it works". A separate SPA at

@@ -186,7 +186,8 @@ add_action('woocommerce_thankyou', function ($order_id) {
     }
 
     wp_enqueue_style('lets-payplus-storefront');
-    wp_enqueue_script('lets-payplus-thankyou');
+    wp_enqueue_style('lets-payplus-ppu');   // the shared card stylesheet (+ Heebo dep)
+    wp_enqueue_script('lets-payplus-thankyou'); // pulls the shared renderer (dep)
     wp_localize_script('lets-payplus-thankyou', 'LetsPayPlusUpsell', array(
         'restOffer' => esc_url_raw(rest_url(LETS_PAYPLUS_REST_NS . '/upsell/offer')),
         'restAccept' => esc_url_raw(rest_url(LETS_PAYPLUS_REST_NS . '/upsell/accept')),
@@ -206,7 +207,19 @@ add_action('woocommerce_thankyou', function ($order_id) {
     echo '<div class="lets-pp-upsell" data-lets-upsell hidden></div>';
 }, 5);
 
-/** Register the thank-you asset (the shared style is registered by the product widget). */
+/**
+ * Register the thank-you assets. The card is drawn by the SHARED renderer + stylesheet
+ * (assets/js|css/lets-ppu.*) — build-copied verbatim from the SaaS public/upsell/ so the
+ * storefront card is byte-identical to the admin preview. The thank-you transport script depends
+ * on the shared renderer; the shared stylesheet depends on the Heebo webfont (the house type).
+ */
 add_action('wp_enqueue_scripts', function () {
-    wp_register_script('lets-payplus-thankyou', LETS_PAYPLUS_URL . 'assets/js/thankyou-upsell.js', array(), LETS_PAYPLUS_VERSION, true);
+    // Heebo (house type). null version so Google's own cache headers apply.
+    wp_register_style('lets-payplus-heebo', 'https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap', array(), null);
+    // The ONE shared card stylesheet.
+    wp_register_style('lets-payplus-ppu', LETS_PAYPLUS_URL . 'assets/css/lets-ppu.css', array('lets-payplus-heebo'), LETS_PAYPLUS_VERSION);
+    // The ONE shared renderer (window.LetsUpsell).
+    wp_register_script('lets-payplus-upsell-card', LETS_PAYPLUS_URL . 'assets/js/lets-ppu.js', array(), LETS_PAYPLUS_VERSION, true);
+    // The thank-you transport depends on the shared renderer.
+    wp_register_script('lets-payplus-thankyou', LETS_PAYPLUS_URL . 'assets/js/thankyou-upsell.js', array('lets-payplus-upsell-card'), LETS_PAYPLUS_VERSION, true);
 });

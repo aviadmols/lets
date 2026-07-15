@@ -36,6 +36,96 @@ return [
     'no_consent_body' => 'We do not have permission to charge your saved payment method for this offer. Your original order is unaffected.',
     'done' => 'You are all set.',
 
+    // Renderer state-machine labels (shared card).
+    'adding' => 'Adding…',
+    'error_generic' => 'We could not add that. Please try again.',
+
+    // The Filament / storefront preview host.
+    'preview' => [
+        'title' => 'Post-purchase card preview',
+        'sample_headline' => 'Complete the look',
+        'sample_product' => 'Signature Add-On',
+        'sample_subcopy' => 'A perfect companion to what you just bought — added straight to your order, charged to the card you already used.',
+    ],
+
+    // ===================================================================
+    // Settings → Upsell card design (Phase 3) — the element/style builder.
+    // ===================================================================
+    'appearance' => [
+        'title' => 'Upsell card design',
+        'intro' => 'Design the one-click post-purchase card your customers see. Changes preview live on the right; the price, the add button and the charge disclosure are always shown and cannot be removed.',
+        'save' => 'Save design',
+        'saved' => 'Card design saved.',
+        'preview_hint' => 'A live preview of your real thank-you card. It updates as you edit; click “Save design” to keep your changes.',
+
+        'brand' => [
+            'heading' => 'Brand',
+            'intro' => 'Colours and shapes. The default is a clean monochrome card — the drama comes from the type.',
+            'accent' => 'Accent colour',
+            'accent_help' => 'Used for the add-to-order button and highlights.',
+            'accent_text' => 'Accent text colour',
+            'accent_text_help' => 'The text colour on a solid accent button.',
+            'theme' => 'Theme',
+            'button' => 'Button style',
+            'corners' => 'Button corners',
+            'shadow' => 'Card shadow',
+            'font' => 'Font',
+        ],
+
+        'layout' => [
+            'heading' => 'Layout',
+            'intro' => 'How the card is arranged.',
+            'arrangement' => 'Arrangement',
+            'image_ratio' => 'Image shape',
+            'decline' => 'Decline treatment',
+            // Arrangement values.
+            'stacked' => 'Stacked',
+            'media_side' => 'Image beside',
+        ],
+
+        'elements' => [
+            'heading' => 'Elements',
+            'intro' => 'Turn parts of the card on or off, and drag to reorder them. Price, add button and charge disclosure are always on.',
+            'show' => 'Show',
+            'locked' => 'Always shown',
+        ],
+
+        'copy' => [
+            'heading' => 'Copy',
+            'intro' => 'Reusable text. Leave blank to use the built-in default.',
+            'eyebrow' => 'Eyebrow label',
+            'badge' => 'Badge',
+            'badge_help' => 'A small pill (e.g. “Best seller”). Leave blank to hide it.',
+            'trust' => 'Trust line',
+        ],
+
+        // Element labels (each row in the Elements list).
+        'element' => [
+            'eyebrow' => 'Eyebrow (small label)',
+            'badge' => 'Badge',
+            'timer' => 'Countdown timer',
+            'image' => 'Product image',
+            'headline' => 'Headline',
+            'product_name' => 'Product name',
+            'subcopy' => 'Description',
+            'price' => 'Price',
+            'save' => 'Savings',
+            'trust' => 'Trust line',
+            'cta' => 'Add-to-order button',
+            'decline' => 'Decline link',
+            'disclosure' => 'Charge disclosure',
+        ],
+
+        // Token option labels.
+        'theme' => ['light' => 'Light', 'dark' => 'Dark'],
+        'button' => ['solid' => 'Solid', 'outline' => 'Outline'],
+        'radius' => ['sharp' => 'Sharp', 'soft' => 'Soft', 'pill' => 'Pill'],
+        'shadow' => ['none' => 'None', 'soft' => 'Soft', 'elevated' => 'Elevated'],
+        'font' => ['heebo' => 'Heebo', 'system' => 'System'],
+        'ratio' => ['natural' => 'Natural', 'square' => 'Square'],
+        'decline' => ['link' => 'Text link', 'button' => 'Button'],
+    ],
+
     // Funnel event-type labels (Activity tab badges).
     'event' => [
         'impression' => 'Impression',
