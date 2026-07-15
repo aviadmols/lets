@@ -2,11 +2,13 @@
 
 namespace App\Services\WooCommerce\Orders;
 
+use App\Domain\Installments\PlanActivationService;
 use App\Models\InstallmentPaymentMethod;
 use App\Models\Shop;
 use App\Services\WooCommerce\WooClientFactory;
 use App\Support\Tenant;
 use Illuminate\Support\Facades\Log;
+// WooCommercePaidOrderPlanResolver is in this same namespace (App\Services\WooCommerce\Orders).
 
 /**
  * Finalises a paid WooCommerce gateway order: marks it paid via the WC REST API AND vaults the
@@ -51,6 +53,16 @@ final class WooGatewayFinalizer
                     $this->vaultToken($shop, $payplusBody, $order);
                 } catch (\Throwable $e) {
                     Log::warning('woocommerce.gateway.vault_failed', [
+                        'shop_id' => $shop->getKey(), 'order_id' => $orderId, 'error' => $e->getMessage(),
+                    ]);
+                }
+
+                // Cart-based subscriptions (W17 B): activate each recurring plan this order created.
+                // Fail-soft — a plan-activation hiccup must never un-pay a paid order.
+                try {
+                    $this->activateSubscriptionPlans($shop, $orderId, $order, $payplusBody);
+                } catch (\Throwable $e) {
+                    Log::warning('woocommerce.gateway.subscription_activate_failed', [
                         'shop_id' => $shop->getKey(), 'order_id' => $orderId, 'error' => $e->getMessage(),
                     ]);
                 }
@@ -115,6 +127,66 @@ final class WooGatewayFinalizer
             'shop_id' => $shop->getKey(),
             'order_id' => (string) ($order['id'] ?? ''),
         ]);
+    }
+
+    /**
+     * Activate each cart-based subscription plan the order created (W17 B). The plugin stored the
+     * plans' public ids as the order meta `_lets_subscription_plan_ids`; per id we run the SAME
+     * activation the deposit/subscribe flow uses — PlanActivationService vaults the token to the
+     * plan, records the first cycle as a SUCCEEDED ledger row + CONTEXT_RECURRING consent, sets
+     * next_charge_at, and flips awaiting_first_payment → active. It's idempotent (no-ops unless the
+     * plan is awaiting), so push + verify-on-return + a replay activate exactly once.
+     *
+     * @param  array<string, mixed>  $order        the paid WC order (with meta_data)
+     * @param  array<string, mixed>  $payplusBody  the PayPlus token/transaction body
+     */
+    private function activateSubscriptionPlans(Shop $shop, string $orderId, array $order, array $payplusBody): void
+    {
+        $planIds = $this->subscriptionPlanIds($order);
+        if ($planIds === []) {
+            return;
+        }
+
+        $activator = app(PlanActivationService::class);
+        foreach ($planIds as $publicId) {
+            // Pass the plan public id so the resolver finds THIS plan, and the PayPlus body so the
+            // token vaults to it. Strip any `total_price` so PlanActivationService records the first
+            // cycle at the plan's stored per-cycle amount, NOT the whole cart total — never rely on
+            // the PayPlus body merely lacking that key.
+            $payload = $payplusBody;
+            unset($payload['total_price']);
+            $payload[WooCommercePaidOrderPlanResolver::KEY_PLAN_PUBLIC_ID] = $publicId;
+            $payload['id'] = $orderId;
+
+            $activator->activateFromPaidOrder($shop, $payload);
+        }
+    }
+
+    /**
+     * The subscription plan public ids the plugin stored on the order meta. Read back over the WC
+     * REST API, so the key is the NON-underscore `lets_subscription_plan_ids` (WooCommerce omits
+     * protected `_`-prefixed meta from REST order responses). WC returns meta_data as [{key, value}];
+     * the value may be a real array or a comma-joined string.
+     *
+     * @param  array<string, mixed>  $order
+     * @return list<string>
+     */
+    private function subscriptionPlanIds(array $order): array
+    {
+        foreach ((array) ($order['meta_data'] ?? []) as $meta) {
+            if (($meta['key'] ?? null) !== 'lets_subscription_plan_ids') {
+                continue;
+            }
+            $value = $meta['value'] ?? null;
+            if (is_array($value)) {
+                return array_values(array_filter(array_map(static fn ($v): string => trim((string) $v), $value), static fn (string $v): bool => $v !== ''));
+            }
+            if (is_string($value) && $value !== '') {
+                return array_values(array_filter(array_map('trim', explode(',', $value))));
+            }
+        }
+
+        return [];
     }
 
     /**

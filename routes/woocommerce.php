@@ -10,6 +10,7 @@ use App\Http\Controllers\WooCommerce\Storefront\WooGatewaySessionController;
 use App\Http\Controllers\WooCommerce\Storefront\WooInstallmentQuoteController;
 use App\Http\Controllers\WooCommerce\Storefront\WooStartInstallmentPlanController;
 use App\Http\Controllers\WooCommerce\Storefront\WooSubscribeController;
+use App\Http\Controllers\WooCommerce\Storefront\WooSubscriptionCatalogController;
 use App\Http\Controllers\WooCommerce\Storefront\WooGatewayVerifyController;
 use App\Http\Controllers\WooCommerce\Storefront\WooUpsellAcceptController;
 use App\Http\Controllers\WooCommerce\Storefront\WooUpsellDeclineController;
@@ -85,6 +86,20 @@ Route::middleware(VerifyWooCommerceSignature::class)
         */
         Route::post('/installments/subscribe', WooSubscribeController::class)
             ->name('woocommerce.installments.subscribe');
+
+        /*
+        |----------------------------------------------------------------------
+        | Cart-based subscription products (W17 Part B)
+        |----------------------------------------------------------------------
+        | The plugin marks WC products that have an active LETS subscription template
+        | and, on add-to-cart → normal checkout, the LETS gateway starts a recurring
+        | plan per the template. /flags = which products are subscriptions (bulk);
+        | /config = the resolved template + server-computed per-cycle price.
+        */
+        Route::post('/subscriptions/flags', [WooSubscriptionCatalogController::class, 'flags'])
+            ->name('woocommerce.subscriptions.flags');
+        Route::post('/subscriptions/config', [WooSubscriptionCatalogController::class, 'config'])
+            ->name('woocommerce.subscriptions.config');
 
         /*
         |----------------------------------------------------------------------

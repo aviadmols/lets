@@ -99,6 +99,24 @@ add_action('plugins_loaded', function () {
                 return array('result' => 'failure');
             }
 
+            // Cart-based subscriptions (W17 B): collect the line items the shopper chose to
+            // "subscribe". The SaaS starts a recurring plan per the merchant template for each;
+            // the first cycle is part of this order total (paid on this page).
+            $subscription_items = array();
+            foreach ($order->get_items() as $item) {
+                if (! method_exists($item, 'get_meta')) {
+                    continue;
+                }
+                $sub = $item->get_meta('_lets_subscription');
+                if (is_array($sub) && ! empty($sub['product_id'])) {
+                    $subscription_items[] = array(
+                        'product_id' => (string) $sub['product_id'],
+                        'variant_id' => (string) (isset($sub['variant_id']) ? $sub['variant_id'] : $sub['product_id']),
+                        'quantity'   => (int) $item->get_quantity(),
+                    );
+                }
+            }
+
             $body = array(
                 'order_id' => (string) $order->get_id(),
                 'amount' => (float) $order->get_total(),
@@ -109,6 +127,9 @@ add_action('plugins_loaded', function () {
                 'last_name' => (string) $order->get_billing_last_name(),
                 'email' => (string) $order->get_billing_email(),
                 'phone' => (string) $order->get_billing_phone(),
+                // The WC customer id (0 for a guest) — links the recurring plan to the shopper.
+                'customer_id' => (string) $order->get_customer_id(),
+                'subscription_items' => $subscription_items,
                 'return_url' => $this->get_return_url($order),
                 'cancel_url' => $order->get_cancel_order_url_raw(),
             );
@@ -170,6 +191,15 @@ add_action('plugins_loaded', function () {
             // reliable way to mark the order paid when PayPlus doesn't push the callback.
             if (! empty($result['page_request_uid'])) {
                 $order->update_meta_data('_lets_payplus_page_request_uid', (string) $result['page_request_uid']);
+                $order->save();
+            }
+
+            // The recurring plans the SaaS created for this order's subscription items — stored so
+            // the SaaS finalizer activates them when the order is marked paid (W17 B). NON-underscore
+            // key ON PURPOSE: the SaaS reads it back over the WC REST API, and WooCommerce omits
+            // protected `_`-prefixed meta from REST order responses (same rule as lets_plan_public_id).
+            if (! empty($result['subscription_plan_ids']) && is_array($result['subscription_plan_ids'])) {
+                $order->update_meta_data('lets_subscription_plan_ids', array_map('strval', $result['subscription_plan_ids']));
                 $order->save();
             }
 

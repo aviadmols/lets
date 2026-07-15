@@ -3,7 +3,7 @@
  * Plugin Name: LETS — PayPlus Subscriptions & Installments for WooCommerce
  * Plugin URI: https://app.lets.co.il
  * Description: Connect your WooCommerce store to LETS to offer PayPlus deposits + installments, recurring subscriptions, one-click post-purchase upsells, and optional full PayPlus checkout. Paste the connection token from your LETS dashboard to link this store.
- * Version: 0.9.2
+ * Version: 0.10.0
  * Author: LETS
  * Author URI: https://app.lets.co.il
  * Text Domain: lets-payplus
@@ -24,7 +24,7 @@ if (! defined('ABSPATH')) {
     exit; // never run outside WordPress
 }
 
-define('LETS_PAYPLUS_VERSION', '0.9.2');
+define('LETS_PAYPLUS_VERSION', '0.10.0');
 define('LETS_PAYPLUS_OPT', 'lets_payplus_connection'); // wp_option holding the decoded token
 define('LETS_PAYPLUS_FILE', __FILE__);
 define('LETS_PAYPLUS_URL', plugin_dir_url(__FILE__)); // base URL for assets
@@ -292,6 +292,11 @@ require_once __DIR__ . '/includes/class-lets-product-widget.php';
 
 // Storefront: the thank-you-page post-purchase upsell (W11 P4).
 require_once __DIR__ . '/includes/class-lets-thankyou.php';
+
+// Cart-based subscription products (W17 B). Loads AFTER the signer (its REST proxy + product-page
+// choice + cart hooks reuse lets_payplus_signed_post / lets_payplus_rest_permission) and BEFORE
+// the gateway (which reads the `_lets_subscription` line meta this file stamps).
+require_once __DIR__ . '/includes/class-lets-subscriptions.php';
 
 // Optional full PayPlus gateway for normal checkout ("mode B", W11 P4).
 require_once __DIR__ . '/includes/class-lets-gateway.php';

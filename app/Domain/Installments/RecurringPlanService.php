@@ -67,7 +67,98 @@ final class RecurringPlanService
         $intervalCount = max(1, (int) ($context['interval_count'] ?? 1));
         $currency = (string) $context['currency'];
 
-        $plan = DB::transaction(function () use ($shop, $context, $amount, $frequency, $intervalCount, $currency): InstallmentPlan {
+        $plan = $this->buildPlanRow($shop, $context, $amount, $frequency, $intervalCount, $currency);
+
+        // Request the FIRST-PAYMENT PayPlus page (reusing the deposit-page seam — the
+        // line item's amount is the first cycle's amount).
+        $invoice = $invoiceService->createDepositInvoice($plan, [
+            'title' => (string) $context['item_title'],
+            'deposit_amount' => $amount,
+            'quantity' => 1,
+            'variant_gid' => (string) $context['variant_gid'],
+        ]);
+
+        // Persist the page linkage so the paid-order callback can find + activate the plan.
+        $meta = (array) ($plan->meta ?? []);
+        $meta[DepositPlanService::META_DRAFT_GID] = $invoice['external_gid'];
+        $meta[DepositPlanService::META_DRAFT_ID] = $invoice['external_ref'];
+        $meta[DepositPlanService::META_INVOICE_URL] = $invoice['invoice_url'];
+        $plan->meta = $meta;
+        $plan->shopify_order_id = $invoice['external_ref'] !== '' ? $invoice['external_ref'] : $plan->shopify_order_id;
+        $plan->save();
+
+        Timeline::record(
+            kind: 'recurring_plan_created',
+            details: [
+                'plan_public_id' => $plan->public_id,
+                'amount' => $amount,
+                'frequency' => $frequency->value,
+                'interval_count' => $intervalCount,
+                'external_ref' => $invoice['external_ref'],
+            ],
+            planId: $plan->getKey(),
+            shopId: (int) $shop->getKey(),
+        );
+
+        return ['plan' => $plan, 'invoice_url' => $invoice['invoice_url']];
+    }
+
+    /**
+     * Create a recurring plan whose FIRST payment is collected EXTERNALLY (W17) — on the
+     * WooCommerce gateway checkout page for the whole cart, NOT on a second PayPlus page this
+     * service mints. Returns just the awaiting_first_payment plan; WooGatewayFinalizer activates it
+     * (PlanActivationService) once the gateway order is paid, using the plan's stored per-cycle
+     * amount. Same money law (server-trusted amount) + tenant law (shop_id forceFilled from $shop).
+     *
+     * @param  array{
+     *     product_gid: string, variant_gid: string, item_title?: string,
+     *     amount: float, frequency: BillingFrequency, interval_count?: int, currency: string,
+     *     customer_email?: ?string, customer_name?: ?string, customer_phone?: ?string,
+     *     external_customer_id?: ?string
+     * }  $context
+     */
+    public function createAwaitingExternalPayment(Shop $shop, array $context): InstallmentPlan
+    {
+        $amount = round((float) $context['amount'], 2);
+        if ($amount <= 0) {
+            throw new \RuntimeException('Recurring subscription amount must be positive.');
+        }
+
+        $plan = $this->buildPlanRow(
+            $shop,
+            $context,
+            $amount,
+            $context['frequency'],
+            max(1, (int) ($context['interval_count'] ?? 1)),
+            (string) $context['currency'],
+        );
+
+        Timeline::record(
+            kind: 'recurring_plan_created',
+            details: [
+                'plan_public_id' => $plan->public_id,
+                'amount' => $amount,
+                'frequency' => $context['frequency']->value,
+                'interval_count' => (int) $plan->interval_count,
+                'source' => 'wc_cart_gateway', // first payment on the WC checkout page
+            ],
+            planId: $plan->getKey(),
+            shopId: (int) $shop->getKey(),
+        );
+
+        return $plan;
+    }
+
+    /**
+     * Build the awaiting_first_payment recurring plan ROW (shared by create() and
+     * createAwaitingExternalPayment()). No page, no charge — money law: the amount is the
+     * server-trusted per-cycle price; tenant law: shop_id is forceFilled from $shop.
+     *
+     * @param  array<string, mixed>  $context
+     */
+    private function buildPlanRow(Shop $shop, array $context, float $amount, BillingFrequency $frequency, int $intervalCount, string $currency): InstallmentPlan
+    {
+        return DB::transaction(function () use ($shop, $context, $amount, $frequency, $intervalCount, $currency): InstallmentPlan {
             $plan = new InstallmentPlan;
             $plan->fill([
                 'customer_id' => null,
@@ -107,38 +198,5 @@ final class RecurringPlanService
 
             return $plan;
         });
-
-        // Request the FIRST-PAYMENT PayPlus page (reusing the deposit-page seam — the
-        // line item's amount is the first cycle's amount).
-        $invoice = $invoiceService->createDepositInvoice($plan, [
-            'title' => (string) $context['item_title'],
-            'deposit_amount' => $amount,
-            'quantity' => 1,
-            'variant_gid' => (string) $context['variant_gid'],
-        ]);
-
-        // Persist the page linkage so the paid-order callback can find + activate the plan.
-        $meta = (array) ($plan->meta ?? []);
-        $meta[DepositPlanService::META_DRAFT_GID] = $invoice['external_gid'];
-        $meta[DepositPlanService::META_DRAFT_ID] = $invoice['external_ref'];
-        $meta[DepositPlanService::META_INVOICE_URL] = $invoice['invoice_url'];
-        $plan->meta = $meta;
-        $plan->shopify_order_id = $invoice['external_ref'] !== '' ? $invoice['external_ref'] : $plan->shopify_order_id;
-        $plan->save();
-
-        Timeline::record(
-            kind: 'recurring_plan_created',
-            details: [
-                'plan_public_id' => $plan->public_id,
-                'amount' => $amount,
-                'frequency' => $frequency->value,
-                'interval_count' => $intervalCount,
-                'external_ref' => $invoice['external_ref'],
-            ],
-            planId: $plan->getKey(),
-            shopId: (int) $shop->getKey(),
-        );
-
-        return ['plan' => $plan, 'invoice_url' => $invoice['invoice_url']];
     }
 }

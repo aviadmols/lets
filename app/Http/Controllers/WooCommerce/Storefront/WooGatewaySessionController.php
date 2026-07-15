@@ -2,9 +2,14 @@
 
 namespace App\Http\Controllers\WooCommerce\Storefront;
 
+use App\Domain\Installments\ProductPriceResolver;
+use App\Domain\Installments\RecurringPlanService;
+use App\Domain\Products\ProductPlanTemplateResolver;
 use App\Models\Shop;
+use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
 use App\Services\PayPlus\PayPlusPageOptions;
+use App\Support\Tenant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\Request;
@@ -78,6 +83,15 @@ final class WooGatewaySessionController extends WooStorefrontController
 
         $currency = (string) ($request->input('currency') ?: config('payplus.currency', 'ILS'));
 
+        // Cart-based subscriptions (W17 B): for each subscription line item the plugin sent, create
+        // an awaiting_first_payment recurring plan per the merchant's TEMPLATE (cadence/discount
+        // server-resolved, never client). The first cycle is paid on THIS gateway page (part of the
+        // order total); WooGatewayFinalizer activates each plan when the order is marked paid.
+        $subscriptionItems = (array) $request->input('subscription_items', []);
+        $subscriptionPlanIds = $subscriptionItems !== []
+            ? $this->createSubscriptionPlans($shop, $subscriptionItems, $request, $currency)
+            : [];
+
         try {
             $result = PayPlusGatewayFactory::for($shop)->generateLink([
                 // The merchant's page options (language, installments, Bit/PayPal, receipts,
@@ -102,6 +116,10 @@ final class WooGatewaySessionController extends WooStorefrontController
                 // Ask PayPlus to call the callback on FAILURE too — otherwise a decline
                 // produces no server-side signal at all (no log, no admin email). W16.
                 'send_failure_callback' => true,
+                // A subscription's first payment MUST vault a reusable token so the recurring
+                // engine can bill future cycles — force it on regardless of the merchant setting.
+                // Later key wins over the PayPlusPageOptions spread above.
+                ...($subscriptionPlanIds !== [] ? ['create_token' => true] : []),
             ]);
         } catch (\Throwable $e) {
             Log::error('woocommerce.gateway.session_failed', ['shop_id' => $shop->getKey(), 'order_id' => $orderId, 'error' => $e->getMessage()]);
@@ -153,7 +171,84 @@ final class WooGatewaySessionController extends WooStorefrontController
         return response()->json([
             'redirect_url' => $pageLink,
             'page_request_uid' => $pageRequestUid,
+            // The recurring plans this order's subscription items created — the plugin stores them
+            // as order meta so WooGatewayFinalizer activates them when the order is marked paid.
+            'subscription_plan_ids' => $subscriptionPlanIds,
         ], Response::HTTP_OK);
+    }
+
+    /**
+     * Create an awaiting_first_payment recurring plan per subscription line item, per the merchant's
+     * TEMPLATE. Money-safe: the per-cycle amount is the server catalog price × the template discount
+     * × quantity (the client sends only product/variant ids + quantity). Tenant-safe: everything
+     * runs under Tenant::run($shop). Fail-closed: an item whose template/price vanished is skipped +
+     * logged, never guessed.
+     *
+     * @param  array<int, mixed>  $items
+     * @return list<string>  the created plans' public ids
+     */
+    private function createSubscriptionPlans(Shop $shop, array $items, Request $request, string $currency): array
+    {
+        return Tenant::run($shop, function () use ($shop, $items, $request, $currency): array {
+            $templates = app(ProductPlanTemplateResolver::class);
+            $prices = app(ProductPriceResolver::class);
+            $recurring = app(RecurringPlanService::class);
+
+            $name = trim(((string) $this->cleanString($request->input('first_name'))).' '.((string) $this->cleanString($request->input('last_name'))));
+            $externalCustomerId = (string) ($request->input('customer_id') ?? '');
+
+            $ids = [];
+            foreach ($items as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $productId = (string) ($item['product_id'] ?? '');
+                $variantId = (string) ($item['variant_id'] ?? '');
+                $variantId = $variantId !== '' ? $variantId : $productId;
+                $quantity = max(1, (int) ($item['quantity'] ?? 1));
+                if ($productId === '') {
+                    continue;
+                }
+
+                $template = $templates->resolveDefaultsFor($shop, $productId, $variantId);
+                if ($template === null) {
+                    Log::warning('woocommerce.gateway.subscription_no_template', ['shop_id' => $shop->getKey(), 'product_id' => $productId]);
+
+                    continue;
+                }
+
+                $resolved = $prices->resolve($productId, $variantId);
+                if ($resolved === null) {
+                    Log::warning('woocommerce.gateway.subscription_no_price', ['shop_id' => $shop->getKey(), 'variant_id' => $variantId]);
+
+                    continue;
+                }
+
+                $unitPrice = round((float) $resolved['variant']->price, 2);
+                $perCycle = round($template->discountedPrice($unitPrice) * $quantity, 2);
+                if ($perCycle <= 0) {
+                    continue;
+                }
+
+                $plan = $recurring->createAwaitingExternalPayment($shop, [
+                    'product_gid' => $productId,
+                    'variant_gid' => $variantId,
+                    'item_title' => $resolved['title'],
+                    'amount' => $perCycle,
+                    'frequency' => $template->billing_frequency ?? BillingFrequency::MONTHLY,
+                    'interval_count' => max(1, (int) $template->interval_count),
+                    'currency' => $currency,
+                    'customer_email' => $this->cleanEmail($request->input('email')),
+                    'customer_name' => $name !== '' ? $name : null,
+                    'customer_phone' => $this->cleanString($request->input('phone')),
+                    'external_customer_id' => $externalCustomerId !== '' ? $externalCustomerId : null,
+                ]);
+
+                $ids[] = (string) $plan->public_id;
+            }
+
+            return $ids;
+        });
     }
 
     /**

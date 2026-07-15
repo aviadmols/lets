@@ -44,7 +44,18 @@ final class ProductPlanTemplateResolver
      */
     public function resolveDefaultsFor(Shop $shop, string $productGid, ?string $variantGid = null): ?ProductSubscriptionPlan
     {
-        return Tenant::run($shop, function () use ($shop, $productGid, $variantGid): ?ProductSubscriptionPlan {
+        return $this->resolveActive($shop, $productGid, $variantGid, ProductSubscriptionPlan::TYPE_SUBSCRIPTION);
+    }
+
+    /**
+     * The active template of a given plan_type (subscription | one_time) for a product/variant.
+     * Variant-specific wins over product-wide; null when none. Tenant-safe (BelongsToShop). Used by
+     * the WooCommerce subscription catalog endpoint to answer "is this a subscription?" and "is a
+     * one-time purchase also offered?".
+     */
+    public function resolveActive(Shop $shop, string $productGid, ?string $variantGid, string $planType): ?ProductSubscriptionPlan
+    {
+        return Tenant::run($shop, function () use ($shop, $productGid, $variantGid, $planType): ?ProductSubscriptionPlan {
             $externalId = $this->externalId($productGid);
             if ($externalId === '') {
                 return null;
@@ -70,9 +81,9 @@ final class ProductPlanTemplateResolver
             }
 
             // Variant-specific template first (most specific), then the product-wide
-            // (null-variant) template. Only ACTIVE subscription templates qualify.
+            // (null-variant) template. Only ACTIVE templates of the requested type qualify.
             if ($variantId !== null) {
-                $variantSpecific = $this->activeSubscriptionQuery($product)
+                $variantSpecific = $this->activeTemplateQuery($product, $planType)
                     ->where('product_variant_id', $variantId)
                     ->first();
 
@@ -81,17 +92,17 @@ final class ProductPlanTemplateResolver
                 }
             }
 
-            return $this->activeSubscriptionQuery($product)
+            return $this->activeTemplateQuery($product, $planType)
                 ->whereNull('product_variant_id')
                 ->first();
         });
     }
 
-    /** Active SUBSCRIPTION templates for a product, lowest position first. */
-    private function activeSubscriptionQuery(Product $product)
+    /** Active templates of a plan_type for a product, lowest position first. */
+    private function activeTemplateQuery(Product $product, string $planType)
     {
         return $product->subscriptionPlans()
-            ->where('plan_type', ProductSubscriptionPlan::TYPE_SUBSCRIPTION)
+            ->where('plan_type', $planType)
             ->where('status', ProductSubscriptionPlan::STATUS_ACTIVE)
             ->orderBy('position')
             ->orderBy('id');
