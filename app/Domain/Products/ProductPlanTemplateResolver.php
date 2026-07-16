@@ -98,6 +98,50 @@ final class ProductPlanTemplateResolver
         });
     }
 
+    /**
+     * Does a DRAFT subscription template exist for this product/variant? A draft plan is invisible
+     * to the storefront + /flags + /config (only ACTIVE templates qualify), so a merchant who
+     * defined a plan but never activated it sees "no subscription detected" and is confused. This
+     * lets the caller say precisely "you have a plan — activate it" instead. Tenant-safe
+     * (BelongsToShop bound to $shop); variant-specific OR product-wide draft both count.
+     */
+    public function hasDraftSubscription(Shop $shop, string $productGid, ?string $variantGid = null): bool
+    {
+        return Tenant::run($shop, function () use ($shop, $productGid, $variantGid): bool {
+            $externalId = $this->externalId($productGid);
+            if ($externalId === '') {
+                return false;
+            }
+
+            $product = Product::query()
+                ->where('source', $shop->platform ?? Product::SOURCE_SHOPIFY)
+                ->where('external_id', $externalId)
+                ->first();
+
+            if ($product === null) {
+                return false;
+            }
+
+            $draftQuery = $product->subscriptionPlans()
+                ->where('plan_type', ProductSubscriptionPlan::TYPE_SUBSCRIPTION)
+                ->where('status', ProductSubscriptionPlan::STATUS_DRAFT);
+
+            if ($variantGid !== null && $variantGid !== '') {
+                $variantId = $product->variants()
+                    ->where('external_variant_id', $this->externalId($variantGid))
+                    ->value('id');
+                if ($variantId !== null) {
+                    // A draft on this variant OR a product-wide (null-variant) draft.
+                    $draftQuery->where(static function ($q) use ($variantId): void {
+                        $q->where('product_variant_id', $variantId)->orWhereNull('product_variant_id');
+                    });
+                }
+            }
+
+            return $draftQuery->exists();
+        });
+    }
+
     /** Active templates of a plan_type for a product, lowest position first. */
     private function activeTemplateQuery(Product $product, string $planType)
     {

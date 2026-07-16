@@ -86,10 +86,13 @@ final class WooSubscriptionCatalogController extends WooStorefrontController
             $oneTime = $this->templates->resolveActive($shop, $productId, $variantId, ProductSubscriptionPlan::TYPE_ONE_TIME);
 
             if ($subscription === null) {
-                // No subscription plan for this product — the plugin shows the normal product only.
+                // No ACTIVE subscription plan. Distinguish "a plan exists but is still Draft" (the
+                // merchant just needs to activate it) from "no plan at all" — so the plugin's
+                // product-edit panel can give the precise remedy instead of "define one".
                 return response()->json([
                     'ok' => true,
                     'has_subscription' => false,
+                    'draft_subscription' => $this->templates->hasDraftSubscription($shop, $productId, $variantId),
                     'one_time_allowed' => true,
                     'subscription' => null,
                 ]);

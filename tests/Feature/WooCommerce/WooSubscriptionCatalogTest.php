@@ -90,8 +90,33 @@ final class WooSubscriptionCatalogTest extends TestCase
         $this->signedPost($key, $secret, self::CONFIG, ['product_id' => '777'])
             ->assertOk()
             ->assertJsonPath('has_subscription', false)
+            ->assertJsonPath('draft_subscription', false)
             ->assertJsonPath('one_time_allowed', true)
             ->assertJsonPath('subscription', null);
+    }
+
+    public function test_config_reports_a_draft_subscription_so_the_merchant_can_activate_it(): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop('sub-draft.example.com');
+
+        // A subscription plan is DEFINED but left in Draft — invisible to /flags + the storefront,
+        // so the product-edit panel must be able to say "activate it" instead of "define one".
+        Tenant::run($shop, function () use ($shop): void {
+            $product = $this->makePlainProduct($shop, '601', 100.0);
+            $plan = $this->makeTemplate($shop, $product, ProductSubscriptionPlan::TYPE_SUBSCRIPTION);
+            $plan->forceFill(['status' => ProductSubscriptionPlan::STATUS_DRAFT])->save();
+        });
+
+        $this->signedPost($key, $secret, self::CONFIG, ['product_id' => '601', 'variant_id' => '601'])
+            ->assertOk()
+            ->assertJsonPath('has_subscription', false)   // draft ≠ active — still not sellable
+            ->assertJsonPath('draft_subscription', true)  // …but the merchant just needs to activate it
+            ->assertJsonPath('subscription', null);
+
+        // A draft also does NOT flip the products-list marker (only active templates count).
+        $this->signedPost($key, $secret, self::FLAGS, ['product_ids' => ['601']])
+            ->assertOk()
+            ->assertJsonPath('flags.601', false);
     }
 
     public function test_another_shops_product_is_invisible(): void

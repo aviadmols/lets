@@ -362,8 +362,14 @@ add_action('add_meta_boxes', function () {
 
 function lets_payplus_render_product_metabox($post)
 {
+    lets_payplus_metabox_styles();
+    $he = lets_payplus_is_he();
+
     if (lets_payplus_connection() === null) {
-        echo '<p>' . esc_html__('Connect this store to LETS to sell subscriptions.', 'lets-payplus') . '</p>';
+        echo lets_payplus_mb_card('neutral', '🔌',
+            $he ? 'לא מחובר' : 'Not connected',
+            $he ? 'חבר את החנות ל-LETS כדי למכור מנויים.' : 'Connect this store to LETS to sell subscriptions.'
+        );
 
         return;
     }
@@ -374,55 +380,137 @@ function lets_payplus_render_product_metabox($post)
 
     // External/Affiliate + Grouped have no price/stock/add-to-cart button → can't be sold or subscribed.
     if (in_array($type, array('external', 'grouped'), true)) {
-        echo '<div class="notice notice-warning inline"><p><strong>'
-            . esc_html__('This product type can’t be sold or subscribed.', 'lets-payplus') . '</strong><br>'
-            . esc_html__('Switch it to “Simple product” (in the Product data box) so it has a price, stock and an add-to-cart button — then define a plan in the LETS app.', 'lets-payplus')
-            . '</p></div>';
-        lets_payplus_metabox_app_link();
+        echo lets_payplus_mb_card('warn', '⚠️',
+            $he ? 'סוג מוצר לא נתמך' : "Can’t be sold as a subscription",
+            $he
+                ? 'מוצר מסוג חיצוני/שותפים או מקובץ אין לו מחיר, מלאי או כפתור הוספה לסל. החלף ל״מוצר פשוט״ (בתיבת נתוני המוצר) ואז הגדר תוכנית ב-LETS.'
+                : 'External/Affiliate & Grouped products have no price, stock or add-to-cart button. Switch it to a “Simple product” (in the Product data box), then define a plan in LETS.',
+            lets_payplus_mb_app_link($he ? 'פתח מוצרים ב-LETS →' : 'Open LETS products →')
+        );
 
         return;
     }
 
     $config = lets_payplus_sub_config($product_id, $product_id);
 
+    // 1) An ACTIVE plan — recognized.
     if (is_array($config) && ! empty($config['has_subscription']) && ! empty($config['subscription'])) {
         $sub = $config['subscription'];
-        $line = lets_payplus_cadence_label($sub['billing_frequency'], $sub['interval_count']);
+        $cadence = lets_payplus_cadence_label($sub['billing_frequency'], $sub['interval_count']);
         if (('percent' === ($sub['discount_type'] ?? '')) && (float) $sub['discount_value'] > 0) {
-            /* translators: %s: percent discount. */
-            $line .= ' · ' . sprintf(__('%s%% off', 'lets-payplus'), rtrim(rtrim((string) (float) $sub['discount_value'], '0'), '.'));
+            $pct = rtrim(rtrim((string) (float) $sub['discount_value'], '0'), '.');
+            $cadence .= ' · ' . ($he ? ($pct . '% הנחה') : ($pct . '% off'));
         }
+        $price = function_exists('wc_price') ? wc_price((float) $sub['price_per_cycle']) : esc_html((string) $sub['price_per_cycle']);
 
-        echo '<p><strong style="color:#1a7f37">✅ ' . esc_html__('Recognized as a LETS subscription', 'lets-payplus') . '</strong></p>';
+        $body = '';
         if (! empty($sub['plan_name'])) {
-            echo '<p><strong>' . esc_html($sub['plan_name']) . '</strong></p>';
+            $body .= '<div class="lets-mb__name">' . esc_html($sub['plan_name']) . '</div>';
         }
-        echo '<p>' . esc_html($line) . '<br>';
-        echo function_exists('wc_price') ? wp_kses_post(wc_price((float) $sub['price_per_cycle'])) : esc_html((string) $sub['price_per_cycle']);
-        echo ' ' . esc_html__('per cycle', 'lets-payplus') . '</p>';
-        echo '<p class="description">' . esc_html__('Shoppers see a “Subscribe” option on this product. Edit the plan in the LETS app.', 'lets-payplus') . '</p>';
-    } else {
-        echo '<div class="notice notice-info inline"><p>'
-            . esc_html__('No LETS subscription plan detected for this product.', 'lets-payplus') . '</p></div>';
-        echo '<p>' . esc_html__('To sell it as a subscription:', 'lets-payplus') . '</p>';
-        echo '<ol style="margin:0;padding-inline-start:18px">';
-        echo '<li>' . esc_html__('Sync this product to LETS (Refresh products in the LETS dashboard).', 'lets-payplus') . '</li>';
-        echo '<li>' . esc_html__('Define AND activate a subscription plan for it in the LETS app.', 'lets-payplus') . '</li>';
-        echo '</ol>';
+        $body .= '<div class="lets-mb__meta">' . esc_html($cadence) . '</div>';
+        $body .= '<div class="lets-mb__price">' . wp_kses_post($price)
+            . ' <span class="lets-mb__muted">' . ($he ? 'לחיוב' : 'per cycle') . '</span></div>';
+        $body .= '<p class="lets-mb__hint">' . ($he
+            ? 'הלקוחות רואים אפשרות ״הרשמה למנוי״ במוצר.'
+            : 'Shoppers see a “Subscribe” option on this product.') . '</p>';
+
+        echo lets_payplus_mb_card('ok', '✓',
+            $he ? 'מנוי פעיל' : 'Active subscription',
+            $body,
+            lets_payplus_mb_app_link($he ? 'ערוך ב-LETS →' : 'Edit in LETS →'),
+            true // body is pre-built HTML
+        );
+
+        return;
     }
 
-    lets_payplus_metabox_app_link();
+    // 2) A plan exists but is still DRAFT — the merchant just needs to activate it.
+    if (is_array($config) && ! empty($config['draft_subscription'])) {
+        echo lets_payplus_mb_card('draft', '⏳',
+            $he ? 'כמעט מוכן' : 'Almost ready',
+            $he
+                ? 'הגדרת תוכנית מנוי, אבל היא עדיין בטיוטה. הפעל אותה ב-LETS כדי שהמוצר יימכר כמנוי.'
+                : 'A subscription plan is defined, but it’s still a Draft. Activate it in LETS to start selling this as a subscription.',
+            lets_payplus_mb_app_link($he ? 'הפעל את התוכנית ב-LETS →' : 'Activate the plan in LETS →')
+        );
+
+        return;
+    }
+
+    // 3) No plan at all.
+    echo lets_payplus_mb_card('neutral', '↻',
+        $he ? 'לא מוגדר כמנוי' : 'Not a subscription yet',
+        $he
+            ? 'כדי למכור אותו כמנוי: ודא שהמוצר מסונכרן ל-LETS, ואז הגדר והפעל עבורו תוכנית מנוי באפליקציה.'
+            : 'To sell it as a subscription: make sure it’s synced to LETS, then define and activate a plan for it in the app.',
+        lets_payplus_mb_app_link($he ? 'פתח מוצרים ב-LETS →' : 'Open LETS products →')
+    );
 }
 
-/** A link to the LETS app products screen (origin derived from the stored connection). */
-function lets_payplus_metabox_app_link()
+/**
+ * A compact, styled meta-box card. $body is escaped as plain text unless $body_is_html (the caller
+ * pre-built + escaped its own inner markup, e.g. the price line). $footer is trusted HTML (the app link).
+ */
+function lets_payplus_mb_card($variant, $icon, $title, $body, $footer = '', $body_is_html = false)
+{
+    $variant = in_array($variant, array('ok', 'draft', 'warn', 'neutral'), true) ? $variant : 'neutral';
+    $body_html = $body_is_html ? $body : ('<p class="lets-mb__text">' . esc_html($body) . '</p>');
+
+    return '<div class="lets-mb lets-mb--' . esc_attr($variant) . '">'
+        . '<div class="lets-mb__head">'
+        . '<span class="lets-mb__badge" aria-hidden="true">' . esc_html($icon) . '</span>'
+        . '<span class="lets-mb__title">' . esc_html($title) . '</span>'
+        . '</div>'
+        . '<div class="lets-mb__body">' . $body_html . '</div>'
+        . ($footer !== '' ? ('<div class="lets-mb__foot">' . $footer . '</div>') : '')
+        . '</div>';
+}
+
+/** A link to the LETS app products screen (origin derived from the stored connection). Returns ''. */
+function lets_payplus_mb_app_link($label)
 {
     $conn = lets_payplus_connection();
     $origin = is_array($conn) ? lets_payplus_saas_origin($conn) : '';
-    if ($origin !== '') {
-        echo '<p style="margin-top:10px"><a href="' . esc_url($origin . '/admin/products') . '" target="_blank" rel="noopener">'
-            . esc_html__('Open LETS products →', 'lets-payplus') . '</a></p>';
+    if ($origin === '') {
+        return '';
     }
+
+    return '<a class="lets-mb__link" href="' . esc_url($origin . '/admin/products') . '" target="_blank" rel="noopener">'
+        . esc_html($label) . '</a>';
+}
+
+/** Scoped styles for the product-edit meta box card — printed once per request. */
+function lets_payplus_metabox_styles()
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+    ?>
+<style>
+.lets-mb{border:1px solid #e2e4e7;border-inline-start-width:3px;border-radius:8px;padding:12px 12px 10px;background:#fff;line-height:1.5}
+.lets-mb__head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.lets-mb__badge{flex:0 0 auto;width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:13px;line-height:1;color:#fff;background:#8c8f94}
+.lets-mb__title{font-weight:600;font-size:13px}
+.lets-mb__body{font-size:12.5px;color:#3c434a}
+.lets-mb__text{margin:0}
+.lets-mb__name{font-weight:600;font-size:13px;color:#1d2327;margin-bottom:2px}
+.lets-mb__meta{color:#50575e}
+.lets-mb__price{margin-top:2px;font-weight:600;color:#1d2327}
+.lets-mb__muted,.lets-mb__hint{color:#787c82;font-weight:400}
+.lets-mb__hint{margin:6px 0 0;font-size:12px}
+.lets-mb__foot{margin-top:10px}
+.lets-mb__link{display:inline-block;font-size:12.5px;font-weight:600;text-decoration:none}
+.lets-mb--ok{border-inline-start-color:#1a7f37;background:#f4faf6}
+.lets-mb--ok .lets-mb__badge{background:#1a7f37}
+.lets-mb--draft{border-inline-start-color:#bf8700;background:#fdfaf0}
+.lets-mb--draft .lets-mb__badge{background:#bf8700}
+.lets-mb--warn{border-inline-start-color:#d63638;background:#fdf5f5}
+.lets-mb--warn .lets-mb__badge{background:#d63638}
+.lets-mb--neutral{border-inline-start-color:#8c8f94}
+</style>
+<?php
 }
 
 /** Register the (variable-product) subscription widget script. */
