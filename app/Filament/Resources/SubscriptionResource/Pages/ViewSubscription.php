@@ -15,6 +15,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Services\ChargeOutcome;
 use App\Models\MerchantMailSettings;
 use App\Support\EmailPreviewRenderer;
+use App\Support\Tenant;
 use App\Support\Ui\EventPresenter;
 use App\Support\Ui\Money;
 use Filament\Actions;
@@ -23,6 +24,8 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\Log;
+use Livewire\Attributes\Locked;
 
 /**
  * Subscription detail — the single plan's full record (docs/ux/30-subscriptions.md):
@@ -43,12 +46,52 @@ class ViewSubscription extends Page
     /** Cap the timeline/ledger feed length on the detail page. */
     public const FEED_LIMIT = 50;
 
+    /**
+     * #[Locked] — the record may NEVER be re-pointed from the browser. Livewire re-hydrates a
+     * model property via Model::newQueryForRestoration(), which uses newQueryWithoutScopes() and
+     * therefore BYPASSES the BelongsToShop tenant scope; the page's only re-check asks "is a shop
+     * bound?", never *whose* record it is. Without this lock a tampered snapshot could load — and
+     * act on (pause/cancel/charge) — another shop's plan. Tenant-safety is a release blocker.
+     */
+    #[Locked]
     public \App\Models\InstallmentPlan $record;
 
-    public function mount(int|string $record): void
+    /**
+     * NOTE the `InstallmentPlan|...` in the signature — it is load-bearing.
+     *
+     * Livewire's Drawer\ImplicitRouteBinding::resolveAllParameters() resolves the {record} route
+     * param against this page's TYPED public $record property and MERGES those props OVER the
+     * mount arguments — so mount() is handed a fully resolved MODEL, not the raw id. The previous
+     * `int|string $record` signature therefore coerced that model to a string via
+     * Model::__toString() (→ its JSON), and findOrFail() went looking for a primary key of
+     * '{"id":1,...}' — which never matches. The result: this page 404'd for EVERY plan, for every
+     * merchant, since it was written. No test rendered it, so CI stayed green.
+     *
+     * We still re-resolve through the resource's tenant-scoped query rather than trusting the
+     * route-bound instance — defence in depth, and the same BelongsToShop guarantee the list uses.
+     */
+    public function mount(\App\Models\InstallmentPlan|int|string $record): void
     {
-        // Resolve through the resource's tenant-scoped query (BelongsToShop).
-        $this->record = SubscriptionResource::getEloquentQuery()->findOrFail($record);
+        $key = $record instanceof \App\Models\InstallmentPlan ? $record->getKey() : $record;
+
+        $plan = SubscriptionResource::getEloquentQuery()->find($key);
+
+        // A missing/foreign id resolves to null (the global scope fails closed — it never returns
+        // another shop's row). Bounce to the list with a warning instead of dead-ending, mirroring
+        // FlowBuilder::mount()/ProductDetail::mount(): "never a bare 404/leak".
+        if ($plan === null) {
+            Log::warning('admin.subscription.not_found', [
+                'record' => (string) $key,
+                'shop_id' => Tenant::id(),
+                'tenant_bound' => Tenant::check(),
+            ]);
+            Notification::make()->title(__('subscriptions.detail.missing'))->warning()->send();
+            $this->redirect(SubscriptionResource::getUrl());
+
+            return;
+        }
+
+        $this->record = $plan;
     }
 
     public function getTitle(): string|Htmlable

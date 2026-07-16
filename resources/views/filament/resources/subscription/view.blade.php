@@ -11,6 +11,11 @@
             <div class="rc-row rc-row--between">
                 <div class="rc-stack rc-stack--tight">
                     <span class="rc-section__title">PLN-{{ $record->getKey() }}</span>
+                    {{-- Who this plan belongs to — the detail page showed no customer at all. --}}
+                    <span class="rc-kv">
+                        <span class="rc-kv__k">{{ __('subscriptions.detail.customer') }}</span>
+                        <span class="rc-kv__v">{{ $record->customerLabel() }}</span>
+                    </span>
                     <span class="rc-muted rc-ltr">{{ $this->summaryLine() }}</span>
                 </div>
                 <x-rc.badge :status="$record->status->value" dot />

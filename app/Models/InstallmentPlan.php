@@ -84,6 +84,37 @@ class InstallmentPlan extends Model
         return $this->external_order_id ?: $this->shopify_order_id;
     }
 
+    /**
+     * The platform-neutral external CUSTOMER id — the sibling of externalOrderId(). WooCommerce
+     * fills external_customer_id; the legacy Shopify column is the fallback.
+     */
+    public function externalCustomerId(): ?string
+    {
+        return $this->external_customer_id ?: $this->shopify_customer_id;
+    }
+
+    /**
+     * A HUMAN label for the plan's customer. There is no Customer model/table (customers are
+     * derived from plans), so the plan row itself is the source of truth: customer_name is captured
+     * at checkout on BOTH WooCommerce paths and by the Shopify order sync.
+     *
+     * Precedence mirrors PortalSignedUrlService's identity chain (name → email → external id):
+     * a WooCommerce plan often has NO external_customer_id at all (the subscribe path never sends
+     * one, and a guest checkout has none), which is exactly why the list — keyed on
+     * shopify_customer_id — showed an empty "Customer" cell while the name sat in the same row.
+     * Whitespace-only values are treated as absent (mirrors Mail\TemplateRenderer::nonEmpty).
+     */
+    public function customerLabel(): string
+    {
+        foreach ([$this->customer_name, $this->customer_email, $this->externalCustomerId()] as $candidate) {
+            if (is_string($candidate) && trim($candidate) !== '') {
+                return trim($candidate);
+            }
+        }
+
+        return __('common.none');
+    }
+
     // === Relations ===
 
     public function payments(): HasMany

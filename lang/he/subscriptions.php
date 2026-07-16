@@ -26,6 +26,8 @@ return [
     ],
 
     'detail' => [
+        'missing' => 'המנוי הזה לא קיים יותר, או שייך לחנות אחרת.',
+        'customer' => 'לקוח',
         'remaining_of_total' => 'יתרה :balance מתוך :total',
         'every_frequency' => 'כל :frequency',
         'plan_items' => 'פריטי התוכנית',

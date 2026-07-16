@@ -63,11 +63,23 @@ class SubscriptionResource extends Resource
                     ->prefix('PLN-')
                     ->sortable(),
 
-                Tables\Columns\TextColumn::make('shopify_customer_id')
+                // The customer's NAME — not the raw id. `shopify_customer_id` is NULL for a
+                // WooCommerce plan (the subscribe path sends no external customer id, and a guest
+                // has none), so this column rendered an empty cell even though customer_name sat in
+                // the same row. customerLabel() resolves name → email → external id.
+                Tables\Columns\TextColumn::make('customer_name')
                     ->label(__('subscriptions.list.col.customer'))
-                    ->placeholder(__('common.none'))
-                    ->searchable()
-                    ->weight('semibold'),
+                    ->state(fn (InstallmentPlan $record): string => $record->customerLabel())
+                    ->description(fn (InstallmentPlan $record): ?string => $record->customer_email)
+                    ->weight('semibold')
+                    // The placeholder already promises "Search customer", so search every identity
+                    // field the label can fall back to — not just the one column.
+                    ->searchable(query: fn (Builder $query, string $search): Builder => $query
+                        ->where(fn (Builder $q): Builder => $q
+                            ->where('customer_name', 'like', "%{$search}%")
+                            ->orWhere('customer_email', 'like', "%{$search}%")
+                            ->orWhere('external_customer_id', 'like', "%{$search}%")
+                            ->orWhere('shopify_customer_id', 'like', "%{$search}%"))),
 
                 Tables\Columns\TextColumn::make('plan_kind')
                     ->label(__('subscriptions.list.col.kind'))

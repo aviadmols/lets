@@ -26,6 +26,8 @@ return [
     ],
 
     'detail' => [
+        'missing' => 'That subscription no longer exists, or it belongs to another store.',
+        'customer' => 'Customer',
         'remaining_of_total' => 'Remaining :balance of :total',
         'every_frequency' => 'Every :frequency',
         'plan_items' => 'Plan items',
