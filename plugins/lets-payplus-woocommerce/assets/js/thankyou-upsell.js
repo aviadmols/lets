@@ -56,14 +56,21 @@
     // calls these; onAccept resolves truthy on a real charge, false/throws → the renderer's error
     // state (the original order is untouched).
     var handlers = {
-      onAccept: function () {
+      onAccept: function (vm) {
         return post(cfg.restAccept, {
           order_id: cfg.orderId,
           order_key: cfg.orderKey,
           flow_id: offer.flow_id,
           offer_id: offer.offer_id
         }).then(function (res) {
-          return !!(res.ok && res.data && res.data.charged);
+          var charged = !!(res.ok && res.data && res.data.charged);
+          // Give the shopper a SPECIFIC reason when the failure is "no saved card" (the store didn't
+          // save the card at checkout), instead of the generic error. The renderer shows
+          // vm.content.error_text on failure, so tailor it before resolving false.
+          if (!charged && res.data && res.data.result === 'no_payment_method' && vm && vm.content && i18n.no_card) {
+            vm.content.error_text = i18n.no_card;
+          }
+          return charged;
         });
       },
       onDecline: function () {

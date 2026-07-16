@@ -223,11 +223,15 @@ final class WooCommerceGatewayTest extends TestCase
         Http::fake([
             '*/PaymentPages/ipn' => Http::response([
                 'results' => ['status' => 'success'],
-                'data' => ['transaction' => ['status_code' => '000', 'token_uid' => 'tok-verify', 'customer_uid' => 'cu-9']],
+                'data' => ['transaction' => [
+                    'uid' => 'txn-v1', 'status_code' => '000', 'amount' => '1.00', 'approval_number' => 'APP123',
+                    'four_digits' => '4242', 'token_uid' => 'tok-verify', 'customer_uid' => 'cu-9',
+                ]],
             ], 200),
             '*/wp-json/wc/v3/orders/8080' => Http::response([
                 'id' => 8080, 'status' => 'processing', 'customer_id' => 42, 'billing' => ['email' => 'b@e.com'],
             ], 200),
+            '*/wp-json/wc/v3/orders/8080/notes' => Http::response(['id' => 1, 'note' => 'ok'], 201),
         ]);
         [$shop, $key, $secret] = $this->connectedShop('gw-verify.example.com');
 
@@ -235,8 +239,18 @@ final class WooCommerceGatewayTest extends TestCase
             'order_id' => '8080', 'page_request_uid' => 'PRU-1',
         ])->assertOk()->assertJsonPath('paid', true);
 
+        // W18: the IPN lookup MUST send the uid under PayPlus's `payment_request_uid` key (not the
+        // generateLink `page_request_uid` name) — the bug that made verify-on-return always error.
+        Http::assertSent(fn (HttpRequest $req): bool => str_contains($req->url(), '/PaymentPages/ipn')
+            && ($req->data()['payment_request_uid'] ?? null) === 'PRU-1');
+
         Http::assertSent(fn (HttpRequest $req): bool => str_contains($req->url(), '/wp-json/wc/v3/orders/8080')
             && $req->method() === 'PUT' && ($req->data()['set_paid'] ?? null) === true);
+
+        // W18: a merchant-visible PayPlus confirmation NOTE is recorded, carrying the transaction id.
+        Http::assertSent(fn (HttpRequest $req): bool => str_contains($req->url(), '/wp-json/wc/v3/orders/8080/notes')
+            && $req->method() === 'POST' && str_contains((string) ($req->data()['note'] ?? ''), 'txn-v1'));
+
         Tenant::run($shop, function (): void {
             $method = InstallmentPaymentMethod::sole();
             $this->assertSame('tok-verify', $method->payplus_card_token_uid);

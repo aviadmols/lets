@@ -23,8 +23,16 @@ use Throwable;
 final class PayPlusPageStatus
 {
     // === CONSTANTS ===
-    /** PayPlus IPN: transaction data for a payment-page request. */
+    /** PayPlus IPN: pull the transaction result for a hosted payment-page request. */
     private const PATH_IPN = '/PaymentPages/ipn';
+
+    /**
+     * PayPlus's /PaymentPages/ipn expects the page request id under `payment_request_uid` — which is
+     * the SAME value generateLink returns as `page_request_uid`. Sending it under `page_request_uid`
+     * (the generateLink name) makes PayPlus see no valid identifier and return a validation-error
+     * envelope ({results:{status:error}, data:{}}) — the W18 verify-on-return bug.
+     */
+    private const IPN_UID_KEY = 'payment_request_uid';
 
     /** Status codes PayPlus uses for an approved transaction (mirror the gateway callback). */
     private const SUCCESS_CODES = ['000', '0', 'approved', 'success'];
@@ -85,7 +93,7 @@ final class PayPlusPageStatus
             ])
                 ->timeout($this->timeout)
                 ->acceptJson()
-                ->post($this->endpoint(self::PATH_IPN), ['page_request_uid' => $pageRequestUid]);
+                ->post($this->endpoint(self::PATH_IPN), [self::IPN_UID_KEY => $pageRequestUid]);
         } catch (Throwable $e) {
             Log::warning('payplus.page_status.transport_error', ['exception' => $e::class]);
 
@@ -117,6 +125,10 @@ final class PayPlusPageStatus
         Log::info('payplus.page_status.checked', [
             'status_code' => $statusCode,
             'approved' => in_array($statusCode, self::SUCCESS_CODES, true),
+            // PayPlus's own envelope status/reason — makes any rejection self-explanatory (W18).
+            'results_status' => data_get($body, 'results.status'),
+            'results_code' => data_get($body, 'results.code'),
+            'results_description' => data_get($body, 'results.description'),
             'top_level_keys' => array_keys($body),
             'data_keys' => is_array($d = data_get($body, 'data')) ? array_keys($d) : null,
             'transaction_keys' => is_array($t = data_get($body, 'data.transaction')) ? array_keys($t) : null,

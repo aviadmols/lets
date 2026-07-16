@@ -97,6 +97,25 @@ final class WooCommerceClient
     }
 
     /**
+     * POST /wp-json/wc/v3/orders/{id}/notes → add an order note (W18). A private note (default) is
+     * visible to the merchant in the WC admin "Order notes" panel; a customer note also emails/shows
+     * to the shopper. Used to record the PayPlus confirmation (transaction id / approval / amount) on
+     * a paid gateway order so the merchant can see what PayPlus returned.
+     *
+     * @return array<string, mixed>
+     */
+    public function addOrderNote(string $id, string $note, bool $customerNote = false): array
+    {
+        $response = $this->post('orders/'.rawurlencode($id).'/notes', [
+            'note' => $note,
+            'customer_note' => $customerNote,
+        ]);
+        $response->throw();
+
+        return (array) $response->json();
+    }
+
+    /**
      * Lightweight authenticated health check: GET /products?per_page=1. Proves the store
      * is reachable AND the saved consumer key/secret are accepted — exactly what the
      * product sync + charges need. Never throws: a transport failure (DNS/timeout/TLS)

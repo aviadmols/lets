@@ -68,7 +68,9 @@ function lets_payplus_signed_post($path, $body)
     if ($code < 200 || $code >= 300) {
         $msg = is_array($decoded) && ! empty($decoded['error']) ? $decoded['error'] : ('HTTP ' . $code);
 
-        return new WP_Error('lets_saas_error', $msg, array('status' => $code));
+        // Carry the decoded SaaS body so callers can read business fields (e.g. the upsell `result`)
+        // even on a non-2xx — otherwise a 422 collapses to a bare "HTTP 422".
+        return new WP_Error('lets_saas_error', $msg, array('status' => $code, 'body' => is_array($decoded) ? $decoded : array()));
     }
 
     return is_array($decoded) ? $decoded : array();
@@ -113,7 +115,9 @@ function lets_payplus_signed_get($path, $query)
     if ($code < 200 || $code >= 300) {
         $msg = is_array($decoded) && ! empty($decoded['error']) ? $decoded['error'] : ('HTTP ' . $code);
 
-        return new WP_Error('lets_saas_error', $msg, array('status' => $code));
+        // Carry the decoded SaaS body so callers can read business fields (e.g. the upsell `result`)
+        // even on a non-2xx — otherwise a 422 collapses to a bare "HTTP 422".
+        return new WP_Error('lets_saas_error', $msg, array('status' => $code, 'body' => is_array($decoded) ? $decoded : array()));
     }
 
     return is_array($decoded) ? $decoded : array();
@@ -203,9 +207,13 @@ function lets_payplus_knobs(WP_REST_Request $request)
 function lets_payplus_rest_response($result)
 {
     if (is_wp_error($result)) {
-        $status = (int) ($result->get_error_data()['status'] ?? 502);
+        $data = $result->get_error_data();
+        $status = (int) ($data['status'] ?? 502);
+        // Pass the SaaS body through (so the browser sees `result` etc.), plus the error message.
+        $body = (is_array($data) && isset($data['body']) && is_array($data['body'])) ? $data['body'] : array();
+        $body['error'] = $result->get_error_message();
 
-        return new WP_REST_Response(array('error' => $result->get_error_message()), $status >= 400 ? $status : 502);
+        return new WP_REST_Response($body, $status >= 400 ? $status : 502);
     }
 
     return new WP_REST_Response($result, 200);

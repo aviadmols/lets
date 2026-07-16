@@ -147,17 +147,22 @@ function lets_payplus_rest_upsell_decline(WP_REST_Request $request)
 }
 
 /**
- * VERIFY-ON-RETURN: confirm a still-pending gateway payment directly with PayPlus, so the order
- * is marked paid + the card vaulted even when PayPlus never pushed refURL_callback (which left
- * orders stuck "pending"). Runs at priority 4 — BEFORE the upsell mount (5) — so the token exists
- * by the time the offer is shown. Best-effort + server-side; a failure never disrupts the page.
+ * VERIFY-ON-RETURN: confirm a still-pending gateway payment directly with PayPlus, so the order is
+ * marked paid + the card vaulted even when PayPlus never pushed refURL_callback (which left orders
+ * stuck "pending"). Best-effort + server-side; a failure never disrupts the page.
+ *
+ * Runs on `template_redirect` (W18) — BEFORE the order-received template renders — so the order is
+ * paid before WooCommerce decides on the "Pay/Cancel" order action. On the older `woocommerce_thankyou`
+ * hook it fired AFTER the status/Pay button was already printed, so the button lingered for one
+ * pageview. On a successful confirmation we also clear the order cache so the template loads the
+ * fresh paid status in THIS request.
  */
-add_action('woocommerce_thankyou', function ($order_id) {
-    if (lets_payplus_connection() === null) {
+function lets_payplus_verify_order($order)
+{
+    if (! is_object($order) || ! method_exists($order, 'get_payment_method')) {
         return;
     }
-    $order = function_exists('wc_get_order') ? wc_get_order((int) $order_id) : null;
-    if (! $order || $order->get_payment_method() !== 'lets_payplus' || ! $order->needs_payment()) {
+    if ($order->get_payment_method() !== 'lets_payplus' || ! $order->needs_payment()) {
         return; // not our gateway order, or already paid
     }
     $uid = (string) $order->get_meta('_lets_payplus_page_request_uid');
@@ -165,15 +170,53 @@ add_action('woocommerce_thankyou', function ($order_id) {
         return;
     }
 
+    // NOTE: this is OUR endpoint's param name (page_request_uid); the SaaS translates it to PayPlus's
+    // payment_request_uid when it calls PayPlus's IPN (W18).
     $result = lets_payplus_signed_post('/api/woocommerce/gateway/verify', array(
         'order_id' => (string) $order->get_id(),
         'page_request_uid' => $uid,
     ));
 
-    if (is_wp_error($result) && function_exists('lets_payplus_log_error')) {
-        lets_payplus_log_error($result->get_error_message(), 'verify');
+    if (is_wp_error($result)) {
+        if (function_exists('lets_payplus_log_error')) {
+            lets_payplus_log_error($result->get_error_message(), 'verify');
+        }
+
+        return;
     }
-}, 4);
+
+    // Confirmed paid → drop the stale order cache so the thank-you template re-reads the paid status
+    // this request (no lingering "Pay" button), regardless of the object-cache backend.
+    if (! empty($result['paid'])) {
+        if (function_exists('clean_post_cache')) {
+            clean_post_cache($order->get_id());
+        }
+        if (function_exists('wc_delete_shop_order_transients')) {
+            wc_delete_shop_order_transients($order->get_id());
+        }
+    }
+}
+
+add_action('template_redirect', function () {
+    if (lets_payplus_connection() === null || ! function_exists('is_wc_endpoint_url') || ! is_wc_endpoint_url('order-received')) {
+        return;
+    }
+    $order_id = absint(get_query_var('order-received'));
+    if (! $order_id || ! function_exists('wc_get_order')) {
+        return;
+    }
+    $order = wc_get_order($order_id);
+    if (! $order) {
+        return;
+    }
+    // Validate the order key from the URL (the same guard WooCommerce uses for this page).
+    $key = isset($_GET['key']) ? wc_clean(wp_unslash($_GET['key'])) : '';
+    if ($key !== '' && ! hash_equals((string) $order->get_order_key(), $key)) {
+        return;
+    }
+
+    lets_payplus_verify_order($order);
+});
 
 /** Render the thank-you upsell mount + enqueue the widget on the order-received page. */
 add_action('woocommerce_thankyou', function ($order_id) {
@@ -201,6 +244,8 @@ add_action('woocommerce_thankyou', function ($order_id) {
             'added' => __('Added to your order — thank you!', 'lets-payplus'),
             'no_thanks' => __('No thanks', 'lets-payplus'),
             'error' => __('We could not add that. Please try again.', 'lets-payplus'),
+            // Specific reason when the card wasn't saved at checkout (create_token off).
+            'no_card' => __('Your saved card isn’t available for one-click add-ons, so we couldn’t add this. Your order is unchanged.', 'lets-payplus'),
         ),
     ));
 

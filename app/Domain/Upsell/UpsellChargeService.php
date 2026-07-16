@@ -99,6 +99,16 @@ final class UpsellChargeService
                     shopId: $shopId,
                 );
 
+                // Observability (W18): the no-method path wrote only a Timeline row, so a misconfigured
+                // store (create_token OFF → no vaulted card → every upsell 422s) was invisible in the
+                // logs. The overwhelmingly common cause is card-saving being disabled at checkout.
+                Log::warning('upsell.no_payment_method', [
+                    'shop_id' => $shopId,
+                    'offer_id' => $offer->getKey(),
+                    'customer_ref' => $req->customerRef,
+                    'likely_cause' => 'no vaulted card token — enable "Save the customer\'s card" (create_token) at checkout',
+                ]);
+
                 return UpsellChargeResult::noMethod($key);
             }
 

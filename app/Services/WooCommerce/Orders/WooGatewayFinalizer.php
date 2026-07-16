@@ -57,6 +57,16 @@ final class WooGatewayFinalizer
                     ]);
                 }
 
+                // Record the PayPlus confirmation as a merchant-visible order note (W18) — so the
+                // merchant SEES what PayPlus returned. Fail-soft: a note failure never un-pays.
+                try {
+                    $this->recordConfirmationNote($shop, $orderId, $payplusBody);
+                } catch (\Throwable $e) {
+                    Log::warning('woocommerce.gateway.note_failed', [
+                        'shop_id' => $shop->getKey(), 'order_id' => $orderId, 'error' => $e->getMessage(),
+                    ]);
+                }
+
                 // Cart-based subscriptions (W17 B): activate each recurring plan this order created.
                 // Fail-soft — a plan-activation hiccup must never un-pay a paid order.
                 try {
@@ -127,6 +137,73 @@ final class WooGatewayFinalizer
             'shop_id' => $shop->getKey(),
             'order_id' => (string) ($order['id'] ?? ''),
         ]);
+    }
+
+    /**
+     * Add a merchant-visible WooCommerce order note recording what PayPlus returned (W18): the
+     * transaction id, status, approval number, amount, and masked card. Also stamps the transaction
+     * id as order meta (lets_payplus_transaction_uid) for later lookup. No secrets (no token). The
+     * PayPlus body shape differs by path (push transaction.* or root, vs pull data.transaction.*), so
+     * every field is searched across both shapes.
+     *
+     * @param  array<string, mixed>  $payplusBody
+     */
+    private function recordConfirmationNote(Shop $shop, string $orderId, array $payplusBody): void
+    {
+        $txnUid = $this->pick($payplusBody, [
+            'data.transaction.uid', 'data.transaction.transaction_uid', 'data.transaction_uid',
+            'transaction.uid', 'transaction.transaction_uid', 'data.uid', 'uid',
+        ]);
+        $statusCode = $this->pick($payplusBody, ['data.transaction.status_code', 'transaction.status_code', 'status_code', 'status']);
+        $statusDesc = $this->pick($payplusBody, ['data.transaction.status_description', 'transaction.status_description', 'status_description', 'results.description']);
+        $approval = $this->pick($payplusBody, ['data.transaction.approval_number', 'transaction.approval_number', 'data.approval_number', 'approval_number']);
+        $amount = $this->pick($payplusBody, ['data.transaction.amount', 'transaction.amount', 'data.amount', 'amount']);
+        $lastFour = $this->pick($payplusBody, ['data.transaction.four_digits', 'transaction.four_digits', 'data.four_digits', 'four_digits']);
+        $brand = $this->pick($payplusBody, ['data.transaction.brand_name', 'transaction.brand_name', 'data.brand_name', 'brand_name']);
+
+        $parts = ['PayPlus payment confirmed.'];
+        if ($txnUid !== '') {
+            $parts[] = 'Transaction: '.$txnUid;
+        }
+        if ($statusCode !== '') {
+            $parts[] = 'Status: '.$statusCode.($statusDesc !== '' ? ' ('.$statusDesc.')' : '');
+        }
+        if ($approval !== '') {
+            $parts[] = 'Approval: '.$approval;
+        }
+        if ($amount !== '') {
+            $parts[] = 'Amount: '.$amount;
+        }
+        if ($lastFour !== '') {
+            $parts[] = 'Card: ****'.$lastFour.($brand !== '' ? ' '.$brand : '');
+        }
+
+        WooClientFactory::for($shop)->addOrderNote($orderId, implode(' · ', $parts), false);
+
+        if ($txnUid !== '') {
+            // Non-underscore so it round-trips over the WC REST API for later reconciliation.
+            WooClientFactory::for($shop)->updateOrder($orderId, [
+                'meta_data' => [['key' => 'lets_payplus_transaction_uid', 'value' => $txnUid]],
+            ]);
+        }
+    }
+
+    /**
+     * First non-empty value across a list of dot-paths in the PayPlus body (both push + pull shapes).
+     *
+     * @param  array<string, mixed>  $body
+     * @param  list<string>  $paths
+     */
+    private function pick(array $body, array $paths): string
+    {
+        foreach ($paths as $path) {
+            $value = data_get($body, $path);
+            if ($value !== null && $value !== '' && ! is_array($value)) {
+                return (string) $value;
+            }
+        }
+
+        return '';
     }
 
     /**
