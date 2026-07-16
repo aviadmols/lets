@@ -96,9 +96,15 @@ final class WooCommerceUpsellFlowTest extends TestCase
         $this->assertEqualsWithDelta(50.0, (float) $response->json('offer.price'), 0.001);
     }
 
-    public function test_accept_charges_once_and_records_a_paid_wc_child_order(): void
+    public function test_accept_charges_once_and_adds_the_item_to_the_parent_order(): void
     {
-        Http::fake(['*/wp-json/wc/v3/orders' => Http::response(['id' => 7700], 201)]);
+        // W18b: the accepted upsell is ADDED to the customer's EXISTING order (a line item), not a
+        // separate child order. WooCommerce recalculates the total; a merchant note documents the
+        // separate token charge.
+        Http::fake([
+            '*/wp-json/wc/v3/orders/WC-1/notes' => Http::response(['id' => 1], 201),
+            '*/wp-json/wc/v3/orders/WC-1' => Http::response(['id' => 'WC-1', 'status' => 'processing'], 200),
+        ]);
         [$shop, $key, $secret] = $this->connectedShop('up-accept.example.com');
 
         [$flow, $offer] = Tenant::run($shop, function () use ($shop): array {
@@ -110,10 +116,11 @@ final class WooCommerceUpsellFlowTest extends TestCase
 
         $body = ['flow_id' => $flow->id, 'offer_id' => $offer->id, 'parent_order' => 'WC-1', 'customer' => 'cust-1', 'email' => 'x@y.com'];
 
+        // child_order_id now carries the PARENT order id (the order the item landed on).
         $first = $this->signedPost($key, $secret, self::ACCEPT, $body);
-        $first->assertOk()->assertJsonPath('charged', true)->assertJsonPath('child_order_id', '7700');
+        $first->assertOk()->assertJsonPath('charged', true)->assertJsonPath('child_order_id', 'WC-1');
 
-        // Double-click: idempotent — the engine charges ONCE; no second PayPlus call.
+        // Double-click: idempotent — the engine charges ONCE; no second PayPlus call, no second attach.
         $this->signedPost($key, $secret, self::ACCEPT, $body)->assertOk();
 
         $this->assertSame(1, $this->payplusCalls, 'Exactly one charge across two accepts.');
@@ -121,15 +128,17 @@ final class WooCommerceUpsellFlowTest extends TestCase
             ->where('status', LedgerStatus::SUCCEEDED->value)->count());
         $this->assertSame(1, $succeeded);
 
-        // A linked PAID WC child order was created on the (first) charge.
-        Http::assertSent(function (HttpRequest $req) {
+        // The upsell item was ADDED to the EXISTING order WC-1 (a PUT with a new line item), and a
+        // merchant note was recorded — NOT a separate child order (no POST to /orders).
+        Http::assertSent(function (HttpRequest $req): bool {
             $b = $req->data();
-            return str_contains($req->url(), '/wp-json/wc/v3/orders')
-                && ($b['status'] ?? null) === 'completed'
-                && ($b['set_paid'] ?? null) === true
-                && $this->meta($b, 'lets_order_role') === 'upsell_child'
-                && $this->meta($b, 'lets_parent_order_id') === 'WC-1';
+            return str_contains($req->url(), '/wp-json/wc/v3/orders/WC-1')
+                && $req->method() === 'PUT'
+                && is_array($b['line_items'] ?? null)
+                && ($b['line_items'][0]['total'] ?? null) === '50.00';
         });
+        Http::assertSent(fn (HttpRequest $req): bool => str_contains($req->url(), '/wp-json/wc/v3/orders/WC-1/notes') && $req->method() === 'POST');
+        Http::assertNotSent(fn (HttpRequest $req): bool => $req->method() === 'POST' && str_ends_with($req->url(), '/wp-json/wc/v3/orders'));
     }
 
     /**

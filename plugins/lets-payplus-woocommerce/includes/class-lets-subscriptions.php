@@ -300,6 +300,90 @@ function lets_payplus_sub_flags_for_screen()
     return $flags;
 }
 
+// ============================================================================
+// Admin — product-EDIT "LETS Subscription" panel (W19)
+// ============================================================================
+// A meta box on the product edit screen that ASKS THE LETS APP whether this product has a matching
+// subscription plan, and shows it — so the merchant knows it's recognized without hunting for a
+// WooCommerce product type. A meta box (not a woocommerce_product_data_* panel) renders for EVERY
+// product type, so it can also warn on the External/Affiliate type that silently disables selling.
+
+add_action('add_meta_boxes', function () {
+    add_meta_box(
+        'lets_payplus_subscription',
+        __('LETS Subscription', 'lets-payplus'),
+        'lets_payplus_render_product_metabox',
+        'product',
+        'side',
+        'default'
+    );
+});
+
+function lets_payplus_render_product_metabox($post)
+{
+    if (lets_payplus_connection() === null) {
+        echo '<p>' . esc_html__('Connect this store to LETS to sell subscriptions.', 'lets-payplus') . '</p>';
+
+        return;
+    }
+
+    $product_id = (int) $post->ID;
+    $product = function_exists('wc_get_product') ? wc_get_product($product_id) : null;
+    $type = is_object($product) && method_exists($product, 'get_type') ? $product->get_type() : 'simple';
+
+    // External/Affiliate + Grouped have no price/stock/add-to-cart button → can't be sold or subscribed.
+    if (in_array($type, array('external', 'grouped'), true)) {
+        echo '<div class="notice notice-warning inline"><p><strong>'
+            . esc_html__('This product type can’t be sold or subscribed.', 'lets-payplus') . '</strong><br>'
+            . esc_html__('Switch it to “Simple product” (in the Product data box) so it has a price, stock and an add-to-cart button — then define a plan in the LETS app.', 'lets-payplus')
+            . '</p></div>';
+        lets_payplus_metabox_app_link();
+
+        return;
+    }
+
+    $config = lets_payplus_sub_config($product_id, $product_id);
+
+    if (is_array($config) && ! empty($config['has_subscription']) && ! empty($config['subscription'])) {
+        $sub = $config['subscription'];
+        $line = lets_payplus_cadence_label($sub['billing_frequency'], $sub['interval_count']);
+        if (('percent' === ($sub['discount_type'] ?? '')) && (float) $sub['discount_value'] > 0) {
+            /* translators: %s: percent discount. */
+            $line .= ' · ' . sprintf(__('%s%% off', 'lets-payplus'), rtrim(rtrim((string) (float) $sub['discount_value'], '0'), '.'));
+        }
+
+        echo '<p><strong style="color:#1a7f37">✅ ' . esc_html__('Recognized as a LETS subscription', 'lets-payplus') . '</strong></p>';
+        if (! empty($sub['plan_name'])) {
+            echo '<p><strong>' . esc_html($sub['plan_name']) . '</strong></p>';
+        }
+        echo '<p>' . esc_html($line) . '<br>';
+        echo function_exists('wc_price') ? wp_kses_post(wc_price((float) $sub['price_per_cycle'])) : esc_html((string) $sub['price_per_cycle']);
+        echo ' ' . esc_html__('per cycle', 'lets-payplus') . '</p>';
+        echo '<p class="description">' . esc_html__('Shoppers see a “Subscribe” option on this product. Edit the plan in the LETS app.', 'lets-payplus') . '</p>';
+    } else {
+        echo '<div class="notice notice-info inline"><p>'
+            . esc_html__('No LETS subscription plan detected for this product.', 'lets-payplus') . '</p></div>';
+        echo '<p>' . esc_html__('To sell it as a subscription:', 'lets-payplus') . '</p>';
+        echo '<ol style="margin:0;padding-inline-start:18px">';
+        echo '<li>' . esc_html__('Sync this product to LETS (Refresh products in the LETS dashboard).', 'lets-payplus') . '</li>';
+        echo '<li>' . esc_html__('Define AND activate a subscription plan for it in the LETS app.', 'lets-payplus') . '</li>';
+        echo '</ol>';
+    }
+
+    lets_payplus_metabox_app_link();
+}
+
+/** A link to the LETS app products screen (origin derived from the stored connection). */
+function lets_payplus_metabox_app_link()
+{
+    $conn = lets_payplus_connection();
+    $origin = is_array($conn) ? lets_payplus_saas_origin($conn) : '';
+    if ($origin !== '') {
+        echo '<p style="margin-top:10px"><a href="' . esc_url($origin . '/admin/products') . '" target="_blank" rel="noopener">'
+            . esc_html__('Open LETS products →', 'lets-payplus') . '</a></p>';
+    }
+}
+
 /** Register the (variable-product) subscription widget script. */
 add_action('wp_enqueue_scripts', function () {
     wp_register_script('lets-payplus-subscription-widget', LETS_PAYPLUS_URL . 'assets/js/subscription-widget.js', array('jquery'), LETS_PAYPLUS_VERSION, true);
