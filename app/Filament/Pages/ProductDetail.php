@@ -524,6 +524,31 @@ class ProductDetail extends Page
         Notification::make()->title(__('products.plan_drawer.saved'))->success()->send();
     }
 
+    /**
+     * Flip a plan between DRAFT and ACTIVE via the GUARDED transition — the ONLY legal
+     * status mutation (savePlanConfig never touches status). draft→active publishes the
+     * plan (the storefront/checkout + /flags + /config only ever see ACTIVE templates);
+     * active→draft hides it. Each accepted move writes a Timeline event. Tenant +
+     * product-scoped: a foreign id is a no-op.
+     */
+    public function togglePlanStatus(int $planId): void
+    {
+        $plan = $this->planModel($planId);
+        if ($plan === null) {
+            return;
+        }
+
+        $activating = $plan->status !== PlanTemplateStatus::ACTIVE;
+        $plan->transitionTo($activating ? PlanTemplateStatus::ACTIVE : PlanTemplateStatus::DRAFT);
+
+        $this->resolved = null;
+
+        Notification::make()
+            ->title(__($activating ? 'products.detail.status_activated' : 'products.detail.status_unpublished'))
+            ->success()
+            ->send();
+    }
+
     /** The configured plan model (tenant + product-scoped), or null. */
     public function configuredPlan(): ?ProductSubscriptionPlan
     {

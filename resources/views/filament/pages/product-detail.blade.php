@@ -131,6 +131,18 @@
                                         tone="{{ $plan['status'] === 'active' ? 'green' : 'gray' }}"
                                         label="products.plan_drawer.status_{{ $plan['status'] }}"
                                     />
+                                    @if($plan['status'] === 'draft')
+                                        <button type="button" class="rc-cta rc-cta--primary rc-cta--sm"
+                                            wire:click="togglePlanStatus({{ $plan['id'] }})">
+                                            {{ __('products.detail.activate_plan') }}
+                                        </button>
+                                    @else
+                                        <button type="button" class="rc-cta rc-cta--ghost rc-cta--sm"
+                                            wire:click="togglePlanStatus({{ $plan['id'] }})"
+                                            wire:confirm="{{ __('products.detail.unpublish_confirm') }}">
+                                            {{ __('products.detail.set_draft_plan') }}
+                                        </button>
+                                    @endif
                                     <button type="button" class="rc-cta rc-cta--ghost rc-cta--sm"
                                         wire:click="openPlanConfig({{ $plan['id'] }})">
                                         {{ __('products.detail.edit_plan') }}
@@ -218,6 +230,31 @@
                     {{-- Scrollable body --}}
                     <div class="rc-drawer__body">
                         <p class="rc-drawer__subtitle">{{ __('products.plan_drawer.subtitle') }}</p>
+
+                        {{-- Status: the guarded draft↔active toggle — the ONLY way to publish a plan --}}
+                        @php $planIsActive = $cfg->status === \App\Modules\PayPlusShopifyInstallments\Enums\PlanTemplateStatus::ACTIVE; @endphp
+                        <div class="rc-field">
+                            <span class="rc-field__label">{{ __('products.plan_drawer.status_label') }}</span>
+                            <div class="rc-row">
+                                <x-rc.badge
+                                    tone="{{ $planIsActive ? 'green' : 'gray' }}"
+                                    label="products.plan_drawer.status_{{ $cfg->status->value }}"
+                                />
+                                @if($planIsActive)
+                                    <button type="button" class="rc-cta rc-cta--ghost rc-cta--sm"
+                                        wire:click="togglePlanStatus({{ $cfg->id }})"
+                                        wire:confirm="{{ __('products.detail.unpublish_confirm') }}">
+                                        {{ __('products.plan_drawer.set_draft') }}
+                                    </button>
+                                @else
+                                    <button type="button" class="rc-cta rc-cta--primary rc-cta--sm"
+                                        wire:click="togglePlanStatus({{ $cfg->id }})">
+                                        {{ __('products.plan_drawer.activate') }}
+                                    </button>
+                                @endif
+                            </div>
+                            <p class="rc-muted">{{ __('products.plan_drawer.status_hint') }}</p>
+                        </div>
 
                         {{-- Type (read-only) --}}
                         <div class="rc-field">

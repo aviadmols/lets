@@ -268,6 +268,45 @@ final class ProductDetailPageTest extends TestCase
         $this->assertSame('Foreign plan', $foreign->plan_name);
     }
 
+    public function test_toggle_plan_status_activates_a_draft_then_sets_it_back(): void
+    {
+        $plan = $this->makePlan(ProductSubscriptionPlan::TYPE_SUBSCRIPTION, $this->variant->id);
+        $this->assertSame(PlanTemplateStatus::DRAFT, $plan->status);
+
+        $component = Livewire::test(ProductDetail::class, ['product' => $this->product->id])
+            ->call('togglePlanStatus', $plan->id);
+        $this->assertSame(PlanTemplateStatus::ACTIVE, $plan->fresh()->status);
+
+        // …and toggles back to draft (the guarded transition allows both directions).
+        $component->call('togglePlanStatus', $plan->id);
+        $this->assertSame(PlanTemplateStatus::DRAFT, $plan->fresh()->status);
+    }
+
+    public function test_toggle_plan_status_is_a_noop_for_a_foreign_plan(): void
+    {
+        $other = Shop::create([
+            'shopify_domain' => 'other-toggle.myshopify.com',
+            'name' => 'Other',
+            'status' => Shop::STATUS_ACTIVE,
+        ]);
+        $foreignPlanId = Tenant::run($other, function () use ($other): int {
+            $product = $this->makeProduct($other, '9200', 'Foreign product');
+            $variant = $this->makeVariant($other, $product, '9200-v1', 50.0);
+
+            return $this->makePlan(ProductSubscriptionPlan::TYPE_SUBSCRIPTION, $variant->id, [
+                'shop_id' => $other->id,
+                'product_id' => $product->id,
+            ])->id;
+        });
+
+        Livewire::test(ProductDetail::class, ['product' => $this->product->id])
+            ->call('togglePlanStatus', $foreignPlanId);
+
+        // Bound to OUR shop, a foreign plan id must not flip — it stays DRAFT.
+        $foreign = Tenant::run($other, fn () => ProductSubscriptionPlan::findOrFail($foreignPlanId));
+        $this->assertSame(PlanTemplateStatus::DRAFT, $foreign->status);
+    }
+
     public function test_add_subscription_plan_creates_a_draft_and_opens_the_drawer(): void
     {
         $component = Livewire::test(ProductDetail::class, ['product' => $this->product->id])
