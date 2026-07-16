@@ -68,26 +68,64 @@ function lets_payplus_rest_sub_config(WP_REST_Request $request)
     return new WP_REST_Response(is_array($config) ? $config : array('has_subscription' => false), 200);
 }
 
-/** A human "every month" / "every 2 weeks" label from a frequency + interval. */
+/** Is the store locale Hebrew? (The plugin ships no translation catalog, so we branch inline.) */
+function lets_payplus_is_he()
+{
+    return 0 === strpos((string) get_locale(), 'he');
+}
+
+/**
+ * A human "כל חודש" / "every month" cadence label from a frequency + interval. Locale-aware inline
+ * (Hebrew on a Hebrew store, English otherwise) because the plugin has no translation catalog — this
+ * also makes the storefront subscribe widget's cadence Hebrew.
+ */
 function lets_payplus_cadence_label($frequency, $interval)
 {
     $interval = max(1, (int) $interval);
-    $units = array(
-        'daily'     => array(__('day', 'lets-payplus'), __('days', 'lets-payplus')),
-        'weekly'    => array(__('week', 'lets-payplus'), __('weeks', 'lets-payplus')),
-        'biweekly'  => array(__('2 weeks', 'lets-payplus'), __('2 weeks', 'lets-payplus')),
-        'monthly'   => array(__('month', 'lets-payplus'), __('months', 'lets-payplus')),
-        'quarterly' => array(__('quarter', 'lets-payplus'), __('quarters', 'lets-payplus')),
-        'yearly'    => array(__('year', 'lets-payplus'), __('years', 'lets-payplus')),
-    );
+    $he = lets_payplus_is_he();
+
+    // [singular, plural] per frequency.
+    $units = $he
+        ? array(
+            'daily'     => array('יום', 'ימים'),
+            'weekly'    => array('שבוע', 'שבועות'),
+            'biweekly'  => array('שבועיים', 'שבועיים'),
+            'monthly'   => array('חודש', 'חודשים'),
+            'quarterly' => array('רבעון', 'רבעונים'),
+            'yearly'    => array('שנה', 'שנים'),
+        )
+        : array(
+            'daily'     => array('day', 'days'),
+            'weekly'    => array('week', 'weeks'),
+            'biweekly'  => array('2 weeks', '2 weeks'),
+            'monthly'   => array('month', 'months'),
+            'quarterly' => array('quarter', 'quarters'),
+            'yearly'    => array('year', 'years'),
+        );
     $pair = isset($units[$frequency]) ? $units[$frequency] : array($frequency, $frequency);
     $unit = 1 === $interval ? $pair[0] : $pair[1];
 
-    return 1 === $interval
-        /* translators: %s: billing unit (month/week/...). */
-        ? sprintf(__('every %s', 'lets-payplus'), $unit)
-        /* translators: 1: interval count, 2: billing unit. */
-        : sprintf(__('every %1$d %2$s', 'lets-payplus'), $interval, $unit);
+    if (1 === $interval) {
+        return $he ? ('כל ' . $unit) : ('every ' . $unit);
+    }
+
+    return $he ? ('כל ' . $interval . ' ' . $unit) : ('every ' . $interval . ' ' . $unit);
+}
+
+/**
+ * The subscription line-item PROPERTY (key + value) shown in the cart AND on the order — e.g.
+ * "מנוי: מתחדש כל חודש" / "Subscription: renews every month". Locale-aware.
+ *
+ * @return array{key:string,value:string}
+ */
+function lets_payplus_subscription_property($frequency, $interval)
+{
+    $he = lets_payplus_is_he();
+
+    return array(
+        'key'   => $he ? 'מנוי' : 'Subscription',
+        'value' => ($he ? 'מתחדש ' : 'renews ') . lets_payplus_cadence_label($frequency, $interval),
+    );
 }
 
 // ============================================================================
@@ -202,24 +240,27 @@ add_action('woocommerce_before_calculate_totals', function ($cart) {
     }
 }, 20);
 
-// Show "Subscription — every month" under the cart/checkout line.
+// Show the subscription plan under the cart/checkout line — e.g. "מנוי: מתחדש כל חודש".
 add_filter('woocommerce_get_item_data', function ($item_data, $cart_item) {
     if (! empty($cart_item['_lets_subscription'])) {
         $sub = $cart_item['_lets_subscription'];
-        $item_data[] = array(
-            'key'   => __('Purchase', 'lets-payplus'),
-            'value' => __('Subscription', 'lets-payplus') . ' — ' . lets_payplus_cadence_label($sub['billing_frequency'], $sub['interval_count']),
-        );
+        $prop = lets_payplus_subscription_property($sub['billing_frequency'], $sub['interval_count']);
+        $item_data[] = array('key' => $prop['key'], 'value' => $prop['value']);
     }
 
     return $item_data;
 }, 10, 2);
 
-// Persist the intent onto the ORDER line so the gateway can read it server-side.
+// Persist onto the ORDER line: the HIDDEN intent the gateway reads, PLUS a VISIBLE property so the plan
+// shows under the line item on the order-received page, the admin order screen, and the order emails.
 add_action('woocommerce_checkout_create_order_line_item', function ($item, $cart_item_key, $values, $order) {
-    if (! empty($values['_lets_subscription'])) {
-        $item->add_meta_data('_lets_subscription', $values['_lets_subscription'], true);
+    if (empty($values['_lets_subscription'])) {
+        return;
     }
+    $sub = $values['_lets_subscription'];
+    $item->add_meta_data('_lets_subscription', $sub, true); // hidden (underscore) — read by the gateway
+    $prop = lets_payplus_subscription_property($sub['billing_frequency'], $sub['interval_count']);
+    $item->add_meta_data($prop['key'], $prop['value'], true); // visible — shown on the order everywhere
 }, 10, 4);
 
 // Only the LETS gateway vaults a token, so a subscription cart MUST checkout through it. If the LETS
