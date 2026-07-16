@@ -113,7 +113,7 @@ class SubscriptionResource extends Resource
                         ->mapWithKeys(fn (PlanStatus $s): array => [$s->value => __('billing.status.' . $s->value)])
                         ->all()),
             ])
-            ->recordUrl(fn (InstallmentPlan $record): string => Pages\ViewSubscription::getUrl(['record' => $record]))
+            ->recordUrl(fn (InstallmentPlan $record): string => Pages\ViewSubscription::getUrl(['plan' => $record->getKey()]))
             ->defaultSort('id', 'desc')
             ->emptyStateHeading(__('subscriptions.list.empty.first_run'))
             ->emptyStateIcon('heroicon-o-arrow-path-rounded-square');
@@ -155,7 +155,13 @@ class SubscriptionResource extends Resource
     {
         return [
             'index' => Pages\ListSubscriptions::route('/'),
-            'view' => Pages\ViewSubscription::route('/{record}'),
+            // The param is `{plan}`, NOT `{record}`, on purpose. Livewire's ImplicitRouteBinding
+            // intersects the route params with the page's TYPED public properties by NAME — a
+            // `{record}` param collided with ViewSubscription's `public InstallmentPlan $record`,
+            // so Livewire resolved (and 404'd) the model itself before mount() ever ran, taking
+            // resolution out of our hands. A distinct name keeps the page in control of its own
+            // tenant-scoped lookup + graceful bounce. The URL shape (/subscriptions/1) is unchanged.
+            'view' => Pages\ViewSubscription::route('/{plan}'),
         ];
     }
 }

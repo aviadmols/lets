@@ -57,22 +57,21 @@ class ViewSubscription extends Page
     public \App\Models\InstallmentPlan $record;
 
     /**
-     * NOTE the `InstallmentPlan|...` in the signature — it is load-bearing.
+     * The route param is `{plan}` (see SubscriptionResource::getPages()) and NOT `{record}` — that
+     * name collision is what broke this page for EVERY plan since it was written.
      *
-     * Livewire's Drawer\ImplicitRouteBinding::resolveAllParameters() resolves the {record} route
-     * param against this page's TYPED public $record property and MERGES those props OVER the
-     * mount arguments — so mount() is handed a fully resolved MODEL, not the raw id. The previous
-     * `int|string $record` signature therefore coerced that model to a string via
-     * Model::__toString() (→ its JSON), and findOrFail() went looking for a primary key of
-     * '{"id":1,...}' — which never matches. The result: this page 404'd for EVERY plan, for every
-     * merchant, since it was written. No test rendered it, so CI stayed green.
-     *
-     * We still re-resolve through the resource's tenant-scoped query rather than trusting the
-     * route-bound instance — defence in depth, and the same BelongsToShop guarantee the list uses.
+     * Livewire's Drawer\ImplicitRouteBinding intersects the route params with this page's TYPED
+     * public properties BY NAME. With a `{record}` param it resolved `public InstallmentPlan
+     * $record` itself and merged that model OVER the mount argument, so the old
+     * `mount(int|string $record)` received a MODEL and silently stringified it via
+     * Model::__toString() (→ its JSON) — findOrFail() then hunted for a primary key of
+     * '{"id":1,...}' and 404'd. Worse, when the binding could not resolve, IT threw the 404 before
+     * mount() ran at all, so the page could never explain itself. Naming the param `{plan}` keeps
+     * resolution here, where it is tenant-scoped, logged, and degrades gracefully.
      */
-    public function mount(\App\Models\InstallmentPlan|int|string $record): void
+    public function mount(int|string $plan): void
     {
-        $key = $record instanceof \App\Models\InstallmentPlan ? $record->getKey() : $record;
+        $key = $plan;
 
         $plan = SubscriptionResource::getEloquentQuery()->find($key);
 

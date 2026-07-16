@@ -65,7 +65,7 @@ final class ViewSubscriptionPageTest extends TestCase
      */
     private function viewUrl(int $planId): string
     {
-        return SubscriptionResource::getUrl('view', ['record' => $planId]);
+        return SubscriptionResource::getUrl('view', ['plan' => $planId]);
     }
 
     /** The headline: the merchant's own plan opens (this is what 404'd in production). */
@@ -77,16 +77,14 @@ final class ViewSubscriptionPageTest extends TestCase
     }
 
     /**
-     * A missing id 404s — and that is the intended, documented behaviour here: Livewire's
-     * ImplicitRouteBinding resolves {record} against the typed $record property and throws
-     * ModelNotFoundException BEFORE mount() ever runs, so the page cannot intercept it without
-     * abandoning the typed property. The 404 is leak-free and matches Filament's own ViewRecord.
-     * mount()'s redirect stays as defence in depth (it fires if the binding and the resource's
-     * tenant-scoped query ever disagree).
+     * A missing id BOUNCES to the list with a warning — never a bare 404. This only works because
+     * the route param is `{plan}`: a `{record}` param let Livewire's ImplicitRouteBinding resolve
+     * (and 404) the model before mount() could run, so the page could never degrade gracefully.
      */
-    public function test_a_missing_id_404s_and_never_500s(): void
+    public function test_a_missing_id_redirects_to_the_list_instead_of_404(): void
     {
-        $this->get($this->viewUrl(999999))->assertNotFound();
+        $this->get($this->viewUrl(999999))
+            ->assertRedirect(SubscriptionResource::getUrl());
     }
 
     /** The detail page must name the customer (it previously showed none at all). */
@@ -124,7 +122,7 @@ final class ViewSubscriptionPageTest extends TestCase
     }
 
     /** THE tenant boundary: another shop's plan must never render, and never leak a byte of it. */
-    public function test_a_foreign_plan_never_loads_or_leaks(): void
+    public function test_a_foreign_plan_redirects_and_never_leaks(): void
     {
         $other = Shop::create([
             'shopify_domain' => 'sub-other.myshopify.com',
@@ -136,7 +134,7 @@ final class ViewSubscriptionPageTest extends TestCase
         ]));
 
         $response = $this->get($this->viewUrl($foreign->id));
-        $response->assertNotFound();
+        $response->assertRedirect(SubscriptionResource::getUrl());
         $response->assertDontSee('Foreign secret customer');
     }
 
