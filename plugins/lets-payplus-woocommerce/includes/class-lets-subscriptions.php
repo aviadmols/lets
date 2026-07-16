@@ -198,14 +198,29 @@ add_action('woocommerce_before_add_to_cart_button', function () {
 
 add_filter('woocommerce_add_cart_item_data', function ($cart_item_data, $product_id, $variation_id) {
     $mode = isset($_POST['lets_purchase_mode']) ? sanitize_text_field(wp_unslash($_POST['lets_purchase_mode'])) : '';
-    if ('subscribe' !== $mode) {
-        return $cart_item_data; // one-time or a normal product — unchanged
+
+    // The shopper explicitly chose a one-time purchase — nothing to do (and no lookup needed).
+    if ('one_time' === $mode) {
+        return $cart_item_data;
     }
 
     $variant_id = (int) $variation_id ?: (int) $product_id;
     $config = lets_payplus_sub_config((int) $product_id, $variant_id);
     if (! is_array($config) || empty($config['has_subscription']) || empty($config['subscription'])) {
-        return $cart_item_data; // not actually a subscription — ignore the mode
+        return $cart_item_data; // not a subscription product — unchanged
+    }
+
+    // `lets_purchase_mode` only exists INSIDE the product-page add-to-cart form. Adding from the
+    // shop/category listing (the AJAX add-to-cart button), a block, or related-products submits no
+    // form, so the mode arrives EMPTY. For a subscription-ONLY product there is no other way to buy
+    // it, so an empty mode is still a subscribe. Without this the product was silently bought
+    // ONE-TIME at full price — no plan, no token, no cart/order property.
+    if ('' === $mode && empty($config['one_time_allowed'])) {
+        $mode = 'subscribe';
+    }
+
+    if ('subscribe' !== $mode) {
+        return $cart_item_data; // a one-time-capable product added without choosing → unchanged
     }
 
     $sub = $config['subscription'];

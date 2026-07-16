@@ -49,7 +49,11 @@ final class WooUpsellChildOrderService
     ): ?string {
         if (! $shop->hasWooConnection()) {
             // Decoupled: the engine still charged + recorded; we just can't record the WC order for
-            // an unconnected store. Safe no-op.
+            // an unconnected store. Safe no-op — but NEVER silent (the money moved).
+            Log::warning('woocommerce.upsell.no_woo_connection', [
+                'shop_id' => $shop->getKey(), 'offer_id' => $offer->getKey(), 'amount' => $amount,
+            ]);
+
             return null;
         }
 
@@ -57,10 +61,23 @@ final class WooUpsellChildOrderService
         if (trim($parentOrderId) !== '') {
             $attached = $this->addToParentOrder($shop, $offer, $parentOrderId, $amount);
             if ($attached !== null) {
+                Log::info('woocommerce.upsell.attached_to_parent', [
+                    'shop_id' => $shop->getKey(), 'order_id' => $attached, 'offer_id' => $offer->getKey(),
+                ]);
+
                 return $attached;
             }
             Log::warning('woocommerce.upsell.attach_fell_back_to_child', [
                 'shop_id' => $shop->getKey(), 'parent_order_id' => $parentOrderId, 'offer_id' => $offer->getKey(),
+            ]);
+        } else {
+            // The plugin resolves parent_order SERVER-side from the order it just validated, so an
+            // empty id here means the accept call lost it in transit — and the upsell then forks a
+            // SEPARATE order instead of joining the shopper's. This branch used to be silent, which
+            // is precisely why a live "it made a new order" report had no log to explain it.
+            Log::warning('woocommerce.upsell.no_parent_order_id', [
+                'shop_id' => $shop->getKey(), 'offer_id' => $offer->getKey(),
+                'note' => 'accept arrived without parent_order → forking a child order',
             ]);
         }
 
@@ -178,7 +195,11 @@ final class WooUpsellChildOrderService
         if (($productId = $this->numericId($offer->offer_product_gid)) > 0) {
             $lineItem['product_id'] = $productId;
         }
-        if (($variationId = $this->numericId($offer->offer_variant_gid)) > 0) {
+        // A SIMPLE WooCommerce product is cached with variant_id == product_id, but WooCommerce
+        // requires `variation_id` to reference a REAL variation — echoing the product id back makes
+        // the line invalid (and can reject the whole order write). Only send a genuine variation.
+        $variationId = $this->numericId($offer->offer_variant_gid);
+        if ($variationId > 0 && $variationId !== $productId) {
             $lineItem['variation_id'] = $variationId;
         }
 

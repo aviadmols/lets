@@ -142,6 +142,51 @@ final class WooCommerceUpsellFlowTest extends TestCase
     }
 
     /**
+     * A REAL WooCommerce SIMPLE product: our catalog stores variant_id == product_id. WooCommerce
+     * requires `variation_id` to reference a genuine variation, so echoing the product id back
+     * yields an invalid line (and can reject the write → the upsell forks a separate order). Every
+     * other test here uses Shopify gids with DISTINCT product/variant ids, so this real-Woo shape
+     * was never exercised.
+     */
+    public function test_a_simple_woocommerce_product_line_omits_the_variation_id(): void
+    {
+        Http::fake([
+            '*/wp-json/wc/v3/orders/WC-9/notes' => Http::response(['id' => 1], 201),
+            '*/wp-json/wc/v3/orders/WC-9' => Http::response(['id' => 'WC-9', 'status' => 'processing'], 200),
+        ]);
+        [$shop, $key, $secret] = $this->connectedShop('up-simple.example.com');
+
+        [$flow, $offer] = Tenant::run($shop, function () use ($shop): array {
+            $flow = $this->makeFlow($shop, 'gid://shopify/Product/1', 50.0);
+            // Re-point the offer at a SIMPLE WC product: bare numeric ids, variant == product.
+            $flow->offers()->first()->forceFill([
+                'offer_product_gid' => '2670',
+                'offer_variant_gid' => '2670',
+            ])->save();
+
+            $this->makeConsentAndToken($shop, 'cust-1');
+
+            return [$flow, $flow->offers()->first()];
+        });
+
+        $this->signedPost($key, $secret, self::ACCEPT, [
+            'flow_id' => $flow->id, 'offer_id' => $offer->id,
+            'parent_order' => 'WC-9', 'customer' => 'cust-1', 'email' => 'x@y.com',
+        ])->assertOk()->assertJsonPath('charged', true)->assertJsonPath('child_order_id', 'WC-9');
+
+        Http::assertSent(function (HttpRequest $req): bool {
+            if ($req->method() !== 'PUT' || ! str_contains($req->url(), '/wp-json/wc/v3/orders/WC-9')) {
+                return false;
+            }
+            $line = $req->data()['line_items'][0] ?? [];
+
+            // The real product is linked, but NO bogus variation_id echoes the product id back.
+            return (int) ($line['product_id'] ?? 0) === 2670
+                && ! array_key_exists('variation_id', $line);
+        });
+    }
+
+    /**
      * The shopper's explicit "Add to my order" click IS the authorization: accept() RECORDS the
      * upsell consent (before charging) rather than requiring a row nothing in production ever
      * wrote. The remaining fail-closed guarantee is the SAVED CARD — see the next test.
