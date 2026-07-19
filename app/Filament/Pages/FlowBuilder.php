@@ -4,6 +4,7 @@ namespace App\Filament\Pages;
 
 use App\Domain\Upsell\Enums\UpsellFlowStatus;
 use App\Domain\Upsell\Models\UpsellFlow;
+use App\Domain\Upsell\Models\UpsellFlowBranch;
 use App\Domain\Upsell\Models\UpsellFlowOffer;
 use App\Domain\Upsell\Models\UpsellFlowTrigger;
 use App\Domain\Upsell\Rendering\UpsellCardPresenter;
@@ -65,6 +66,12 @@ class FlowBuilder extends Page
 
     /** The ONLY Livewire-persisted graph state. */
     public int $flowId = 0;
+
+    /** The flow's editable name, bound to the inline toolbar field (persisted via renameFlow). */
+    public string $flowName = '';
+
+    /** A renamed-to-blank flow falls back to this; also caps runaway length. */
+    public const FLOW_NAME_MAX = 120;
 
     /** @var array<int, array<string, mixed>> derived each render (not persisted). */
     public array $offers = [];
@@ -158,6 +165,7 @@ class FlowBuilder extends Page
         }
 
         $this->hydrateGraph();
+        $this->flowName = (string) ($this->flow()->name ?? '');
 
         // DEV-ONLY deep-links to open a drawer (used by the screenshot harness).
         // Hard-gated like DevAutoLogin so they can never act on a production
@@ -204,6 +212,9 @@ class FlowBuilder extends Page
                     'decline_cta' => $offer->decline_cta ?: __('upsell.decline_cta'),
                     'accept_next' => $this->nextLabel($flow, $branch?->on_accept_next_offer_id),
                     'decline_next' => $this->nextLabel($flow, $branch?->on_decline_next_offer_id),
+                    // A path that ends here (no next offer) shows the "+" to append the next module.
+                    'accept_is_end' => empty($branch?->on_accept_next_offer_id),
+                    'decline_is_end' => empty($branch?->on_decline_next_offer_id),
                     'valid' => $this->offerIsValid($offer),
                     'product_id' => $offer->productNumericId(),
                 ];
@@ -325,6 +336,119 @@ class FlowBuilder extends Page
     public function backUrl(): string
     {
         return PostPurchaseOffers::getUrl();
+    }
+
+    /**
+     * Persist the inline-edited flow name (toolbar field, saved on blur / Enter). Tenant-scoped
+     * via flow() — the resolved model only ever belongs to the bound shop. `name` is an ordinary
+     * (non-guarded) column, so a plain save is safe; a blank name falls back to the untitled label
+     * so the flow is never nameless, and the length is capped. Resets the resolved cache so the
+     * page title (getTitle) + toolbar re-read the new name on this render.
+     */
+    public function renameFlow(): void
+    {
+        $flow = $this->flow();
+
+        $name = trim($this->flowName);
+        if ($name === '') {
+            $name = __('upsell.admin.builder.untitled');
+        }
+        $name = mb_substr($name, 0, self::FLOW_NAME_MAX);
+
+        $this->flowName = $name;
+
+        if ($flow->name === $name) {
+            return; // no-op (blur with no change) — no write, no toast
+        }
+
+        $flow->name = $name;
+        $flow->save();
+
+        $this->resolved = null;
+        Notification::make()->title(__('upsell.admin.builder.renamed'))->success()->send();
+    }
+
+    /**
+     * The "+" beside "End flow" on the ACCEPT branch: append a NEW offer node and route this
+     * offer's accept edge to it, so the accept path continues instead of ending. The new offer is
+     * born empty (no product / zero price) exactly like the "Create new" seed, so it renders as
+     * "needs product" until the merchant configures it via the drawer (opened immediately here).
+     *
+     * Tenant-scoped: a foreign/nonexistent source offer resolves to null (global scope) and is a
+     * silent no-op; shop_id is auto-stamped by BelongsToShop on both new rows. Idempotent-ish: if
+     * the accept edge already leads somewhere, it does nothing (never orphans an existing branch).
+     */
+    public function addAcceptOffer(int $offerId): void
+    {
+        $this->appendOfferOnBranch($offerId, 'on_accept_next_offer_id');
+    }
+
+    /**
+     * The "+" beside "End flow" on the DECLINE branch: append a NEW offer node and route this
+     * offer's decline edge to it, so a shopper who declines is shown a follow-up (down-sell)
+     * instead of ending the flow. Same seed + tenant-safety + no-orphan rules as the accept "+".
+     */
+    public function addDeclineOffer(int $offerId): void
+    {
+        $this->appendOfferOnBranch($offerId, 'on_decline_next_offer_id');
+    }
+
+    /**
+     * Shared "+" logic for both branches: append a fresh empty offer node and point $edge
+     * (on_accept_next_offer_id | on_decline_next_offer_id) at it. The new offer is born empty
+     * (no product / zero price) like the "Create new" seed, so it reads as "needs product" until
+     * configured via the drawer (opened immediately). Tenant-scoped: a foreign/nonexistent source
+     * offer is a silent no-op; shop_id is auto-stamped by BelongsToShop. Never orphans an existing
+     * branch — if the edge already leads somewhere, it does nothing.
+     */
+    private function appendOfferOnBranch(int $offerId, string $edge): void
+    {
+        $source = $this->offerModel($offerId);
+        if ($source === null) {
+            return;
+        }
+
+        $branch = UpsellFlowBranch::query()
+            ->where('flow_id', $this->flowId)
+            ->where('from_offer_id', $source->id)
+            ->first();
+
+        // This path already continues to another offer — leave the graph untouched.
+        if ($branch !== null && ! empty($branch->{$edge})) {
+            return;
+        }
+
+        $nextPosition = ((int) UpsellFlowOffer::query()
+            ->where('flow_id', $this->flowId)
+            ->max('position')) + 1;
+
+        $offer = UpsellFlowOffer::create([
+            'flow_id' => $this->flowId,
+            'offer_product_gid' => '',
+            'offer_variant_gid' => '',
+            'offer_title' => __('upsell.offer_default_title'),
+            'base_price' => 0,
+            'discount_type' => UpsellFlowOffer::DISCOUNT_NONE,
+            'position' => $nextPosition,
+        ]);
+
+        // Point the source offer's edge at the new node (create the branch if it has none).
+        if ($branch === null) {
+            UpsellFlowBranch::create([
+                'flow_id' => $this->flowId,
+                'from_offer_id' => $source->id,
+                $edge => $offer->id,
+            ]);
+        } else {
+            $branch->{$edge} = $offer->id;
+            $branch->save();
+        }
+
+        $this->resolved = null;
+        $this->hydrateGraph();
+
+        // Open the new node's config drawer so the merchant fills product/price/copy right away.
+        $this->openOfferConfig($offer->id);
     }
 
     // === "Configure cross-sell" drawer (UI config — no charge-engine change) ===

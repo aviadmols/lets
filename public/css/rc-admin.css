@@ -1417,6 +1417,26 @@ a.rc-railed:hover { background: var(--rc-blue-bg); }
     flex-wrap: wrap;
 }
 .rc-fb-toolbar__name { font: var(--rc-type-h); color: var(--rc-ink); }
+/* Inline-editable flow name: reads as the heading, reveals a field affordance on hover/focus. */
+.rc-fb-toolbar__name-input {
+    font: var(--rc-type-h);
+    color: var(--rc-ink);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--rc-radius-control);
+    padding-block: 2px;
+    padding-inline: var(--rc-space-2);
+    inline-size: min(30rem, 55vw);
+    max-inline-size: 100%;
+}
+.rc-fb-toolbar__name-input:hover { border-color: var(--rc-border); }
+.rc-fb-toolbar__name-input:focus,
+.rc-fb-toolbar__name-input:focus-visible {
+    outline: none;
+    background: var(--rc-card);
+    border-color: var(--rc-blue);
+    box-shadow: var(--rc-ring);
+}
 .rc-fb-back {
     display: inline-flex;
     align-items: center;
@@ -1696,6 +1716,27 @@ button.rc-fb-node:focus-visible {
 .rc-fb-branch__arrow { color: var(--rc-ink-muted); }
 [dir="rtl"] .rc-fb-branch__arrow { transform: scaleX(-1); }
 .rc-fb-branch__next { color: var(--rc-ink); font: var(--rc-type-body-strong); }
+/* "+ Add step" that appends the next module on a branch that ENDS here. A clearly labelled pill
+   pushed to the trailing edge of the branch row, on BOTH the accept and decline paths. */
+.rc-fb-branch__add {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--rc-space-1);
+    margin-inline-start: auto;
+    padding-block: 2px;
+    padding-inline: var(--rc-space-2);
+    border-radius: var(--rc-radius-pill);
+    border: 1px solid var(--rc-blue);
+    background: var(--rc-blue-bg);
+    color: var(--rc-blue);
+    font: var(--rc-type-label);
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.rc-fb-branch__add:hover { background: var(--rc-blue); color: #fff; border-color: var(--rc-blue); }
+.rc-fb-branch__add:focus-visible { outline: none; box-shadow: var(--rc-ring); }
+.rc-fb-branch__add-plus { font: var(--rc-type-body-strong); }
 
 /* Ports */
 .rc-fb-port {

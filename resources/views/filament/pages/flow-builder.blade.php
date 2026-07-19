@@ -27,7 +27,17 @@
             <a href="{{ $this->backUrl() }}" wire:navigate class="rc-fb-back" aria-label="{{ __('upsell.admin.builder.back') }}">
                 <x-filament::icon icon="heroicon-o-arrow-left" class="rc-fb-back__icon" />
             </a>
-            <span class="rc-fb-toolbar__name">{{ $flow->name }}</span>
+            {{-- Inline-editable flow name (Recharge-style): saves on blur / Enter → renameFlow(). --}}
+            <input
+                type="text"
+                class="rc-fb-toolbar__name-input"
+                wire:model="flowName"
+                wire:blur="renameFlow"
+                x-on:keydown.enter.prevent="$el.blur()"
+                maxlength="{{ \App\Filament\Pages\FlowBuilder::FLOW_NAME_MAX }}"
+                placeholder="{{ __('upsell.admin.builder.untitled') }}"
+                aria-label="{{ __('upsell.admin.builder.rename_label') }}"
+            >
             <span class="rc-badge rc-badge--{{ $statusTone }}">
                 <span class="rc-badge__dot"></span>
                 {{ __('upsell.admin.flow_status.' . $statusKey) }}
@@ -155,17 +165,41 @@
                             </div>
                         </div>
 
-                        {{-- Accept / Decline branch ports --}}
+                        {{-- Accept / Decline branch ports. Each branch that ENDS here shows a clear
+                             "+ Add step" button to append the next offer on that path.
+                             wire:click.stop keeps the click off the node button (which opens the drawer). --}}
                         <div class="rc-fb-branches">
                             <div class="rc-fb-branch rc-fb-branch--accept">
                                 <span class="rc-fb-branch__label">{{ __('upsell.admin.builder.branch.accept') }}</span>
                                 <span class="rc-fb-branch__arrow">→</span>
                                 <span class="rc-fb-branch__next">{{ $offer['accept_next'] }}</span>
+                                @if($offer['accept_is_end'])
+                                    <span
+                                        role="button"
+                                        tabindex="0"
+                                        class="rc-fb-branch__add"
+                                        wire:click.stop="addAcceptOffer({{ $offer['id'] }})"
+                                        x-on:keydown.enter.stop="$wire.addAcceptOffer({{ $offer['id'] }})"
+                                        aria-label="{{ __('upsell.admin.builder.add_accept_offer') }}"
+                                        title="{{ __('upsell.admin.builder.add_accept_offer') }}"
+                                    ><span class="rc-fb-branch__add-plus">+</span>{{ __('upsell.admin.builder.add_step') }}</span>
+                                @endif
                             </div>
                             <div class="rc-fb-branch rc-fb-branch--decline">
                                 <span class="rc-fb-branch__label">{{ __('upsell.admin.builder.branch.decline') }}</span>
                                 <span class="rc-fb-branch__arrow">→</span>
                                 <span class="rc-fb-branch__next">{{ $offer['decline_next'] }}</span>
+                                @if($offer['decline_is_end'])
+                                    <span
+                                        role="button"
+                                        tabindex="0"
+                                        class="rc-fb-branch__add"
+                                        wire:click.stop="addDeclineOffer({{ $offer['id'] }})"
+                                        x-on:keydown.enter.stop="$wire.addDeclineOffer({{ $offer['id'] }})"
+                                        aria-label="{{ __('upsell.admin.builder.add_decline_offer') }}"
+                                        title="{{ __('upsell.admin.builder.add_decline_offer') }}"
+                                    ><span class="rc-fb-branch__add-plus">+</span>{{ __('upsell.admin.builder.add_step') }}</span>
+                                @endif
                             </div>
                         </div>
 
