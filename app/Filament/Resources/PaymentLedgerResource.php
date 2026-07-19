@@ -12,6 +12,7 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
 
 /**
@@ -58,6 +59,14 @@ class PaymentLedgerResource extends Resource
                     ->label(__('subscriptions.detail.col.date'))
                     ->dateTime('d M Y, H:i')
                     ->sortable(),
+
+                // The customer's NAME, not the raw id. Resolved on the model: a plan-based charge
+                // reads it from the linked plan; a plan-less upsell borrows it from the plan that
+                // vaulted the token. `plan` is eager-loaded below to avoid an N+1 on plan charges.
+                Tables\Columns\TextColumn::make('customer')
+                    ->label(__('subscriptions.list.col.customer'))
+                    ->state(fn (PaymentLedger $record): string => $record->customerLabel())
+                    ->weight('semibold'),
 
                 Tables\Columns\TextColumn::make('charge_context')
                     ->label(__('subscriptions.detail.col.context'))
@@ -120,6 +129,7 @@ class PaymentLedgerResource extends Resource
                         }
                     }),
             ])
+            ->modifyQueryUsing(fn (Builder $query): Builder => $query->with('plan'))
             ->defaultSort('created_at', 'desc')
             ->emptyStateHeading(__('subscriptions.detail.ledger_empty'))
             ->emptyStateIcon('heroicon-o-banknotes');

@@ -3,7 +3,9 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToShop;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * One immutable row per money movement. Append-only in spirit: a charge is
@@ -50,5 +52,68 @@ class PaymentLedger extends Model
     public function isSucceeded(): bool
     {
         return $this->status === self::STATUS_SUCCEEDED;
+    }
+
+    // === Relations ===
+
+    /**
+     * The plan this charge belongs to (deposit/installment/recurring). NULL for an
+     * upsell charge — an upsell is a charge CONTEXT, not a plan.
+     */
+    public function plan(): BelongsTo
+    {
+        return $this->belongsTo(InstallmentPlan::class, 'plan_id');
+    }
+
+    // === Presentation ===
+
+    /**
+     * A HUMAN label for this charge's customer. There is no Customer model — the name is
+     * captured on the InstallmentPlan at checkout (customer_name/customer_email). A plan-based
+     * charge reads it from the linked plan; a plan-less upsell charge borrows the label from the
+     * newest plan that shares this charge's saved-customer identity (customer_id /
+     * shopify_customer_id), since the upsell always charges a token vaulted by an earlier plan.
+     * Falls back to the raw external id, else common.none — mirrors InstallmentPlan::customerLabel().
+     */
+    public function customerLabel(): string
+    {
+        $plan = $this->plan ?: $this->resolveCustomerPlan();
+        if ($plan !== null) {
+            return $plan->customerLabel();
+        }
+
+        $shopifyId = trim((string) ($this->shopify_customer_id ?? ''));
+
+        return $shopifyId !== '' ? $shopifyId : __('common.none');
+    }
+
+    /**
+     * The newest InstallmentPlan for this charge's customer (this shop only, via the
+     * BelongsToShop global scope), matched on shopify_customer_id (string) or the numeric
+     * customer_id. Only used for plan-less charges (upsells). customer_id is a BIGINT — never
+     * compare it to a non-numeric value (Postgres 22P02), mirroring
+     * UpsellChargeService::resolvePaymentMethod's type care.
+     */
+    private function resolveCustomerPlan(): ?InstallmentPlan
+    {
+        $shopifyId = trim((string) ($this->shopify_customer_id ?? ''));
+        $customerId = $this->customer_id;
+
+        if ($shopifyId === '' && $customerId === null) {
+            return null;
+        }
+
+        return InstallmentPlan::query()
+            ->where(function (Builder $q) use ($shopifyId, $customerId): void {
+                if ($shopifyId !== '') {
+                    $q->orWhere('shopify_customer_id', $shopifyId)
+                        ->orWhere('external_customer_id', $shopifyId);
+                }
+                if ($customerId !== null) {
+                    $q->orWhere('customer_id', $customerId);
+                }
+            })
+            ->latest('id')
+            ->first();
     }
 }
