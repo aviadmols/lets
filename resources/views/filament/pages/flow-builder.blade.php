@@ -19,6 +19,9 @@
         $isActive = $statusKey === 'active';
         $statusTone = $statusKey === 'active' ? 'green' : 'gray';
         $issues = $this->validationIssues();
+        // Canvas node positions + connector edges (Shopify-Flow-style drag board).
+        $layout = $this->nodeLayout();
+        $edges = $this->edges();
     @endphp
 
     {{-- Toolbar: back + name + status + activate/pause --}}
@@ -69,10 +72,10 @@
         </div>
     @endif
 
-    {{-- Canvas (Alpine pan + zoom) --}}
+    {{-- Canvas (Alpine pan + zoom + node drag). Seeded with the saved node layout. --}}
     <div
         class="rc-fb-canvas"
-        x-data="rcFlowBuilder()"
+        x-data="rcFlowBuilder(@js($layout))"
         x-on:wheel.prevent="onWheel($event)"
     >
         {{-- Zoom controls --}}
@@ -96,40 +99,83 @@
             x-on:pointerleave="endPan()"
         >
             <div class="rc-fb-graph">
-                {{-- Trigger node (green) — clickable; opens the "Configure trigger" drawer --}}
-                <button
-                    type="button"
-                    wire:click="openTriggerConfig"
-                    class="rc-fb-node rc-fb-node--trigger"
-                    aria-label="{{ __('upsell.admin.trigger_config.open') }}"
+                {{-- Connector layer: SVG arrows between nodes. Each path's `d` is computed live in
+                     Alpine from the node positions (edgePath), so arrows follow nodes as they drag.
+                     pointer-events:none + behind the nodes, so it never blocks a grab/click. --}}
+                <svg class="rc-fb-edges" aria-hidden="true">
+                    <defs>
+                        @foreach(['trigger', 'accept', 'decline'] as $markerKind)
+                            <marker id="rc-fb-arrow-{{ $markerKind }}" viewBox="0 0 10 10" refX="8" refY="5"
+                                    markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                                <path d="M0,0 L10,5 L0,10 z" class="rc-fb-edge__arrow rc-fb-edge__arrow--{{ $markerKind }}" />
+                            </marker>
+                        @endforeach
+                    </defs>
+                    @foreach($edges as $edge)
+                        {{-- `d` is rendered server-side (visible immediately + survives morphs);
+                             x-bind:d then keeps it in sync live while a node is dragged. --}}
+                        <path
+                            class="rc-fb-edge rc-fb-edge--{{ $edge['kind'] }}"
+                            d="{{ $this->edgeD($layout, $edge['from'], $edge['to'], $edge['kind']) }}"
+                            x-bind:d="edgePath(@js($edge['from']), @js($edge['to']), @js($edge['kind']))"
+                            marker-end="url(#rc-fb-arrow-{{ $edge['kind'] }})"
+                        ></path>
+                    @endforeach
+                </svg>
+
+                {{-- Trigger node (green) — draggable; click (no drag) opens the "Configure trigger" drawer --}}
+                <div
+                    class="rc-fb-nodepos"
+                    wire:key="node-trigger"
+                    data-node-key="trigger"
+                    data-fx="{{ $layout['trigger']['x'] }}"
+                    data-fy="{{ $layout['trigger']['y'] }}"
+                    x-effect="applyNode($el)"
+                    x-bind:class="{ 'rc-fb-nodepos--drag': drag && drag.key === 'trigger' }"
+                    x-on:pointerdown="nodeDown($event)"
+                    x-on:pointermove="nodeMove($event)"
+                    x-on:pointerup="nodeUp($event)"
+                    x-on:pointercancel="nodeUp($event)"
+                    x-on:click.capture="onNodeClick($event)"
                 >
-                    <div class="rc-fb-node__type">
-                        <x-filament::icon icon="heroicon-o-bolt" class="rc-fb-node__icon" />
-                        {{ __('upsell.admin.builder.node.trigger') }}
-                    </div>
-                    <div class="rc-fb-node__title">{{ __('upsell.admin.builder.trigger.headline') }}</div>
-                    <div class="rc-fb-node__body">
-                        @forelse($this->triggers as $trigger)
-                            <span class="rc-fb-cond">{{ $trigger['summary'] }}</span>
-                        @empty
-                            <span class="rc-fb-cond rc-fb-cond--empty">{{ __('upsell.admin.builder.error.no_trigger') }}</span>
-                        @endforelse
-                    </div>
-                    <div class="rc-fb-port rc-fb-port--out"></div>
-                </button>
+                    <button
+                        type="button"
+                        wire:click="openTriggerConfig"
+                        class="rc-fb-node rc-fb-node--trigger"
+                        aria-label="{{ __('upsell.admin.trigger_config.open') }}"
+                    >
+                        <div class="rc-fb-node__type">
+                            <x-filament::icon icon="heroicon-o-bolt" class="rc-fb-node__icon" />
+                            {{ __('upsell.admin.builder.node.trigger') }}
+                        </div>
+                        <div class="rc-fb-node__title">{{ __('upsell.admin.builder.trigger.headline') }}</div>
+                        <div class="rc-fb-node__body">
+                            @forelse($this->triggers as $trigger)
+                                <span class="rc-fb-cond">{{ $trigger['summary'] }}</span>
+                            @empty
+                                <span class="rc-fb-cond rc-fb-cond--empty">{{ __('upsell.admin.builder.error.no_trigger') }}</span>
+                            @endforelse
+                        </div>
+                        <div class="rc-fb-port rc-fb-port--out"></div>
+                    </button>
+                </div>
 
-                {{-- Connector trigger → first offer --}}
-                @if(! empty($this->offers))
-                    <div class="rc-fb-connector" aria-hidden="true">
-                        <svg class="rc-fb-connector__svg" viewBox="0 0 100 40" preserveAspectRatio="none">
-                            <path class="rc-fb-connector__path" d="M0,20 C40,20 60,20 100,20" />
-                        </svg>
-                        <span class="rc-fb-connector__arrow">▶</span>
-                    </div>
-                @endif
-
-                {{-- Offer nodes — a clickable "Cross-sell" card; click opens the drawer --}}
+                {{-- Offer nodes — draggable "Cross-sell" cards; click (no drag) opens the drawer --}}
                 @foreach($this->offers as $offer)
+                    <div
+                        class="rc-fb-nodepos"
+                        wire:key="node-offer-{{ $offer['id'] }}"
+                        data-node-key="offer:{{ $offer['id'] }}"
+                        data-fx="{{ $layout['offer:' . $offer['id']]['x'] ?? 0 }}"
+                        data-fy="{{ $layout['offer:' . $offer['id']]['y'] ?? 0 }}"
+                        x-effect="applyNode($el)"
+                        x-bind:class="{ 'rc-fb-nodepos--drag': drag && drag.key === 'offer:{{ $offer['id'] }}' }"
+                        x-on:pointerdown="nodeDown($event)"
+                        x-on:pointermove="nodeMove($event)"
+                        x-on:pointerup="nodeUp($event)"
+                        x-on:pointercancel="nodeUp($event)"
+                        x-on:click.capture="onNodeClick($event)"
+                    >
                     <button
                         type="button"
                         wire:click="openOfferConfig({{ $offer['id'] }})"
@@ -207,6 +253,22 @@
                             <div class="rc-fb-node__reason">{{ __('upsell.admin.builder.error.missing_copy', ['offer' => $offer['title']]) }}</div>
                         @endif
                     </button>
+
+                    {{-- Node-corner delete. A sibling of the node button (not nested → valid HTML);
+                         wire:confirm gates it, wire:click.stop + pointerdown.stop keep it off the
+                         node's open-drawer click and off the drag handler. --}}
+                    <button
+                        type="button"
+                        class="rc-fb-node__delete"
+                        wire:click.stop="deleteOffer({{ $offer['id'] }})"
+                        wire:confirm="{{ __('upsell.admin.builder.delete_confirm') }}"
+                        x-on:pointerdown.stop
+                        aria-label="{{ __('upsell.admin.builder.delete_offer') }}"
+                        title="{{ __('upsell.admin.builder.delete_offer') }}"
+                    >
+                        <x-filament::icon icon="heroicon-m-trash" class="rc-fb-node__delete-icon" />
+                    </button>
+                    </div>
                 @endforeach
 
                 {{-- Empty canvas prompt --}}
@@ -577,5 +639,8 @@
 </x-filament-panels::page>
 
 @push('scripts')
-    <script src="{{ asset('js/flow-builder.js') }}" defer></script>
+    {{-- Cache-bust on file change (mirrors the rc-admin.css ?v= pattern) so a browser never runs a
+         stale build of the canvas/edge logic after a deploy. --}}
+    @php $fbJs = public_path('js/flow-builder.js'); @endphp
+    <script src="{{ asset('js/flow-builder.js') }}{{ is_file($fbJs) ? '?v=' . filemtime($fbJs) : '' }}" defer></script>
 @endpush

@@ -30,6 +30,8 @@ class UpsellFlow extends Model
         return [
             'status' => UpsellFlowStatus::class,
             'priority' => 'integer',
+            // Flow Builder canvas node positions ({ "trigger": {x,y}, "offer:<id>": {x,y} }).
+            'layout' => 'array',
         ];
     }
 

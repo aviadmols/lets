@@ -73,6 +73,27 @@ class FlowBuilder extends Page
     /** A renamed-to-blank flow falls back to this; also caps runaway length. */
     public const FLOW_NAME_MAX = 120;
 
+    /** Auto-layout defaults (canvas px) used when a node has no saved position yet, plus the
+     *  clamp bounds saveLayout() enforces so a bad client can never store an absurd offset. */
+    public const LAYOUT_TRIGGER_X = 40;
+    public const LAYOUT_TRIGGER_Y = 200;
+    public const LAYOUT_OFFER_X0 = 360;
+    public const LAYOUT_OFFER_STEP_X = 340;
+    public const LAYOUT_OFFER_Y = 140;
+    public const LAYOUT_MIN = -4000;
+    public const LAYOUT_MAX = 8000;
+
+    /** Edge geometry — MUST mirror flow-builder.js (node widths, the port offsets, min bow) so the
+     *  server-rendered arrow and the live Alpine one line up. The per-branch source offsets are
+     *  approximations of where the Accept/Decline rows sit in a card (from its top); flow-builder.js
+     *  refines them live by measuring the actual branch row, so the arrow leaves the right pill. */
+    public const NODE_W_TRIGGER = 220;
+    public const NODE_W_OFFER = 240;
+    public const EDGE_PORT_Y = 46;          // header-level port (trigger out + every target in)
+    public const EDGE_SRC_Y_ACCEPT = 196;   // ~ the Accept row of an offer card
+    public const EDGE_SRC_Y_DECLINE = 224;  // ~ the Decline row (just below Accept)
+    public const EDGE_MIN_BOW = 24;
+
     /** @var array<int, array<string, mixed>> derived each render (not persisted). */
     public array $offers = [];
 
@@ -215,6 +236,9 @@ class FlowBuilder extends Page
                     // A path that ends here (no next offer) shows the "+" to append the next module.
                     'accept_is_end' => empty($branch?->on_accept_next_offer_id),
                     'decline_is_end' => empty($branch?->on_decline_next_offer_id),
+                    // The concrete next-offer targets — the canvas draws an arrow to each.
+                    'accept_next_id' => $branch?->on_accept_next_offer_id !== null ? (int) $branch->on_accept_next_offer_id : null,
+                    'decline_next_id' => $branch?->on_decline_next_offer_id !== null ? (int) $branch->on_decline_next_offer_id : null,
                     'valid' => $this->offerIsValid($offer),
                     'product_id' => $offer->productNumericId(),
                 ];
@@ -449,6 +473,202 @@ class FlowBuilder extends Page
 
         // Open the new node's config drawer so the merchant fills product/price/copy right away.
         $this->openOfferConfig($offer->id);
+    }
+
+    /**
+     * Delete an offer node (the node-corner trash). Tenant-scoped via offerModel() (a foreign/missing
+     * id is a silent no-op). Cleanup, in order:
+     *   1. NULL every OTHER branch that TARGETS this offer — on_accept/decline_next_offer_id are plain
+     *      nullable columns with NO FK cascade, so without this they'd dangle: the path would render a
+     *      silent "End flow" but lose its "+ Add step" (accept_is_end stays false), stranding the flow.
+     *   2. Delete the offer — its OWN outgoing branch cascades (from_offer_id FK, migration W… 000004).
+     *   3. Prune its offer:<id> key from the flow layout so stale coords don't linger.
+     *   4. If its config drawer was open, tear it down (mirrors saveOfferConfig's epilogue).
+     * Deleting the first offer just re-points the trigger edge (edges() recomputes); deleting the last
+     * offer is allowed — the flow simply becomes "needs an offer".
+     */
+    public function deleteOffer(int $offerId): void
+    {
+        $offer = $this->offerModel($offerId);
+        if ($offer === null) {
+            return;
+        }
+
+        $id = (int) $offer->id;
+
+        UpsellFlowBranch::query()
+            ->where('flow_id', $this->flowId)
+            ->where('on_accept_next_offer_id', $id)
+            ->update(['on_accept_next_offer_id' => null]);
+        UpsellFlowBranch::query()
+            ->where('flow_id', $this->flowId)
+            ->where('on_decline_next_offer_id', $id)
+            ->update(['on_decline_next_offer_id' => null]);
+
+        $offer->delete(); // its own outgoing branch cascades via the from_offer_id FK
+
+        // Prune the deleted node's stored layout coords (mirrors saveLayout()'s allow-list filter).
+        $flow = $this->flow();
+        $layout = is_array($flow->layout ?? null) ? $flow->layout : [];
+        $key = 'offer:' . $id;
+        if (array_key_exists($key, $layout)) {
+            unset($layout[$key]);
+            $flow->layout = $layout;
+            $flow->save();
+        }
+
+        // If the drawer was open for this offer, close it (its configOfferId is now dangling).
+        if ($this->configOfferId === $id) {
+            $this->drawerOpen = false;
+            $this->configOfferId = 0;
+            $this->resetPickerState();
+        }
+
+        $this->resolved = null;
+        $this->hydrateGraph();
+
+        Notification::make()->title(__('upsell.admin.builder.deleted'))->success()->send();
+    }
+
+    // === Canvas layout (Shopify-Flow-style drag + connectors) ===
+
+    /**
+     * The canvas position of every node ({ "trigger": {x,y}, "offer:<id>": {x,y} }), in canvas px.
+     * Uses the flow's saved layout where present, else a left→right auto-layout default — so a fresh
+     * flow opens tidy and a dragged one re-opens exactly where the merchant left it. The Blade seeds
+     * both the Alpine store (initial drag state) and each node's data-* fallback from this.
+     *
+     * @return array<string, array{x: float, y: float}>
+     */
+    public function nodeLayout(): array
+    {
+        $stored = is_array($this->flow()->layout ?? null) ? $this->flow()->layout : [];
+
+        $layout = [
+            'trigger' => $this->coord($stored, 'trigger', self::LAYOUT_TRIGGER_X, self::LAYOUT_TRIGGER_Y),
+        ];
+
+        foreach (array_values($this->offers) as $i => $offer) {
+            $key = 'offer:' . $offer['id'];
+            $layout[$key] = $this->coord(
+                $stored,
+                $key,
+                self::LAYOUT_OFFER_X0 + $i * self::LAYOUT_OFFER_STEP_X,
+                self::LAYOUT_OFFER_Y,
+            );
+        }
+
+        return $layout;
+    }
+
+    /**
+     * The directed edges the canvas draws as arrows: the trigger → the first offer (the entry
+     * point), then each offer's accept/decline → its next offer. Only edges whose target is a real
+     * offer of THIS flow are emitted (a dangling branch draws no arrow — it shows "+ Add step").
+     *
+     * @return list<array{from: string, to: string, kind: string}>
+     */
+    public function edges(): array
+    {
+        $offers = array_values($this->offers);
+        $edges = [];
+
+        $firstOfferId = $offers[0]['id'] ?? null;
+        if ($firstOfferId !== null) {
+            $edges[] = ['from' => 'trigger', 'to' => 'offer:' . $firstOfferId, 'kind' => 'trigger'];
+        }
+
+        $known = array_flip(array_map(static fn (array $o): int => (int) $o['id'], $offers));
+
+        foreach ($offers as $offer) {
+            foreach (['accept', 'decline'] as $kind) {
+                $next = $offer[$kind . '_next_id'] ?? null;
+                if ($next !== null && isset($known[(int) $next])) {
+                    $edges[] = ['from' => 'offer:' . $offer['id'], 'to' => 'offer:' . (int) $next, 'kind' => $kind];
+                }
+            }
+        }
+
+        return $edges;
+    }
+
+    /**
+     * The SVG path `d` for one edge, computed from the given layout — rendered server-side so the
+     * arrow is visible immediately, without waiting on (or depending on) the Alpine binding. The
+     * live drag then keeps it in sync via the identical geometry in flow-builder.js::edgePath().
+     *
+     * The Accept/Decline arrows leave from their own row (lower on the card) rather than the header,
+     * so each visibly emanates from its pill; the trigger arrow leaves the header. flow-builder.js
+     * refines the exact row Y live.
+     */
+    public function edgeD(array $layout, string $from, string $to, string $kind = 'trigger'): string
+    {
+        $a = $layout[$from] ?? null;
+        $b = $layout[$to] ?? null;
+        if (! is_array($a) || ! is_array($b)) {
+            return '';
+        }
+
+        $width = static fn (string $key): int => str_starts_with($key, 'trigger')
+            ? self::NODE_W_TRIGGER
+            : self::NODE_W_OFFER;
+
+        $sourceY = match ($kind) {
+            'accept' => self::EDGE_SRC_Y_ACCEPT,
+            'decline' => self::EDGE_SRC_Y_DECLINE,
+            default => self::EDGE_PORT_Y,
+        };
+
+        $sx = (float) $a['x'] + $width($from);
+        $sy = (float) $a['y'] + $sourceY;
+        $tx = (float) $b['x'];
+        $ty = (float) $b['y'] + self::EDGE_PORT_Y;
+        $bow = max(self::EDGE_MIN_BOW, abs($tx - $sx) * 0.5);
+
+        return sprintf('M %s,%s C %s,%s %s,%s %s,%s', $sx, $sy, $sx + $bow, $sy, $tx - $bow, $ty, $tx, $ty);
+    }
+
+    /** One node's stored {x,y} (rounded) or the passed auto-layout default. */
+    private function coord(array $stored, string $key, int $dx, int $dy): array
+    {
+        $x = isset($stored[$key]['x']) ? (float) $stored[$key]['x'] : (float) $dx;
+        $y = isset($stored[$key]['y']) ? (float) $stored[$key]['y'] : (float) $dy;
+
+        return ['x' => round($x, 1), 'y' => round($y, 1)];
+    }
+
+    /**
+     * Persist the dragged canvas layout (called from the Alpine drag handler on drop). NEVER trusts
+     * the client: only node keys that belong to THIS flow are kept, and every coordinate is clamped
+     * to the sane canvas range. Tenant-scoped via flow(); `layout` is a plain presentational column
+     * (the charge engine never reads it), so a raw save is safe.
+     *
+     * @param array<string, mixed> $positions
+     */
+    public function saveLayout(array $positions): void
+    {
+        $valid = ['trigger' => true];
+        foreach ($this->offers as $offer) {
+            $valid['offer:' . $offer['id']] = true;
+        }
+
+        $clean = [];
+        foreach ($positions as $key => $pos) {
+            if (! isset($valid[$key]) || ! is_array($pos)) {
+                continue;
+            }
+
+            $clean[$key] = [
+                'x' => round(max(self::LAYOUT_MIN, min(self::LAYOUT_MAX, (float) ($pos['x'] ?? 0))), 1),
+                'y' => round(max(self::LAYOUT_MIN, min(self::LAYOUT_MAX, (float) ($pos['y'] ?? 0))), 1),
+            ];
+        }
+
+        $flow = $this->flow();
+        $flow->layout = $clean;
+        $flow->save();
+
+        $this->resolved = null;
     }
 
     // === "Configure cross-sell" drawer (UI config — no charge-engine change) ===

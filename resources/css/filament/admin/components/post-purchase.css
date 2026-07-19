@@ -330,13 +330,76 @@
 }
 .rc-fb-stage:active { cursor: grabbing; }
 
+/* Free-form node canvas (Shopify-Flow-style). A physical LTR coordinate plane in BOTH
+   locales so drag math + edge geometry never mirror; card TEXT direction is restored
+   per node below. Nodes are absolutely placed via --rc-fb-nx/-ny; edges are an SVG overlay. */
 .rc-fb-graph {
-    display: flex;
-    align-items: center;
-    gap: var(--rc-space-5);
-    padding: var(--rc-space-6);
-    min-block-size: 100%;
+    position: relative;
+    direction: ltr;
+    min-inline-size: 1400px;
+    min-block-size: 640px;
 }
+
+/* Draggable node wrapper — reads --rc-fb-nx/-ny (set from JS, no inline literal). */
+.rc-fb-nodepos {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    direction: ltr;                 /* LTR anchor so inset-inline-start = left, translateX = rightward */
+    transform: translate(var(--rc-fb-nx, 0), var(--rc-fb-ny, 0));
+    z-index: 1;
+    touch-action: none;             /* pointer drag, not scroll */
+    cursor: grab;
+}
+[dir="rtl"] .rc-fb-nodepos .rc-fb-node { direction: rtl; }  /* restore Hebrew card text in RTL */
+.rc-fb-nodepos--drag { cursor: grabbing; z-index: 5; }
+.rc-fb-nodepos--drag .rc-fb-node { box-shadow: var(--rc-shadow-hover); }
+
+/* Node-corner delete (trash). Sits over the offer card's top corner; subtle until hovered. */
+.rc-fb-node__delete {
+    position: absolute;
+    inset-block-start: var(--rc-space-2);
+    inset-inline-end: var(--rc-space-2);
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 26px;
+    block-size: 26px;
+    border-radius: var(--rc-radius-control);
+    border: 1px solid var(--rc-border);
+    background: var(--rc-card);
+    color: var(--rc-ink-muted);
+    cursor: pointer;
+}
+.rc-fb-node__delete:hover { border-color: var(--rc-red); color: var(--rc-red); background: var(--rc-red-bg); }
+.rc-fb-node__delete:focus-visible { outline: none; box-shadow: var(--rc-ring); }
+.rc-fb-node__delete-icon { inline-size: 15px; block-size: 15px; }
+
+/* Connector overlay: SVG arrows between nodes, behind the cards + click-through. */
+.rc-fb-edges {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    direction: ltr;
+    inline-size: 100%;
+    block-size: 100%;
+    overflow: visible;
+    pointer-events: none;
+    z-index: 0;
+}
+.rc-fb-edge {
+    fill: none;
+    stroke: var(--rc-border-strong);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+}
+.rc-fb-edge--trigger { stroke: var(--rc-blue); }
+.rc-fb-edge--accept { stroke: var(--rc-green); }
+.rc-fb-edge--decline { stroke: var(--rc-gray); }
+.rc-fb-edge__arrow--trigger { fill: var(--rc-blue); }
+.rc-fb-edge__arrow--accept { fill: var(--rc-green); }
+.rc-fb-edge__arrow--decline { fill: var(--rc-gray); }
 
 /* Nodes */
 .rc-fb-node {
