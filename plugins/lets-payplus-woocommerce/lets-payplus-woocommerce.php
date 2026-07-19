@@ -3,7 +3,7 @@
  * Plugin Name: LETS — PayPlus Subscriptions & Installments for WooCommerce
  * Plugin URI: https://app.lets.co.il
  * Description: Connect your WooCommerce store to LETS to offer PayPlus deposits + installments, recurring subscriptions, one-click post-purchase upsells, and optional full PayPlus checkout. Paste the connection token from your LETS dashboard to link this store.
- * Version: 0.15.0
+ * Version: 0.16.0
  * Author: LETS
  * Author URI: https://app.lets.co.il
  * Text Domain: lets-payplus
@@ -24,7 +24,7 @@ if (! defined('ABSPATH')) {
     exit; // never run outside WordPress
 }
 
-define('LETS_PAYPLUS_VERSION', '0.15.0');
+define('LETS_PAYPLUS_VERSION', '0.16.0');
 define('LETS_PAYPLUS_OPT', 'lets_payplus_connection'); // wp_option holding the decoded token
 define('LETS_PAYPLUS_FILE', __FILE__);
 define('LETS_PAYPLUS_URL', plugin_dir_url(__FILE__)); // base URL for assets
@@ -66,6 +66,31 @@ function lets_payplus_connection()
     return is_array($conn) && ! empty($conn['api_key']) ? $conn : null;
 }
 
+/**
+ * The LETS management dashboard URL for this store. Derived from the connection token's
+ * install_url ORIGIN (so it automatically follows the environment the store was linked to —
+ * production, staging, a local host), falling back to the public app when not yet connected.
+ * Deep-links to the embedded admin panel (path `/admin`); the merchant signs in there with
+ * their LETS account and lands on THEIR shop.
+ */
+function lets_payplus_dashboard_url()
+{
+    $base = 'https://app.lets.co.il';
+
+    $conn = lets_payplus_connection();
+    if ($conn && ! empty($conn['install_url'])) {
+        $parts = wp_parse_url((string) $conn['install_url']);
+        if (! empty($parts['scheme']) && ! empty($parts['host'])) {
+            $base = $parts['scheme'] . '://' . $parts['host'];
+            if (! empty($parts['port'])) {
+                $base .= ':' . (int) $parts['port'];
+            }
+        }
+    }
+
+    return $base . '/admin';
+}
+
 /** Admin menu: Settings → LETS. */
 add_action('admin_menu', function () {
     add_options_page(
@@ -75,6 +100,43 @@ add_action('admin_menu', function () {
         'lets-payplus',
         'lets_payplus_render_settings'
     );
+});
+
+/**
+ * A persistent "LETS" shortcut in the WordPress admin bar → opens the LETS management
+ * dashboard in a new tab, so the merchant can reach it from ANY admin screen (not only
+ * Settings → LETS). Admins only; admin context only.
+ */
+add_action('admin_bar_menu', function ($bar) {
+    if (! is_admin() || ! current_user_can('manage_options')) {
+        return;
+    }
+
+    $bar->add_node(array(
+        'id'    => 'lets-payplus-dashboard',
+        'title' => 'LETS',
+        'href'  => lets_payplus_dashboard_url(),
+        'meta'  => array(
+            'target' => '_blank',
+            'rel'    => 'noopener noreferrer',
+            'title'  => __('Open the LETS management dashboard', 'lets-payplus'),
+        ),
+    ));
+}, 80);
+
+/**
+ * Quick links on the Plugins list row: "Settings" (the connect page) + "Dashboard"
+ * (the LETS management system, new tab) — the fastest path to the SaaS from within WP.
+ */
+add_filter('plugin_action_links_' . plugin_basename(LETS_PAYPLUS_FILE), function ($links) {
+    $settings = '<a href="' . esc_url(admin_url('options-general.php?page=lets-payplus')) . '">'
+        . esc_html__('Settings', 'lets-payplus') . '</a>';
+    $dashboard = '<a href="' . esc_url(lets_payplus_dashboard_url()) . '" target="_blank" rel="noopener noreferrer">'
+        . esc_html__('Dashboard', 'lets-payplus') . '</a>';
+
+    array_unshift($links, $settings, $dashboard);
+
+    return $links;
 });
 
 /** Handle the connect form post. */
@@ -254,6 +316,21 @@ function lets_payplus_render_settings()
             <p>Paste the <strong>connection token</strong> from your LETS dashboard
                (Shops → your store → Add WooCommerce store) to link this store.</p>
         <?php endif; ?>
+
+        <p>
+            <a class="button button-primary" href="<?php echo esc_url(lets_payplus_dashboard_url()); ?>"
+               target="_blank" rel="noopener noreferrer">
+                <span class="dashicons dashicons-external" style="vertical-align:text-bottom"></span>
+                <?php
+                echo $conn
+                    ? esc_html__('Open LETS dashboard', 'lets-payplus')
+                    : esc_html__('Open LETS dashboard to get your token', 'lets-payplus');
+                ?>
+            </a>
+            <span class="description" style="margin-inline-start:8px">
+                <?php esc_html_e('Manage subscriptions, payments, upsells and settings in the LETS management system.', 'lets-payplus'); ?>
+            </span>
+        </p>
 
         <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
             <?php wp_nonce_field('lets_payplus_connect'); ?>

@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.15.0
+Stable tag: 0.16.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,12 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.16.0 =
+* Access to the LETS management dashboard from inside WordPress: a "LETS" shortcut in the
+  admin bar (reachable from any screen), "Settings" + "Dashboard" quick links on the Plugins
+  list, and an "Open LETS dashboard" button on Settings → LETS. The link follows the
+  environment the store was connected to.
 
 = 0.2.0 =
 * Deposit + installments product-page widget (server-computed schedule → PayPlus page).
