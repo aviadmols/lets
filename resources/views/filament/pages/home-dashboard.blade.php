@@ -83,6 +83,37 @@
             </table>
         </div>
 
+        {{-- Upcoming orders — the next scheduled charges (subscriptions + installments), soonest first.
+             Rows are precomputed by upcomingCharges(); each links to the subscription. --}}
+        <div class="rc-section">
+            <div class="rc-section__title">{{ __('dashboard.upcoming.title') }}</div>
+            @php $upcoming = $this->upcomingCharges(); @endphp
+            <table class="rc-table">
+                <thead>
+                    <tr>
+                        <th>{{ __('dashboard.upcoming.customer') }}</th>
+                        <th>{{ __('dashboard.upcoming.type') }}</th>
+                        <th>{{ __('dashboard.upcoming.amount') }}</th>
+                        <th>{{ __('dashboard.upcoming.date') }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($upcoming as $row)
+                        <tr>
+                            <td class="rc-strong"><a class="rc-link" href="{{ $row['url'] }}" wire:navigate>{{ $row['customer'] }}</a></td>
+                            <td>{{ $row['kind'] }}</td>
+                            <td class="rc-ltr">{{ $row['amount'] }}</td>
+                            <td class="rc-ltr">{{ $row['date'] }}</td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="4" class="rc-muted">{{ __('dashboard.upcoming.empty') }}</td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+
         {{-- Recent activity feed --}}
         <div class="rc-section">
             <div class="rc-section__title">{{ __('dashboard.activity.title') }}</div>

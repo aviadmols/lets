@@ -28,6 +28,15 @@ return [
         'title' => 'Recent activity',
     ],
 
+    'upcoming' => [
+        'title' => 'Upcoming orders',
+        'customer' => 'Customer',
+        'type' => 'Type',
+        'amount' => 'Amount',
+        'date' => 'Next charge',
+        'empty' => 'No upcoming charges scheduled.',
+    ],
+
     'empty' => [
         'first_run' => [
             'title' => "Let's process your first payment",

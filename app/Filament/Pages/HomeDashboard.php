@@ -5,7 +5,10 @@ namespace App\Filament\Pages;
 use App\Domain\Dashboard\DashboardMetrics;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Filament\Resources\ShopResource;
+use App\Filament\Resources\SubscriptionResource\Pages\ViewSubscription;
 use App\Models\ActivityEvent;
+use App\Models\InstallmentPlan;
+use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Support\Tenant;
 use App\Support\Ui\Money;
 use App\Support\Ui\PanelAccess;
@@ -39,6 +42,9 @@ class HomeDashboard extends Page
     public const DEFAULT_RANGE_DAYS = 30;
 
     public const ACTIVITY_LIMIT = 12;
+
+    /** How many upcoming charges the Home "Upcoming orders" panel lists. */
+    public const UPCOMING_LIMIT = 8;
 
     /**
      * Overrides ShopScopedScreen::canAccess(). A bound user (merchant, or platform
@@ -113,5 +119,32 @@ class HomeDashboard extends Page
             ->latest('created_at')
             ->limit(self::ACTIVITY_LIMIT)
             ->get();
+    }
+
+    /**
+     * The next upcoming charges (subscriptions + installments), soonest first — fully resolved into
+     * display rows so the Blade only renders (the dashboard "renders, never aggregates" contract).
+     * Tenant-scoped automatically by InstallmentPlan's BelongsToShop global scope (never a manual
+     * shop_id filter). Mirrors the reminder fan-out's WHERE shape but read-scoped to this shop.
+     *
+     * @return list<array{customer: string, kind: string, amount: string, date: string, url: string}>
+     */
+    public function upcomingCharges(): array
+    {
+        return InstallmentPlan::query()
+            ->whereIn('status', [PlanStatus::ACTIVE->value, PlanStatus::AWAITING_FIRST_PAYMENT->value])
+            ->whereNotNull('next_charge_at')
+            ->where('next_charge_at', '>', now())
+            ->orderBy('next_charge_at')
+            ->limit(self::UPCOMING_LIMIT)
+            ->get()
+            ->map(fn (InstallmentPlan $plan): array => [
+                'customer' => $plan->customerLabel(),
+                'kind' => __('billing.plan_kind.' . $plan->plan_kind->value),
+                'amount' => Money::format((float) $plan->installment_amount, $plan->currency ?: Money::DEFAULT_CURRENCY),
+                'date' => $plan->next_charge_at->format('d M Y'),
+                'url' => ViewSubscription::getUrl(['plan' => $plan->getKey()]),
+            ])
+            ->all();
     }
 }
