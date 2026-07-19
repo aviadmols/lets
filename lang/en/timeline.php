@@ -9,6 +9,7 @@ return [
         'retry_scheduled' => 'Retry scheduled',
         'refund_succeeded' => 'Refund issued',
         'state_changed' => 'Status changed',
+        'plan_edited' => 'Subscription edited',
         'plan_completed' => 'Plan completed',
         'plan_cancelled' => 'Plan cancelled',
         'plan_paused' => 'Plan paused',
@@ -16,5 +17,12 @@ return [
         'email_sent' => 'Email sent',
         'webhook_received' => 'Webhook received',
         'generic' => 'Activity',
+    ],
+
+    // Field labels for a "Subscription edited" summary (old → new).
+    'field' => [
+        'next_charge_at' => 'Next charge',
+        'amount' => 'Amount',
+        'items' => 'Products',
     ],
 ];

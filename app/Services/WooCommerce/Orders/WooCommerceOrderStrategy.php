@@ -149,21 +149,31 @@ final class WooCommerceOrderStrategy implements PlatformOrderStrategy
     /** recurring: a NEW PAID WC order per cycle, linked by meta (failed cycle ⇒ no order). */
     private function onRecurring(InstallmentPlan $plan, WooCommerceClient $client): void
     {
-        $amount = round((float) ($plan->installment_amount ?? 0), 2);
+        // A ONE-TIME next-order override (W25) shapes THIS cycle only: its own line items (real
+        // products) + amount. The total of the override lines equals the charged amount (amountFor
+        // reads the same override), so the order still sums to the money that moved.
+        $override = $plan->nextOrderOverride();
+        $amount = $override !== null
+            ? round((float) ($override['amount'] ?? 0), 2)
+            : round((float) ($plan->installment_amount ?? 0), 2);
         if ($amount <= 0) {
             return;
         }
+
+        $lineItems = $override !== null
+            ? $this->overrideLineItems($override, $plan)
+            : [[
+                'name' => __('storefront.installments.recurring_line', ['plan' => (string) $plan->public_id]),
+                'quantity' => 1,
+                'total' => $this->money($amount),
+            ]];
 
         $order = $client->createOrder([
             'status' => self::STATUS_COMPLETED,         // a fulfillable, paid cycle order
             'set_paid' => true,                         // the money already moved through PayPlus
             'currency' => (string) $plan->currency,
             'billing' => $this->billing($plan),
-            'line_items' => [[
-                'name' => __('storefront.installments.recurring_line', ['plan' => (string) $plan->public_id]),
-                'quantity' => 1,
-                'total' => $this->money($amount),
-            ]],
+            'line_items' => $lineItems,
             'meta_data' => $this->meta([
                 self::META_PLAN_PUBLIC_ID => (string) $plan->public_id,
                 self::META_ORDER_ROLE => self::ROLE_RECURRING,
@@ -181,6 +191,40 @@ final class WooCommerceOrderStrategy implements PlatformOrderStrategy
             $meta[self::META_RECURRING_ORDER_IDS] = array_values(array_unique($ids));
             $plan->forceFill(['meta' => $meta])->save();
         }
+    }
+
+    /**
+     * WC line items from a W25 one-time next-order override. Each row links the real product (numeric
+     * WC id) when known so WC decrements stock + shows the product; `total` pins the server-computed
+     * line total (qty × unit price) so the order sums to the charged amount. We store only product_id
+     * (never a variation_id echoing a simple product's id — the W23 bogus-variation trap). An empty
+     * list degrades to a single named line at the override amount, never a zero-line order.
+     *
+     * @param  array<string, mixed>  $override
+     * @return list<array<string, mixed>>
+     */
+    private function overrideLineItems(array $override, InstallmentPlan $plan): array
+    {
+        $lines = [];
+        foreach ((array) ($override['line_items'] ?? []) as $item) {
+            $qty = max(1, (int) ($item['quantity'] ?? 1));
+            $unit = round((float) ($item['unit_price'] ?? 0), 2);
+            $line = [
+                'name' => (string) ($item['name'] ?? __('storefront.installments.recurring_line', ['plan' => (string) $plan->public_id])),
+                'quantity' => $qty,
+                'total' => $this->money(round($unit * $qty, 2)),
+            ];
+            if (($pid = (int) ($item['product_id'] ?? 0)) > 0) {
+                $line['product_id'] = $pid;
+            }
+            $lines[] = $line;
+        }
+
+        return $lines !== [] ? $lines : [[
+            'name' => __('storefront.installments.recurring_line', ['plan' => (string) $plan->public_id]),
+            'quantity' => 1,
+            'total' => $this->money(round((float) ($override['amount'] ?? 0), 2)),
+        ]];
     }
 
     /** retry/manual fall through to the plan's underlying kind. */

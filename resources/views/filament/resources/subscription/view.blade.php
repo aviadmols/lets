@@ -57,9 +57,74 @@
                     <span class="rc-kv__v rc-ltr">{{ optional($record->next_charge_at)->format('d M Y') ?? '—' }}</span>
                     <span class="rc-kv__k">{{ __('subscriptions.detail.started') }}</span>
                     <span class="rc-kv__v rc-ltr">{{ optional($record->created_at)->format('d M Y') }}</span>
+                    @php $checkout = $this->checkoutOrder(); @endphp
+                    @if($checkout)
+                        <span class="rc-kv__k">{{ __('subscriptions.detail.checkout_order') }}</span>
+                        <span class="rc-kv__v rc-ltr">
+                            @if($checkout['url'])
+                                <a href="{{ $checkout['url'] }}" target="_blank" rel="noopener">#{{ $checkout['id'] }} ↗</a>
+                            @else
+                                #{{ $checkout['id'] }}
+                            @endif
+                        </span>
+                    @endif
                 </div>
             @endif
         </div>
+
+        {{-- Next order (recurring, non-terminal): the products the next charge will bill, editable via
+             the "Edit next charge" header action. Shows the one-time override when set, else the plan's
+             normal single line. All values precomputed on the page; the Blade only renders. --}}
+        @if($this->isRecurring() && ! $record->status->isTerminal())
+            <div class="rc-section">
+                <div class="rc-row rc-row--between">
+                    <div class="rc-section__title">{{ __('subscriptions.detail.next_order') }}</div>
+                    @if($this->nextOrderIsCustomised())
+                        <x-rc.badge tone="teal" label="subscriptions.detail.next_order_customised" />
+                    @endif
+                </div>
+                <table class="rc-table">
+                    <thead>
+                        <tr>
+                            <th>{{ __('subscriptions.detail.col.product') }}</th>
+                            <th>{{ __('subscriptions.detail.col.qty') }}</th>
+                            <th>{{ __('subscriptions.detail.col.amount') }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($this->nextOrderRows() as $row)
+                            <tr>
+                                <td>{{ $row['name'] }}</td>
+                                <td class="rc-ltr">{{ $row['quantity'] }}</td>
+                                <td class="rc-ltr">{{ $row['amount'] }}</td>
+                            </tr>
+                        @endforeach
+                        <tr>
+                            <td class="rc-strong">{{ __('subscriptions.detail.total') }}</td>
+                            <td></td>
+                            <td class="rc-ltr rc-strong">{{ $this->nextOrderTotal() }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        @endif
+
+        {{-- Past cycle orders (recurring) — each billed cycle's WooCommerce order. --}}
+        @php $pastOrders = $this->isRecurring() ? $this->pastCycleOrders() : []; @endphp
+        @if(count($pastOrders) > 0)
+            <div class="rc-section">
+                <div class="rc-section__title">{{ __('subscriptions.detail.cycle_orders') }}</div>
+                <div class="rc-row">
+                    @foreach($pastOrders as $order)
+                        @if($order['url'])
+                            <a class="rc-ltr" href="{{ $order['url'] }}" target="_blank" rel="noopener">#{{ $order['id'] }} ↗</a>
+                        @else
+                            <span class="rc-ltr rc-muted">#{{ $order['id'] }}</span>
+                        @endif
+                    @endforeach
+                </div>
+            </div>
+        @endif
 
         {{-- Payment Schedule (installments only): per-slot status, attempts, and a
              plain-language admin note. All values precomputed on the page; the

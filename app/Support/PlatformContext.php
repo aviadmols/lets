@@ -30,6 +30,9 @@ final class PlatformContext
     /** Actor prefix written to ActivityEvent.actor while a platform admin is entered. */
     public const ACTOR_PREFIX = 'platform_admin:';
 
+    /** Actor prefix for a plain authenticated user (a merchant / their staff) acting in the admin. */
+    public const ADMIN_PREFIX = 'admin:';
+
     /** Park a shop id in the session (the platform admin is now "entered" into it). */
     public static function enter(int $shopId): void
     {
@@ -57,23 +60,26 @@ final class PlatformContext
     }
 
     /**
-     * The actor string for the audit trail, or null when no platform admin is
-     * acting. Returns "platform_admin:{id}" ONLY when the authenticated user is a
-     * platform admin AND has a shop entered — a merchant, or a platform admin in
-     * platform mode, yields null (callers fall back to system/explicit actor).
+     * The actor string for the audit trail, or null when NO authenticated user is acting
+     * (the scheduler, queue workers, and HMAC-signed storefront/webhook calls all run with no
+     * Auth::user() → callers fall back to system/explicit actor — unchanged).
+     *
+     *   - a platform admin who has ENTERED a shop → "platform_admin:{id}" (acting on the
+     *     merchant's behalf; surfaced distinctly so the merchant sees the app owner touched it);
+     *   - any other authenticated user (the merchant or their staff) → "admin:{id}", so an
+     *     admin-panel edit is attributed to the exact person who made it (previously "system").
      */
     public static function actingActor(): ?string
     {
-        if (! self::isEntered()) {
-            return null;
-        }
-
         $user = Auth::user();
-
-        if ($user === null || ! method_exists($user, 'isPlatformAdmin') || ! $user->isPlatformAdmin()) {
+        if ($user === null) {
             return null;
         }
 
-        return self::ACTOR_PREFIX . $user->getAuthIdentifier();
+        if (self::isEntered() && method_exists($user, 'isPlatformAdmin') && $user->isPlatformAdmin()) {
+            return self::ACTOR_PREFIX . $user->getAuthIdentifier();
+        }
+
+        return self::ADMIN_PREFIX . $user->getAuthIdentifier();
     }
 }

@@ -24,6 +24,10 @@ final class EventPresenter
         'retry_scheduled' => ['info', 'timeline.kind.retry_scheduled'],
         'refund_succeeded' => ['info', 'timeline.kind.refund_succeeded'],
         'state_changed' => ['info', 'timeline.kind.state_changed'],
+        // The guarded state machine actually writes 'status_changed' (Timeline::KIND_STATUS_CHANGED);
+        // map it to the same label so a real transition isn't shown as a humanized fallback.
+        'status_changed' => ['info', 'timeline.kind.state_changed'],
+        'plan_edited' => ['info', 'timeline.kind.plan_edited'],
         'plan_completed' => ['success', 'timeline.kind.plan_completed'],
         'plan_cancelled' => ['info', 'timeline.kind.plan_cancelled'],
         'plan_paused' => ['info', 'timeline.kind.plan_paused'],
@@ -69,7 +73,7 @@ final class EventPresenter
      * Detail keys that are SAFE to surface in the UI. Anything else (notably
      * invoice_url / document_url / raw token / payplus_* secrets) is dropped.
      */
-    public const SAFE_DETAIL_KEYS = ['amount', 'currency', 'sequence', 'from', 'to', 'context', 'reason'];
+    public const SAFE_DETAIL_KEYS = ['amount', 'currency', 'sequence', 'from', 'to', 'context', 'reason', 'changed'];
 
     public static function tone(ActivityEvent $event): string
     {
@@ -99,8 +103,10 @@ final class EventPresenter
             return __('common.actor.platform_admin');
         }
 
-        if (str_starts_with($actor, 'admin:')) {
-            return __('common.actor.admin');
+        // A merchant / staff user acting in the admin (W25): actor is "admin:{id}". Resolve the
+        // actual name so the merchant sees WHO changed the subscription, not a generic "Admin".
+        if (str_starts_with($actor, \App\Support\PlatformContext::ADMIN_PREFIX)) {
+            return self::adminName((int) substr($actor, strlen(\App\Support\PlatformContext::ADMIN_PREFIX)));
         }
 
         return match ($actor) {
@@ -130,7 +136,53 @@ final class EventPresenter
         if (isset($safe['from'], $safe['to'])) {
             $parts[] = __('billing.status.' . $safe['from']) . ' → ' . __('billing.status.' . $safe['to']);
         }
+        // A plan edit (W25): render each changed field as "old → new" (amount formatted as money,
+        // dates/plain values as-is). Only the whitelisted `changed` shape is read.
+        foreach ((array) ($safe['changed'] ?? []) as $field => $change) {
+            if (! is_array($change) || ! array_key_exists('to', $change)) {
+                continue;
+            }
+            $parts[] = self::changePart((string) $field, $change, (string) ($safe['currency'] ?? Money::DEFAULT_CURRENCY));
+        }
 
         return $parts === [] ? null : implode(' · ', $parts);
+    }
+
+    /** "Field: old → new" for a single edited field. Amount fields format as money. */
+    private static function changePart(string $field, array $change, string $currency): string
+    {
+        $format = static function ($v) use ($field, $currency): string {
+            if ($v === null || $v === '') {
+                return '—';
+            }
+
+            return $field === 'amount'
+                ? Money::format((float) $v, $currency)
+                : (string) $v;
+        };
+
+        $label = __('timeline.field.' . $field);
+        if ($label === 'timeline.field.' . $field) {
+            $label = ucfirst(str_replace('_', ' ', $field));
+        }
+
+        return $label . ': ' . $format($change['from'] ?? null) . ' → ' . $format($change['to'] ?? null);
+    }
+
+    /** The display name for an "admin:{id}" actor (request-static cache), else the generic label. */
+    private static array $adminNameCache = [];
+
+    private static function adminName(int $id): string
+    {
+        if ($id <= 0) {
+            return __('common.actor.admin');
+        }
+        if (! array_key_exists($id, self::$adminNameCache)) {
+            $user = \App\Models\User::query()->find($id);
+            $name = $user !== null ? trim((string) ($user->name ?: $user->email)) : '';
+            self::$adminNameCache[$id] = $name !== '' ? $name : __('common.actor.admin');
+        }
+
+        return self::$adminNameCache[$id];
     }
 }

@@ -27,6 +27,8 @@ final class Timeline
     public const KIND_CHARGE_RETRY_SCHEDULED = 'charge_retry_scheduled';
     public const KIND_PLAN_COMPLETED = 'plan_completed';
     public const KIND_REFUNDED = 'refunded';
+    /** A merchant edited the plan (next charge date / amount / next-order line items) — W25. */
+    public const KIND_PLAN_EDITED = 'plan_edited';
     /** No customer_consents row for (shop, customer, context) — charge skipped, left for admin. */
     public const KIND_CONSENT_MISSING = 'consent_missing';
 

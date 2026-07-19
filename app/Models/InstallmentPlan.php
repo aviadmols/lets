@@ -32,6 +32,14 @@ class InstallmentPlan extends Model
     public const REMAINING_EPSILON = 0.005;
 
     /**
+     * meta key holding a ONE-TIME "next order" override (W25): the merchant-edited contents of the
+     * next recurring cycle only. Shape: {line_items:[{product_id,name,quantity,unit_price}],
+     * amount, currency, set_by, set_at}. Consumed by the next charge (amountFor + onRecurring),
+     * then cleared on success so the following cycle reverts to the plan's normal contents.
+     */
+    public const META_NEXT_ORDER = 'next_order';
+
+    /**
      * Hardened mass-assignment: shop_id (auto-stamped by BelongsToShop) and
      * status (the state machine is the ONLY legal mutation path) are guarded so a
      * raw Model::create()/update() cannot set them and bypass tenancy or the
@@ -91,6 +99,35 @@ class InstallmentPlan extends Model
     public function externalCustomerId(): ?string
     {
         return $this->external_customer_id ?: $this->shopify_customer_id;
+    }
+
+    /** The platform-neutral external PRODUCT id (WooCommerce external_product_id, Shopify fallback). */
+    public function externalProductId(): ?string
+    {
+        return $this->external_product_id ?: $this->shopify_product_id;
+    }
+
+    /**
+     * The ONE-TIME next-order override (W25), or null when the next cycle uses the plan's normal
+     * contents. Only returned when it actually carries line items (a malformed/empty bag is ignored).
+     *
+     * @return array<string, mixed>|null
+     */
+    public function nextOrderOverride(): ?array
+    {
+        $override = $this->meta[self::META_NEXT_ORDER] ?? null;
+
+        return is_array($override) && ! empty($override['line_items']) ? $override : null;
+    }
+
+    /** Drop the one-time next-order override (after it has been consumed by a charge). */
+    public function clearNextOrderOverride(): void
+    {
+        $meta = (array) ($this->meta ?? []);
+        if (array_key_exists(self::META_NEXT_ORDER, $meta)) {
+            unset($meta[self::META_NEXT_ORDER]);
+            $this->forceFill(['meta' => $meta])->save();
+        }
     }
 
     /**

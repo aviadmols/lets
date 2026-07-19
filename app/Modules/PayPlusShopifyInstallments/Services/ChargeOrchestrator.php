@@ -223,6 +223,13 @@ final class ChargeOrchestrator
         // unwound (the money already moved and is recorded in the ledger).
         $this->materializePlatformOrder($plan, $type->toChargeContext(), $isFinal);
 
+        // The one-time next-order override (W25) is now consumed — it priced this cycle (amountFor)
+        // and shaped the WC order (onRecurring). Clear it so the NEXT cycle reverts to normal. Only
+        // on SUCCESS: a failed attempt keeps it, and the retry reuses the already-stamped slot amount.
+        if ($plan->plan_kind === PlanKind::RECURRING && $plan->nextOrderOverride() !== null) {
+            $plan->clearNextOrderOverride();
+        }
+
         Timeline::record(
             kind: Timeline::KIND_CHARGE_SUCCEEDED,
             details: [
@@ -542,6 +549,14 @@ final class ChargeOrchestrator
     private function amountFor(InstallmentPlan $plan, PaymentType $type): float
     {
         if ($plan->plan_kind === PlanKind::RECURRING) {
+            // A ONE-TIME next-order override (W25) prices THIS cycle only. The amount is read from
+            // the plan (server-side, stamped at edit time from the catalog) — never client-supplied
+            // at charge time — so the ledger/idempotency invariants hold. Cleared on success.
+            $override = $plan->nextOrderOverride();
+            if ($override !== null && isset($override['amount'])) {
+                return round((float) $override['amount'], 2);
+            }
+
             return round((float) $plan->installment_amount, 2);
         }
 

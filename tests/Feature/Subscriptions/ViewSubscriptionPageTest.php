@@ -73,7 +73,50 @@ final class ViewSubscriptionPageTest extends TestCase
     {
         $this->get($this->viewUrl($this->plan->id))
             ->assertOk()
-            ->assertSee('PLN-'.$this->plan->id);
+            ->assertSee('PLN-'.$this->plan->id)          // the plan code moved to the subheading
+            ->assertSee('ישראל ישראלי', escape: false);  // the customer is now the title
+    }
+
+    /** A recurring plan with a one-time override renders the override's products + the "customised" badge. */
+    public function test_the_next_order_override_renders_on_the_page(): void
+    {
+        $this->plan->forceFill(['meta' => ['next_order' => [
+            'line_items' => [['product_id' => 2670, 'name' => 'Override coffee', 'quantity' => 2, 'unit_price' => 30.0]],
+            'amount' => 60.0,
+            'currency' => 'ILS',
+        ]]])->save();
+
+        $this->get($this->viewUrl($this->plan->id))
+            ->assertOk()
+            ->assertSee('Override coffee')
+            ->assertSee(__('subscriptions.detail.next_order_customised'));
+    }
+
+    /** The page builds an HPOS wp-admin order URL for a connected WooCommerce shop, else nothing. */
+    public function test_woo_order_url_is_built_only_for_a_connected_wc_shop(): void
+    {
+        $page = new ViewSubscription;
+
+        // A WooCommerce shop with a base_url → an HPOS editor URL.
+        $wooShop = Shop::create([
+            'woocommerce_domain' => 'wc-link.example.com', 'name' => 'WC', 'status' => Shop::STATUS_INSTALLED,
+            'platform' => Shop::PLATFORM_WOOCOMMERCE,
+        ]);
+        $wooShop->woocommerce_credentials = ['base_url' => 'https://wc-link.example.com/', 'consumer_key' => 'ck', 'consumer_secret' => 'cs'];
+        $wooShop->save();
+        $page->record = Tenant::run($wooShop, fn (): InstallmentPlan => $this->makePlan($wooShop));
+
+        $this->assertSame(
+            'https://wc-link.example.com/wp-admin/admin.php?page=wc-orders&action=edit&id=2674',
+            $page->wooOrderUrl('2674'),
+        );
+        $this->assertNull($page->wooOrderUrl('not-numeric'));
+        $this->assertNull($page->wooOrderUrl(null));
+
+        // A Shopify plan (our fixture shop) → no WooCommerce link.
+        $shopifyPage = new ViewSubscription;
+        $shopifyPage->record = $this->plan;
+        $this->assertNull($shopifyPage->wooOrderUrl('2674'));
     }
 
     /**

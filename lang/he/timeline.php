@@ -9,6 +9,7 @@ return [
         'retry_scheduled' => 'תוזמן ניסיון חוזר',
         'refund_succeeded' => 'בוצע זיכוי',
         'state_changed' => 'הסטטוס השתנה',
+        'plan_edited' => 'המנוי נערך',
         'plan_completed' => 'התוכנית הושלמה',
         'plan_cancelled' => 'התוכנית בוטלה',
         'plan_paused' => 'התוכנית הושהתה',
@@ -16,5 +17,12 @@ return [
         'email_sent' => 'נשלח אימייל',
         'webhook_received' => 'התקבל Webhook',
         'generic' => 'פעילות',
+    ],
+
+    // תוויות שדות לסיכום "המנוי נערך" (ישן ← חדש).
+    'field' => [
+        'next_charge_at' => 'חיוב הבא',
+        'amount' => 'סכום',
+        'items' => 'מוצרים',
     ],
 ];

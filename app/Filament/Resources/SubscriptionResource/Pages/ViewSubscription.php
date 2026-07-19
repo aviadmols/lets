@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\SubscriptionResource\Pages;
 
 use App\Domain\Lifecycle\ChargeNowService;
+use App\Domain\Lifecycle\SubscriptionEditService;
 use App\Domain\Lifecycle\SubscriptionLifecycleService;
 use App\Filament\Resources\SubscriptionResource;
 use App\Models\ActivityEvent;
@@ -19,7 +20,11 @@ use App\Support\Tenant;
 use App\Support\Ui\EventPresenter;
 use App\Support\Ui\Money;
 use Filament\Actions;
+use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
@@ -93,7 +98,13 @@ class ViewSubscription extends Page
         $this->record = $plan;
     }
 
+    /** The page title is the CUSTOMER, not the opaque plan code (the plan code moves to the subheading). */
     public function getTitle(): string|Htmlable
+    {
+        return $this->record->customerLabel();
+    }
+
+    public function getSubheading(): string|Htmlable|null
     {
         return 'PLN-' . $this->record->getKey();
     }
@@ -154,7 +165,118 @@ class ViewSubscription extends Page
                     'amount' => Money::format((float) $this->record->installment_amount, $this->record->currency ?: Money::DEFAULT_CURRENCY),
                 ]))
                 ->action(fn () => $this->chargeNow()),
+
+            // Edit the NEXT charge: its date + its one-time order contents (products / qty / price).
+            // Applies to the next cycle only (a meta override the next charge consumes + clears).
+            Actions\Action::make('editNextCharge')
+                ->label(__('subscriptions.action.edit_next.label'))
+                ->icon('heroicon-m-pencil-square')
+                ->color('gray')
+                ->visible(fn (): bool => $this->canEditNextCharge())
+                ->fillForm(fn (): array => $this->editNextChargeDefaults())
+                ->modalHeading(__('subscriptions.action.edit_next.heading'))
+                ->modalDescription(__('subscriptions.action.edit_next.body'))
+                ->modalSubmitActionLabel(__('subscriptions.action.edit_next.save'))
+                ->form([
+                    DatePicker::make('next_charge_at')
+                        ->label(__('subscriptions.action.edit_next.date'))
+                        ->native(false)
+                        ->closeOnDateSelection(),
+                    Repeater::make('line_items')
+                        ->label(__('subscriptions.action.edit_next.items'))
+                        ->addActionLabel(__('subscriptions.action.edit_next.add_product'))
+                        ->reorderable(false)
+                        ->columns(4)
+                        ->schema([
+                            Select::make('product_id')
+                                ->label(__('subscriptions.action.edit_next.product'))
+                                ->options(fn (): array => $this->productOptions())
+                                ->searchable()
+                                ->required()
+                                ->columnSpan(2),
+                            TextInput::make('quantity')
+                                ->label(__('subscriptions.action.edit_next.qty'))
+                                ->numeric()->minValue(1)->default(1)->required(),
+                            TextInput::make('unit_price')
+                                ->label(__('subscriptions.action.edit_next.price'))
+                                ->numeric()->minValue(0)->required(),
+                        ]),
+                ])
+                ->action(fn (array $data) => $this->editNextCharge($data)),
         ];
+    }
+
+    /** Editing the next charge is a recurring-plan, non-terminal operation. */
+    private function canEditNextCharge(): bool
+    {
+        return $this->record->plan_kind === PlanKind::RECURRING
+            && ! $this->record->status->isTerminal();
+    }
+
+    /**
+     * Apply the edit via SubscriptionEditService (server-priced + audited) + notify. Protected so
+     * only the state-gated header action can invoke it.
+     */
+    protected function editNextCharge(array $data): void
+    {
+        try {
+            app(SubscriptionEditService::class)->editNextCharge($this->record, [
+                'next_charge_at' => $data['next_charge_at'] ?? null,
+                'line_items' => $data['line_items'] ?? [],
+            ]);
+            $this->record->refresh();
+
+            Notification::make()->title(__('subscriptions.action.edit_next.success'))->success()->send();
+        } catch (\Throwable $e) {
+            Notification::make()
+                ->title(__('subscriptions.action.failed'))
+                ->body($e->getMessage())
+                ->danger()
+                ->send();
+        }
+    }
+
+    /** Prefill the edit form: the current override if set, else the plan's product at its per-cycle amount. */
+    private function editNextChargeDefaults(): array
+    {
+        $override = $this->record->nextOrderOverride();
+
+        if ($override !== null) {
+            $items = array_map(static fn (array $li): array => [
+                'product_id' => (string) ($li['product_id'] ?? ''),
+                'quantity' => (int) ($li['quantity'] ?? 1),
+                'unit_price' => (float) ($li['unit_price'] ?? 0),
+            ], (array) $override['line_items']);
+        } else {
+            $items = [[
+                'product_id' => (string) ($this->record->externalProductId() ?? ''),
+                'quantity' => 1,
+                'unit_price' => round((float) $this->record->installment_amount, 2),
+            ]];
+        }
+
+        return [
+            'next_charge_at' => $this->record->next_charge_at?->toDateString(),
+            'line_items' => $items,
+        ];
+    }
+
+    /** The tenant's synced product catalog as Select options ("Title · ₪price"), keyed by external id. */
+    public function productOptions(): array
+    {
+        return \App\Models\Product::query()
+            ->with('variants')
+            ->orderBy('title')
+            ->get()
+            ->mapWithKeys(function (\App\Models\Product $product): array {
+                $variant = $product->variants->sortBy('position')->first();
+                $price = $variant !== null
+                    ? ' · '.Money::format((float) $variant->price, $this->record->currency ?: Money::DEFAULT_CURRENCY)
+                    : '';
+
+                return [(string) $product->external_id => trim((string) $product->title).$price];
+            })
+            ->all();
     }
 
     /**
@@ -314,6 +436,105 @@ class ViewSubscription extends Page
     public function isInstallments(): bool
     {
         return $this->record->plan_kind === PlanKind::INSTALLMENTS;
+    }
+
+    public function isRecurring(): bool
+    {
+        return $this->record->plan_kind === PlanKind::RECURRING;
+    }
+
+    // === WooCommerce order links (W25) ===
+
+    /**
+     * A wp-admin editor URL for a WooCommerce order id, or null when this isn't a connected
+     * WooCommerce shop / there's no id. Uses the HPOS route (`admin.php?page=wc-orders`), the modern
+     * WooCommerce default; the numeric id is shown alongside so the merchant can find it regardless.
+     */
+    public function wooOrderUrl(?string $orderId): ?string
+    {
+        $orderId = trim((string) $orderId);
+        if ($orderId === '' || ! ctype_digit($orderId)) {
+            return null;
+        }
+        if ($this->record->shop?->platform !== \App\Models\Shop::PLATFORM_WOOCOMMERCE) {
+            return null;
+        }
+        $base = rtrim((string) ($this->record->shop?->wooConfig()['base_url'] ?? ''), '/');
+        if ($base === '') {
+            return null;
+        }
+
+        return $base.'/wp-admin/admin.php?page=wc-orders&action=edit&id='.$orderId;
+    }
+
+    /** The checkout order this subscription came from — {id, url} — or null. */
+    public function checkoutOrder(): ?array
+    {
+        $id = $this->record->externalOrderId();
+
+        return $id !== null && $id !== '' ? ['id' => (string) $id, 'url' => $this->wooOrderUrl((string) $id)] : null;
+    }
+
+    /**
+     * Past cycle orders (most recent first) from meta['wc_recurring_order_ids'].
+     *
+     * @return list<array{id: string, url: ?string}>
+     */
+    public function pastCycleOrders(): array
+    {
+        $ids = (array) ($this->record->meta['wc_recurring_order_ids'] ?? []);
+
+        return collect($ids)
+            ->map(static fn ($id): string => (string) $id)
+            ->filter(static fn (string $id): bool => $id !== '')
+            ->reverse()
+            ->values()
+            ->map(fn (string $id): array => ['id' => $id, 'url' => $this->wooOrderUrl($id)])
+            ->all();
+    }
+
+    // === Next order (W25) — the editable next-cycle contents ===
+
+    /**
+     * The next order's line items as display rows — from the one-time override when set, else the
+     * plan's normal single line (its product at the per-cycle amount). Precomputed here; Blade renders.
+     *
+     * @return list<array{name: string, quantity: int, amount: string}>
+     */
+    public function nextOrderRows(): array
+    {
+        $currency = $this->record->currency ?: Money::DEFAULT_CURRENCY;
+        $override = $this->record->nextOrderOverride();
+
+        if ($override !== null) {
+            return array_map(static fn (array $li): array => [
+                'name' => (string) ($li['name'] ?? ''),
+                'quantity' => max(1, (int) ($li['quantity'] ?? 1)),
+                'amount' => Money::format(round((float) ($li['unit_price'] ?? 0) * max(1, (int) ($li['quantity'] ?? 1)), 2), $currency),
+            ], (array) $override['line_items']);
+        }
+
+        return [[
+            'name' => __('subscriptions.detail.recurring_line'),
+            'quantity' => 1,
+            'amount' => Money::format((float) $this->record->installment_amount, $currency),
+        ]];
+    }
+
+    /** The next charge total (override amount when set, else the plan's per-cycle amount), formatted. */
+    public function nextOrderTotal(): string
+    {
+        $currency = $this->record->currency ?: Money::DEFAULT_CURRENCY;
+        $override = $this->record->nextOrderOverride();
+        $amount = $override !== null ? (float) ($override['amount'] ?? 0) : (float) $this->record->installment_amount;
+
+        return Money::format(round($amount, 2), $currency);
+    }
+
+    /** True when the next order has been customised (a one-time override is in effect). */
+    public function nextOrderIsCustomised(): bool
+    {
+        return $this->record->nextOrderOverride() !== null;
     }
 
     public function isFulfillmentLocked(): bool
