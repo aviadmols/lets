@@ -13,17 +13,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # they have NO network dependency and build deterministically.
 RUN install-php-extensions intl zip pdo_pgsql gd bcmath pcntl sockets opcache
 
-# redis is a REMOTE (PECL) extension. pecl.php.net intermittently returns
-# "504 Gateway Timeout", which failed the WHOLE build (and every deploy) whenever
-# PECL was flaky — the app then froze on the last good build. Retry with backoff so
-# a transient gateway timeout can't break the deploy, and fail loudly only if redis
-# genuinely can't be installed after all attempts.
-RUN for i in 1 2 3 4 5 6 7 8; do \
-        install-php-extensions redis && break; \
-        echo ">> redis (PECL) install attempt $i failed — retrying in 15s"; \
-        sleep 15; \
-    done; \
-    php -m | grep -qi '^redis$' || { echo "FATAL: redis extension missing after retries"; exit 1; }
+# redis (phpredis) built from its GitHub SOURCE — deliberately NOT via PECL.
+# pecl.php.net was returning "504 Gateway Timeout" and then hanging for ~50min,
+# which failed EVERY build and froze prod on an old image. GitHub is reliable, so
+# this drops the pecl.php.net dependency entirely. Build deps are installed only for
+# the compile. Pinned for reproducibility (6.2.0 supports PHP 8.4 / ZTS).
+ARG PHPREDIS_VERSION=6.2.0
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates curl $PHPIZE_DEPS; \
+    curl -fsSL "https://github.com/phpredis/phpredis/archive/refs/tags/${PHPREDIS_VERSION}.tar.gz" -o /tmp/phpredis.tgz; \
+    mkdir -p /usr/src/phpredis; \
+    tar -xf /tmp/phpredis.tgz -C /usr/src/phpredis --strip-components=1; \
+    cd /usr/src/phpredis; \
+    phpize; \
+    ./configure; \
+    make -j"$(nproc)"; \
+    make install; \
+    docker-php-ext-enable redis; \
+    php -m | grep -qi '^redis$'; \
+    cd /; rm -rf /usr/src/phpredis /tmp/phpredis.tgz /var/lib/apt/lists/*
 
 # OPcache production tuning. WITHOUT this the default 10k-file limit thrashes on a
 # ~20k-file Laravel+Filament app, recompiling a big chunk of the codebase on every
