@@ -282,14 +282,6 @@
                 @endif
             </div>
         </div>
-
-        {{-- Minimap --}}
-        <div class="rc-fb-minimap" aria-hidden="true">
-            <div class="rc-fb-minimap__node rc-fb-minimap__node--trigger"></div>
-            @foreach($this->offers as $offer)
-                <div class="rc-fb-minimap__node rc-fb-minimap__node--offer"></div>
-            @endforeach
-        </div>
     </div>
 
     {{-- =====================================================================
