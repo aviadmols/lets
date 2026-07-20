@@ -50,10 +50,16 @@ function rcFlowBuilder(initial = {}) {
         justDragged: false,  // set on drop so the trailing click doesn't open the drawer
 
         // --- Pan/zoom transform (stage reads --rc-fb-x/-y/-scale) ---
-        applyTransform(el) {
-            el.style.setProperty('--rc-fb-x', `${this.x}px`);
-            el.style.setProperty('--rc-fb-y', `${this.y}px`);
-            el.style.setProperty('--rc-fb-scale', `${this.scale}`);
+        // REACTIVE x-bind:style (not imperative setProperty): Livewire's DOM morph strips a style
+        // attribute Alpine set imperatively (the server HTML has none), which used to drop the pan/zoom
+        // + node positions on every re-render (drag → save → morph made the card jump to origin and
+        // "disappear"). An Alpine-bound :style is Alpine-owned and re-applied after each morph.
+        stageStyle() {
+            return {
+                '--rc-fb-x': `${this.x}px`,
+                '--rc-fb-y': `${this.y}px`,
+                '--rc-fb-scale': `${this.scale}`,
+            };
         },
 
         clampScale(value) {
@@ -90,20 +96,26 @@ function rcFlowBuilder(initial = {}) {
         endPan() { this.panning = false; },
 
         // --- Node positioning (each node's wrapper reads --rc-fb-nx/-ny) ---
-        applyNode(el) {
-            const key = el.dataset.nodeKey;
-            if (!key) return;
-            // Seed a node the store hasn't seen yet (e.g. one just added via "+ Add step")
-            // from its server-rendered data-* default, so it lands tidy and becomes draggable.
-            if (!this.positions[key]) {
+        // Seed a node the store hasn't seen yet (e.g. one just added via "+ Add step") from its
+        // server-rendered data-* default, so it lands tidy + becomes draggable. Idempotent (writes
+        // once). Runs in an x-effect purely for seeding; the STYLE is applied by the reactive
+        // nodeVars() binding below — never imperatively (see stageStyle() for why).
+        seedNode(el) {
+            const key = el && el.dataset ? el.dataset.nodeKey : null;
+            if (key && !this.positions[key]) {
                 this.positions[key] = {
                     x: parseFloat(el.dataset.fx) || 0,
                     y: parseFloat(el.dataset.fy) || 0,
                 };
             }
+        },
+
+        // The reactive CSS vars for a node wrapper. Pure read of this.positions (Alpine-owned :style),
+        // so it survives Livewire morphs and follows the node live as it drags. {} until seeded.
+        nodeVars(key) {
             const p = this.positions[key];
-            el.style.setProperty('--rc-fb-nx', `${p.x}px`);
-            el.style.setProperty('--rc-fb-ny', `${p.y}px`);
+            if (!p) return {};
+            return { '--rc-fb-nx': `${p.x}px`, '--rc-fb-ny': `${p.y}px` };
         },
 
         nodeWidth(key) {
@@ -150,7 +162,7 @@ function rcFlowBuilder(initial = {}) {
             const wrap = event.currentTarget;
             const key = wrap.dataset.nodeKey;
             if (!key) return;
-            if (!this.positions[key]) this.applyNode(wrap);
+            if (!this.positions[key]) this.seedNode(wrap);
 
             this.justDragged = false;
             this.drag = {

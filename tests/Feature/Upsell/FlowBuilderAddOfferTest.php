@@ -99,6 +99,28 @@ final class FlowBuilderAddOfferTest extends TestCase
         $this->assertSame($routedTo, UpsellFlowBranch::where('from_offer_id', $source->id)->sole()->on_decline_next_offer_id);
     }
 
+    public function test_save_layout_persists_only_valid_keys_clamped(): void
+    {
+        $flow = $this->makeFlow();
+        $offerId = $flow->offers()->first()->id;
+
+        Livewire::test(FlowBuilder::class, ['flow' => $flow->id])
+            ->call('saveLayout', [
+                'trigger' => ['x' => 10, 'y' => 20],
+                'offer:'.$offerId => ['x' => 500, 'y' => 999999], // y clamped to LAYOUT_MAX
+                'offer:424242' => ['x' => 1, 'y' => 1],           // foreign offer key → dropped
+                'evil' => ['x' => 1, 'y' => 1],                   // unknown key → dropped
+            ]);
+
+        $layout = $flow->fresh()->layout;
+        $this->assertArrayHasKey('trigger', $layout);
+        $this->assertArrayHasKey('offer:'.$offerId, $layout);
+        $this->assertArrayNotHasKey('offer:424242', $layout, 'a foreign offer key must be dropped');
+        $this->assertArrayNotHasKey('evil', $layout, 'an unknown key must be dropped');
+        $this->assertEqualsWithDelta(10.0, (float) $layout['trigger']['x'], 0.01);
+        $this->assertEqualsWithDelta((float) FlowBuilder::LAYOUT_MAX, (float) $layout['offer:'.$offerId]['y'], 0.01);
+    }
+
     /** A draft flow with one any_product trigger + one seeded offer (tenant-bound). */
     private function makeFlow(): UpsellFlow
     {

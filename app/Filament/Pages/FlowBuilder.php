@@ -669,6 +669,11 @@ class FlowBuilder extends Page
         $flow->save();
 
         $this->resolved = null;
+
+        // Persist-only: the canvas already reflects the drag via Alpine (positions + the live x-bind:d
+        // edges), so there is nothing to re-render. Skipping the render avoids a needless DOM morph (and
+        // its flicker) on every drop — the reactive :style bindings keep other actions' morphs safe.
+        $this->skipRender();
     }
 
     // === "Configure cross-sell" drawer (UI config — no charge-engine change) ===
