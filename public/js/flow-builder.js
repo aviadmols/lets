@@ -48,6 +48,7 @@ function rcFlowBuilder(initial = {}) {
         positions: initial || {},
         drag: null,          // { key, sx, sy, ox, oy, moved } while a node is being dragged
         justDragged: false,  // set on drop so the trailing click doesn't open the drawer
+        _portY: {},          // sourcePortY() cache, populated during a drag (avoids per-frame reflow)
 
         // --- Pan/zoom transform (stage reads --rc-fb-x/-y/-scale) ---
         // REACTIVE x-bind:style (not imperative setProperty): Livewire's DOM morph strips a style
@@ -71,7 +72,18 @@ function rcFlowBuilder(initial = {}) {
         reset() { this.scale = 1; this.x = 0; this.y = 0; },
 
         onWheel(event) {
-            this.scale = this.clampScale(this.scale + (-event.deltaY / RC_FB.WHEEL_DIVISOR));
+            // Ctrl/Cmd + wheel (and trackpad pinch, which browsers report as ctrl+wheel) = ZOOM.
+            // A plain wheel/trackpad scroll PANS the canvas — the expected behaviour, and what the
+            // merchant asked for (moving the board instead of zooming).
+            if (event.ctrlKey || event.metaKey) {
+                this.scale = this.clampScale(this.scale + (-event.deltaY / RC_FB.WHEEL_DIVISOR));
+                return;
+            }
+            // Shift turns a vertical-only wheel into a horizontal pan (mice without an X wheel).
+            const dx = event.shiftKey ? event.deltaY : event.deltaX;
+            const dy = event.shiftKey ? 0 : event.deltaY;
+            this.x -= dx;
+            this.y -= dy;
         },
 
         startPan(event) {
@@ -129,17 +141,29 @@ function rcFlowBuilder(initial = {}) {
         sourcePortY(fromKey, kind) {
             if (kind !== 'accept' && kind !== 'decline') return RC_FB.PORT_Y;
 
+            // A row's offset WITHIN its node is constant while dragging (the node moves as a whole),
+            // so during a drag we cache it. Without this, every pointermove frame re-ran querySelector
+            // + offsetTop/offsetHeight for EVERY edge + dot — a synchronous layout reflow each time —
+            // which made the drag stutter. Cache is cleared at the start of each drag (nodeDown).
+            const cacheKey = fromKey + '|' + kind;
+            if (this.drag && this._portY[cacheKey] != null) {
+                return this._portY[cacheKey];
+            }
+
             const fallback = kind === 'accept' ? RC_FB.SRC_Y_ACCEPT : RC_FB.SRC_Y_DECLINE;
             const root = this.$el;
             if (!root) return fallback;
 
             const wrap = root.querySelector(`.rc-fb-nodepos[data-node-key="${fromKey}"]`);
             const row = wrap ? wrap.querySelector(`.rc-fb-branch--${kind}`) : null;
-            if (!row || !row.offsetParent) return fallback;
+            if (!row || !row.offsetParent) return fallback; // not measurable yet — don't cache
 
             // offsetTop is relative to the positioned .rc-fb-nodepos wrapper — a layout offset,
             // unaffected by the stage's pan/zoom transform.
-            return row.offsetTop + row.offsetHeight / 2;
+            const y = row.offsetTop + row.offsetHeight / 2;
+            if (this.drag) this._portY[cacheKey] = y;
+
+            return y;
         },
 
         // The exact source point of an edge = the source node's right edge, at the branch row
@@ -177,6 +201,7 @@ function rcFlowBuilder(initial = {}) {
             if (!this.positions[key]) this.seedNode(wrap);
 
             this.justDragged = false;
+            this._portY = {}; // fresh measurement for this drag, then reused every frame
             this.drag = {
                 key,
                 wrap,
