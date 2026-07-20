@@ -628,6 +628,35 @@ class FlowBuilder extends Page
         return sprintf('M %s,%s C %s,%s %s,%s %s,%s', $sx, $sy, $sx + $bow, $sy, $tx - $bow, $ty, $tx, $ty);
     }
 
+    /** The server-rendered X of an edge's SOURCE (the source node's right edge). Mirrors edgeD +
+     *  the JS edgeSourceX, so the initial dot lands right and the live Alpine binding refines it. */
+    public function edgeSourceX(array $layout, string $from): float
+    {
+        $a = $layout[$from] ?? null;
+        if (! is_array($a)) {
+            return 0.0;
+        }
+        $width = str_starts_with($from, 'trigger') ? self::NODE_W_TRIGGER : self::NODE_W_OFFER;
+
+        return round((float) $a['x'] + $width, 1);
+    }
+
+    /** The server-rendered Y of an edge's SOURCE (the accept/decline row, or the trigger header). */
+    public function edgeSourceY(array $layout, string $from, string $kind): float
+    {
+        $a = $layout[$from] ?? null;
+        if (! is_array($a)) {
+            return 0.0;
+        }
+        $sourceY = match ($kind) {
+            'accept' => self::EDGE_SRC_Y_ACCEPT,
+            'decline' => self::EDGE_SRC_Y_DECLINE,
+            default => self::EDGE_PORT_Y,
+        };
+
+        return round((float) $a['y'] + $sourceY, 1);
+    }
+
     /** One node's stored {x,y} (rounded) or the passed auto-layout default. */
     private function coord(array $stored, string $key, int $dx, int $dy): array
     {

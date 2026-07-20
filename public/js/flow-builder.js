@@ -142,6 +142,18 @@ function rcFlowBuilder(initial = {}) {
             return row.offsetTop + row.offsetHeight / 2;
         },
 
+        // The exact source point of an edge = the source node's right edge, at the branch row
+        // (accept/decline) or header (trigger). Used to pin a colored dot to that spot so it's
+        // clear which branch a flow leaves from. Same geometry the edge path uses.
+        edgeSourceX(fromKey) {
+            const a = this.positions[fromKey];
+            return a ? a.x + this.nodeWidth(fromKey) : 0;
+        },
+        edgeSourceY(fromKey, kind) {
+            const a = this.positions[fromKey];
+            return a ? a.y + this.sourcePortY(fromKey, kind) : 0;
+        },
+
         // The cubic-bezier path (canvas px) from one node's branch/header port to another's start.
         // Reads this.positions reactively, so Alpine recomputes it live as nodes move.
         edgePath(fromKey, toKey, kind) {

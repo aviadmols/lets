@@ -120,6 +120,17 @@
                             x-bind:d="edgePath(@js($edge['from']), @js($edge['to']), @js($edge['kind']))"
                             marker-end="url(#rc-fb-arrow-{{ $edge['kind'] }})"
                         ></path>
+                        {{-- A colored dot pinned to the EXACT source of the edge (the Accept/Decline
+                             row on the node's edge), so it's unmistakable which branch the flow leaves
+                             from. Same SVG coordinate space as the path → always perfectly aligned. --}}
+                        <circle
+                            class="rc-fb-edge__dot rc-fb-edge__dot--{{ $edge['kind'] }}"
+                            r="4.5"
+                            cx="{{ $this->edgeSourceX($layout, $edge['from']) }}"
+                            cy="{{ $this->edgeSourceY($layout, $edge['from'], $edge['kind']) }}"
+                            x-bind:cx="edgeSourceX(@js($edge['from']))"
+                            x-bind:cy="edgeSourceY(@js($edge['from']), @js($edge['kind']))"
+                        ></circle>
                     @endforeach
                 </svg>
 

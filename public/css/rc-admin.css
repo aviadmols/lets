@@ -1592,6 +1592,12 @@ a.rc-railed:hover { background: var(--rc-blue-bg); }
 .rc-fb-edge__arrow--trigger { fill: var(--rc-blue); }
 .rc-fb-edge__arrow--accept { fill: var(--rc-green); }
 .rc-fb-edge__arrow--decline { fill: var(--rc-gray); }
+/* The dot pinned to an edge's SOURCE (the branch it leaves from). A white ring lifts it off the
+   card edge; the fill matches the branch so accept (green) / decline (gray) reads at a glance. */
+.rc-fb-edge__dot { stroke: var(--rc-card); stroke-width: 2; }
+.rc-fb-edge__dot--trigger { fill: var(--rc-blue); }
+.rc-fb-edge__dot--accept { fill: var(--rc-green); }
+.rc-fb-edge__dot--decline { fill: var(--rc-gray); }
 
 /* Nodes */
 .rc-fb-node {
