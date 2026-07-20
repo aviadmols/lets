@@ -167,13 +167,18 @@ function rcFlowBuilder(initial = {}) {
             this.justDragged = false;
             this.drag = {
                 key,
+                wrap,
+                pointerId: event.pointerId,
                 sx: event.clientX,
                 sy: event.clientY,
                 ox: this.positions[key].x,
                 oy: this.positions[key].y,
                 moved: false,
             };
-            try { wrap.setPointerCapture(event.pointerId); } catch (_) { /* older browsers */ }
+            // IMPORTANT: do NOT setPointerCapture here. Capturing the pointer on a plain
+            // click retargets the follow-up `click` event to THIS wrapper, so the inner
+            // node <button>'s wire:click (open the edit drawer) never fires — the card
+            // becomes un-openable. We capture only once a real drag begins (nodeMove).
         },
 
         nodeMove(event) {
@@ -181,6 +186,13 @@ function rcFlowBuilder(initial = {}) {
             const dx = event.clientX - this.drag.sx;
             const dy = event.clientY - this.drag.sy;
             if (!this.drag.moved && Math.hypot(dx, dy) < RC_FB.DRAG_THRESHOLD) return;
+
+            if (!this.drag.moved) {
+                // A real drag just started — NOW capture the pointer so the move keeps
+                // tracking even if the cursor leaves the node. (A plain click never
+                // reaches here, so its click still opens the drawer.)
+                try { this.drag.wrap.setPointerCapture(this.drag.pointerId); } catch (_) { /* older browsers */ }
+            }
 
             this.drag.moved = true;
             // Screen px → canvas px (the stage is scaled by `scale`).
