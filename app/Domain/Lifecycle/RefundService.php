@@ -3,6 +3,8 @@
 namespace App\Domain\Lifecycle;
 
 use App\Domain\Billing\Ledger;
+use App\Domain\Invoicing\DocumentContext;
+use App\Domain\Invoicing\Jobs\IssueDocumentJob;
 use App\Models\InstallmentPayment;
 use App\Models\PaymentLedger;
 use App\Models\Shop;
@@ -25,8 +27,9 @@ use Illuminate\Support\Facades\Log;
  * follows is a single legal UPDATE that won't roll it back, and the payment-slot
  * transition is best-effort (a slot hiccup never undoes the recorded refund).
  *
- * NOTE: the refund CREDIT DOCUMENT (DocumentPolicy CONTEXT_REFUND) is issued once the
- * document path is un-stubbed (Wave 2); the money refund + ledger truth land here now.
+ * The refund CREDIT DOCUMENT is dispatched (queued, after commit) to the invoicing
+ * module once the ledger says `refunded` — see App\Domain\Invoicing\DocumentIssuer.
+ * It is a no-op for a merchant who has not connected an invoicing provider.
  *
  * @phpstan-type RefundResult array{ok: bool, message?: string}
  */
@@ -87,6 +90,18 @@ final class RefundService
                 planId: $row->plan_id,
                 paymentId: $row->getAttribute('payment_id'),
                 shopId: (int) $row->shop_id,
+            );
+
+            // The credit note. QUEUED + afterCommit — we are inside the refund
+            // transaction, so no HTTP here, and an invoicing outage must never make a
+            // refund that already left the merchant's account look like it failed.
+            // The amount is passed explicitly: a PARTIAL refund credits less than the
+            // original sale, and the credit note must say so.
+            IssueDocumentJob::queueAfterCommit(
+                shopId: (int) $row->shop_id,
+                context: DocumentContext::REFUND->value,
+                ledgerId: (int) $row->getKey(),
+                amount: $refundAmount,
             );
 
             return ['ok' => true];

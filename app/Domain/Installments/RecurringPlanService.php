@@ -188,6 +188,9 @@ final class RecurringPlanService
                 'meta' => [
                     // The first-payment amount the activation callback records as paid.
                     self::META_RECURRING_AMOUNT => $amount,
+                    // Kept so a later accounting document can name the product the
+                    // customer actually bought (InstallmentPlan::itemTitle()).
+                    InstallmentPlan::META_ITEM_TITLE => (string) ($context['item_title'] ?? ''),
                 ],
             ]);
 

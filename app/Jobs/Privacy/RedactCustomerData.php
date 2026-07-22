@@ -7,6 +7,8 @@ use App\Models\ActivityEvent;
 use App\Models\CustomerConsent;
 use App\Models\InstallmentPaymentMethod;
 use App\Models\InstallmentPlan;
+use App\Models\IssuedDocument;
+use App\Models\PaymentLedger;
 use App\Models\Shop;
 use App\Support\Tenant;
 use App\Support\TenantContext;
@@ -84,6 +86,7 @@ final class RedactCustomerData implements ShouldQueue
                 'installment_plans' => $this->redactPlans($shopifyCustomerId, $email),
                 'customer_consents' => $this->redactConsents($shopifyCustomerId, $email),
                 'installment_payment_methods' => $this->redactPaymentMethods($shopifyCustomerId),
+                'issued_documents' => $this->neutraliseIssuedDocuments($shopifyCustomerId, $email),
                 'activity_events' => $this->scrubActivityEvents($shopifyCustomerId, $email),
             ];
 
@@ -149,6 +152,90 @@ final class RedactCustomerData implements ShouldQueue
                 $method->card_brand = null;
                 $method->card_last_four = null;
                 $method->save();
+                $count++;
+            });
+
+        return $count;
+    }
+
+    /**
+     * Strip THIS customer's identity from the accounting documents issued for them,
+     * keeping the financial record (amounts, status, provider ids, keys).
+     *
+     * Two pieces of personal data live on an issued_documents row: the provider's
+     * raw response, which echoes the client block (name, phone, tax id, and the
+     * email when provider-side delivery is on), and document_url — a live link to a
+     * document bearing the customer's name.
+     *
+     * Reached TWO ways, because a plan is not the only link we hold:
+     *   - documents on the customer's own plans (deposits, installments, renewals);
+     *   - documents whose ledger row carries this customer, which is how an UPSELL
+     *     document is attributable at all — an upsell is a charge context, not a
+     *     plan, so UpsellChargeService opens its ledger row with plan_id = null and
+     *     the document inherits that null. Scoping to plans alone would leave every
+     *     upsell document — carrying the customer's name — standing after an
+     *     erasure request.
+     *
+     * A document with NEITHER link (a plain store order, which never touched a LETS
+     * plan or ledger) is not attributable to this customer through any column we
+     * hold, so it is left to shop/redact.
+     */
+    private function neutraliseIssuedDocuments(?string $shopifyCustomerId, ?string $email): int
+    {
+        $planIds = InstallmentPlan::query()
+            ->where(fn (Builder $q) => $this->matchCustomer($q, $shopifyCustomerId, $email))
+            ->pluck('id');
+
+        // The ledger row is where a plan-less charge records who paid. Matched by the
+        // customer id directly, AND — since payment_ledger has no email column — by
+        // the plans we just resolved, so an email-only erasure payload still reaches
+        // an upsell document.
+        //
+        // FAIL CLOSED: with neither a customer id nor a matched plan there is no
+        // predicate to apply, and an empty closure would match EVERY ledger row in the
+        // tenant. Redacting a customer we could not identify, across their neighbours'
+        // documents, is worse than redacting nothing.
+        $ledgerIds = collect();
+        if ($shopifyCustomerId !== null || $planIds->isNotEmpty()) {
+            $ledgerIds = PaymentLedger::query()
+                ->where(function (Builder $q) use ($shopifyCustomerId, $planIds): void {
+                    if ($shopifyCustomerId !== null) {
+                        $q->orWhere('shopify_customer_id', $shopifyCustomerId);
+                    }
+                    if ($planIds->isNotEmpty()) {
+                        $q->orWhereIn('plan_id', $planIds);
+                    }
+                })
+                ->pluck('id');
+        }
+
+        if ($planIds->isEmpty() && $ledgerIds->isEmpty()) {
+            return 0;
+        }
+
+        $count = 0;
+
+        IssuedDocument::query()
+            ->where(function (Builder $q) use ($planIds, $ledgerIds): void {
+                if ($planIds->isNotEmpty()) {
+                    $q->orWhereIn('plan_id', $planIds);
+                }
+                if ($ledgerIds->isNotEmpty()) {
+                    $q->orWhereIn('ledger_id', $ledgerIds);
+                }
+            })
+            ->each(function (IssuedDocument $document) use (&$count): void {
+                $document->forceFill([
+                    'document_url' => null,
+                    'raw_response_masked' => is_array($document->raw_response_masked)
+                        ? RedactionPolicy::scrubJson($document->raw_response_masked)
+                        : null,
+                    // NULLED, not scrubbed — see RedactShopData for the reasoning.
+                    // A scrubbed report still looks rebuildable, and re-issuing from
+                    // it would print "[redacted]" as the client name and tax id on a
+                    // real tax document.
+                    'source_payload' => null,
+                ])->save();
                 $count++;
             });
 

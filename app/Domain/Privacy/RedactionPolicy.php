@@ -84,6 +84,10 @@ final class RedactionPolicy
         'customer_phone', 'phone',
         'customer_ip', 'ip', 'user_agent',
         'address', 'address1', 'address2', 'city', 'zip',
+        // National identity numbers. An Israeli ת.ז / ח.פ reaches us through the
+        // invoicing client block (Green Invoice `taxId`) and is echoed back in the
+        // stored provider response — it is the single most identifying field we hold.
+        'taxid', 'tax_id', 'vat_id', 'vat_number', 'national_id',
     ];
 
     /**

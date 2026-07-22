@@ -12,6 +12,8 @@ use App\Services\Shopify\Orders\DefaultShopifyOrderStrategy;
 use App\Services\Shopify\Orders\ShopifyOrderStrategy;
 use App\Http\Middleware\BindDevTenant;
 use App\Http\Middleware\BindTenantFromUser;
+use App\Support\DestructiveCommandGuard;
+use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
@@ -45,6 +47,16 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // TABLE-DROPPING COMMANDS ARE REFUSED AGAINST A REMOTE DATABASE.
+        // Registered FIRST so it runs before anything else can act. Laravel's own
+        // ConfirmableTrait only prompts when the ENVIRONMENT is production, but a
+        // laptop is `local` while its .env points at production — the environment
+        // was never the risk, the connection is. See DestructiveCommandGuard for
+        // the incident this prevents.
+        Event::listen(CommandStarting::class, static function (CommandStarting $event): void {
+            DestructiveCommandGuard::assertSafe($event->command, $event->input);
+        });
+
         // Belt-and-suspenders for HTTPS behind Railway's proxy (alongside
         // trustProxies in bootstrap/app.php): force every generated URL to https
         // in production so assets/redirects/OAuth callbacks are never http:// on

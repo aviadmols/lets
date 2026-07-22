@@ -31,9 +31,20 @@ return [
 
     'connections' => [
 
+        /*
+        | NOTE: this connection deliberately has NO `url` key.
+        |
+        | Laravel's ConfigurationUrlParser lets a `url` OVERRIDE the driver. With
+        | `'url' => env('DB_URL')` here and a Postgres DB_URL in .env, asking for
+        | `--database=sqlite` silently connected to that Postgres server instead —
+        | so `migrate:fresh --database=sqlite` dropped a live database. Removing the
+        | key makes "sqlite" mean sqlite, always.
+        |
+        | A sqlite database is a file path (or :memory:); it has no URL to parse.
+        | DestructiveCommandGuard is the second line of defence.
+        */
         'sqlite' => [
             'driver' => 'sqlite',
-            'url' => env('DB_URL'),
             'database' => env('DB_DATABASE', database_path('database.sqlite')),
             'prefix' => '',
             'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),

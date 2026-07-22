@@ -40,6 +40,14 @@ class InstallmentPlan extends Model
     public const META_NEXT_ORDER = 'next_order';
 
     /**
+     * meta key holding the CATALOG TITLE of the item this plan sells, captured at
+     * checkout. Read by the invoicing module so an accounting document names the
+     * product the customer recognises rather than an internal plan id — a tax
+     * document line is customer-facing paperwork, not an audit trail.
+     */
+    public const META_ITEM_TITLE = 'item_title';
+
+    /**
      * Hardened mass-assignment: shop_id (auto-stamped by BelongsToShop) and
      * status (the state machine is the ONLY legal mutation path) are guarded so a
      * raw Model::create()/update() cannot set them and bypass tenancy or the
@@ -128,6 +136,18 @@ class InstallmentPlan extends Model
             unset($meta[self::META_NEXT_ORDER]);
             $this->forceFill(['meta' => $meta])->save();
         }
+    }
+
+    /**
+     * The catalog title of the item this plan sells, captured at checkout, or null
+     * when the plan predates it / the path never sent one. Callers fall back to
+     * their own translated label — never to a raw id on customer-facing paperwork.
+     */
+    public function itemTitle(): ?string
+    {
+        $title = trim((string) (($this->meta ?? [])[self::META_ITEM_TITLE] ?? ''));
+
+        return $title !== '' ? $title : null;
     }
 
     /**

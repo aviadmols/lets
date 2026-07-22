@@ -46,6 +46,16 @@ class Shop extends Model
     /** WooCommerce REST credential keys expected inside the encrypted bag (W11). */
     public const WOOCOMMERCE_KEYS = ['base_url', 'consumer_key', 'consumer_secret', 'wc_webhook_secret'];
 
+    /** Invoicing (Green Invoice / Morning) credential keys inside the encrypted bag. */
+    public const INVOICING_KEYS = ['provider', 'api_key_id', 'api_secret', 'environment'];
+
+    /** Invoicing providers. Green Invoice ("Morning") is the only one today. */
+    public const INVOICING_PROVIDER_GREEN_INVOICE = 'green_invoice';
+
+    /** Invoicing environments — production is the default; sandbox is opt-in. */
+    public const INVOICING_ENV_PRODUCTION = 'production';
+    public const INVOICING_ENV_SANDBOX = 'sandbox';
+
     protected $fillable = [
         'shopify_domain',
         'name',
@@ -66,6 +76,7 @@ class Shop extends Model
         'shopify_access_token',
         'payplus_credentials',
         'woocommerce_credentials',
+        'invoicing_credentials',
         'lets_api_secret',
     ];
 
@@ -74,6 +85,7 @@ class Shop extends Model
         return [
             'payplus_credentials' => EncryptedCredentials::class,
             'woocommerce_credentials' => EncryptedCredentials::class,
+            'invoicing_credentials' => EncryptedCredentials::class,
             'shopify_access_token' => 'encrypted',
             // Resilient cast: a stale-key ciphertext degrades to null on read AND never
             // gets decrypted during save()'s dirty-check, so re-minting a shop whose old
@@ -257,6 +269,52 @@ class Shop extends Model
     {
         return ! empty($this->wooCredential('consumer_key'))
             && ! empty($this->wooCredential('consumer_secret'));
+    }
+
+    // === Invoicing credentials (Green Invoice / Morning) ===
+
+    /** Read a single invoicing credential from the encrypted bag. */
+    public function invoicingCredential(string $key): ?string
+    {
+        return $this->invoicing_credentials[$key] ?? null;
+    }
+
+    /**
+     * The decrypted invoicing credential bag. Mirrors payplusConfig() / wooConfig():
+     * decrypted per request, injected into the provider as constructor state, never
+     * read from config() at call time, never shared across shops.
+     *
+     * `provider` and `environment` are NORMALISED on read so an empty or unknown
+     * stored value can never route a call to an undefined base URL — a shop always
+     * resolves to a real provider + a real environment.
+     */
+    public function invoicingConfig(): array
+    {
+        $bag = $this->invoicing_credentials ?: [];
+
+        $environment = (string) ($bag['environment'] ?? '');
+
+        return [
+            'provider' => (string) ($bag['provider'] ?? '') ?: self::INVOICING_PROVIDER_GREEN_INVOICE,
+            'api_key_id' => $bag['api_key_id'] ?? null,
+            'api_secret' => $bag['api_secret'] ?? null,
+            'environment' => $environment === self::INVOICING_ENV_SANDBOX
+                ? self::INVOICING_ENV_SANDBOX
+                : self::INVOICING_ENV_PRODUCTION,
+        ];
+    }
+
+    /**
+     * Are the invoicing credentials complete enough to obtain a provider token?
+     * This is CONNECTION only — whether documents are actually issued is the
+     * merchant's MerchantInvoicingSettings::enabled switch, checked separately by
+     * InvoiceProviderFactory. Reporting "connected" for a keyless shop is what
+     * would let a merchant believe documents are being issued when none are.
+     */
+    public function hasInvoicingConnection(): bool
+    {
+        return ! empty($this->invoicingCredential('api_key_id'))
+            && ! empty($this->invoicingCredential('api_secret'));
     }
 
     /**

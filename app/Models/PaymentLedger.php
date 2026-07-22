@@ -6,6 +6,7 @@ use App\Models\Concerns\BelongsToShop;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * One immutable row per money movement. Append-only in spirit: a charge is
@@ -63,6 +64,18 @@ class PaymentLedger extends Model
     public function plan(): BelongsTo
     {
         return $this->belongsTo(InstallmentPlan::class, 'plan_id');
+    }
+
+    /**
+     * The accounting document issued for this money movement, when the merchant has
+     * an invoicing provider connected. NULL for every shop that has not opted in —
+     * the invoicing module is additive and never required.
+     */
+    public function issuedDocument(): HasOne
+    {
+        return $this->hasOne(IssuedDocument::class, 'ledger_id')
+            ->where('status', IssuedDocument::STATUS_ISSUED)
+            ->latestOfMany();
     }
 
     // === Presentation ===

@@ -31,6 +31,19 @@ final class Timeline
     public const KIND_PLAN_EDITED = 'plan_edited';
     /** No customer_consents row for (shop, customer, context) — charge skipped, left for admin. */
     public const KIND_CONSENT_MISSING = 'consent_missing';
+    /** An accounting document was issued by the invoicing provider (Green Invoice). */
+    public const KIND_DOCUMENT_ISSUED = 'document_issued';
+    /** The invoicing provider refused/failed to issue — the money still stands. */
+    public const KIND_DOCUMENT_FAILED = 'document_failed';
+    /** A merchant re-queued a document whose failure proved nothing was created. */
+    public const KIND_DOCUMENT_RETRIED = 'document_retried';
+    /**
+     * A merchant issued a document whose earlier attempt had an UNKNOWN outcome,
+     * after asserting they checked the provider and found none. Its OWN kind, not
+     * a variant of the above: this is the single act in the module that can mint a
+     * duplicate tax document, and it must be greppable in the Timeline on its own.
+     */
+    public const KIND_DOCUMENT_FORCE_ISSUED = 'document_force_issued';
 
     /**
      * Record a Timeline event. Never throws.

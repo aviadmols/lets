@@ -65,6 +65,7 @@ return [
             'note' => 'הערה',
             'product' => 'מוצר',
             'qty' => 'כמות',
+            'document' => 'חשבונית',
         ],
         'note' => [
             'paid' => 'שולם',

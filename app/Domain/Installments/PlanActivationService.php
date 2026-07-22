@@ -5,6 +5,8 @@ namespace App\Domain\Installments;
 use App\Domain\Billing\IdempotencyKey;
 use App\Domain\Billing\Ledger;
 use App\Domain\Installments\Contracts\DepositTokenResolver;
+use App\Domain\Invoicing\DocumentContext;
+use App\Domain\Invoicing\Jobs\IssueDocumentJob;
 use App\Models\CustomerConsent;
 use App\Models\InstallmentPayment;
 use App\Models\InstallmentPaymentMethod;
@@ -94,6 +96,7 @@ final class PlanActivationService
             // The checkout ref is plan-scoped + stable so a replayed webhook reuses
             // the same key and never records a second deposit.
             $key = IdempotencyKey::deposit((int) $shop->getKey(), 'plan:'.(string) $plan->public_id);
+            $ledgerId = null;
             if (! Ledger::hasSucceeded((int) $shop->getKey(), $key)) {
                 $ledger = Ledger::open(
                     shopId: (int) $shop->getKey(),
@@ -110,6 +113,7 @@ final class PlanActivationService
                 Ledger::transition($ledger, LedgerStatus::SUCCEEDED, [
                     'shopify_order_id' => $orderId,
                 ]);
+                $ledgerId = (int) $ledger->getKey();
             }
 
             // 3) Record the deposit payment SLOT (sequence 0 = the deposit).
@@ -141,6 +145,22 @@ final class PlanActivationService
                 planId: $plan->getKey(),
                 shopId: (int) $shop->getKey(),
             );
+
+            // The first payment deserves its document too. Only when THIS delivery
+            // opened the ledger row ($ledgerId set) — a replayed webhook that found
+            // the deposit already recorded must not re-request paperwork. QUEUED +
+            // afterCommit: we are inside the activation transaction, so no HTTP here.
+            // A recurring plan's first payment IS a full sale, so it is invoiced as a
+            // recurring cycle, not as a deposit against a balance.
+            if ($ledgerId !== null) {
+                IssueDocumentJob::queueAfterCommit(
+                    shopId: (int) $shop->getKey(),
+                    context: ($plan->isRecurring()
+                        ? DocumentContext::RECURRING
+                        : DocumentContext::DEPOSIT)->value,
+                    ledgerId: $ledgerId,
+                );
+            }
 
             return $plan;
         });

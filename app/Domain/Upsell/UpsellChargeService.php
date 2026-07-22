@@ -4,6 +4,8 @@ namespace App\Domain\Upsell;
 
 use App\Domain\Billing\IdempotencyKey;
 use App\Domain\Billing\Ledger;
+use App\Domain\Invoicing\DocumentContext;
+use App\Domain\Invoicing\Jobs\IssueDocumentJob;
 use App\Domain\Upsell\Enums\OfferEventType;
 use App\Domain\Upsell\Models\UpsellFlowBranch;
 use App\Domain\Upsell\Models\UpsellFlowOffer;
@@ -252,6 +254,16 @@ final class UpsellChargeService
                 'transaction_uid' => $result->transactionUid,
             ],
             shopId: $shopId,
+        );
+
+        // An accepted upsell is a complete sale in its own right, so it gets its own
+        // document. QUEUED + afterCommit — the accept path answers a shopper's click
+        // on the thank-you page, and it must never wait on an invoicing provider.
+        // Idempotent on the ledger row's key: a double-click cannot double-issue.
+        IssueDocumentJob::queueAfterCommit(
+            shopId: $shopId,
+            context: DocumentContext::UPSELL->value,
+            ledgerId: (int) $ledger->getKey(),
         );
 
         return UpsellChargeResult::charged($ledger->idempotency_key, $result->transactionUid, $this->nextOfferOnAccept($req));

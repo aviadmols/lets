@@ -57,6 +57,12 @@ function lets_payplus_rest_notify(WP_REST_Request $request)
     $data  = json_decode($body, true);
     $event = is_array($data) && isset($data['event']) ? (string) $data['event'] : '';
 
+    // The RETURN LEG of the all-orders invoicing scope: LETS queued the document when
+    // we reported the order, and tells us its number + URL once the provider answered.
+    if ($event === 'document_issued') {
+        return lets_payplus_notify_document_issued(is_array($data) ? $data : array());
+    }
+
     if ($event === 'payment_failed') {
         $order  = isset($data['order_id']) ? (string) $data['order_id'] : '';
         $status = isset($data['status_code']) ? (string) $data['status_code'] : '';
@@ -65,6 +71,35 @@ function lets_payplus_rest_notify(WP_REST_Request $request)
         $msg = trim(sprintf(__('Payment failed for order %1$s (status %2$s). %3$s', 'lets-payplus'), $order, $status, $reason));
         lets_payplus_log_event($msg, 'payment', 'error');
         lets_payplus_notify_admin(__('A PayPlus payment failed', 'lets-payplus'), $msg);
+    }
+
+    return new WP_REST_Response(array('ok' => true), 200);
+}
+
+/**
+ * LETS issued an accounting document for one of our orders → stamp the order meta
+ * (the plugin-side double-issue wall) and add an order note the merchant can see.
+ *
+ * The HMAC has already been verified by the caller, so the shop is trusted; we still
+ * resolve the order ourselves and no-op on anything we cannot find.
+ */
+function lets_payplus_notify_document_issued(array $data)
+{
+    $order_id = isset($data['order_id']) ? (int) $data['order_id'] : 0;
+
+    if ($order_id <= 0 || ! function_exists('wc_get_order') || ! function_exists('lets_payplus_invoicing_stamp_order')) {
+        // Nothing to stamp (no WooCommerce, or a malformed event). Answer 200 so LETS
+        // does not retry a notification that can never succeed here.
+        return new WP_REST_Response(array('ok' => true, 'stamped' => false), 200);
+    }
+
+    $order = wc_get_order($order_id);
+    if ($order instanceof WC_Order) {
+        lets_payplus_invoicing_stamp_order($order, array(
+            'id'     => isset($data['document_id']) ? (string) $data['document_id'] : '',
+            'number' => isset($data['document_number']) ? (string) $data['document_number'] : '',
+            'url'    => isset($data['document_url']) ? (string) $data['document_url'] : '',
+        ));
     }
 
     return new WP_REST_Response(array('ok' => true), 200);

@@ -45,6 +45,15 @@ final class StatusBadge
         'connected' => 'green',
         'not_connected' => 'gray',
         'error' => 'red',
+
+        // --- IssuedDocument status (invoicing) ---
+        'issued' => 'green',
+        // AMBER, not red: an unresolved document is not a failure — it is an
+        // attempt whose outcome we never learned, and it needs a human to look,
+        // not a retry. Colouring it red would push merchants to re-issue blindly,
+        // which is the one action that can mint a duplicate tax document.
+        'unresolved' => 'amber',
+        // 'pending' / 'failed' shared above.
     ];
 
     public const FALLBACK_TONE = 'gray';

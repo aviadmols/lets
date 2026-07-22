@@ -16,6 +16,12 @@ return [
         'fulfillment_released' => 'ההזמנה שוחררה למימוש',
         'email_sent' => 'נשלח אימייל',
         'webhook_received' => 'התקבל Webhook',
+        // הפקת חשבוניות (חשבונית ירוקה). התווית היא כל מה שמוצג — לעולם לא הקישור.
+        'document_requested' => 'התבקשה חשבונית',
+        'document_issued' => 'הופקה חשבונית',
+        'document_failed' => 'הפקת החשבונית נכשלה',
+        'document_retried' => 'הסוחר ניסה להפיק את החשבונית מחדש',
+        'document_force_issued' => 'החשבונית הופקה לאחר שהסוחר בדק בחשבונית ירוקה',
         'generic' => 'פעילות',
     ],
 

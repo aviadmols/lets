@@ -16,6 +16,7 @@ return [
     'storefront' => 'Storefront',
     'settings' => 'Settings',
     'payments' => 'Payments',
+    'invoices' => 'Invoices',
 
     // new placeholder / extra leaves
     'segments' => 'Segments',

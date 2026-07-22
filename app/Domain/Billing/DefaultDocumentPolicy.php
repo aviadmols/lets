@@ -28,6 +28,12 @@ final class DefaultDocumentPolicy implements DocumentPolicy
     public const CONTEXT_UPSELL = 'upsell';
     public const CONTEXT_REFUND = 'refund';
     public const CONTEXT_CANCELLATION = 'cancellation';
+    /**
+     * A plain paid store order — no LETS plan involved. Reported by the storefront
+     * when the merchant runs invoicing in `all_orders` scope. It is a complete sale
+     * in its own right, so it earns the full tax document.
+     */
+    public const CONTEXT_PLATFORM_ORDER = 'platform_order';
 
     public function decide(DocumentPolicyInput $input): DocumentDecision
     {
@@ -69,8 +75,10 @@ final class DefaultDocumentPolicy implements DocumentPolicy
                 shouldLinkToPreviousDocument: true,
             ),
 
-            // Recurring cycle + upsell: full tax invoice per charge (each is a sale).
+            // Recurring cycle, upsell, plain store order: full tax invoice per charge
+            // (each is a complete sale in its own right).
             self::CONTEXT_RECURRING,
+            self::CONTEXT_PLATFORM_ORDER,
             self::CONTEXT_UPSELL => new DocumentDecision(
                 documentType: $taxInvoice,
                 shouldIssueNow: $taxInvoice !== null,

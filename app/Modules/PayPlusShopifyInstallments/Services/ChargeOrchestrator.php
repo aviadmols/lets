@@ -6,6 +6,8 @@ use App\Domain\Billing\Contracts\DocumentPolicy;
 use App\Domain\Billing\Contracts\DocumentPolicyInput;
 use App\Domain\Billing\IdempotencyKey;
 use App\Domain\Billing\Ledger;
+use App\Domain\Invoicing\DocumentContext;
+use App\Domain\Invoicing\Jobs\IssueDocumentJob;
 use App\Events\ChargeFailed;
 use App\Events\ChargeSucceeded;
 use App\Mail\ManualRecurringPaymentMail;
@@ -663,12 +665,21 @@ final class ChargeOrchestrator
         bool $isFinal,
         PaymentLedger $ledger,
     ): void {
+        // Derive the DOCUMENT context ONCE and ask the policy about that, rather than
+        // deriving finality here and again in the dispatch below. PaymentType can only
+        // yield deposit/installment/recurring today, so this is not a live bug — but
+        // ChargeContext also carries `retry` and `manual`, which the policy has no arm
+        // for and would silently answer `none()` to. Should a retry/manual payment
+        // type ever be added, documentContextFor() already resolves it to the plan's
+        // real kind, and routing the policy through it keeps the two from drifting.
+        $documentContext = $this->documentContextFor($type, $isFinal);
+
         $decision = $this->documentPolicy->decide(new DocumentPolicyInput(
             shop: $plan->shop,
-            chargeContext: $type->toChargeContext()->value,
+            chargeContext: $documentContext->value,
             planKind: $plan->plan_kind->value,
             amount: (float) $ledger->amount,
-            isFinalPayment: $isFinal,
+            isFinalPayment: $documentContext === DocumentContext::FINAL_INSTALLMENT,
             merchantSettings: (array) (($plan->meta ?? [])['document_settings'] ?? []),
         ));
 
@@ -676,14 +687,45 @@ final class ChargeOrchestrator
             return;
         }
 
-        // TODO(phase 3.x): call the gateway books endpoint with $decision->documentType,
-        // then persist payplus_document_uid back onto $ledger. The decision is the
-        // contract; the gateway call is a thin parameterised executor.
         Timeline::record(
             kind: 'document_issue_requested',
             details: ['document_type' => $decision->documentType],
             planId: $plan->getKey(),
             shopId: $plan->shop_id,
         );
+
+        // Hand off to the invoicing module. IssueDocumentJob::queueAfterCommit() is afterCommit
+        // + fail-soft, deliberately: we are inside charge()'s DB::transaction, so no
+        // HTTP may happen here, and a slow, dead, or unreachable invoicing path must
+        // never hold a row lock, delay a charge, or roll back money that already
+        // moved. The job is idempotent on the ledger row's own key.
+        IssueDocumentJob::queueAfterCommit(
+            shopId: (int) $plan->shop_id,
+            context: $documentContext->value,
+            ledgerId: (int) $ledger->getKey(),
+        );
+    }
+
+    /**
+     * The invoicing context for a charge. Mirrors DefaultDocumentPolicy's own
+     * normalisation: a FINAL installment is its own context even though it arrives
+     * as charge_context = installment. retry/manual re-enter the plan's real kind —
+     * an invoicing provider must never be told "retry" as if it were a sale type.
+     */
+    private function documentContextFor(PaymentType $type, bool $isFinal): DocumentContext
+    {
+        $context = $type->toChargeContext();
+
+        return match ($context) {
+            ChargeContext::DEPOSIT => DocumentContext::DEPOSIT,
+            ChargeContext::INSTALLMENT => $isFinal
+                ? DocumentContext::FINAL_INSTALLMENT
+                : DocumentContext::INSTALLMENT,
+            ChargeContext::RECURRING => DocumentContext::RECURRING,
+            ChargeContext::UPSELL => DocumentContext::UPSELL,
+            ChargeContext::RETRY, ChargeContext::MANUAL => $isFinal
+                ? DocumentContext::FINAL_INSTALLMENT
+                : DocumentContext::INSTALLMENT,
+        };
     }
 }

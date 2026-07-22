@@ -85,6 +85,18 @@ class PaymentLedgerResource extends Resource
                 Tables\Columns\TextColumn::make('payplus_transaction_uid')
                     ->label(__('subscriptions.detail.col.tx'))
                     ->formatStateUsing(fn (?string $state): string => $state ? '••••' . Str::substr($state, -4) : '—'),
+
+                // The accounting document for this money movement, when the merchant has
+                // invoicing on. THIS is the one place the document URL is surfaced — the
+                // Timeline shows only the label (docs/ux/00-design-system.md §4.14), but
+                // the merchant needs a way to open their own paperwork. The column is
+                // hidden by default so a merchant without invoicing sees no empty column.
+                Tables\Columns\TextColumn::make('document')
+                    ->label(__('subscriptions.detail.col.document'))
+                    ->state(fn (PaymentLedger $record): string => $record->issuedDocument?->label() ?? '—')
+                    ->url(fn (PaymentLedger $record): ?string => $record->issuedDocument?->document_url)
+                    ->openUrlInNewTab()
+                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
@@ -129,7 +141,10 @@ class PaymentLedgerResource extends Resource
                         }
                     }),
             ])
-            ->modifyQueryUsing(fn (Builder $query): Builder => $query->with('plan'))
+            // `issuedDocument` is eager-loaded alongside `plan`: the invoice column is
+            // hidden by default, but a merchant who toggles it on would otherwise pay
+            // one query per row.
+            ->modifyQueryUsing(fn (Builder $query): Builder => $query->with(['plan', 'issuedDocument']))
             ->defaultSort('created_at', 'desc')
             ->emptyStateHeading(__('subscriptions.detail.ledger_empty'))
             ->emptyStateIcon('heroicon-o-banknotes');

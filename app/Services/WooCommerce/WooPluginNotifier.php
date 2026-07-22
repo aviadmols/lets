@@ -38,6 +38,30 @@ final class WooPluginNotifier
     }
 
     /**
+     * Tell the plugin an accounting document was issued for one of its orders, so it can
+     * stamp the order meta + add an order note the merchant sees inside WooCommerce.
+     *
+     * This is the RETURN LEG of the `all_orders` scope: the plugin reports a paid order,
+     * we queue the document, and the URL comes back here once the provider answers. It
+     * reuses the existing notify channel rather than opening a second transport.
+     */
+    public function documentIssued(
+        Shop $shop,
+        string $orderId,
+        string $documentId,
+        ?string $documentNumber,
+        ?string $documentUrl,
+    ): void {
+        $this->send($shop, [
+            'event' => 'document_issued',
+            'order_id' => $orderId,
+            'document_id' => $documentId,
+            'document_number' => (string) ($documentNumber ?? ''),
+            'document_url' => (string) ($documentUrl ?? ''),
+        ]);
+    }
+
+    /**
      * Sign + POST the event to the plugin. No-op (logged) when the store isn't reachable or
      * has no webhook secret — never throws.
      *

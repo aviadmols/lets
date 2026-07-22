@@ -25,6 +25,11 @@
 .rc-timeline__dot--success { background: var(--rc-green); }
 .rc-timeline__dot--failure { background: var(--rc-red); }
 .rc-timeline__dot--info    { background: var(--rc-blue); }
+/* An act that succeeded but warrants a second look — today, a merchant issuing a
+   document whose earlier attempt had an unknown outcome. Not a failure (red would
+   be wrong) and not routine (info would hide it in an audit scan). Same amber
+   reasoning as the `unresolved` badge. */
+.rc-timeline__dot--warning { background: var(--rc-amber); }
 
 .rc-timeline__body { display: flex; flex-direction: column; gap: var(--rc-space-1); }
 .rc-timeline__title { font: var(--rc-type-body-strong); color: var(--rc-ink); }

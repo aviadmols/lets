@@ -66,6 +66,13 @@ Composer: `<php84> C:\Users\user\.config\herd\bin\composer.phar`
 - **Email-template safety.** Merchant-edited email HTML is substituted with
   **`strtr()`, NEVER `Blade::render()`** on merchant input (RCE prevention).
   Preview only via isolated `iframe srcdoc` + `htmlspecialchars`.
+- **Never wipe a database you cannot prove is local.** `migrate:fresh`,
+  `migrate:refresh`, `migrate:reset` and `db:wipe` are refused by
+  `App\Support\DestructiveCommandGuard` unless the resolved connection is local.
+  A connection NAME is not a target: a `url` in the config can override the
+  driver, which is how `--database=sqlite` once dropped a live Railway Postgres.
+  The guard judges the connection *after* url parsing. Override deliberately via
+  `ALLOW_DESTRUCTIVE_DB=true`, never with a CLI flag.
 - **Tenant-safety is a RELEASE BLOCKER.** Every tenant-owned model has `shop_id`
   + the `BelongsToShop` trait (global scope). No `withoutGlobalScopes()` in
   product code (only audited platform-admin services). **Every queued job
@@ -77,6 +84,12 @@ Composer: `<php84> C:\Users\user\.config\herd\bin\composer.phar`
   orchestrator. Future charges require a stored `customer_consents` row. Every
   refund/cancel/pause writes a ledger event + calls `DocumentPolicy` + updates
   Shopify.
+- **Document safety.** No accounting document without an `issued_documents` row,
+  written BEFORE the provider call. External invoicing APIs have no idempotency
+  key of their own, so an attempt whose outcome is unknown (worker died
+  mid-flight, id-less 2xx, transport error) is NEVER re-posted — it becomes
+  `unresolved` for a human. A missing document is a button-click to fix; a
+  duplicate tax document is a VAT correction with the authority.
 - **State transitions.** Only the canonical transitions (§3.3 of the plan /
   ARCHITECTURE.md) are legal; every move writes a ledger + Timeline event.
 - **i18n.** English is the default; all user-facing strings go through `__()`
@@ -92,6 +105,14 @@ Composer: `<php84> C:\Users\user\.config\herd\bin\composer.phar`
   portal, refunds).
 - `app/Domain/Billing/` — `payment_ledger`, idempotency, `DocumentPolicy`,
   state machines.
+- `app/Domain/Invoicing/` — accounting documents (Green Invoice / "Morning").
+  `DocumentIssuer` is the ONE entry point; `issued_documents` is its ledger
+  (no document without a row, unique `(shop_id, idempotency_key)`).
+  `InvoiceProviderFactory::for($shop)` is per-shop + returns null when the
+  merchant hasn't opted in, so every hook is a clean no-op by default. Per-shop
+  policy in `merchant_invoicing_settings` — including `scope`
+  (`plans_only` vs `all_orders`, the WooCommerce "invoice every site order"
+  switch) and a per-context document-type map.
 - `app/Domain/Upsell/` — flows, triggers, offers, branches, events.
 - Admin = Filament 3 panel re-skinned to the Recharge spec.
 

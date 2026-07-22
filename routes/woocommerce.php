@@ -3,6 +3,7 @@
 use App\Http\Controllers\WooCommerce\CheckoutSettingsController;
 use App\Http\Controllers\WooCommerce\DiagnosticsController;
 use App\Http\Controllers\WooCommerce\InstallController;
+use App\Http\Controllers\WooCommerce\InvoicingController;
 use App\Http\Controllers\WooCommerce\Storefront\WooDepositCallbackController;
 use App\Http\Controllers\WooCommerce\Storefront\WooDepositReturnController;
 use App\Http\Controllers\WooCommerce\Storefront\WooGatewayCallbackController;
@@ -58,6 +59,23 @@ Route::middleware(VerifyWooCommerceSignature::class)
             ->name('woocommerce.checkout_settings.show');
         Route::post('/checkout-settings', [CheckoutSettingsController::class, 'update'])
             ->name('woocommerce.checkout_settings.update');
+
+        /*
+        |----------------------------------------------------------------------
+        | Green Invoice (Morning) invoicing — the `all_orders` scope
+        |----------------------------------------------------------------------
+        | LETS only ever sees orders that went through a LETS flow. A merchant who
+        | wants documents for EVERY order on their site needs the plugin to report the
+        | rest, so: /invoicing-settings tells the plugin's order hook whether to fire
+        | at all (a `plans_only` shop costs zero HTTP calls), and /orders/issue-document
+        | reports one paid order. Both re-check the merchant's scope + statuses
+        | SERVER-SIDE — the plugin's cached settings can be stale, and a status the
+        | merchant did not pick must never mint a tax document.
+        */
+        Route::get('/invoicing-settings', [InvoicingController::class, 'settings'])
+            ->name('woocommerce.invoicing.settings');
+        Route::post('/orders/issue-document', [InvoicingController::class, 'issue'])
+            ->name('woocommerce.invoicing.issue');
 
         /*
         |----------------------------------------------------------------------

@@ -40,6 +40,17 @@ final class EventPresenter
         'charge_succeeded_email_sent' => ['info', 'timeline.kind.email_sent'],
         'charge_failed_email_sent' => ['info', 'timeline.kind.email_sent'],
         'webhook_received' => ['info', 'timeline.kind.webhook_received'],
+        // The `document` variant (§4.14): an accounting document was issued, or the
+        // provider refused. The label is all the Timeline ever shows — the document
+        // URL is deliberately absent from the event payload (hard rule, above).
+        'document_issued' => ['success', 'timeline.kind.document_issued'],
+        'document_failed' => ['failure', 'timeline.kind.document_failed'],
+        'document_issue_requested' => ['info', 'timeline.kind.document_requested'],
+        'document_retried' => ['info', 'timeline.kind.document_retried'],
+        // WARNING, not info: this is the one act in the module that can duplicate a
+        // real tax document. Rendering it like routine traffic would hide it in the
+        // exact scan someone runs when they suspect a duplicate.
+        'document_force_issued' => ['warning', 'timeline.kind.document_force_issued'],
     ];
 
     public const FALLBACK = ['info', 'timeline.kind.generic'];

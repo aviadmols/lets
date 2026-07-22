@@ -16,6 +16,12 @@ return [
         'fulfillment_released' => 'Order released for fulfillment',
         'email_sent' => 'Email sent',
         'webhook_received' => 'Webhook received',
+        // Invoicing (Green Invoice). The label is all the Timeline shows — never the URL.
+        'document_requested' => 'Invoice requested',
+        'document_issued' => 'Invoice issued',
+        'document_failed' => 'Invoice failed',
+        'document_retried' => 'Invoice retried by the merchant',
+        'document_force_issued' => 'Invoice issued after the merchant checked Green Invoice',
         'generic' => 'Activity',
     ],
 

@@ -7,6 +7,7 @@ use App\Models\ActivityEvent;
 use App\Models\CustomerConsent;
 use App\Models\InstallmentPaymentMethod;
 use App\Models\InstallmentPlan;
+use App\Models\IssuedDocument;
 use App\Models\PaymentLedger;
 use App\Models\Shop;
 use App\Support\Tenant;
@@ -27,6 +28,9 @@ use Illuminate\Support\Facades\Log;
  *   - Anonymise PII on EVERY tenant row for the shop: plans (name/email/phone +
  *     meta), consents (email/ip/user-agent), payment methods (card metadata).
  *   - Scrub PII from every ActivityEvent.details for the shop.
+ *   - Strip the customer identity from issued accounting documents: the provider's
+ *     raw response echoes the client block (name/phone/tax id/email) and
+ *     document_url links to a document bearing the customer's name.
  *   - Neutralise customer identifiers (shopify_customer_id / external_customer_id)
  *     on kept rows so a retained financial row can no longer be tied to a person.
  *   - KEEP financial amounts/dates/status (payment_ledger, plan money columns).
@@ -80,6 +84,7 @@ final class RedactShopData implements ShouldQueue
                 'customer_consents' => $this->redactConsents(),
                 'installment_payment_methods' => $this->redactPaymentMethods(),
                 'payment_ledger' => $this->neutraliseLedger(),
+                'issued_documents' => $this->neutraliseIssuedDocuments(),
                 'activity_events' => $this->scrubActivityEvents(),
             ];
 
@@ -160,6 +165,41 @@ final class RedactShopData implements ShouldQueue
                 $row->forceFill(['shopify_customer_id' => null])->save();
                 $count++;
             });
+
+        return $count;
+    }
+
+    /**
+     * Keep the accounting trail; strip the customer identity from it.
+     *
+     * An issued_documents row carries TWO pieces of personal data: the provider's
+     * raw response (which echoes the client block — name, phone, tax id, and the
+     * email when provider-side delivery is on), and document_url, a live link to a
+     * document bearing the customer's name. The amounts, status, provider ids and
+     * idempotency keys are financial record and are PRESERVED — the same trade the
+     * ledger makes.
+     */
+    private function neutraliseIssuedDocuments(): int
+    {
+        $count = 0;
+
+        IssuedDocument::query()->each(function (IssuedDocument $document) use (&$count): void {
+            $document->forceFill([
+                'document_url' => null,
+                'raw_response_masked' => is_array($document->raw_response_masked)
+                    ? RedactionPolicy::scrubJson($document->raw_response_masked)
+                    : null,
+                // NULLED, not scrubbed. Unlike raw_response_masked — which is a
+                // record of what the provider said — this is an INPUT CACHE kept
+                // only so a document can be re-issued. Scrubbing it would leave a
+                // skeleton that still looks rebuildable, and a merchant clicking
+                // retry would issue a real tax document with the client name and
+                // tax id printed as "[redacted]". Nulling makes the row correctly
+                // un-rebuildable and routes them to the safe path instead.
+                'source_payload' => null,
+            ])->save();
+            $count++;
+        });
 
         return $count;
     }

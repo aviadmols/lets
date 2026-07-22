@@ -16,6 +16,7 @@ return [
     'storefront' => 'חזית החנות',
     'settings' => 'הגדרות',
     'payments' => 'תשלומים',
+    'invoices' => 'חשבוניות',
 
     // עלים נוספים / עתידיים
     'segments' => 'פלחים',
