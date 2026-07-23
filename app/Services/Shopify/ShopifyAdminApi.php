@@ -14,6 +14,18 @@ namespace App\Services\Shopify;
  */
 interface ShopifyAdminApi
 {
+    /**
+     * One raw GraphQL call (query or mutation) with variables, returning the
+     * decoded body. Promoted onto the contract by the Shopify-Payments
+     * subscriptions rail — its services (ContractActionService, SellingPlanService,
+     * BillingAttemptJob) run mutations no REST-ish wrapper exists for, and typing
+     * against the interface is what lets tests fake them without HTTP.
+     *
+     * @param  array<string, mixed>  $variables
+     * @return array<string, mixed>
+     */
+    public function graphql(string $query, array $variables = []): array;
+
     public function createOrder(array $orderPayload): array;
 
     public function createDraftOrder(array $draftPayload): array;

@@ -1,0 +1,16 @@
+{
+  "name": "lets-subscriptions-account",
+  "private": true,
+  "version": "1.0.0",
+  "description": "LETS Subscriptions — the customer personal area (full-page customer-account extension) for the Shopify-Payments subscriptions rail.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "dependencies": {
+    "@shopify/ui-extensions": "2026.4.x",
+    "@preact/signals": "^2.0.0",
+    "preact": "^10.24.0"
+  },
+  "devDependencies": {
+    "@shopify/ui-extensions-tester": "2026.4.x"
+  }
+}

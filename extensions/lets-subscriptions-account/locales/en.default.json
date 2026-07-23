@@ -1,0 +1,59 @@
+{
+  "page": {
+    "title": "My subscriptions",
+    "loading": "Loading your subscriptions",
+    "error": "We couldn't load your subscriptions right now. Please refresh the page."
+  },
+  "empty": {
+    "title": "No subscriptions yet",
+    "body": "When you subscribe to a product, you'll manage it here — pause, skip a delivery, or change the date."
+  },
+  "status": {
+    "ACTIVE": "Active",
+    "PAUSED": "Paused",
+    "CANCELLED": "Cancelled",
+    "EXPIRED": "Expired",
+    "FAILED": "Payment issue"
+  },
+  "interval": {
+    "DAY": "day",
+    "DAYs": "days",
+    "WEEK": "week",
+    "WEEKs": "weeks",
+    "MONTH": "month",
+    "MONTHs": "months",
+    "YEAR": "year",
+    "YEARs": "years"
+  },
+  "card": {
+    "subscription": "Subscription",
+    "and_more": "+",
+    "qty": "Qty",
+    "every": "Every",
+    "next_charge": "Next charge:",
+    "per_delivery": "Per delivery:"
+  },
+  "action": {
+    "skip": "Skip next delivery",
+    "pause": "Pause",
+    "resume": "Resume",
+    "reschedule": "Change date",
+    "reschedule_label": "Next charge date",
+    "reschedule_confirm": "Set date",
+    "cancel": "Cancel subscription",
+    "cancel_sure": "Cancel this subscription?",
+    "cancel_confirm": "Yes, cancel",
+    "cancel_keep": "Keep it"
+  },
+  "notice": {
+    "pause_ok": "Your subscription is paused. Resume it any time.",
+    "resume_ok": "Welcome back — your subscription is active again.",
+    "skip_ok": "Done — your next delivery is skipped.",
+    "reschedule_ok": "Your next charge date is updated.",
+    "cancel_ok": "Your subscription is cancelled.",
+    "failed": "That didn't work. Please try again.",
+    "failed_bad_date": "Please pick a future date (YYYY-MM-DD).",
+    "failed_not_yours": "We couldn't find that subscription on your account.",
+    "failed_shopify_rejected": "Shopify couldn't apply that change. Please try again."
+  }
+}

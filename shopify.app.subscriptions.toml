@@ -1,0 +1,57 @@
+# App B — "LETS Subscriptions" (CUSTOM distribution, the Shopify-Payments pilot).
+#
+# Deploy with:  shopify app deploy --config subscriptions
+# The PUBLIC app's config (shopify.app.toml) is NEVER touched by this rail — that
+# separation is the whole isolation design (separate Partner app, separate scopes,
+# separate Railway service + DB, separate branch).
+#
+# client_id is a PLACEHOLDER until the owner creates Partner app B (Custom
+# distribution — an IRREVERSIBLE choice, see docs/SHOPIFY-SUBSCRIPTIONS-PILOT.md)
+# and Shopify approves the protected-data + subscription scopes (up to 7 business
+# days). The matching API SECRET lives only in the pilot service's env.
+#
+# Scope map (every scope ↔ a real call in this codebase):
+#   read/write_own_subscription_contracts → ContractActionService mutations,
+#     ContractMirror reads, BillingAttemptJob's subscriptionBillingAttemptCreate
+#   read_customer_payment_methods         → required by the Subscription APIs
+#   read_products, write_products         → SellingPlanService (selling plan groups)
+#   read_orders, read_all_orders          → billing-attempt orders + history
+#   read_checkout_external_data           → subscriptions checkout requirement
+#   customer-account extension reads use the Customer Account API scopes
+#     (customer_read/write_own_subscription_contracts), granted alongside.
+
+name = "LETS Subscriptions"
+handle = "lets-subscriptions"
+client_id = "REPLACE_WITH_APP_B_CLIENT_ID"
+application_url = "https://subscriptions.lets.co.il"
+embedded = true
+
+[access_scopes]
+scopes = "read_products,write_products,read_orders,read_all_orders,read_own_subscription_contracts,write_own_subscription_contracts,read_customer_payment_methods,read_checkout_external_data"
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [
+  "https://subscriptions.lets.co.il/shopify/callback",
+]
+
+[webhooks]
+api_version = "2026-04"
+
+  # Everything lands on the ONE platform webhook endpoint; WebhookController
+  # verifies HMAC + resolves the shop, WebhookRouter dispatches by topic.
+  [[webhooks.subscriptions]]
+  topics = [
+    "app/uninstalled",
+    "subscription_contracts/create",
+    "subscription_contracts/update",
+    "subscription_billing_attempts/success",
+    "subscription_billing_attempts/failure",
+    "subscription_billing_attempts/challenged",
+  ]
+  uri = "/shopify/webhooks"
+
+  # GDPR — mandatory for every app, custom distribution included.
+  [[webhooks.subscriptions]]
+  compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
+  uri = "/shopify/webhooks"

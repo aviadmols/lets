@@ -17,6 +17,7 @@ return [
     'settings' => 'Settings',
     'payments' => 'Payments',
     'invoices' => 'Invoices',
+    'shopify_subscriptions' => 'Shopify Subscriptions',
 
     // new placeholder / extra leaves
     'segments' => 'Segments',

@@ -26,6 +26,26 @@ final class RecordingShopifyClient implements ShopifyAdminApi
 
     private int $nextOrderId = 555000111;
 
+    /** @var array<int, array{query: string, variables: array<string, mixed>}> */
+    public array $graphqlCalls = [];
+
+    /** Set by a test to script the next graphql() answers (FIFO). */
+    public array $graphqlResponses = [];
+
+    /** When set, graphql() throws — simulates a transport failure mid-flight. */
+    public ?\Throwable $graphqlThrows = null;
+
+    public function graphql(string $query, array $variables = []): array
+    {
+        if ($this->graphqlThrows !== null) {
+            throw $this->graphqlThrows;
+        }
+
+        $this->graphqlCalls[] = ['query' => $query, 'variables' => $variables];
+
+        return $this->graphqlResponses !== [] ? array_shift($this->graphqlResponses) : [];
+    }
+
     public function createOrder(array $orderPayload): array
     {
         $this->createdOrders[] = $orderPayload;

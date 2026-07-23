@@ -1,0 +1,36 @@
+# LETS Subscriptions — the customer PERSONAL AREA (the pilot's demo surface).
+#
+# A FULL-PAGE customer-account UI extension (customer-account.page.render): a new
+# page inside the shopper's native Shopify account where they see and manage the
+# subscriptions OUR app created — pause, resume, skip a delivery, move the next
+# charge date, cancel. Merchants can link it from the account navigation menu.
+#
+# Data path (two directions, deliberately different):
+#   READS  → shopify.query() on the Customer Account API (subscriptionContracts).
+#            Scoped natively to the LOGGED-IN customer AND to contracts our app
+#            owns (customer_read_own_subscription_contracts) — no backend hop,
+#            no way to read someone else's subscription.
+#   ACTIONS → direct fetch to the app's absolute /subscriptions/api/* endpoints
+#            with a session-token (JWT) bearer — the same transport contract the
+#            lets-thank-you extension proved. The backend re-verifies the token,
+#            binds the shop, and matches the token's customer against the
+#            contract's owner before any verb runs.
+#
+# Billing itself is app-driven server-side (subscriptionBillingAttemptCreate);
+# this page never touches money — it only manages the contract.
+#
+# API 2026-04: Preact + @shopify/ui-extensions (React was dropped after 2025-07).
+
+api_version = "2026-04"
+
+[[extensions]]
+name = "LETS Subscriptions"
+handle = "lets-subscriptions-account"
+type = "ui_extension"
+
+  [[extensions.targeting]]
+  target = "customer-account.page.render"
+  module = "./src/SubscriptionsPage.jsx"
+
+  [extensions.capabilities]
+  network_access = true

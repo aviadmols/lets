@@ -47,6 +47,11 @@ return Application::configure(basePath: dirname(__DIR__))
             // WooCommerce plugin → SaaS connect handshake. Stateless JSON, HMAC-auth
             // (VerifyWooCommerceSignature) — no web group / no CSRF, like proxy.php.
             \Illuminate\Support\Facades\Route::group([], base_path('routes/woocommerce.php'));
+
+            // Shopify-Payments subscriptions rail (the pilot app). Stateless JSON —
+            // session-token bearer is the auth (shopify.session), CORS for the
+            // sandboxed customer-account extension worker. No web group / no CSRF.
+            \Illuminate\Support\Facades\Route::group([], base_path('routes/subscriptions.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware) {

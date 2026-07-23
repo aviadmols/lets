@@ -17,6 +17,7 @@ return [
     'settings' => 'הגדרות',
     'payments' => 'תשלומים',
     'invoices' => 'חשבוניות',
+    'shopify_subscriptions' => 'מנויי Shopify',
 
     // עלים נוספים / עתידיים
     'segments' => 'פלחים',

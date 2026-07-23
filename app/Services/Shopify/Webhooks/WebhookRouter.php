@@ -18,6 +18,7 @@ final class WebhookRouter
         private readonly AppUninstalledHandler $appUninstalled,
         private readonly PrivacyWebhookHandler $privacy,
         private readonly ProductWebhookHandler $product,
+        private readonly SubscriptionWebhookHandler $subscription,
     ) {}
 
     public function handlerFor(string $topic): ?WebhookHandler
@@ -32,6 +33,14 @@ final class WebhookRouter
             'customers/redact',
             'shop/redact',
             'customers/data_request' => $this->privacy,
+            // The Shopify-Payments subscriptions rail (app B / the pilot). These
+            // topics are only ever REGISTERED by the subscriptions app config, so
+            // on the public PayPlus app this arm simply never fires.
+            'subscription_contracts/create',
+            'subscription_contracts/update',
+            'subscription_billing_attempts/success',
+            'subscription_billing_attempts/failure',
+            'subscription_billing_attempts/challenged' => $this->subscription,
             // 'refunds/create' → hand to laravel-backend refund reconciler (TODO).
             default => null,
         };

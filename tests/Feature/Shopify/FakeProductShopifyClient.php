@@ -49,6 +49,11 @@ final class FakeProductShopifyClient implements ShopifyAdminApi
 
     // === Inert order-strategy stubs (not exercised by catalog tests) ===
 
+    public function graphql(string $query, array $variables = []): array
+    {
+        return [];
+    }
+
     public function createOrder(array $orderPayload): array
     {
         return [];
