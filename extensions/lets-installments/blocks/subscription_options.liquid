@@ -4,14 +4,15 @@
   The merchant drops "LETS Subscribe & Save" onto the product page in the theme
   editor and it ALWAYS renders a working buy area, in one of two shapes:
 
-    - the product HAS published subscription plans → a choice: one-time purchase
-      vs subscribe, a cadence picker, and an add-to-cart carrying the chosen
-      `selling_plan`;
-    - the product has NO subscription plans → the plain one-time add-to-cart.
+    - the product HAS published subscription plans → the two-card chooser:
+      a highlighted subscription card (price, saving badge, benefit list, an
+      optional "Read more", an optional free-gift row, and a cadence picker when
+      more than one plan exists) above a plain "Purchase once" card;
+    - the product has NO subscription plans → the one-time card alone.
 
   So the block can be placed on every product page once and it never leaves a
   page with a dead area: publishing a plan later (LETS admin → Products → a plan
-  → "Publish to Shopify") turns the same block into the choice, with no theme
+  → "Publish to Shopify") turns the same block into the chooser, with no theme
   edit.
 
   Subscriptions render from Shopify's NATIVE selling_plan_allocations — the
@@ -20,6 +21,10 @@
   vaults the card and creates a SubscriptionContract our app owns (and then
   bills, cycle by cycle, from BillingAttemptJob). No App Proxy call is involved,
   so the storefront can never be talked into a price we did not publish.
+
+  EVERY colour and string below is a theme-editor setting; nothing is hardcoded
+  to a brand. Prices, cadence names and the saving percentage come from Shopify
+  and are NOT editable — they are what the shopper will actually be charged.
 
   For DEPOSIT + installments (the PayPlus rail) use the sibling block
   "LETS Deposit Plan" (blocks/installments_button.liquid) instead — that rail
@@ -32,142 +37,348 @@
 {%- if allocations != blank and allocations.size > 0 -%}
   {%- assign has_plans = true -%}
 {%- endif -%}
-{%- assign subscribe_first = false -%}
-{%- if has_plans and block.settings.default_selection == 'subscribe' -%}
-  {%- assign subscribe_first = true -%}
-{%- endif -%}
 
 {%- if product and current_variant -%}
-  <div class="lets-subs" data-lets-subs data-has-plans="{{ has_plans }}">
-    <form method="post" action="{{ routes.cart_add_url }}" data-lets-subs-form>
+  {%- comment -%} The cheapest allocation leads the card (the best offer wins). {%- endcomment -%}
+  {%- assign lead = allocations | sort: 'per_delivery_price' | first -%}
+  {%- assign sub_price = lead.per_delivery_price -%}
+  {%- assign one_time_price = current_variant.price -%}
+
+  {%- assign saves = false -%}
+  {%- if has_plans and sub_price < one_time_price -%}
+    {%- assign saves = true -%}
+    {%- assign saved_pct = one_time_price | minus: sub_price | times: 100.00 | divided_by: one_time_price | round -%}
+  {%- endif -%}
+
+  {%- assign subscribe_first = true -%}
+  {%- if block.settings.default_selection == 'onetime' or has_plans == false -%}
+    {%- assign subscribe_first = false -%}
+  {%- endif -%}
+
+  <div class="lets-po" data-lets-po>
+    <form method="post" action="{{ routes.cart_add_url }}" data-lets-po-form>
       <input type="hidden" name="form_type" value="product">
       <input type="hidden" name="utf8" value="✓">
-      <input type="hidden" name="id" value="{{ current_variant.id }}" data-lets-subs-variant>
+      <input type="hidden" name="id" value="{{ current_variant.id }}" data-lets-po-variant>
 
       {%- if block.settings.heading != blank -%}
-        <p class="lets-subs__heading">{{ block.settings.heading }}</p>
+        <p class="lets-po__heading">{{ block.settings.heading }}</p>
       {%- endif -%}
 
       {%- if has_plans -%}
-        {%- comment -%} Both options exist → let the shopper choose. {%- endcomment -%}
-        <label class="lets-subs__option">
-          <input type="radio" name="lets_purchase_type" value="onetime" data-lets-subs-type
-            {% unless subscribe_first %}checked{% endunless %}>
-          <span class="lets-subs__option-label">{{ block.settings.one_time_label | default: 'One-time purchase' }}</span>
-          <span class="lets-subs__price">{{ current_variant.price | money }}</span>
-        </label>
+        {%- comment -%} ---------- The subscription card ---------- {%- endcomment -%}
+        <div class="lets-po__card lets-po__card--sub{% if subscribe_first %} is-selected{% endif %}" data-lets-po-card="subscribe">
+          <label class="lets-po__head">
+            <input type="radio" class="lets-po__radio" name="lets_purchase_type" value="subscribe"
+              data-lets-po-type {% if subscribe_first %}checked{% endif %}>
+            <span class="lets-po__title">{{ block.settings.subscribe_label | default: 'Subscribe & save' }}</span>
 
-        <label class="lets-subs__option">
-          <input type="radio" name="lets_purchase_type" value="subscribe" data-lets-subs-type
-            {% if subscribe_first %}checked{% endif %}>
-          <span class="lets-subs__option-label">{{ block.settings.subscribe_label | default: 'Subscribe & save' }}</span>
-          {%- assign first_allocation = allocations | first -%}
-          {%- if first_allocation.per_delivery_price < current_variant.price -%}
-            <span class="lets-subs__price">{{ first_allocation.per_delivery_price | money }}</span>
-          {%- endif -%}
-        </label>
+            {%- if block.settings.badge_text != blank -%}
+              <span class="lets-po__badge">{{ block.settings.badge_text }}</span>
+            {%- elsif saves -%}
+              <span class="lets-po__badge">{{ saved_pct }}% {{ block.settings.badge_off_word | default: 'OFF' }}</span>
+            {%- endif -%}
 
-        {%- comment -%}
-          Cadence. The option value IS the selling_plan id Shopify expects on the
-          cart line, so what the shopper picks is exactly what gets billed.
-        {%- endcomment -%}
-        <div class="lets-subs__plans" data-lets-subs-plans {% unless subscribe_first %}hidden{% endunless %}>
-          <select name="selling_plan" class="lets-subs__select" data-lets-subs-select
-            aria-label="{{ block.settings.subscribe_label | default: 'Subscribe & save' | escape }}">
-            {%- for allocation in allocations -%}
-              <option value="{{ allocation.selling_plan.id }}">
-                {{ allocation.selling_plan.name }} — {{ allocation.per_delivery_price | money }}
-              </option>
-            {%- endfor -%}
-          </select>
+            <span class="lets-po__prices">
+              <span class="lets-po__price">{{ sub_price | money }}</span>
+              {%- if saves -%}
+                <s class="lets-po__compare">{{ one_time_price | money }}</s>
+              {%- endif -%}
+            </span>
+          </label>
 
-          {%- if block.settings.subscribe_note != blank -%}
-            <p class="lets-subs__note">{{ block.settings.subscribe_note }}</p>
-          {%- endif -%}
-        </div>
-      {%- else -%}
-        {%- comment -%}
-          No published subscription plan → a plain one-time buy area, so the block
-          is safe to leave on every product page. It becomes the choice above the
-          moment a plan is published; no theme edit needed.
-        {%- endcomment -%}
-        <div class="lets-subs__single">
-          <span class="lets-subs__option-label">{{ block.settings.one_time_label | default: 'One-time purchase' }}</span>
-          <span class="lets-subs__price">{{ current_variant.price | money }}</span>
+          <div class="lets-po__body" data-lets-po-body {% unless subscribe_first %}hidden{% endunless %}>
+            <div class="lets-po__rule"></div>
+
+            <div class="lets-po__benefits-row">
+              <ul class="lets-po__benefits">
+                {%- comment -%}
+                  The first benefit falls back to the PLAN'S OWN cadence name, so
+                  the card is never wrong about how often the shopper is billed
+                  even if the merchant leaves the field empty.
+                {%- endcomment -%}
+                <li class="lets-po__benefit">{{ block.settings.benefit_1 | default: lead.selling_plan.name }}</li>
+                {%- if block.settings.benefit_2 != blank -%}
+                  <li class="lets-po__benefit">{{ block.settings.benefit_2 }}</li>
+                {%- endif -%}
+                {%- if block.settings.benefit_3 != blank -%}
+                  <li class="lets-po__benefit">{{ block.settings.benefit_3 }}</li>
+                {%- endif -%}
+              </ul>
+
+              {%- if block.settings.more_body != blank -%}
+                <button type="button" class="lets-po__more-toggle" data-lets-po-more
+                  aria-expanded="false" aria-controls="lets-po-more">
+                  <span>{{ block.settings.more_label | default: 'Read more' }}</span>
+                  <svg class="lets-po__chevron" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                    <path d="M5 7.5 10 12.5 15 7.5" fill="none" stroke="currentColor" stroke-width="2"
+                      stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+              {%- endif -%}
+            </div>
+
+            {%- if block.settings.more_body != blank -%}
+              <div class="lets-po__more-body" id="lets-po-more" hidden>{{ block.settings.more_body }}</div>
+            {%- endif -%}
+
+            {%- comment -%}
+              Cadence — only when there is a real choice to make. The option value
+              IS the selling_plan id Shopify expects, so what the shopper picks is
+              exactly what gets billed.
+            {%- endcomment -%}
+            {%- if allocations.size > 1 -%}
+              <div class="lets-po__cadence">
+                <label class="lets-po__cadence-label" for="lets-po-plan">
+                  {{ block.settings.cadence_label | default: 'Delivery every' }}
+                </label>
+                <select id="lets-po-plan" name="selling_plan" class="lets-po__select" data-lets-po-select>
+                  {%- for allocation in allocations -%}
+                    <option value="{{ allocation.selling_plan.id }}"
+                      data-price="{{ allocation.per_delivery_price | money }}"
+                      {% if allocation.selling_plan.id == lead.selling_plan.id %}selected{% endif %}>
+                      {{ allocation.selling_plan.name }} — {{ allocation.per_delivery_price | money }}
+                    </option>
+                  {%- endfor -%}
+                </select>
+              </div>
+            {%- else -%}
+              <input type="hidden" name="selling_plan" value="{{ lead.selling_plan.id }}" data-lets-po-select>
+            {%- endif -%}
+
+            {%- if block.settings.gift_text != blank -%}
+              <div class="lets-po__rule"></div>
+              <div class="lets-po__gift">
+                {%- if block.settings.gift_image != blank -%}
+                  <img class="lets-po__gift-img"
+                    src="{{ block.settings.gift_image | image_url: width: 240 }}"
+                    alt="{{ block.settings.gift_tag | escape }}" loading="lazy" width="120" height="120">
+                {%- endif -%}
+                <div class="lets-po__gift-copy">
+                  {%- if block.settings.gift_tag != blank -%}
+                    <span class="lets-po__gift-tag">{{ block.settings.gift_tag }}</span>
+                  {%- endif -%}
+                  <p class="lets-po__gift-text">{{ block.settings.gift_text }}</p>
+                </div>
+                <div class="lets-po__gift-prices">
+                  <span class="lets-po__gift-free">{{ block.settings.gift_free_label | default: 'FREE' }}</span>
+                  {%- if block.settings.gift_value != blank -%}
+                    <s class="lets-po__compare">{{ block.settings.gift_value }}</s>
+                  {%- endif -%}
+                </div>
+              </div>
+            {%- endif -%}
+          </div>
         </div>
       {%- endif -%}
 
-      <button type="submit" class="lets-subs__cta" data-lets-subs-cta {% unless current_variant.available %}disabled{% endunless %}>
+      {%- comment -%} ---------- The one-time card (always present) ---------- {%- endcomment -%}
+      <div class="lets-po__card{% unless subscribe_first %} is-selected{% endunless %}" data-lets-po-card="onetime">
+        <label class="lets-po__head">
+          {%- if has_plans -%}
+            <input type="radio" class="lets-po__radio" name="lets_purchase_type" value="onetime"
+              data-lets-po-type {% unless subscribe_first %}checked{% endunless %}>
+          {%- endif -%}
+          <span class="lets-po__title">{{ block.settings.one_time_label | default: 'Purchase once' }}</span>
+          <span class="lets-po__prices">
+            <span class="lets-po__price">{{ one_time_price | money }}</span>
+          </span>
+        </label>
+      </div>
+
+      <button type="submit" class="lets-po__cta" data-lets-po-cta {% unless current_variant.available %}disabled{% endunless %}>
         {%- if current_variant.available -%}
-          {{ block.settings.button_label | default: 'Add to cart' }}
+          <span>{{ block.settings.button_label | default: 'Add to cart' }}</span>
+          {%- if block.settings.show_price_in_button -%}
+            <span class="lets-po__cta-price" data-lets-po-cta-price
+              data-sub-price="{{ sub_price | money }}"
+              data-onetime-price="{{ one_time_price | money }}">
+              {%- if subscribe_first -%}{{ sub_price | money }}{%- else -%}{{ one_time_price | money }}{%- endif -%}
+            </span>
+          {%- endif -%}
         {%- else -%}
-          {{ block.settings.sold_out_label | default: 'Sold out' }}
+          <span>{{ block.settings.sold_out_label | default: 'Sold out' }}</span>
         {%- endif -%}
       </button>
 
       {%- if request.design_mode and has_plans == false -%}
         {%- comment -%} Theme-editor-only hint; shoppers never see this. {%- endcomment -%}
-        <p class="lets-subs__note">
-          {{ 'No subscription plan is published for this product yet, so this block shows a one-time purchase. In the LETS app: Products → this product → a subscription plan → "Publish to Shopify".' }}
+        <p class="lets-po__hint">
+          {{ 'No subscription plan is published for this product yet, so this block shows a one-time purchase only. In the LETS app: Products → this product → a subscription plan → "Publish to Shopify".' }}
         </p>
       {%- endif -%}
     </form>
   </div>
 
   {%- style -%}
-    .lets-subs { margin: 12px 0; }
-    .lets-subs__heading { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
-    .lets-subs__option,
-    .lets-subs__single {
-      display: flex; align-items: center; gap: 8px;
-      padding: 10px 12px; margin-bottom: 6px;
-      border: 1px solid {{ block.settings.border_color | default: '#d1d5db' }};
-      border-radius: 10px;
+    .lets-po {
+      --lets-accent: {{ block.settings.accent_color | default: '#C21B17' }};
+      --lets-card: {{ block.settings.card_bg | default: '#FFFFFF' }};
+      --lets-border: {{ block.settings.border_color | default: '#E5E5E5' }};
+      --lets-ink: {{ block.settings.text_color | default: '#4A4A4A' }};
+      --lets-ink-strong: {{ block.settings.title_color | default: '#3D3D3D' }};
+      --lets-muted: {{ block.settings.muted_color | default: '#9B9B9B' }};
+      --lets-radius: {{ block.settings.corner_radius | default: 0 }}px;
+      margin: 16px 0;
+      color: var(--lets-ink);
     }
-    .lets-subs__option { cursor: pointer; }
-    .lets-subs__option-label { flex: 1; font-size: 14px; }
-    .lets-subs__price { font-size: 14px; font-weight: 600; }
-    .lets-subs__plans { margin: 0 0 10px; padding-inline-start: 12px; }
-    .lets-subs__select {
-      width: 100%; padding: 9px 10px; font-size: 14px;
-      border: 1px solid {{ block.settings.border_color | default: '#d1d5db' }};
-      border-radius: 8px; background: transparent; color: inherit;
+    .lets-po__heading { font-size: 15px; font-weight: 700; margin: 0 0 10px; color: var(--lets-ink-strong); }
+
+    .lets-po__card {
+      background: var(--lets-card);
+      border: 1px solid var(--lets-border);
+      border-radius: var(--lets-radius);
+      margin-bottom: 10px;
     }
-    .lets-subs__note { font-size: 12px; opacity: .75; margin: 6px 0 0; }
-    .lets-subs__cta {
-      width: 100%; cursor: pointer; padding: 12px 16px; border-radius: 10px;
-      border: 1px solid {{ block.settings.button_bg | default: '#111827' }};
-      background: {{ block.settings.button_bg | default: '#111827' }};
-      color: {{ block.settings.button_fg | default: '#ffffff' }};
-      font-size: 15px; font-weight: 600;
+    .lets-po__card.is-selected { border: 2px solid var(--lets-accent); }
+    .lets-po__card--sub.is-selected .lets-po__title { color: var(--lets-ink-strong); }
+
+    .lets-po__head {
+      display: flex; align-items: center; gap: 10px;
+      padding: 16px 18px; cursor: pointer; margin: 0;
     }
-    .lets-subs__cta[disabled] { opacity: .5; cursor: not-allowed; }
+    .lets-po__title {
+      font-size: 20px; font-weight: 700; letter-spacing: .01em;
+      color: var(--lets-ink-strong);
+    }
+    .lets-po__prices { margin-inline-start: auto; display: flex; align-items: baseline; gap: 8px; }
+    .lets-po__price { font-size: 21px; font-weight: 700; color: var(--lets-ink-strong); }
+    .lets-po__compare { font-size: 16px; color: var(--lets-muted); }
+
+    /* Radio: a ring that fills with the accent when chosen (no theme override). */
+    .lets-po__radio {
+      appearance: none; -webkit-appearance: none;
+      inline-size: 22px; block-size: 22px; flex: none; margin: 0; cursor: pointer;
+      border: 2px solid var(--lets-muted); border-radius: 50%;
+    }
+    .lets-po__radio:checked {
+      border-color: var(--lets-accent);
+      box-shadow: inset 0 0 0 4px var(--lets-card), inset 0 0 0 12px var(--lets-accent);
+    }
+    .lets-po__radio:focus-visible { outline: 2px solid var(--lets-accent); outline-offset: 2px; }
+
+    .lets-po__badge {
+      background: var(--lets-accent); color: {{ block.settings.badge_text_color | default: '#FFFFFF' }};
+      font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+      padding: 5px 10px; border-radius: var(--lets-radius); white-space: nowrap;
+    }
+
+    .lets-po__body { padding: 0 18px 16px; }
+    .lets-po__rule { border-top: 1px dashed var(--lets-border); margin: 4px 0 14px; }
+
+    .lets-po__benefits-row { display: flex; align-items: flex-start; gap: 12px; }
+    .lets-po__benefits { list-style: none; margin: 0; padding: 0; flex: 1; }
+    .lets-po__benefit {
+      position: relative; padding-inline-start: 26px; margin-bottom: 8px;
+      font-size: 15px; line-height: 1.45;
+    }
+    /* The check is drawn, not an icon font — nothing to load, nothing to break. */
+    .lets-po__benefit::before {
+      content: ''; position: absolute; inset-inline-start: 2px; inset-block-start: 4px;
+      inline-size: 11px; block-size: 6px;
+      border-inline-start: 2px solid var(--lets-accent);
+      border-block-end: 2px solid var(--lets-accent);
+      transform: rotate(-45deg);
+    }
+
+    .lets-po__more-toggle {
+      display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+      background: none; border: 0; padding: 0; font-size: 15px; font-weight: 600;
+      color: var(--lets-accent); text-decoration: underline;
+    }
+    .lets-po__chevron { inline-size: 18px; block-size: 18px; transition: transform .2s ease; }
+    .lets-po__more-toggle[aria-expanded="true"] .lets-po__chevron { transform: rotate(180deg); }
+    .lets-po__more-body { font-size: 14px; line-height: 1.5; margin-top: 10px; }
+
+    .lets-po__cadence { margin-top: 14px; }
+    .lets-po__cadence-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+    .lets-po__select {
+      width: 100%; padding: 10px 12px; font-size: 15px; color: inherit;
+      background: transparent; border: 1px solid var(--lets-border); border-radius: var(--lets-radius);
+    }
+
+    .lets-po__gift { display: flex; align-items: center; gap: 14px; }
+    .lets-po__gift-img { inline-size: 84px; block-size: auto; flex: none; object-fit: contain; }
+    .lets-po__gift-copy { flex: 1; }
+    .lets-po__gift-tag {
+      display: inline-block; background: {{ block.settings.gift_tag_bg | default: '#6E6E6E' }};
+      color: {{ block.settings.gift_tag_color | default: '#FFFFFF' }};
+      font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+      padding: 5px 10px; border-radius: var(--lets-radius); margin-bottom: 8px;
+    }
+    .lets-po__gift-text { font-size: 15px; line-height: 1.45; margin: 0; }
+    .lets-po__gift-prices { text-align: end; white-space: nowrap; }
+    .lets-po__gift-free { font-size: 15px; font-weight: 700; color: var(--lets-accent); margin-inline-end: 6px; }
+
+    .lets-po__cta {
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      width: 100%; cursor: pointer; margin-top: 6px;
+      padding: 18px 20px; border: 0; border-radius: var(--lets-radius);
+      background: {{ block.settings.button_bg | default: '#C21B17' }};
+      color: {{ block.settings.button_fg | default: '#FFFFFF' }};
+      font-size: 18px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    }
+    .lets-po__cta[disabled] { opacity: .5; cursor: not-allowed; }
+    .lets-po__hint { font-size: 12px; opacity: .75; margin: 10px 0 0; }
   {%- endstyle -%}
 
   <script>
     (function () {
       'use strict';
-      var root = document.querySelector('[data-lets-subs]');
+      var root = document.querySelector('[data-lets-po]');
       if (!root || root.dataset.letsBound) { return; }
       root.dataset.letsBound = '1';
 
-      var plans = root.querySelector('[data-lets-subs-plans]');
-      var select = root.querySelector('[data-lets-subs-select]');
-      var variantInput = root.querySelector('[data-lets-subs-variant]');
-      var types = root.querySelectorAll('[data-lets-subs-type]');
+      var body = root.querySelector('[data-lets-po-body]');
+      var select = root.querySelector('[data-lets-po-select]');
+      var variantInput = root.querySelector('[data-lets-po-variant]');
+      var ctaPrice = root.querySelector('[data-lets-po-cta-price]');
+      var types = root.querySelectorAll('[data-lets-po-type]');
+
+      function selectedType() {
+        var checked = root.querySelector('[data-lets-po-type]:checked');
+        return checked ? checked.value : 'onetime';
+      }
 
       function syncType() {
-        if (!plans || !select) { return; }
-        var subscribeInput = root.querySelector('[data-lets-subs-type][value="subscribe"]');
-        var subscribing = !!subscribeInput && subscribeInput.checked;
-        plans.hidden = !subscribing;
+        var subscribing = selectedType() === 'subscribe';
+
+        root.querySelectorAll('[data-lets-po-card]').forEach(function (card) {
+          card.classList.toggle('is-selected', card.getAttribute('data-lets-po-card') === selectedType());
+        });
+
+        if (body) { body.hidden = !subscribing; }
         // A one-time purchase must NOT carry a selling_plan — Shopify would
         // create a subscription contract for a shopper who did not ask for one.
-        select.disabled = !subscribing;
+        if (select) { select.disabled = !subscribing; }
+        syncCtaPrice();
+      }
+
+      function syncCtaPrice() {
+        if (!ctaPrice) { return; }
+        if (selectedType() !== 'subscribe') {
+          ctaPrice.textContent = ctaPrice.getAttribute('data-onetime-price') || '';
+          return;
+        }
+        // With a cadence picker the price follows the CHOSEN plan, not the lead one.
+        var option = select && select.options ? select.options[select.selectedIndex] : null;
+        var price = option && option.getAttribute('data-price');
+        ctaPrice.textContent = price || ctaPrice.getAttribute('data-sub-price') || '';
       }
 
       types.forEach(function (input) { input.addEventListener('change', syncType); });
+      if (select && select.tagName === 'SELECT') { select.addEventListener('change', syncCtaPrice); }
       syncType();
+
+      var moreToggle = root.querySelector('[data-lets-po-more]');
+      var moreBody = root.querySelector('#lets-po-more');
+      if (moreToggle && moreBody) {
+        moreToggle.addEventListener('click', function () {
+          var open = moreToggle.getAttribute('aria-expanded') === 'true';
+          moreToggle.setAttribute('aria-expanded', open ? 'false' : 'true');
+          moreBody.hidden = open;
+        });
+      }
 
       // Keep the posted variant in sync with the theme's variant picker, so the
       // cart line is always the variant the shopper is actually looking at.
@@ -190,43 +401,129 @@
   "settings": [
     {
       "type": "paragraph",
-      "content": "Shows a subscribe-or-buy-once choice when this product has a published subscription plan, and a plain add-to-cart when it does not — so it is safe to add to every product page. If your theme already shows its own add-to-cart, hide that one to avoid two buttons."
+      "content": "Shows a subscribe-or-buy-once chooser when this product has a published subscription plan, and a plain one-time card when it does not — so it is safe to add to every product page. If your theme already shows its own add-to-cart, hide that one to avoid two buttons."
+    },
+    {
+      "type": "header",
+      "content": "Content"
     },
     {
       "type": "text",
       "id": "heading",
       "label": "Heading",
-      "default": "Purchase options"
+      "info": "Leave empty to hide."
     },
     {
       "type": "select",
       "id": "default_selection",
       "label": "Pre-selected option",
-      "info": "Which option is selected when the page loads (only when a subscription plan exists).",
       "options": [
-        { "value": "onetime", "label": "One-time purchase" },
-        { "value": "subscribe", "label": "Subscription" }
+        { "value": "subscribe", "label": "Subscription" },
+        { "value": "onetime", "label": "One-time purchase" }
       ],
-      "default": "onetime"
-    },
-    {
-      "type": "text",
-      "id": "one_time_label",
-      "label": "One-time option label",
-      "default": "One-time purchase"
+      "default": "subscribe"
     },
     {
       "type": "text",
       "id": "subscribe_label",
-      "label": "Subscription option label",
-      "default": "Subscribe & save"
+      "label": "Subscription title",
+      "default": "Auto Replenish"
     },
     {
       "type": "text",
-      "id": "subscribe_note",
-      "label": "Subscription note",
-      "info": "Shown under the cadence picker.",
-      "default": "Cancel or skip anytime from your account."
+      "id": "one_time_label",
+      "label": "One-time title",
+      "default": "Purchase Once"
+    },
+    {
+      "type": "text",
+      "id": "badge_text",
+      "label": "Badge text",
+      "info": "Leave empty to show the saving Shopify calculates, e.g. \"20% OFF\"."
+    },
+    {
+      "type": "text",
+      "id": "badge_off_word",
+      "label": "Badge word after the percentage",
+      "default": "OFF"
+    },
+    {
+      "type": "header",
+      "content": "Benefits"
+    },
+    {
+      "type": "text",
+      "id": "benefit_1",
+      "label": "Benefit 1",
+      "info": "Leave empty to show the plan's own delivery cadence."
+    },
+    {
+      "type": "text",
+      "id": "benefit_2",
+      "label": "Benefit 2",
+      "default": "Free shipping"
+    },
+    {
+      "type": "text",
+      "id": "benefit_3",
+      "label": "Benefit 3",
+      "default": "Cancel anytime"
+    },
+    {
+      "type": "text",
+      "id": "more_label",
+      "label": "\"Read more\" label",
+      "default": "Read more"
+    },
+    {
+      "type": "richtext",
+      "id": "more_body",
+      "label": "\"Read more\" content",
+      "info": "Leave empty to hide the link."
+    },
+    {
+      "type": "text",
+      "id": "cadence_label",
+      "label": "Cadence picker label",
+      "default": "Delivery every",
+      "info": "Shown only when the product has more than one plan."
+    },
+    {
+      "type": "header",
+      "content": "Free gift row"
+    },
+    {
+      "type": "image_picker",
+      "id": "gift_image",
+      "label": "Gift image"
+    },
+    {
+      "type": "text",
+      "id": "gift_tag",
+      "label": "Gift tag",
+      "default": "Exclusive free gifts"
+    },
+    {
+      "type": "text",
+      "id": "gift_text",
+      "label": "Gift description",
+      "info": "Leave empty to hide the whole gift row."
+    },
+    {
+      "type": "text",
+      "id": "gift_free_label",
+      "label": "Gift price label",
+      "default": "FREE"
+    },
+    {
+      "type": "text",
+      "id": "gift_value",
+      "label": "Gift value (struck through)",
+      "info": "Free text, e.g. $86."
+    },
+    {
+      "type": "header",
+      "content": "Button"
     },
     {
       "type": "text",
@@ -235,28 +532,96 @@
       "default": "Add to cart"
     },
     {
+      "type": "checkbox",
+      "id": "show_price_in_button",
+      "label": "Show the price in the button",
+      "default": true
+    },
+    {
       "type": "text",
       "id": "sold_out_label",
       "label": "Sold-out label",
       "default": "Sold out"
     },
     {
+      "type": "header",
+      "content": "Colours"
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "Accent (selected border, badge, checks)",
+      "default": "#C21B17"
+    },
+    {
+      "type": "color",
+      "id": "card_bg",
+      "label": "Card background",
+      "default": "#FFFFFF"
+    },
+    {
+      "type": "color",
+      "id": "border_color",
+      "label": "Card border",
+      "default": "#E5E5E5"
+    },
+    {
+      "type": "color",
+      "id": "title_color",
+      "label": "Titles & prices",
+      "default": "#3D3D3D"
+    },
+    {
+      "type": "color",
+      "id": "text_color",
+      "label": "Body text",
+      "default": "#4A4A4A"
+    },
+    {
+      "type": "color",
+      "id": "muted_color",
+      "label": "Struck-through prices",
+      "default": "#9B9B9B"
+    },
+    {
+      "type": "color",
+      "id": "badge_text_color",
+      "label": "Badge text",
+      "default": "#FFFFFF"
+    },
+    {
+      "type": "color",
+      "id": "gift_tag_bg",
+      "label": "Gift tag background",
+      "default": "#6E6E6E"
+    },
+    {
+      "type": "color",
+      "id": "gift_tag_color",
+      "label": "Gift tag text",
+      "default": "#FFFFFF"
+    },
+    {
       "type": "color",
       "id": "button_bg",
       "label": "Button background",
-      "default": "#111827"
+      "default": "#C21B17"
     },
     {
       "type": "color",
       "id": "button_fg",
       "label": "Button text",
-      "default": "#ffffff"
+      "default": "#FFFFFF"
     },
     {
-      "type": "color",
-      "id": "border_color",
-      "label": "Option border",
-      "default": "#d1d5db"
+      "type": "range",
+      "id": "corner_radius",
+      "label": "Corner radius",
+      "min": 0,
+      "max": 20,
+      "step": 1,
+      "unit": "px",
+      "default": 0
     }
   ]
 }

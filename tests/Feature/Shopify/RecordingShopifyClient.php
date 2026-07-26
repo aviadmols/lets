@@ -35,10 +35,21 @@ final class RecordingShopifyClient implements ShopifyAdminApi
     /** When set, graphql() throws — simulates a transport failure mid-flight. */
     public ?\Throwable $graphqlThrows = null;
 
+    /**
+     * When set, graphql() succeeds this many times and throws from then on —
+     * for flows where an EARLY call must survive a LATER failure (e.g. a live
+     * selling plan whose cosmetic follow-up write fails).
+     */
+    public ?int $graphqlThrowsAfter = null;
+
     public function graphql(string $query, array $variables = []): array
     {
         if ($this->graphqlThrows !== null) {
             throw $this->graphqlThrows;
+        }
+
+        if ($this->graphqlThrowsAfter !== null && count($this->graphqlCalls) >= $this->graphqlThrowsAfter) {
+            throw new \RuntimeException('scripted failure after '.$this->graphqlThrowsAfter.' call(s)');
         }
 
         $this->graphqlCalls[] = ['query' => $query, 'variables' => $variables];

@@ -55,6 +55,50 @@ final class SellingPlanPublishTest extends TestCase
         $this->assertNotNull($fresh->shopify_synced_at);
     }
 
+    public function test_publishing_tags_the_product_so_shopifys_own_admin_shows_it(): void
+    {
+        $shop = $this->shop();
+        $template = $this->template($shop);
+        $recorder = $this->fakeCreate();
+        // tagsAdd + metafieldsSet follow the create on the same fake client.
+        $recorder->graphqlResponses[] = ['data' => ['tagsAdd' => ['userErrors' => []]]];
+        $recorder->graphqlResponses[] = ['data' => ['metafieldsSet' => ['userErrors' => []]]];
+
+        Tenant::run($shop, fn () => app(SellingPlanService::class)->publishTemplate($shop, $template));
+
+        $tagCall = collect($recorder->graphqlCalls)
+            ->first(fn (array $c): bool => str_contains($c['query'] ?? '', 'tagsAdd'));
+        $this->assertNotNull($tagCall, 'The product must be tagged in Shopify.');
+        $this->assertSame(['LETS Subscription'], $tagCall['variables']['tags'] ?? null);
+        $this->assertStringStartsWith('gid://shopify/Product/', $tagCall['variables']['id'] ?? '');
+    }
+
+    public function test_a_failed_tag_write_never_undoes_a_live_selling_plan(): void
+    {
+        $shop = $this->shop();
+        $template = $this->template($shop);
+
+        // The create succeeds; the cosmetic tag call then throws.
+        $recorder = new RecordingShopifyClient();
+        $recorder->graphqlResponses = [
+            ['data' => ['sellingPlanGroupCreate' => [
+                'sellingPlanGroup' => [
+                    'id' => 'gid://shopify/SellingPlanGroup/1',
+                    'sellingPlans' => ['edges' => [['node' => ['id' => 'gid://shopify/SellingPlan/11']]]],
+                ],
+                'userErrors' => [],
+            ]]],
+        ];
+        $recorder->graphqlThrowsAfter = 1;
+        ShopifyClientFactory::fake(fn (): RecordingShopifyClient => $recorder);
+
+        $result = Tenant::run($shop, fn (): array => app(SellingPlanService::class)->publishTemplate($shop, $template));
+
+        // The plan is live and recorded; only the tag is missing.
+        $this->assertSame('gid://shopify/SellingPlan/11', $result['plan_gid']);
+        $this->assertTrue($template->fresh()->isPublishedToShopify());
+    }
+
     public function test_a_percentage_discount_is_sent_as_shopifys_pricing_policy(): void
     {
         $shop = $this->shop();

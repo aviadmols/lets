@@ -28,6 +28,15 @@ final class SellingPlanService
     private const GROUP_NAME = 'Subscribe & save';
     private const GROUP_OPTION = 'Delivery every';
 
+    /**
+     * The marks written onto the Shopify PRODUCT when a plan is published, so a
+     * merchant looking at the product in the SHOPIFY admin can see it is sold as
+     * a subscription without opening this app: a tag (visible + filterable in the
+     * Organization card and the product list) and a metafield carrying the plan.
+     */
+    private const PRODUCT_TAG = 'LETS Subscription';
+    private const METAFIELD_KEY = 'subscription_plan';
+
     /** Shopify's recurring intervals, keyed by our BillingFrequency values. */
     private const INTERVAL_MAP = [
         'daily' => ['DAY', 1],
@@ -128,6 +137,10 @@ final class SellingPlanService
             'shopify_synced_at' => now(),
         ])->save();
 
+        // Cosmetic, so it must never break the money-critical part: the selling
+        // plan is already live, and a failed tag write is logged, not thrown.
+        $this->markProduct($shop, $product, $plan['name'], $this->optionLabel($interval, $intervalCount));
+
         return ['group_gid' => $groupGid, 'plan_gid' => $planGid];
     }
 
@@ -148,6 +161,90 @@ final class SellingPlanService
             'shopify_selling_plan_gid' => null,
             'shopify_synced_at' => null,
         ])->save();
+
+        // Clear the product's marks only when NO other template of this product is
+        // still published — otherwise the tag would lie about the remaining plans.
+        $product = $template->product;
+        if ($product instanceof Product && ! $this->hasOtherPublishedTemplate($template)) {
+            $this->unmarkProduct($shop, $product);
+        }
+    }
+
+    /** Does another template of the same product still have a live selling plan? */
+    private function hasOtherPublishedTemplate(ProductSubscriptionPlan $template): bool
+    {
+        return ProductSubscriptionPlan::query()
+            ->where('product_id', $template->product_id)
+            ->whereKeyNot($template->getKey())
+            ->whereNotNull('shopify_selling_plan_gid')
+            ->exists();
+    }
+
+    /**
+     * Tag + metafield the Shopify product so the subscription is visible IN THE
+     * SHOPIFY ADMIN (Organization → Tags, and the product-metafields card), not
+     * only inside this app. Best-effort: a failure here leaves a live selling
+     * plan with no tag, which is cosmetic — never the reverse.
+     */
+    private function markProduct(Shop $shop, Product $product, string $planName, string $cadence): void
+    {
+        $gid = $this->productGid((string) $product->external_id);
+
+        try {
+            $client = ShopifyClientFactory::for($shop);
+
+            $client->graphql(<<<'GQL'
+            mutation letsTagAdd($id: ID!, $tags: [String!]!) {
+              tagsAdd(id: $id, tags: $tags) { userErrors { field message } }
+            }
+            GQL, ['id' => $gid, 'tags' => [self::PRODUCT_TAG]]);
+
+            $client->graphql(<<<'GQL'
+            mutation letsMarkProduct($metafields: [MetafieldsSetInput!]!) {
+              metafieldsSet(metafields: $metafields) { userErrors { field message } }
+            }
+            GQL, ['metafields' => [[
+                'ownerId' => $gid,
+                'namespace' => (string) config('shopify.metafield_namespace'),
+                'key' => self::METAFIELD_KEY,
+                'type' => 'single_line_text_field',
+                'value' => mb_substr(trim($planName.' · '.$cadence), 0, 250),
+            ]]]);
+        } catch (\Throwable $e) {
+            Log::warning('shopify_subscriptions.product_mark_failed', [
+                'shop_id' => $shop->getKey(), 'product_id' => $product->getKey(), 'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /** Remove the marks — the product no longer sells as a subscription. */
+    private function unmarkProduct(Shop $shop, Product $product): void
+    {
+        $gid = $this->productGid((string) $product->external_id);
+
+        try {
+            $client = ShopifyClientFactory::for($shop);
+
+            $client->graphql(<<<'GQL'
+            mutation letsTagRemove($id: ID!, $tags: [String!]!) {
+              tagsRemove(id: $id, tags: $tags) { userErrors { field message } }
+            }
+            GQL, ['id' => $gid, 'tags' => [self::PRODUCT_TAG]]);
+
+            $client->graphql(<<<'GQL'
+            mutation letsUnmarkProduct($metafields: [MetafieldIdentifierInput!]!) {
+              metafieldsDelete(metafields: $metafields) { userErrors { field message } }
+            }
+            GQL, ['metafields' => [[
+                'ownerId' => $gid,
+                'namespace' => (string) config('shopify.metafield_namespace'),
+                'key' => self::METAFIELD_KEY,
+            ]]]);
+        } catch (\Throwable $e) {
+            Log::warning('shopify_subscriptions.product_unmark_failed', [
+                'shop_id' => $shop->getKey(), 'product_id' => $product->getKey(), 'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function deleteGroup(Shop $shop, string $groupGid): void
