@@ -37,5 +37,12 @@
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
+        <!-- Deterministic Shopify app identities: never inherit real credentials
+             from a developer's .env — tests set what they need via config(). -->
+        <env name="SHOPIFY_API_KEY" value=""/>
+        <env name="SHOPIFY_API_SECRET" value=""/>
+        <env name="SHOPIFY_WEBHOOK_SECRET" value=""/>
+        <env name="SHOPIFY_CUSTOM_API_KEY" value=""/>
+        <env name="SHOPIFY_CUSTOM_API_SECRET" value=""/>
     </php>
 </phpunit>

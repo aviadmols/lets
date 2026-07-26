@@ -3,6 +3,7 @@
 namespace App\Domain\ShopifySubscriptions\Console;
 
 use App\Domain\ShopifySubscriptions\Jobs\BillingAttemptJob;
+use App\Models\Shop;
 use App\Models\SubscriptionContract;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
@@ -41,6 +42,10 @@ final class DispatchDueBillingCyclesCommand extends Command
             ->whereIn('status', SubscriptionContract::BILLABLE_STATUSES)
             ->whereNotNull('next_billing_date')
             ->where('next_billing_date', '<=', now())
+            // Only shops whose merchant CHOSE the Shopify-Payments rail bill here
+            // (Settings → Billing). A shop back on PayPlus keeps its mirror but
+            // gets no app-driven billing attempts.
+            ->whereHas('shop', fn ($q) => $q->where('subscription_rail', Shop::RAIL_SHOPIFY_PAYMENTS))
             ->chunkById($chunk, function ($contracts) use (&$dispatched): void {
                 foreach ($contracts as $contract) {
                     BillingAttemptJob::dispatch(

@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\Shopify\ShopifyApps;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -39,7 +40,9 @@ final class EnsureEmbeddedSession
             return $next($request);
         }
 
-        $apiKey = (string) config('shopify.api_key');
+        // The bounce page must configure App Bridge with the EMBEDDING app's key —
+        // resolved from the shop param (the custom app's shops get the custom key).
+        $apiKey = ShopifyApps::apiKeyForShopDomain((string) $request->query('shop', ''));
 
         $embedded = $request->filled('host')
             || $request->session()->get(PersistEmbeddedContext::SESSION_EMBEDDED) === true;

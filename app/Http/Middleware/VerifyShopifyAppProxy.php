@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Shop;
+use App\Services\Shopify\ShopifyApps;
 use App\Services\Shopify\ShopifyDomain;
 use App\Support\Tenant;
 use Closure;
@@ -36,10 +37,11 @@ final class VerifyShopifyAppProxy
     public function handle(Request $request, Closure $next): Response
     {
         // The proxy signature is signed with the app secret (same secret family as
-        // webhooks/OAuth); webhook_secret falls back to api_secret in config.
-        $secret = (string) config('shopify.webhook_secret');
+        // webhooks/OAuth). Any Partner app this deployment serves may own the
+        // proxying shop, so any configured secret proves the signature.
+        $secrets = ShopifyApps::secrets();
 
-        if ($secret === '') {
+        if ($secrets === []) {
             if (app()->environment('production')) {
                 Log::critical('shopify.proxy.secret_missing_in_production');
 
@@ -49,7 +51,15 @@ final class VerifyShopifyAppProxy
             return response()->json(['status' => 'invalid_signature'], Response::HTTP_UNAUTHORIZED);
         }
 
-        if (! ShopifyDomain::verifyProxySignature($request->query(), $secret)) {
+        $valid = false;
+        foreach ($secrets as $secret) {
+            if (ShopifyDomain::verifyProxySignature($request->query(), $secret)) {
+                $valid = true;
+                break;
+            }
+        }
+
+        if (! $valid) {
             Log::warning('shopify.proxy.invalid_signature', ['shop' => $request->query('shop')]);
 
             return response()->json(['status' => 'invalid_signature'], Response::HTTP_UNAUTHORIZED);

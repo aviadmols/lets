@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Models\Shop;
 use App\Models\User;
 use App\Services\Shopify\SessionTokenVerifier;
+use App\Services\Shopify\ShopifyApps;
 use App\Services\Shopify\ShopifyTokenExchange;
 use App\Services\Shopify\ShopInstaller;
 use App\Support\Tenant;
@@ -60,23 +61,20 @@ final class EmbeddedAuthenticate
             return $next($request);
         }
 
-        $claims = $this->verifier->verify(
-            $jwt,
-            (string) config('shopify.api_secret'),
-            (string) config('shopify.api_key'),
-        );
-        if ($claims === null) {
+        // Try every configured Partner app — the JWT `aud` pins which one minted it.
+        $verified = ShopifyApps::verifySessionToken($this->verifier, $jwt);
+        if ($verified === null) {
             // Invalid/expired/foreign token → do NOT 401 the panel; pass through
             // unauthenticated so non-embedded login still works.
             return $next($request);
         }
 
-        $shopDomain = $this->verifier->shopDomainFromClaims($claims);
+        $shopDomain = $this->verifier->shopDomainFromClaims($verified['claims']);
         if ($shopDomain === '') {
             return $next($request);
         }
 
-        $shop = $this->resolveOrInstallShop($shopDomain, $jwt);
+        $shop = $this->resolveOrInstallShop($shopDomain, $jwt, $verified['app_key']);
         if ($shop === null) {
             // Missing/not-live shop and the managed-install exchange failed → pass
             // through unauthenticated (the iframe will re-auth / retry).
@@ -125,7 +123,7 @@ final class EmbeddedAuthenticate
      * token-exchange to create/refresh it. Returns null if no live shop can be
      * obtained (exchange failed) — the caller then passes through unauthenticated.
      */
-    private function resolveOrInstallShop(string $shopDomain, string $sessionToken): ?Shop
+    private function resolveOrInstallShop(string $shopDomain, string $sessionToken, string $appKey): ?Shop
     {
         $shop = Shop::query()->where('shopify_domain', $shopDomain)->first();
         if ($shop !== null && $shop->isLive()) {
@@ -135,7 +133,8 @@ final class EmbeddedAuthenticate
 
         // Missing or not live (uninstalled / not yet captured) → managed install:
         // exchange the verified session token for an offline token, then install.
-        $exchanged = $this->tokenExchange->exchange($shopDomain, $sessionToken);
+        // Both run against the app that MINTED the session token (its `aud`).
+        $exchanged = $this->tokenExchange->exchange($shopDomain, $sessionToken, $appKey);
         if ($exchanged === null) {
             return null;
         }
@@ -144,9 +143,10 @@ final class EmbeddedAuthenticate
             $shopDomain,
             $exchanged['access_token'],
             $exchanged['scope'] !== '' ? $exchanged['scope'] : null,
+            $appKey,
         );
 
-        Log::info('shopify.embedded.managed_install', ['shop' => $shopDomain]);
+        Log::info('shopify.embedded.managed_install', ['shop' => $shopDomain, 'app' => $appKey]);
 
         // installFromToken sets status INSTALLED ⇒ live; re-read defensively.
         return $shop->isLive() ? $shop : null;

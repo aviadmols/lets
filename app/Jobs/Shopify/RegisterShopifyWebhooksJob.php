@@ -53,6 +53,18 @@ final class RegisterShopifyWebhooksJob implements ShouldQueue
 
         $address = (string) config('shopify.webhook_address');
         $topics = (array) config('shopify.webhook_topics');
+
+        // Shops on the Shopify-Payments rail ALSO need the subscription topics
+        // (contract mirror + billing-attempt outcomes). Requires the subscription
+        // scopes, which the rail's install (the custom app) grants; a per-topic
+        // failure is logged and skipped like any other.
+        if ($shop->usesShopifyPaymentsRail()) {
+            $topics = array_values(array_unique(array_merge(
+                $topics,
+                (array) config('shopify.subscription_webhook_topics'),
+            )));
+        }
+
         $client = ShopifyClientFactory::for($shop);
 
         foreach ($topics as $topic) {

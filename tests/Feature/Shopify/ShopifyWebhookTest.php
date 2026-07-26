@@ -89,7 +89,11 @@ final class ShopifyWebhookTest extends TestCase
 
     public function test_empty_secret_in_production_returns_503(): void
     {
+        // NO configured app may have a signing secret — VerifyShopifyWebhook
+        // accepts a match against ANY of them (multi-app), so fail-closed means
+        // every last one is blank.
         config()->set('shopify.webhook_secret', '');
+        config()->set('shopify.api_secret', '');
         app()->detectEnvironment(fn () => 'production');
 
         $shop = $this->makeShop('alpha.myshopify.com');

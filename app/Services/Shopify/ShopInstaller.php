@@ -39,17 +39,21 @@ final class ShopInstaller
      * @param  string       $shopDomain  a validated *.myshopify.com domain (caller-proven)
      * @param  string       $accessToken the offline access token to store (encrypted)
      * @param  string|null  $scopes      the granted scope string, or null
+     * @param  string       $appKey      which Partner app minted the token ('public'|'custom')
      */
-    public function installFromToken(string $shopDomain, string $accessToken, ?string $scopes): Shop
+    public function installFromToken(string $shopDomain, string $accessToken, ?string $scopes, string $appKey = Shop::APP_PUBLIC): Shop
     {
         $newInstall = ! Shop::query()->where('shopify_domain', $shopDomain)->exists();
 
         // Upsert the Shop (matched by domain ⇒ reinstall reuses the row) and store
-        // the ENCRYPTED offline token + granted scopes.
+        // the ENCRYPTED offline token + granted scopes. The token is only valid for
+        // the app that minted it, so the app key is (re)stamped on every install —
+        // a store that reinstalls through the other app switches identity with it.
         $shop = Shop::query()->firstOrCreate(
             ['shopify_domain' => $shopDomain],
             ['name' => $shopDomain, 'platform' => Shop::PLATFORM_SHOPIFY, 'status' => Shop::STATUS_INSTALLED],
         );
+        $shop->forceFill(['shopify_app_key' => in_array($appKey, Shop::APP_KEYS, true) ? $appKey : Shop::APP_PUBLIC])->save();
         $shop->captureShopifyInstall($accessToken, ($scopes !== null && $scopes !== '') ? $scopes : null);
 
         // Provision/link an admin login BOUND to this shop, so the merchant gets a

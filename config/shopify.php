@@ -27,6 +27,45 @@ return [
     'api_secret' => env('SHOPIFY_API_SECRET', ''),
 
     /*
+    | EVERY Shopify Partner app this ONE deployment serves, keyed by app key.
+    | Stage 1: real test stores install through the CUSTOM app (no App Store
+    | review needed); the PUBLIC app stays untouched until submission. Both point
+    | at the same application_url — the shop row remembers which app installed it
+    | (shops.shopify_app_key) and ShopifyApps resolves the right credentials for
+    | OAuth, token exchange, session-token `aud`, webhook HMAC and App Bridge.
+    | An app whose api_key/api_secret are empty is simply NOT configured — every
+    | resolver skips it, so the public-only production setup needs no new env.
+    */
+    'apps' => [
+        'public' => [
+            'api_key' => env('SHOPIFY_API_KEY', ''),
+            'api_secret' => env('SHOPIFY_API_SECRET', ''),
+            'handle' => env('SHOPIFY_APP_HANDLE', 'lets'),
+            'oauth_scopes' => env(
+                'SHOPIFY_OAUTH_SCOPES',
+                'read_orders,write_orders,read_draft_orders,write_draft_orders,'.
+                'read_customers,read_products,read_fulfillments,write_fulfillments,'.
+                'read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders'
+            ),
+        ],
+        'custom' => [
+            'api_key' => env('SHOPIFY_CUSTOM_API_KEY', ''),
+            'api_secret' => env('SHOPIFY_CUSTOM_API_SECRET', ''),
+            'handle' => env('SHOPIFY_CUSTOM_APP_HANDLE', 'lets-subscriptions'),
+            // Union: everything the public app does PLUS the Shopify-Payments
+            // subscriptions rail (a custom app has no App-Store scope review).
+            'oauth_scopes' => env(
+                'SHOPIFY_CUSTOM_OAUTH_SCOPES',
+                'read_orders,write_orders,read_all_orders,read_draft_orders,write_draft_orders,'.
+                'read_customers,read_products,write_products,read_fulfillments,write_fulfillments,'.
+                'read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,'.
+                'read_own_subscription_contracts,write_own_subscription_contracts,'.
+                'read_customer_payment_methods,read_checkout_external_data'
+            ),
+        ],
+    ],
+
+    /*
     | Pinned Admin API version. Drives BOTH the REST and GraphQL URL path
     | (/admin/api/{version}/graphql.json). Bump in EXACTLY this one place each
     | quarter (Shopify ships Jan/Apr/Jul/Oct; each stable version is supported
@@ -86,6 +125,20 @@ return [
         'customers/redact',
         'shop/redact',
         'customers/data_request',
+    ],
+
+    /*
+    | EXTRA topics registered only for shops whose merchant chose the
+    | Shopify-Payments subscriptions rail (Settings → Billing). Registration
+    | requires the subscription scopes — i.e. an install through the custom app —
+    | so RegisterShopifyWebhooksJob appends these per shop, never globally.
+    */
+    'subscription_webhook_topics' => [
+        'subscription_contracts/create',
+        'subscription_contracts/update',
+        'subscription_billing_attempts/success',
+        'subscription_billing_attempts/failure',
+        'subscription_billing_attempts/challenged',
     ],
 
     /*

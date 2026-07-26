@@ -8,6 +8,7 @@ use App\Models\ActivityEvent;
 use App\Models\Shop;
 use App\Models\SubscriptionContract;
 use App\Services\Shopify\SessionTokenVerifier;
+use App\Services\Shopify\ShopifyApps;
 use App\Support\Tenant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -127,11 +128,9 @@ final class CustomerContractController extends Controller
             return null;
         }
 
-        $claims = $this->verifier->verify(
-            $jwt,
-            (string) config('shopify.api_secret'),
-            (string) config('shopify.api_key'),
-        );
+        // Any configured Partner app's token is acceptable — the `aud` pins the app.
+        $verified = ShopifyApps::verifySessionToken($this->verifier, $jwt);
+        $claims = $verified !== null ? $verified['claims'] : [];
 
         $sub = (string) ($claims['sub'] ?? '');
         if ($sub === '') {

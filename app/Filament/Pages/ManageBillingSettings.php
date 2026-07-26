@@ -3,10 +3,13 @@
 namespace App\Filament\Pages;
 
 use App\Filament\Concerns\ShopScopedScreen;
+use App\Jobs\Shopify\RegisterShopifyWebhooksJob;
 use App\Models\MerchantBillingSettings;
+use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Support\Tenant;
 use Filament\Forms\Components\CheckboxList;
+use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\TagsInput;
 use Filament\Forms\Components\Textarea;
@@ -73,8 +76,11 @@ class ManageBillingSettings extends Page implements HasForms
     public function mount(): void
     {
         $settings = MerchantBillingSettings::current();
+        $shop = Tenant::current();
 
         $this->form->fill([
+            'subscription_rail' => $shop instanceof Shop ? $shop->subscriptionRail() : Shop::RAIL_PAYPLUS,
+
             'retry_backoff_hours' => array_map('strval', $settings->retryBackoffHours()),
             'max_charge_attempts' => $settings->maxChargeAttempts(),
             'failed_payment_grace_days' => $settings->failedPaymentGraceDays(),
@@ -102,11 +108,41 @@ class ManageBillingSettings extends Page implements HasForms
         return $form
             ->statePath('data')
             ->schema([
+                $this->railSection(),
                 $this->retriesSection(),
                 $this->installmentsSection(),
                 $this->selfServiceSection(),
                 $this->policySection(),
             ]);
+    }
+
+    /**
+     * Subscriptions engine — PayPlus (we hold the token and charge) vs Shopify
+     * Payments (Shopify vaults the card; our scheduler drives each cycle). A
+     * SHOPIFY-shop choice only: WooCommerce shops have no Shopify checkout, so
+     * the section is hidden and their rail stays the PayPlus default.
+     */
+    private function railSection(): Section
+    {
+        $shop = Tenant::current();
+
+        return Section::make(__('billing.settings.rail.heading'))
+            ->description(__('billing.settings.rail.intro'))
+            ->schema([
+                Radio::make('subscription_rail')
+                    ->label(__('billing.settings.rail.label'))
+                    ->options([
+                        Shop::RAIL_PAYPLUS => __('billing.settings.rail.payplus'),
+                        Shop::RAIL_SHOPIFY_PAYMENTS => __('billing.settings.rail.shopify_payments'),
+                    ])
+                    ->descriptions([
+                        Shop::RAIL_PAYPLUS => __('billing.settings.rail.payplus_help'),
+                        Shop::RAIL_SHOPIFY_PAYMENTS => __('billing.settings.rail.shopify_payments_help'),
+                    ])
+                    ->helperText(__('billing.settings.rail.switch_warning'))
+                    ->columnSpanFull(),
+            ])
+            ->visible($shop instanceof Shop && $shop->platform === Shop::PLATFORM_SHOPIFY);
     }
 
     /** Payments & retries — backoff schedule, attempt ceiling, grace window. */
@@ -226,6 +262,8 @@ class ManageBillingSettings extends Page implements HasForms
         $input = $this->form->getState();
         $settings = MerchantBillingSettings::current();
 
+        $this->saveSubscriptionRail($input['subscription_rail'] ?? null);
+
         $settings->retry_backoff_hours = $this->normalizeBackoff($input['retry_backoff_hours'] ?? []);
         $settings->max_charge_attempts = max(1, (int) ($input['max_charge_attempts'] ?? MerchantBillingSettings::DEFAULT_MAX_CHARGE_ATTEMPTS));
         $settings->failed_payment_grace_days = max(0, (int) ($input['failed_payment_grace_days'] ?? MerchantBillingSettings::DEFAULT_FAILED_PAYMENT_GRACE_DAYS));
@@ -247,6 +285,30 @@ class ManageBillingSettings extends Page implements HasForms
 
         $this->mount();
         Notification::make()->title(__('billing.settings.saved'))->success()->send();
+    }
+
+    /**
+     * Persist the subscriptions-engine choice onto the CURRENT tenant's Shop row.
+     * Shopify shops only (the section is hidden elsewhere); an unknown value is
+     * ignored, never written. Entering the Shopify-Payments rail re-runs webhook
+     * registration so the subscription topics get subscribed for this shop.
+     */
+    private function saveSubscriptionRail(mixed $value): void
+    {
+        $shop = Tenant::current();
+        if (! $shop instanceof Shop
+            || $shop->platform !== Shop::PLATFORM_SHOPIFY
+            || ! is_string($value)
+            || ! in_array($value, Shop::SUBSCRIPTION_RAILS, true)
+            || $value === $shop->subscriptionRail()) {
+            return;
+        }
+
+        $shop->forceFill(['subscription_rail' => $value])->save();
+
+        if ($value === Shop::RAIL_SHOPIFY_PAYMENTS && $shop->hasShopifyConnection()) {
+            RegisterShopifyWebhooksJob::dispatch($shop->id);
+        }
     }
 
     // === Options / normalisation helpers ===

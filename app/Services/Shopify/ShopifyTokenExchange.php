@@ -39,12 +39,14 @@ final class ShopifyTokenExchange
      *
      * @param  string  $shopDomain    a validated *.myshopify.com domain (from verified claims)
      * @param  string  $sessionToken  the verified App Bridge session token (subject)
+     * @param  string  $appKey        the Partner app whose session token this is (its `aud`)
      * @return array{access_token: string, scope: string}|null  null on any failure (fail closed)
      */
-    public function exchange(string $shopDomain, string $sessionToken): ?array
+    public function exchange(string $shopDomain, string $sessionToken, string $appKey = ShopifyApps::PUBLIC): ?array
     {
-        $clientId = (string) config('shopify.api_key');
-        $clientSecret = (string) config('shopify.api_secret');
+        $app = ShopifyApps::credentials($appKey);
+        $clientId = $app['api_key'];
+        $clientSecret = $app['api_secret'];
         if ($clientId === '' || $clientSecret === '' || $shopDomain === '' || $sessionToken === '') {
             return null;
         }

@@ -221,11 +221,40 @@ final class SubscriptionRailTest extends TestCase
     public function test_the_rail_is_inert_on_a_shop_with_no_contracts(): void
     {
         Queue::fake();
-        $this->shop(); // a plain PayPlus shop — no contracts ever mirrored
+        $this->shop(Shop::RAIL_PAYPLUS); // a plain PayPlus shop — no contracts ever mirrored
 
         Artisan::call('shopify-subscriptions:dispatch-due');
 
         Queue::assertNothingPushed();
+    }
+
+    public function test_the_scanner_skips_shops_that_chose_the_payplus_rail(): void
+    {
+        Queue::fake();
+        // Mirrored contracts EXIST and are due — but the merchant's engine choice
+        // (Settings → Billing) is PayPlus, so app-driven billing must not run.
+        $shop = $this->shop(Shop::RAIL_PAYPLUS);
+        $this->contract($shop, due: now()->subHour());
+
+        Artisan::call('shopify-subscriptions:dispatch-due');
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_a_queued_attempt_noops_after_the_merchant_leaves_the_rail(): void
+    {
+        $shop = $this->shop(); // on the Shopify-Payments rail at dispatch time…
+        $contract = $this->contract($shop);
+        $this->fakeGraphql([]);
+
+        // …but the merchant switched back to PayPlus while the job sat queued.
+        $shop->forceFill(['subscription_rail' => Shop::RAIL_PAYPLUS])->save();
+
+        $job = new BillingAttemptJob((int) $shop->getKey(), (int) $contract->getKey(), '2026-08-01');
+        Tenant::run($shop->fresh(), fn () => $job->handle());
+
+        $this->assertSame(0, SubscriptionBillingAttempt::acrossAllTenants()->count());
+        $this->assertCount(0, $this->recorder->graphqlCalls, 'A shop off the rail must never be billed.');
     }
 
     // === Helpers ===
@@ -242,12 +271,13 @@ final class SubscriptionRailTest extends TestCase
         ShopifyClientFactory::fake(fn (): RecordingShopifyClient => $recorder);
     }
 
-    private function shop(): Shop
+    private function shop(string $rail = Shop::RAIL_SHOPIFY_PAYMENTS): Shop
     {
         $shop = Shop::create([
             'shopify_domain' => 'subs-rail.myshopify.com',
             'name' => 'Subs Rail',
             'status' => Shop::STATUS_INSTALLED,
+            'subscription_rail' => $rail,
         ]);
         $shop->forceFill(['shopify_access_token' => 'tok'])->save();
 

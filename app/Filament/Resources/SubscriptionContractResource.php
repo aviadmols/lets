@@ -56,11 +56,20 @@ class SubscriptionContractResource extends Resource
         return false; // contracts are born at Shopify's checkout, never by hand.
     }
 
-    /** The rail is invisible where it is inert — no empty screen on PayPlus shops. */
+    /**
+     * The rail is invisible where it is inert — no empty screen on PayPlus shops.
+     * Visible the moment the merchant CHOOSES the Shopify-Payments rail (Settings →
+     * Billing), or when mirrored contracts exist (e.g. rail switched back later).
+     */
     public static function shouldRegisterNavigation(): bool
     {
         if (! parent::shouldRegisterNavigation()) {
             return false;
+        }
+
+        $shop = Tenant::current();
+        if ($shop instanceof Shop && $shop->usesShopifyPaymentsRail()) {
+            return true;
         }
 
         return SubscriptionContract::query()->exists();

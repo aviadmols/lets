@@ -77,6 +77,17 @@ return [
         'save_cta' => 'Save billing settings',
         'saved' => 'Billing settings saved.',
 
+        'rail' => [
+            'heading' => 'Subscriptions engine',
+            'intro' => 'Which system bills your recurring subscriptions. Installments and post-purchase upsells always charge through PayPlus.',
+            'label' => 'Recurring subscriptions are billed by',
+            'payplus' => 'PayPlus',
+            'payplus_help' => 'The card is saved as a PayPlus token and this app charges each cycle. Works with any Shopify checkout setup.',
+            'shopify_payments' => 'Shopify Payments',
+            'shopify_payments_help' => 'Shoppers subscribe at the Shopify checkout; Shopify vaults the card and processes each cycle when this app requests it. Requires Shopify Payments and an install through the subscriptions (custom) app.',
+            'switch_warning' => 'Switching does not move existing subscriptions between engines: active Shopify contracts stop billing if you leave the Shopify Payments engine, and PayPlus plans keep charging regardless of this choice.',
+        ],
+
         'retries' => [
             'heading' => 'Payments & retries',
             'intro' => 'How a failed charge is retried before a plan is marked failed.',

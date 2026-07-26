@@ -1,45 +1,60 @@
-# App B — "LETS Subscriptions" (CUSTOM distribution, the Shopify-Payments pilot).
+# The CUSTOM (stage-1) Partner app — "LETS Subscriptions".
 #
 # Deploy with:  shopify app deploy --config subscriptions
-# The PUBLIC app's config (shopify.app.toml) is NEVER touched by this rail — that
-# separation is the whole isolation design (separate Partner app, separate scopes,
-# separate Railway service + DB, separate branch).
 #
-# client_id is a PLACEHOLDER until the owner creates Partner app B (Custom
-# distribution — an IRREVERSIBLE choice, see docs/SHOPIFY-SUBSCRIPTIONS-PILOT.md)
-# and Shopify approves the protected-data + subscription scopes (up to 7 business
-# days). The matching API SECRET lives only in the pilot service's env.
+# DECISION (2026-07-26): ONE deployment serves BOTH Partner apps. There is no
+# second Railway service, no second database, no second domain. Real test stores
+# install through THIS app (custom distribution = install links, no App Store
+# review) and get EVERYTHING — the PayPlus rail AND the Shopify-Payments
+# subscriptions rail; the merchant picks the subscriptions engine per shop in
+# Settings → Billing. The PUBLIC app's config (shopify.app.toml) stays untouched
+# until App Store submission, and its scopes stay minimal.
+#
+# The backend resolves identities per shop (shops.shopify_app_key + ShopifyApps):
+# OAuth, token exchange, session-token `aud`, webhook HMAC and App Bridge all
+# work for both apps on the same URL. This app's credentials live in the SAME
+# service env as the public ones: SHOPIFY_CUSTOM_API_KEY / SHOPIFY_CUSTOM_API_SECRET.
+#
+# client_id is a PLACEHOLDER until the owner creates the custom Partner app
+# (Custom distribution — an IRREVERSIBLE choice for that app record, which is
+# exactly why it is NOT the public LETS app) and Shopify approves the
+# protected-data + subscription scopes (up to 7 business days).
 #
 # Scope map (every scope ↔ a real call in this codebase):
+#   the public set (orders/draft orders/customers/products/fulfillments) →
+#     the ported PayPlus engine: order strategy, sync, fulfillment lock
 #   read/write_own_subscription_contracts → ContractActionService mutations,
 #     ContractMirror reads, BillingAttemptJob's subscriptionBillingAttemptCreate
 #   read_customer_payment_methods         → required by the Subscription APIs
-#   read_products, write_products         → SellingPlanService (selling plan groups)
-#   read_orders, read_all_orders          → billing-attempt orders + history
+#   write_products                        → SellingPlanService (selling plan groups)
+#   read_all_orders                       → billing-attempt orders + history
 #   read_checkout_external_data           → subscriptions checkout requirement
 #   customer-account extension reads use the Customer Account API scopes
 #     (customer_read/write_own_subscription_contracts), granted alongside.
 
 name = "LETS Subscriptions"
 handle = "lets-subscriptions"
-client_id = "REPLACE_WITH_APP_B_CLIENT_ID"
-application_url = "https://subscriptions.lets.co.il"
+client_id = "REPLACE_WITH_CUSTOM_APP_CLIENT_ID"
+application_url = "https://app.lets.co.il"
 embedded = true
 
 [access_scopes]
-scopes = "read_products,write_products,read_orders,read_all_orders,read_own_subscription_contracts,write_own_subscription_contracts,read_customer_payment_methods,read_checkout_external_data"
+# The union: everything the public app uses + the Shopify-Payments rail. Mirrors
+# config('shopify.apps.custom.oauth_scopes') — keep the two in lockstep.
+scopes = "read_orders,write_orders,read_all_orders,read_draft_orders,write_draft_orders,read_customers,read_products,write_products,read_fulfillments,write_fulfillments,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_own_subscription_contracts,write_own_subscription_contracts,read_customer_payment_methods,read_checkout_external_data"
 use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [
-  "https://subscriptions.lets.co.il/shopify/callback",
+  "https://app.lets.co.il/shopify/callback",
 ]
 
 [webhooks]
 api_version = "2026-04"
 
-  # Everything lands on the ONE platform webhook endpoint; WebhookController
-  # verifies HMAC + resolves the shop, WebhookRouter dispatches by topic.
+  # Everything lands on the ONE platform webhook endpoint; VerifyShopifyWebhook
+  # proves the HMAC against EVERY configured app secret, WebhookController
+  # resolves the shop, WebhookRouter dispatches by topic.
   [[webhooks.subscriptions]]
   topics = [
     "app/uninstalled",

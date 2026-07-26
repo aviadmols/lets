@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\Shop;
 use App\Services\Shopify\SessionTokenVerifier;
+use App\Services\Shopify\ShopifyApps;
 use App\Support\Tenant;
 use Closure;
 use Illuminate\Http\Request;
@@ -34,16 +35,13 @@ final class SessionTokenAuth
             return $this->unauthenticated();
         }
 
-        $claims = $this->verifier->verify(
-            $jwt,
-            (string) config('shopify.api_secret'),
-            (string) config('shopify.api_key'),
-        );
-        if ($claims === null) {
+        // Try every configured Partner app — the JWT `aud` pins which one minted it.
+        $verified = ShopifyApps::verifySessionToken($this->verifier, $jwt);
+        if ($verified === null) {
             return $this->unauthenticated();
         }
 
-        $shopDomain = $this->verifier->shopDomainFromClaims($claims);
+        $shopDomain = $this->verifier->shopDomainFromClaims($verified['claims']);
         $shop = Shop::query()->where('shopify_domain', $shopDomain)->first();
         if ($shop === null || ! $shop->isLive()) {
             // Not installed / uninstalled / not yet subscribed → re-auth or

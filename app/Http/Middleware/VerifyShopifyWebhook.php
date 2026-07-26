@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\Shopify\ShopifyApps;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -31,10 +32,12 @@ final class VerifyShopifyWebhook
 
     public function handle(Request $request, Closure $next): Response
     {
-        $secret = (string) config('shopify.webhook_secret');
+        // Every Partner app this deployment serves signs ITS shops' webhooks with
+        // ITS OWN secret — a payload is genuine if any configured secret matches.
+        $secrets = ShopifyApps::secrets();
 
         // Fail closed: never accept unsigned payloads when misconfigured in prod.
-        if ($secret === '') {
+        if ($secrets === []) {
             if (app()->environment('production')) {
                 Log::critical('shopify.webhook.secret_missing_in_production');
 
@@ -46,9 +49,17 @@ final class VerifyShopifyWebhook
 
         $raw = $request->getContent(); // RAW bytes — must hash these, not json()
         $provided = (string) $request->header(config('shopify.webhook_headers.hmac', 'X-Shopify-Hmac-SHA256'), '');
-        $expected = base64_encode(hash_hmac('sha256', $raw, $secret, true));
 
-        if ($provided === '' || ! hash_equals($expected, $provided)) {
+        $valid = false;
+        foreach ($secrets as $secret) {
+            $expected = base64_encode(hash_hmac('sha256', $raw, $secret, true));
+            if ($provided !== '' && hash_equals($expected, $provided)) {
+                $valid = true;
+                break;
+            }
+        }
+
+        if (! $valid) {
             Log::warning('shopify.webhook.invalid_hmac', [
                 'topic' => $request->header(config('shopify.webhook_headers.topic', 'X-Shopify-Topic')),
                 'shop_domain' => $request->header(config('shopify.webhook_headers.shop_domain', 'X-Shopify-Shop-Domain')),

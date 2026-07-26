@@ -133,8 +133,10 @@ final class ShopifyOAuthTest extends TestCase
 
     private function seedState(): string
     {
+        // The cached state carries the Partner app the install started on, so the
+        // callback exchanges with the SAME identity (multi-app deployments).
         $nonce = 'state-nonce-123';
-        Cache::put('shopify:oauth_state:'.self::SHOP, $nonce, 300);
+        Cache::put('shopify:oauth_state:'.self::SHOP, ['nonce' => $nonce, 'app' => 'public'], 300);
 
         return $nonce;
     }

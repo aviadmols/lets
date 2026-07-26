@@ -19,7 +19,9 @@
   panel's BODY_START banner partial); it contains no CSS.
 --}}
 @php
-    $apiKey = (string) config('shopify.api_key');
+    // The api key must be the EMBEDDING app's — a shop installed through the
+    // custom app gets the custom key, everything else the public default.
+    $apiKey = \App\Services\Shopify\ShopifyApps::apiKeyForShopDomain((string) request()->query('shop', ''));
     $embedded = session(\App\Http\Middleware\PersistEmbeddedContext::SESSION_EMBEDDED) === true
         || request()->filled('host');
 @endphp

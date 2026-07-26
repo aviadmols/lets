@@ -68,7 +68,9 @@ final class BillingAttemptJob implements ShouldQueue, ShouldBeUnique
     public function handle(): void
     {
         $shop = Shop::query()->find($this->shopId);
-        if ($shop === null || ! $shop->isLive()) {
+        if ($shop === null || ! $shop->isLive() || ! $shop->usesShopifyPaymentsRail()) {
+            // Rail re-checked at RUN time: a job that sat queued while the merchant
+            // switched the shop back to PayPlus must not bill.
             return;
         }
 

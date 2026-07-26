@@ -37,6 +37,26 @@ class Shop extends Model
     /** Statuses for which background charge dispatch + Shopify API calls are allowed. */
     public const LIVE_STATUSES = [self::STATUS_INSTALLED, self::STATUS_ACTIVE];
 
+    /**
+     * Which Shopify Partner app installed this shop. ONE deployment serves both:
+     * 'public' is the App-Store LETS app; 'custom' is the stage-1 custom app real
+     * test stores install through. ShopifyApps resolves credentials from this.
+     */
+    public const APP_PUBLIC = 'public';
+    public const APP_CUSTOM = 'custom';
+    public const APP_KEYS = [self::APP_PUBLIC, self::APP_CUSTOM];
+
+    /**
+     * Which engine bills this shop's RECURRING subscriptions (merchant-set in
+     * Settings → Billing). PayPlus: we hold the card token and charge; Shopify
+     * Payments: Shopify vaults the card and our scheduler drives each cycle via
+     * subscriptionBillingAttemptCreate. Installments + upsells stay PayPlus
+     * regardless — they require a PayPlus token.
+     */
+    public const RAIL_PAYPLUS = 'payplus';
+    public const RAIL_SHOPIFY_PAYMENTS = 'shopify_payments';
+    public const SUBSCRIPTION_RAILS = [self::RAIL_PAYPLUS, self::RAIL_SHOPIFY_PAYMENTS];
+
     /** PayPlus credential keys expected inside the encrypted bag. */
     public const PAYPLUS_KEYS = [
         'api_key', 'secret_key', 'terminal_uid', 'cashier_uid',
@@ -65,6 +85,8 @@ class Shop extends Model
         'trial_ends_at',
         'shopify_access_token',
         'shopify_scopes',
+        'shopify_app_key',
+        'subscription_rail',
         'installed_at',
         'uninstalled_at',
         'woocommerce_domain',
@@ -135,6 +157,37 @@ class Shop extends Model
     public function isOnPaidPlan(): bool
     {
         return $this->billingPlan()->isPaid();
+    }
+
+    // === Partner app + subscriptions rail ===
+
+    /**
+     * Which Partner app installed this shop, normalised on read: rows from before
+     * the column existed (or holding an unknown value) resolve to 'public', so
+     * credential resolution can never key into a non-existent config entry.
+     */
+    public function shopifyAppKey(): string
+    {
+        $key = (string) ($this->shopify_app_key ?? '');
+
+        return in_array($key, self::APP_KEYS, true) ? $key : self::APP_PUBLIC;
+    }
+
+    /**
+     * The engine billing this shop's recurring subscriptions, normalised on read —
+     * null/blank/unknown resolves to PayPlus (the default rail), so an odd stored
+     * value can never silently activate app-driven Shopify billing.
+     */
+    public function subscriptionRail(): string
+    {
+        $rail = (string) ($this->subscription_rail ?? '');
+
+        return in_array($rail, self::SUBSCRIPTION_RAILS, true) ? $rail : self::RAIL_PAYPLUS;
+    }
+
+    public function usesShopifyPaymentsRail(): bool
+    {
+        return $this->subscriptionRail() === self::RAIL_SHOPIFY_PAYMENTS;
     }
 
     // === Shopify credentials + lifecycle ===
