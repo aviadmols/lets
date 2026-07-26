@@ -31,7 +31,14 @@
   charges a PayPlus token and has its own App-Proxy-signed flow.
 {%- endcomment -%}
 
-{%- assign current_variant = product.selected_or_first_available_variant -%}
+{%- comment -%}
+  selected_or_first_available_variant is NIL when every variant is sold out (and
+  the product does not continue selling), which would render the whole block as
+  nothing — indistinguishable, to a merchant, from "the app is broken". Fall back
+  to the first variant so the block always has something to price, and let the
+  sold-out state below disable the button honestly.
+{%- endcomment -%}
+{%- assign current_variant = product.selected_or_first_available_variant | default: product.variants.first -%}
 {%- assign allocations = current_variant.selling_plan_allocations -%}
 {%- assign has_plans = false -%}
 {%- if allocations != blank and allocations.size > 0 -%}
@@ -55,7 +62,7 @@
     {%- assign subscribe_first = false -%}
   {%- endif -%}
 
-  <div class="lets-po" data-lets-po>
+  <div class="lets-po" data-lets-po data-lets-po-after="{{ block.settings.after_add | default: 'stay' }}">
     <form method="post" action="{{ routes.cart_add_url }}" data-lets-po-form>
       <input type="hidden" name="form_type" value="product">
       <input type="hidden" name="utf8" value="✓">
@@ -204,122 +211,151 @@
       {%- if request.design_mode and has_plans == false -%}
         {%- comment -%} Theme-editor-only hint; shoppers never see this. {%- endcomment -%}
         <p class="lets-po__hint">
-          {{ 'No subscription plan is published for this product yet, so this block shows a one-time purchase only. In the LETS app: Products → this product → a subscription plan → "Publish to Shopify".' }}
+          {{ 'LETS: no subscription plan is published for this product yet, so this block shows a one-time purchase only. In the LETS app: Products → this product → a subscription plan → "Publish to Shopify".' }}
         </p>
       {%- endif -%}
     </form>
   </div>
 
   {%- style -%}
+    /* THEME-FIRST by default. Every colour below falls back to the theme's own
+       text colour (currentColor) or to transparent, and every size is relative
+       (em), so the block inherits the surrounding product page — its font, its
+       ink, its scale. A merchant only overrides what they explicitly want to
+       differ; leaving a colour setting empty means "use the theme's". */
     .lets-po {
-      --lets-accent: {{ block.settings.accent_color | default: '#C21B17' }};
-      --lets-card: {{ block.settings.card_bg | default: '#FFFFFF' }};
-      --lets-border: {{ block.settings.border_color | default: '#E5E5E5' }};
-      --lets-ink: {{ block.settings.text_color | default: '#4A4A4A' }};
-      --lets-ink-strong: {{ block.settings.title_color | default: '#3D3D3D' }};
-      --lets-muted: {{ block.settings.muted_color | default: '#9B9B9B' }};
+      --lets-accent: {{ block.settings.accent_color | default: 'currentColor' }};
+      --lets-card: {{ block.settings.card_bg | default: 'transparent' }};
+      --lets-border: {{ block.settings.border_color | default: 'color-mix(in srgb, currentColor 22%, transparent)' }};
+      --lets-ink: {{ block.settings.text_color | default: 'inherit' }};
+      --lets-ink-strong: {{ block.settings.title_color | default: 'inherit' }};
+      --lets-muted: {{ block.settings.muted_color | default: 'color-mix(in srgb, currentColor 55%, transparent)' }};
       --lets-radius: {{ block.settings.corner_radius | default: 0 }}px;
-      margin: 16px 0;
+      /* The button reads as the theme's own emphasis unless overridden: ink fill,
+         page-coloured label — the pairing that matches most themes' primary CTA. */
+      --lets-cta-bg: {{ block.settings.button_bg | default: 'currentColor' }};
+      --lets-cta-fg: {{ block.settings.button_fg | default: 'Canvas' }};
+      margin: 1em 0;
+      font-family: inherit;
       color: var(--lets-ink);
     }
-    .lets-po__heading { font-size: 15px; font-weight: 700; margin: 0 0 10px; color: var(--lets-ink-strong); }
+    .lets-po__heading { font-size: 1em; font-weight: 700; margin: 0 0 0.6em; color: var(--lets-ink-strong); }
 
     .lets-po__card {
       background: var(--lets-card);
       border: 1px solid var(--lets-border);
       border-radius: var(--lets-radius);
-      margin-bottom: 10px;
+      margin-bottom: 0.6em;
     }
+    /* Selection is shown by WEIGHT, not by a brand colour: a thicker border in
+       the theme's own ink reads as "chosen" in any palette. */
     .lets-po__card.is-selected { border: 2px solid var(--lets-accent); }
     .lets-po__card--sub.is-selected .lets-po__title { color: var(--lets-ink-strong); }
 
     .lets-po__head {
-      display: flex; align-items: center; gap: 10px;
-      padding: 16px 18px; cursor: pointer; margin: 0;
+      display: flex; align-items: center; gap: 0.6em;
+      padding: 0.9em 1em; cursor: pointer; margin: 0;
     }
     .lets-po__title {
-      font-size: 20px; font-weight: 700; letter-spacing: .01em;
+      font-size: 1.05em; font-weight: 700; letter-spacing: .01em;
       color: var(--lets-ink-strong);
     }
-    .lets-po__prices { margin-inline-start: auto; display: flex; align-items: baseline; gap: 8px; }
-    .lets-po__price { font-size: 21px; font-weight: 700; color: var(--lets-ink-strong); }
-    .lets-po__compare { font-size: 16px; color: var(--lets-muted); }
+    .lets-po__prices { margin-inline-start: auto; display: flex; align-items: baseline; gap: 0.5em; }
+    .lets-po__price { font-size: 1.1em; font-weight: 700; color: var(--lets-ink-strong); }
+    .lets-po__compare { font-size: 0.9em; color: var(--lets-muted); }
 
-    /* Radio: a ring that fills with the accent when chosen (no theme override). */
+    /* Radio: a ring that fills with the accent when chosen. `--lets-card` is the
+       hole's colour, so on a transparent (theme-inherited) card the fill uses the
+       page behind it instead of punching a white dot into a dark theme. */
     .lets-po__radio {
       appearance: none; -webkit-appearance: none;
-      inline-size: 22px; block-size: 22px; flex: none; margin: 0; cursor: pointer;
+      inline-size: 1.15em; block-size: 1.15em; flex: none; margin: 0; cursor: pointer;
       border: 2px solid var(--lets-muted); border-radius: 50%;
+      background: transparent;
     }
     .lets-po__radio:checked {
       border-color: var(--lets-accent);
-      box-shadow: inset 0 0 0 4px var(--lets-card), inset 0 0 0 12px var(--lets-accent);
+      background:
+        radial-gradient(circle at center,
+          var(--lets-accent) 0 0.3em,
+          transparent 0.3em);
     }
     .lets-po__radio:focus-visible { outline: 2px solid var(--lets-accent); outline-offset: 2px; }
 
     .lets-po__badge {
-      background: var(--lets-accent); color: {{ block.settings.badge_text_color | default: '#FFFFFF' }};
-      font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
-      padding: 5px 10px; border-radius: var(--lets-radius); white-space: nowrap;
+      background: var(--lets-accent);
+      color: {{ block.settings.badge_text_color | default: 'Canvas' }};
+      font-size: 0.75em; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+      padding: 0.35em 0.7em; border-radius: var(--lets-radius); white-space: nowrap;
     }
 
-    .lets-po__body { padding: 0 18px 16px; }
-    .lets-po__rule { border-top: 1px dashed var(--lets-border); margin: 4px 0 14px; }
+    .lets-po__body { padding: 0 1em 0.9em; }
+    .lets-po__rule { border-top: 1px dashed var(--lets-border); margin: 0.2em 0 0.8em; }
 
-    .lets-po__benefits-row { display: flex; align-items: flex-start; gap: 12px; }
+    .lets-po__benefits-row { display: flex; align-items: flex-start; gap: 0.75em; }
     .lets-po__benefits { list-style: none; margin: 0; padding: 0; flex: 1; }
     .lets-po__benefit {
-      position: relative; padding-inline-start: 26px; margin-bottom: 8px;
-      font-size: 15px; line-height: 1.45;
+      position: relative; padding-inline-start: 1.6em; margin-bottom: 0.45em;
+      font-size: 0.95em; line-height: 1.45;
     }
-    /* The check is drawn, not an icon font — nothing to load, nothing to break. */
+    /* The check is drawn, not an icon font — nothing to load, nothing to break.
+       PHYSICAL borders on purpose: a checkmark must not mirror in RTL (logical
+       ones turned it into a ">" chevron on a Hebrew storefront). */
     .lets-po__benefit::before {
-      content: ''; position: absolute; inset-inline-start: 2px; inset-block-start: 4px;
-      inline-size: 11px; block-size: 6px;
-      border-inline-start: 2px solid var(--lets-accent);
-      border-block-end: 2px solid var(--lets-accent);
+      content: ''; position: absolute; inset-inline-start: 0.15em; inset-block-start: 0.35em;
+      inline-size: 0.55em; block-size: 0.3em;
+      border-left: 2px solid var(--lets-accent);
+      border-bottom: 2px solid var(--lets-accent);
       transform: rotate(-45deg);
     }
 
     .lets-po__more-toggle {
-      display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
-      background: none; border: 0; padding: 0; font-size: 15px; font-weight: 600;
+      display: inline-flex; align-items: center; gap: 0.25em; cursor: pointer;
+      background: none; border: 0; padding: 0; font: inherit; font-weight: 600;
       color: var(--lets-accent); text-decoration: underline;
     }
-    .lets-po__chevron { inline-size: 18px; block-size: 18px; transition: transform .2s ease; }
+    .lets-po__chevron { inline-size: 1.1em; block-size: 1.1em; transition: transform .2s ease; }
     .lets-po__more-toggle[aria-expanded="true"] .lets-po__chevron { transform: rotate(180deg); }
-    .lets-po__more-body { font-size: 14px; line-height: 1.5; margin-top: 10px; }
+    .lets-po__more-body { font-size: 0.9em; line-height: 1.5; margin-top: 0.6em; }
 
-    .lets-po__cadence { margin-top: 14px; }
-    .lets-po__cadence-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+    .lets-po__cadence { margin-top: 0.9em; }
+    .lets-po__cadence-label { display: block; font-size: 0.85em; font-weight: 600; margin-bottom: 0.35em; }
     .lets-po__select {
-      width: 100%; padding: 10px 12px; font-size: 15px; color: inherit;
+      width: 100%; padding: 0.6em 0.7em; font: inherit; color: inherit;
       background: transparent; border: 1px solid var(--lets-border); border-radius: var(--lets-radius);
     }
 
-    .lets-po__gift { display: flex; align-items: center; gap: 14px; }
-    .lets-po__gift-img { inline-size: 84px; block-size: auto; flex: none; object-fit: contain; }
+    .lets-po__gift { display: flex; align-items: center; gap: 0.9em; }
+    .lets-po__gift-img { inline-size: 5em; block-size: auto; flex: none; object-fit: contain; }
     .lets-po__gift-copy { flex: 1; }
     .lets-po__gift-tag {
-      display: inline-block; background: {{ block.settings.gift_tag_bg | default: '#6E6E6E' }};
-      color: {{ block.settings.gift_tag_color | default: '#FFFFFF' }};
-      font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-      padding: 5px 10px; border-radius: var(--lets-radius); margin-bottom: 8px;
+      display: inline-block;
+      background: {{ block.settings.gift_tag_bg | default: 'color-mix(in srgb, currentColor 65%, transparent)' }};
+      color: {{ block.settings.gift_tag_color | default: 'Canvas' }};
+      font-size: 0.75em; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+      padding: 0.35em 0.7em; border-radius: var(--lets-radius); margin-bottom: 0.5em;
     }
-    .lets-po__gift-text { font-size: 15px; line-height: 1.45; margin: 0; }
+    .lets-po__gift-text { font-size: 0.95em; line-height: 1.45; margin: 0; }
     .lets-po__gift-prices { text-align: end; white-space: nowrap; }
-    .lets-po__gift-free { font-size: 15px; font-weight: 700; color: var(--lets-accent); margin-inline-end: 6px; }
+    .lets-po__gift-free { font-size: 0.95em; font-weight: 700; color: var(--lets-accent); margin-inline-end: 0.4em; }
 
     .lets-po__cta {
-      display: flex; align-items: center; justify-content: center; gap: 10px;
-      width: 100%; cursor: pointer; margin-top: 6px;
-      padding: 18px 20px; border: 0; border-radius: var(--lets-radius);
-      background: {{ block.settings.button_bg | default: '#C21B17' }};
-      color: {{ block.settings.button_fg | default: '#FFFFFF' }};
-      font-size: 18px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+      display: flex; align-items: center; justify-content: center; gap: 0.6em;
+      width: 100%; cursor: pointer; margin-top: 0.4em;
+      padding: 1em 1.2em; border: 0; border-radius: var(--lets-radius);
+      background: var(--lets-cta-bg);
+      color: var(--lets-cta-fg);
+      font-family: inherit; font-size: 1em; font-weight: 700; letter-spacing: .06em;
+      text-transform: uppercase;
     }
     .lets-po__cta[disabled] { opacity: .5; cursor: not-allowed; }
-    .lets-po__hint { font-size: 12px; opacity: .75; margin: 10px 0 0; }
+    /* Confirmation for themes with no cart drawer to open — the shopper stayed
+       on the page, so the button itself has to say the line was added. */
+    .lets-po__cta[data-lets-added]::after {
+      content: '✓';
+      font-size: 1.1em;
+    }
+    .lets-po__hint { font-size: 0.8em; opacity: .75; margin: 0.6em 0 0; }
   {%- endstyle -%}
 
   <script>
@@ -370,6 +406,86 @@
       if (select && select.tagName === 'SELECT') { select.addEventListener('change', syncCtaPrice); }
       syncType();
 
+      // ---- Add to cart WITHOUT leaving the product page ----
+      // The <form> POST stays as the no-JS fallback; when JS is available we send
+      // the line to /cart/add.js instead, so the shopper keeps their place. The
+      // payload is BUILT, not scraped from the form: /cart/add.js would turn any
+      // stray field (our own radio, for one) into a line-item property.
+      var form = root.querySelector('[data-lets-po-form]');
+      var cta = root.querySelector('[data-lets-po-cta]');
+      var afterAdd = root.getAttribute('data-lets-po-after') || 'stay';
+
+      function cartCountRefresh() {
+        // Ask the theme to re-read the cart. Themes listen for their own events;
+        // between them these cover Dawn and most OS 2.0 themes, and a theme that
+        // listens for none simply shows the updated count on the next navigation.
+        document.dispatchEvent(new CustomEvent('cart:refresh', { bubbles: true }));
+        document.dispatchEvent(new CustomEvent('cart:build', { bubbles: true }));
+        if (window.Shopify && window.Shopify.onCartUpdate) {
+          try { window.Shopify.onCartUpdate(); } catch (e) { /* theme's own hook */ }
+        }
+      }
+
+      function openCartDrawer() {
+        var drawer = document.querySelector('cart-drawer, #CartDrawer, .drawer--cart, [data-cart-drawer]');
+        if (drawer && typeof drawer.open === 'function') { drawer.open(); return true; }
+
+        var toggle = document.querySelector('[data-cart-drawer-toggle], #cart-icon-bubble, .header__icon--cart');
+        if (toggle) { toggle.click(); return true; }
+
+        return false;
+      }
+
+      if (form && cta) {
+        form.addEventListener('submit', function (e) {
+          if (!window.fetch) { return; } // no fetch → let the normal POST happen
+          e.preventDefault();
+
+          var subscribing = selectedType() === 'subscribe';
+          var item = {
+            id: Number(variantInput.value),
+            quantity: 1,
+          };
+          if (subscribing && select && select.value) {
+            item.selling_plan = Number(select.value);
+          }
+
+          cta.disabled = true;
+
+          fetch('/cart/add.js', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ items: [item] }),
+          })
+            .then(function (response) {
+              return response.json().then(function (data) {
+                if (!response.ok) { throw new Error(data.description || data.message || 'add_failed'); }
+
+                return data;
+              });
+            })
+            .then(function () {
+              cta.disabled = false;
+              cartCountRefresh();
+
+              if (afterAdd === 'cart') { window.location.href = '/cart'; return; }
+              if (afterAdd === 'checkout') { window.location.href = '/checkout'; return; }
+              if (!openCartDrawer()) {
+                // No drawer to open — say plainly that it worked rather than
+                // leaving the shopper wondering whether the click registered.
+                cta.setAttribute('data-lets-added', '1');
+                window.setTimeout(function () { cta.removeAttribute('data-lets-added'); }, 2500);
+              }
+            })
+            .catch(function () {
+              cta.disabled = false;
+              // Anything unexpected → fall back to the real form POST, which
+              // lands on /cart and shows Shopify's own error if there is one.
+              form.submit();
+            });
+        });
+      }
+
       var moreToggle = root.querySelector('[data-lets-po-more]');
       var moreBody = root.querySelector('#lets-po-more');
       if (moreToggle && moreBody) {
@@ -392,6 +508,15 @@
       });
     })();
   </script>
+
+{%- elsif request.design_mode -%}
+  {%- comment -%}
+    No product context (the block was placed outside a product page) — say so in
+    the editor instead of rendering nothing, which a merchant reads as "broken".
+  {%- endcomment -%}
+  <p class="lets-po__hint">
+    {{ 'LETS purchase options: this block only renders on a product page. Move it into the product template.' }}
+  </p>
 {%- endif -%}
 
 {% schema %}
@@ -401,7 +526,7 @@
   "settings": [
     {
       "type": "paragraph",
-      "content": "Shows a subscribe-or-buy-once chooser when this product has a published subscription plan, and a plain one-time card when it does not — so it is safe to add to every product page. If your theme already shows its own add-to-cart, hide that one to avoid two buttons."
+      "content": "Shows a subscribe-or-buy-once chooser when this product has a published subscription plan, and a plain one-time card when it does not — so it is safe to add to every product page. It inherits your theme's font and colours by default; set a colour below only where you want it to differ. If your theme already shows its own add-to-cart, hide that one to avoid two buttons."
     },
     {
       "type": "header",
@@ -544,6 +669,18 @@
       "default": "Sold out"
     },
     {
+      "type": "select",
+      "id": "after_add",
+      "label": "After adding to cart",
+      "info": "The item is added without reloading the page.",
+      "options": [
+        { "value": "stay", "label": "Stay on the page / open cart drawer" },
+        { "value": "cart", "label": "Go to the cart" },
+        { "value": "checkout", "label": "Go straight to checkout" }
+      ],
+      "default": "stay"
+    },
+    {
       "type": "header",
       "content": "Colours"
     },
@@ -551,67 +688,67 @@
       "type": "color",
       "id": "accent_color",
       "label": "Accent (selected border, badge, checks)",
-      "default": "#C21B17"
+      "info": "Leave empty to use the theme's colours."
     },
     {
       "type": "color",
       "id": "card_bg",
       "label": "Card background",
-      "default": "#FFFFFF"
+      "info": "Leave empty to use the theme's colours."
     },
     {
       "type": "color",
       "id": "border_color",
       "label": "Card border",
-      "default": "#E5E5E5"
+      "info": "Leave empty to use the theme's colours."
     },
     {
       "type": "color",
       "id": "title_color",
       "label": "Titles & prices",
-      "default": "#3D3D3D"
+      "info": "Leave empty to use the theme's colours."
     },
     {
       "type": "color",
       "id": "text_color",
       "label": "Body text",
-      "default": "#4A4A4A"
+      "info": "Leave empty to use the theme's colours."
     },
     {
       "type": "color",
       "id": "muted_color",
       "label": "Struck-through prices",
-      "default": "#9B9B9B"
+      "info": "Leave empty to use the theme's colours."
     },
     {
       "type": "color",
       "id": "badge_text_color",
       "label": "Badge text",
-      "default": "#FFFFFF"
+      "info": "Leave empty to use the theme's colours."
     },
     {
       "type": "color",
       "id": "gift_tag_bg",
       "label": "Gift tag background",
-      "default": "#6E6E6E"
+      "info": "Leave empty to use the theme's colours."
     },
     {
       "type": "color",
       "id": "gift_tag_color",
       "label": "Gift tag text",
-      "default": "#FFFFFF"
+      "info": "Leave empty to use the theme's colours."
     },
     {
       "type": "color",
       "id": "button_bg",
       "label": "Button background",
-      "default": "#C21B17"
+      "info": "Leave empty to use the theme's colours."
     },
     {
       "type": "color",
       "id": "button_fg",
       "label": "Button text",
-      "default": "#FFFFFF"
+      "info": "Leave empty to use the theme's colours."
     },
     {
       "type": "range",

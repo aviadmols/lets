@@ -24,9 +24,16 @@ use RuntimeException;
 final class SellingPlanService
 {
     // === CONSTANTS ===
-    /** The merchant-facing group name shown on the product page's purchase options. */
+    /** The SHOPPER-facing group name (the purchase-options heading at checkout). */
     private const GROUP_NAME = 'Subscribe & save';
     private const GROUP_OPTION = 'Delivery every';
+
+    /**
+     * The MERCHANT-facing label. Shopify prints `merchantCode` as the title of
+     * each row in the product's "Purchase options" card, so it has to read like
+     * a name a human chose — not the internal id it started as.
+     */
+    private const MERCHANT_LABEL = "Let's subscription";
 
     /**
      * The marks written onto the Shopify PRODUCT when a plan is published, so a
@@ -100,7 +107,7 @@ final class SellingPlanService
         GQL, [
             'input' => [
                 'name' => self::GROUP_NAME,
-                'merchantCode' => 'lets-template-'.$template->getKey(),
+                'merchantCode' => $this->merchantCode($template),
                 'options' => [self::GROUP_OPTION],
                 'sellingPlansToCreate' => [$plan],
             ],
@@ -283,6 +290,20 @@ final class SellingPlanService
             ]],
             default => null,
         };
+    }
+
+    /**
+     * The row title a merchant reads in Shopify's "Purchase options" card:
+     * the brand plus the plan's own name, so a product carrying two plans shows
+     * which is which instead of two identical rows.
+     */
+    private function merchantCode(ProductSubscriptionPlan $template): string
+    {
+        $name = trim((string) ($template->plan_name ?? ''));
+
+        return $name === '' || $name === self::MERCHANT_LABEL
+            ? self::MERCHANT_LABEL
+            : mb_substr(self::MERCHANT_LABEL.' — '.$name, 0, 100);
     }
 
     /** "5001" or an already-canonical gid → the canonical product GID. */

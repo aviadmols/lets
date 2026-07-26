@@ -47,6 +47,13 @@ final class SellingPlanPublishTest extends TestCase
         $this->assertSame('MONTH', $policy['interval'] ?? null);
         $this->assertSame(6, $policy['intervalCount'] ?? null);
 
+        // Shopify prints merchantCode as the row title in the product's
+        // "Purchase options" card — it must read as a name, not an internal id.
+        $this->assertSame(
+            "Let's subscription — Monthly coffee",
+            $recorder->graphqlCalls[0]['variables']['input']['merchantCode'] ?? null,
+        );
+
         $this->assertSame('gid://shopify/SellingPlanGroup/1', $result['group_gid']);
         $this->assertSame('gid://shopify/SellingPlan/11', $result['plan_gid']);
 

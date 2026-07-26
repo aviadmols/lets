@@ -91,6 +91,46 @@ final class ShopifyApps
     }
 
     /**
+     * Which of the app's REQUESTED scopes this shop has not granted.
+     *
+     * Shopify collapses implied scopes when it reports a grant: asking for
+     * `read_products,write_products` comes back as `write_products` alone. A
+     * naive set difference therefore reports a mismatch on every healthy shop —
+     * so a granted `write_x` is expanded to cover `read_x` before comparing.
+     *
+     * Non-empty means the stored access token predates a scope change and must
+     * be re-exchanged, or every call needing the new scope will 403.
+     *
+     * @return list<string>
+     */
+    public static function missingScopes(string $appKey, ?string $granted): array
+    {
+        $requested = self::splitScopes(self::credentials($appKey)['oauth_scopes']);
+        if ($requested === []) {
+            return [];
+        }
+
+        $held = [];
+        foreach (self::splitScopes((string) $granted) as $scope) {
+            $held[$scope] = true;
+            if (str_starts_with($scope, 'write_')) {
+                $held['read_'.substr($scope, 6)] = true;
+            }
+        }
+
+        return array_values(array_filter(
+            $requested,
+            static fn (string $scope): bool => ! isset($held[$scope]),
+        ));
+    }
+
+    /** @return list<string> */
+    private static function splitScopes(string $scopes): array
+    {
+        return array_values(array_filter(array_map('trim', explode(',', $scopes))));
+    }
+
+    /**
      * Every secret a Shopify-signed payload may legitimately carry: each
      * configured app's secret plus the explicit SHOPIFY_WEBHOOK_SECRET (if any).
      * Callers LOOP over these with a timing-safe compare — a match with any one

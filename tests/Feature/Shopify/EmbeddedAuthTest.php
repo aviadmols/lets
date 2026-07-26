@@ -234,7 +234,16 @@ final class EmbeddedAuthTest extends TestCase
             'name' => $domain,
             'status' => Shop::STATUS_INSTALLED,
         ]);
-        $shop->captureShopifyInstall('shpat_existing_token', 'read_orders');
+
+        // A HEALTHY install records the scopes the app currently asks for.
+        // Anything less is a token that predates a scope change, which
+        // EmbeddedAuthenticate deliberately re-exchanges (see ScopeRefreshTest) —
+        // so a fixture with stale scopes would make "no second exchange" fail for
+        // the wrong reason.
+        $shop->captureShopifyInstall(
+            'shpat_existing_token',
+            (string) config('shopify.oauth_scopes'),
+        );
 
         return $shop->fresh();
     }

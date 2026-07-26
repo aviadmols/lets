@@ -127,7 +127,31 @@ final class EmbeddedAuthenticate
     {
         $shop = Shop::query()->where('shopify_domain', $shopDomain)->first();
         if ($shop !== null && $shop->isLive()) {
-            // Already installed + live → no second exchange needed.
+            // Already installed + live → no second exchange needed, UNLESS the app
+            // now asks for scopes this shop's token predates. Shopify grants the
+            // new scopes when the merchant re-opens the app, but our stored token
+            // still carries the OLD grant, so every call needing the new scope
+            // would 403 (which is exactly how "Access denied for
+            // sellingPlanGroupCreate" appears after a scope change). Re-exchange
+            // once and the fresh token carries them.
+            $missing = ShopifyApps::missingScopes($appKey, $shop->shopify_scopes);
+            if ($missing !== []) {
+                $exchanged = $this->tokenExchange->exchange($shopDomain, $sessionToken, $appKey);
+                if ($exchanged !== null) {
+                    $shop->captureShopifyInstall(
+                        $exchanged['access_token'],
+                        $exchanged['scope'] !== '' ? $exchanged['scope'] : null,
+                    );
+                    Log::info('shopify.embedded.scopes_refreshed', [
+                        'shop' => $shopDomain, 'app' => $appKey, 'was_missing' => $missing,
+                    ]);
+
+                    return $shop->fresh() ?? $shop;
+                }
+                // Exchange failed → keep serving with the old token rather than
+                // locking the merchant out; the next load retries.
+            }
+
             return $shop;
         }
 

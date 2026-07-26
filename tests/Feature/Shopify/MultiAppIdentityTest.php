@@ -61,8 +61,9 @@ final class MultiAppIdentityTest extends TestCase
         $response->assertRedirect();
         $location = (string) $response->headers->get('Location');
         $this->assertStringContainsString('client_id='.self::CUSTOM_KEY, $location);
-        // The union scopes include the Shopify-Payments subscriptions rail.
-        $this->assertStringContainsString('write_own_subscription_contracts', $location);
+        // The custom app's scopes include selling-plan management — what makes a
+        // product subscribable on the Shopify-Payments rail.
+        $this->assertStringContainsString('write_purchase_options', $location);
     }
 
     public function test_an_unknown_app_param_degrades_to_the_public_app(): void

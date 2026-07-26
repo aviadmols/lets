@@ -54,13 +54,21 @@ return [
             'handle' => env('SHOPIFY_CUSTOM_APP_HANDLE', 'lets-subscriptions'),
             // Union: everything the public app does PLUS the Shopify-Payments
             // subscriptions rail (a custom app has no App-Store scope review).
+            /*
+            | Must stay in lockstep with shopify.app.subscriptions.toml — the toml
+            | is what Shopify VALIDATES; this is what the OAuth link REQUESTS, and
+            | a mismatch means the merchant grants one set and the app expects
+            | another. read/write_purchase_options is what creates selling plans
+            | (Shopify names it as the alternative to write_own_subscription_
+            | contracts) and is NOT gated behind the protected-data review; the
+            | subscription-contract scopes stay out until that approval lands.
+            */
             'oauth_scopes' => env(
                 'SHOPIFY_CUSTOM_OAUTH_SCOPES',
-                'read_orders,write_orders,read_all_orders,read_draft_orders,write_draft_orders,'.
-                'read_customers,read_products,write_products,read_fulfillments,write_fulfillments,'.
-                'read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,'.
-                'read_own_subscription_contracts,write_own_subscription_contracts,'.
-                'read_customer_payment_methods,read_checkout_external_data'
+                'read_customers,read_products,write_products,'.
+                'read_purchase_options,write_purchase_options,'.
+                'write_orders,write_draft_orders,write_fulfillments,'.
+                'write_merchant_managed_fulfillment_orders'
             ),
         ],
     ],

@@ -34,14 +34,43 @@
 
 name = "LETS Subscriptions"
 handle = "lets-subscriptions"
-client_id = "REPLACE_WITH_CUSTOM_APP_CLIENT_ID"
+client_id = "5d53c39c30da6f911c6634071fbcd7a4"  # API key for the CUSTOM app (org 128972608) — public, not a secret
 application_url = "https://app.lets.co.il"
 embedded = true
 
+# Which extensions this app ships. NOT the default (all of extensions/*) because
+# two of them cannot be RELEASED on this app yet and a version only releases if
+# EVERY extension in it can:
+#   - lets-thank-you + lets-subscriptions-account declare `network_access`, which
+#     Shopify must approve per app ("Network access must be requested and
+#     approved…"). Neither is usable on this store today anyway — the thank-you
+#     widget charges a PayPlus token (this store bills through Shopify Payments)
+#     and the customer-account page needs the still-unapproved subscription
+#     scopes. Add them back here once both approvals land.
+# The public app (shopify.app.toml) keeps the default and ships all four.
+extension_directories = [
+  "extensions/lets-installments",
+  "extensions/lets-post-purchase",
+]
+
 [access_scopes]
-# The union: everything the public app uses + the Shopify-Payments rail. Mirrors
-# config('shopify.apps.custom.oauth_scopes') — keep the two in lockstep.
-scopes = "read_orders,write_orders,read_all_orders,read_draft_orders,write_draft_orders,read_customers,read_products,write_products,read_fulfillments,write_fulfillments,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_own_subscription_contracts,write_own_subscription_contracts,read_customer_payment_methods,read_checkout_external_data"
+# EXACTLY the set the installed store has already granted. Declaring a scope the
+# app has not been approved for makes Shopify reject the whole version, and
+# declaring MORE than the store granted forces the merchant to re-authorise —
+# so the subscription scopes below stay commented until Shopify approves them:
+#   read_all_orders, read_own_subscription_contracts,
+#   write_own_subscription_contracts, read_customer_payment_methods,
+#   read_checkout_external_data
+# Keep in lockstep with config('shopify.apps.custom.oauth_scopes').
+#
+# read/write_purchase_options is what actually creates SELLING PLANS. Shopify's
+# own error names it as the alternative to write_own_subscription_contracts:
+#   "Required access: write_products as well as any of
+#    write_own_subscription_contracts, write_purchase_options"
+# and unlike the subscription-contract scopes it is not gated behind the
+# protected-customer-data review — so a product can be made subscribable before
+# that approval lands (managing the resulting CONTRACTS still needs it).
+scopes = "read_customers,read_products,write_products,read_purchase_options,write_purchase_options,write_orders,write_draft_orders,write_fulfillments,write_merchant_managed_fulfillment_orders"
 use_legacy_install_flow = false
 
 [auth]
@@ -56,17 +85,38 @@ api_version = "2026-04"
   # proves the HMAC against EVERY configured app secret, WebhookController
   # resolves the shop, WebhookRouter dispatches by topic.
   [[webhooks.subscriptions]]
-  topics = [
-    "app/uninstalled",
-    "subscription_contracts/create",
-    "subscription_contracts/update",
-    "subscription_billing_attempts/success",
-    "subscription_billing_attempts/failure",
-    "subscription_billing_attempts/challenged",
-  ]
+  topics = ["app/uninstalled"]
   uri = "/shopify/webhooks"
 
-  # GDPR — mandatory for every app, custom distribution included.
+  # Catalog sync — keep the local products cache fresh.
   [[webhooks.subscriptions]]
-  compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
+  topics = ["products/create", "products/update", "products/delete"]
   uri = "/shopify/webhooks"
+
+  # BLOCKED ON APPROVAL — re-add once "protected customer data access" and the
+  # subscription APIs are granted for THIS app. Until then Shopify rejects the
+  # version outright ("not approved to subscribe to webhook topics containing
+  # protected customer data"). The handlers already exist; per-shop registration
+  # via the Admin API (RegisterShopifyWebhooksJob) covers what the grant allows.
+  # [[webhooks.subscriptions]]
+  # topics = [
+  #   "subscription_contracts/create", "subscription_contracts/update",
+  #   "subscription_billing_attempts/success", "subscription_billing_attempts/failure",
+  #   "subscription_billing_attempts/challenged",
+  # ]
+  # uri = "/shopify/webhooks"
+  #
+  # [[webhooks.subscriptions]]
+  # compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
+  # uri = "/shopify/webhooks"
+
+[app_proxy]
+# Storefront → backend trust boundary (installments button + the thank-you /
+# order-status upsell widget), identical to the public app's so the SAME
+# storefront paths work on a store installed through either app.
+url = "https://app.lets.co.il/proxy"
+subpath = "payplus"
+prefix = "apps"
+
+[pos]
+embedded = false
