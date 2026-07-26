@@ -65,10 +65,22 @@ class Shop extends Model
     public const SHOPIFY_PAYMENTS_UNKNOWN = 'unknown';
     public const SHOPIFY_PAYMENTS_ACTIVE = 'active';
     public const SHOPIFY_PAYMENTS_INACTIVE = 'inactive';
+
+    /**
+     * TEST = the store can drive the Shopify rail but not take real money: a
+     * partner development store (whose gateway is Shopify's test/bogus one), or
+     * a Shopify Payments account that exists but is not activated yet. It is a
+     * separate state from ACTIVE on purpose — the rail is available for testing
+     * subscriptions and post-purchase, while the admin can still say plainly
+     * that no live money moves.
+     */
+    public const SHOPIFY_PAYMENTS_TEST = 'test';
+
     public const SHOPIFY_PAYMENTS_STATUSES = [
         self::SHOPIFY_PAYMENTS_UNKNOWN,
         self::SHOPIFY_PAYMENTS_ACTIVE,
         self::SHOPIFY_PAYMENTS_INACTIVE,
+        self::SHOPIFY_PAYMENTS_TEST,
     ];
 
     /** PayPlus credential keys expected inside the encrypted bag. */
@@ -215,10 +227,30 @@ class Shop extends Model
             : self::SHOPIFY_PAYMENTS_UNKNOWN;
     }
 
-    /** Shopify CONFIRMED the store sells through Shopify Payments. */
+    /** Shopify CONFIRMED the store sells LIVE through Shopify Payments. */
     public function hasShopifyPayments(): bool
     {
         return $this->shopifyPaymentsStatus() === self::SHOPIFY_PAYMENTS_ACTIVE;
+    }
+
+    /** A development store / not-yet-activated account — testable, not live. */
+    public function hasTestShopifyPayments(): bool
+    {
+        return $this->shopifyPaymentsStatus() === self::SHOPIFY_PAYMENTS_TEST;
+    }
+
+    /**
+     * Can this store drive the Shopify-Payments rail at all? True for a live
+     * account AND for a test/dev one, because a development store on Shopify's
+     * test gateway is exactly where subscriptions and post-purchase are meant to
+     * be rehearsed before a real card is ever charged.
+     */
+    public function canUseShopifyPaymentsRail(): bool
+    {
+        return in_array($this->shopifyPaymentsStatus(), [
+            self::SHOPIFY_PAYMENTS_ACTIVE,
+            self::SHOPIFY_PAYMENTS_TEST,
+        ], true);
     }
 
     /**

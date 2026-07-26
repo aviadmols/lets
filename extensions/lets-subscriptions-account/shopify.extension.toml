@@ -22,6 +22,7 @@
 # API 2026-04: Preact + @shopify/ui-extensions (React was dropped after 2025-07).
 
 api_version = "2026-04"
+uid = "4c06457d-4806-c81c-8850-5c59df0a7b090bf9fa56"
 
 [[extensions]]
 name = "LETS Subscriptions"

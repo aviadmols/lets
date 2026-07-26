@@ -24,6 +24,7 @@
 # select LETS there or this never appears.
 
 api_version = "2026-04"
+uid = "41aaf670-f7cc-e714-106b-b83e041f32c8d1db5e14"
 
 [[extensions]]
 name = "LETS post-purchase offer"

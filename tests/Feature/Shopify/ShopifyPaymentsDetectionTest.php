@@ -53,7 +53,7 @@ final class ShopifyPaymentsDetectionTest extends TestCase
         });
     }
 
-    public function test_no_account_is_inactive_and_changes_nothing(): void
+    public function test_no_account_on_a_normal_store_is_inactive_and_changes_nothing(): void
     {
         $shop = $this->shop();
         $this->fakeAccount(null);
@@ -63,6 +63,36 @@ final class ShopifyPaymentsDetectionTest extends TestCase
         $this->assertSame(Shop::SHOPIFY_PAYMENTS_INACTIVE, $status);
         $this->assertSame(Shop::RAIL_PAYPLUS, $shop->fresh()->subscriptionRail());
         $this->assertFalse($shop->fresh()->hidesPayplusSettings());
+    }
+
+    public function test_a_development_store_counts_as_test_so_the_rail_can_be_rehearsed(): void
+    {
+        $shop = $this->shop();
+        // No payments account, but a partner DEVELOPMENT store — its gateway is
+        // Shopify's test gateway, which is where the rail is meant to be tested.
+        $this->fakeAccount(null, partnerDevelopment: true);
+
+        $status = app(ShopifyPaymentsDetector::class)->detect($shop);
+
+        $this->assertSame(Shop::SHOPIFY_PAYMENTS_TEST, $status);
+
+        $fresh = $shop->fresh();
+        $this->assertTrue($fresh->canUseShopifyPaymentsRail());
+        // Testable, but never reported as live money.
+        $this->assertFalse($fresh->hasShopifyPayments());
+        $this->assertTrue($fresh->hasTestShopifyPayments());
+        $this->assertSame(Shop::RAIL_SHOPIFY_PAYMENTS, $fresh->subscriptionRail());
+    }
+
+    public function test_an_unactivated_account_is_test_not_inactive(): void
+    {
+        $shop = $this->shop();
+        $this->fakeAccount(['id' => 'gid://shopify/ShopifyPaymentsAccount/1', 'activated' => false]);
+
+        $status = app(ShopifyPaymentsDetector::class)->detect($shop);
+
+        $this->assertSame(Shop::SHOPIFY_PAYMENTS_TEST, $status);
+        $this->assertTrue($shop->fresh()->canUseShopifyPaymentsRail());
     }
 
     public function test_a_denied_lookup_stays_unknown_and_hides_nothing(): void
@@ -133,10 +163,13 @@ final class ShopifyPaymentsDetectionTest extends TestCase
     }
 
     /** @param array<string, mixed>|null $account */
-    private function fakeAccount(?array $account): void
+    private function fakeAccount(?array $account, bool $partnerDevelopment = false): void
     {
         $recorder = new RecordingShopifyClient();
-        $recorder->graphqlResponses = [['data' => ['shopifyPaymentsAccount' => $account]]];
+        $recorder->graphqlResponses = [['data' => [
+            'shopifyPaymentsAccount' => $account,
+            'shop' => ['plan' => ['partnerDevelopment' => $partnerDevelopment]],
+        ]]];
         ShopifyClientFactory::fake(fn (): RecordingShopifyClient => $recorder);
     }
 }

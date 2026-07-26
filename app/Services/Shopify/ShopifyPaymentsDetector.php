@@ -22,10 +22,18 @@ use Illuminate\Support\Facades\Log;
 final class ShopifyPaymentsDetector
 {
     // === CONSTANTS ===
-    /** The one field that answers the question; `id` alone proves an account exists. */
+    /**
+     * Two facts, one round trip:
+     *   shopifyPaymentsAccount — does the store sell through Shopify Payments;
+     *   plan.partnerDevelopment — is this a development store, i.e. one whose
+     *     gateway is Shopify's TEST gateway. A dev store is exactly where the
+     *     subscription + post-purchase flows are meant to be rehearsed, so it
+     *     must be able to drive the rail even with no real payments account.
+     */
     private const QUERY = <<<'GQL'
     query letsShopifyPaymentsAccount {
       shopifyPaymentsAccount { id activated }
+      shop { plan { partnerDevelopment } }
     }
     GQL;
 
@@ -59,10 +67,17 @@ final class ShopifyPaymentsDetector
         }
 
         $account = data_get($body, 'data.shopifyPaymentsAccount');
+        $isDevStore = data_get($body, 'data.shop.plan.partnerDevelopment') === true;
+
         $status = match (true) {
-            ! is_array($account) => Shop::SHOPIFY_PAYMENTS_INACTIVE,   // Shopify answered: no account
-            ($account['activated'] ?? true) === false => Shop::SHOPIFY_PAYMENTS_INACTIVE,
-            default => Shop::SHOPIFY_PAYMENTS_ACTIVE,
+            // A live account — real money moves through Shopify.
+            is_array($account) && ($account['activated'] ?? true) !== false => Shop::SHOPIFY_PAYMENTS_ACTIVE,
+            // An account that exists but is not activated: usable for rehearsal.
+            is_array($account) => Shop::SHOPIFY_PAYMENTS_TEST,
+            // No account, but a development store — its gateway IS the test one,
+            // which is what makes a dev store a valid place to test the rail.
+            $isDevStore => Shop::SHOPIFY_PAYMENTS_TEST,
+            default => Shop::SHOPIFY_PAYMENTS_INACTIVE,
         };
 
         $shop->forceFill([
@@ -70,7 +85,9 @@ final class ShopifyPaymentsDetector
             'shopify_payments_checked_at' => now(),
         ])->save();
 
-        if ($status === Shop::SHOPIFY_PAYMENTS_ACTIVE) {
+        // Both live and test stores get tagged onto the rail — otherwise a dev
+        // store could never rehearse subscriptions or the post-purchase offer.
+        if ($shop->canUseShopifyPaymentsRail()) {
             $this->tagRail($shop);
         }
 
