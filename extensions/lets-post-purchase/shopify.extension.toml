@@ -1,0 +1,36 @@
+# LETS native post-purchase upsell — the SHOPIFY-PAYMENTS rail of the upsell pillar.
+#
+# Shopify shows this extension as a full-page interstitial IMMEDIATELY after the
+# checkout is paid and BEFORE the thank-you page. The shopper accepts with one
+# click and Shopify re-charges THE SAME payment method they just used — which is
+# what makes the offer work on Shopify Payments / Shop Pay with no card re-entry.
+#
+# How that differs from extensions/lets-thank-you: that one renders on the
+# thank-you + order-status pages and charges a saved PAYPLUS token (the rail for
+# Israeli PayPlus merchants, who typically do not have Shopify Payments). Both
+# read the SAME offer catalogue (the admin Flow Builder); only the money path
+# differs. A store normally ships one of the two.
+#
+# Data path (nothing here is trusted by the backend):
+#   ShouldRender → POST https://app.lets.co.il/post-purchase/offer  {token}
+#   Render/accept→ POST https://app.lets.co.il/post-purchase/sign   {token, offer_id}
+#                  → a signed CHANGESET → applyChangeset(changeset)
+# `token` is Shopify's own post-purchase JWT, signed with the app secret; the
+# backend verifies it and reads the shop + the purchase from its claims, so the
+# extension never sends a shop id, a price, or a product.
+#
+# MERCHANT STEP after deploying: Shopify only renders ONE post-purchase app per
+# store, chosen in Settings → Checkout → "Post-purchase page". The merchant must
+# select LETS there or this never appears.
+
+api_version = "2026-04"
+
+[[extensions]]
+name = "LETS post-purchase offer"
+handle = "lets-post-purchase"
+type = "checkout_post_purchase"
+
+  # Absolute app URL — a post-purchase extension runs in a sandboxed worker with
+  # no storefront origin, so a relative/App-Proxy path cannot resolve.
+  [extensions.capabilities]
+  network_access = true

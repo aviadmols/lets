@@ -3,6 +3,7 @@
 use App\Domain\Upsell\Http\Controllers\AcceptUpsellApiController;
 use App\Domain\Upsell\Http\Controllers\AcceptUpsellController;
 use App\Domain\Upsell\Http\Controllers\DeclineUpsellController;
+use App\Domain\Upsell\Http\Controllers\PostPurchaseController;
 use App\Domain\Upsell\Http\Controllers\SessionTokenOfferController;
 use App\Domain\Upsell\Http\Controllers\ThankYouUpsellController;
 use App\Domain\Upsell\UpsellSignedUrlService;
@@ -60,6 +61,28 @@ Route::prefix('upsell')
     ->group(function () {
         Route::match(['get', 'options'], '/offer', SessionTokenOfferController::class)
             ->name('upsell.offer.session');
+    });
+
+/*
+ * NATIVE post-purchase (the interstitial Shopify shows right after checkout).
+ *
+ * This is the SHOPIFY-PAYMENTS rail of the upsell pillar: Shopify re-charges the
+ * payment method the shopper already used, via a changeset we sign — no PayPlus
+ * token, no card re-entry. The thank-you widget above stays the PayPlus rail.
+ *
+ * NO `signed` middleware here, and that is deliberate: the auth is SHOPIFY'S OWN
+ * post-purchase token, which the controller verifies against the app secret and
+ * from which it reads the shop and the purchase. The extension runs in a
+ * sandboxed worker (a foreign origin), hence extension.cors for the preflight.
+ */
+Route::prefix('post-purchase')
+    ->middleware(['extension.cors'])
+    ->group(function () {
+        Route::match(['post', 'options'], '/offer', [PostPurchaseController::class, 'offer'])
+            ->name('upsell.post_purchase.offer');
+
+        Route::match(['post', 'options'], '/sign', [PostPurchaseController::class, 'sign'])
+            ->name('upsell.post_purchase.sign');
     });
 
 /*
