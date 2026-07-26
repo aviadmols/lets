@@ -74,6 +74,31 @@ return [
         'sku' => 'SKU',
         'no_sku' => 'No SKU',
         'variants_heading' => 'Variants & plans',
+
+        // Subscription summary + the per-plan billing rail.
+        'subs_heading' => 'Subscriptions',
+        'subs_engine' => 'Billing engine',
+        'subs_plans' => 'Subscription plans',
+        'subs_plans_count' => ':active active of :total',
+        'subs_published' => 'Live at Shopify',
+        'subs_published_count' => ':published of :total published',
+        'subs_publish_hint' => 'A plan must be published before shoppers can subscribe at checkout.',
+        'live_on_shopify' => 'Live at Shopify',
+        'not_on_shopify' => 'Not published',
+        'rail' => [
+            'payplus' => 'PayPlus',
+            'shopify_payments' => 'Shopify Payments',
+        ],
+        'publish' => [
+            'cta' => 'Publish to Shopify',
+            'done' => 'Published — shoppers can now subscribe to this product at checkout.',
+            'failed' => 'Shopify did not accept the selling plan',
+            'not_shopify_rail' => 'This plan bills through PayPlus, so it needs no Shopify selling plan.',
+            'no_connection' => 'Connect the store to Shopify first.',
+            'remove_cta' => 'Remove from Shopify',
+            'remove_confirm' => 'Stop offering this subscription at checkout? Existing subscriptions keep billing.',
+            'removed' => 'Removed — the product no longer offers this subscription at checkout.',
+        ],
         'all_variants' => 'All variants',
         'variant' => 'Variant',
         'add_subscription_plan' => 'Add subscription plan',
@@ -149,6 +174,11 @@ return [
         'type_subscription' => 'Subscription plan',
         'type_one_time' => 'One-time purchase',
 
+        'rail_label' => 'Billed by',
+        'rail_hint' => 'Which engine charges this subscription. Leave on the store setting unless this product must differ.',
+        'rail' => [
+            'inherit' => 'Store setting (:rail)',
+        ],
         'ship_label' => 'Ship this product every',
         'frequency_unit' => 'Frequency',
 

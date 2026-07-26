@@ -72,6 +72,31 @@ return [
         'sku' => 'מק״ט',
         'no_sku' => 'אין מק״ט',
         'variants_heading' => 'וריאציות ותוכניות',
+
+        // סיכום מנויים + מנוע החיוב לכל תוכנית.
+        'subs_heading' => 'מנויים',
+        'subs_engine' => 'מנוע חיוב',
+        'subs_plans' => 'תוכניות מנוי',
+        'subs_plans_count' => ':active פעילות מתוך :total',
+        'subs_published' => 'פעיל בשופיפיי',
+        'subs_published_count' => ':published מתוך :total פורסמו',
+        'subs_publish_hint' => 'יש לפרסם תוכנית לפני שלקוחות יוכלו להירשם למנוי בצ׳קאאוט.',
+        'live_on_shopify' => 'פעיל בשופיפיי',
+        'not_on_shopify' => 'לא פורסם',
+        'rail' => [
+            'payplus' => 'PayPlus',
+            'shopify_payments' => 'Shopify Payments',
+        ],
+        'publish' => [
+            'cta' => 'פרסם לשופיפיי',
+            'done' => 'פורסם — לקוחות יכולים מעכשיו להירשם למנוי על המוצר בצ׳קאאוט.',
+            'failed' => 'שופיפיי לא קיבלה את תוכנית המכירה',
+            'not_shopify_rail' => 'תוכנית זו מחויבת דרך PayPlus, ולכן אינה זקוקה לתוכנית מכירה בשופיפיי.',
+            'no_connection' => 'יש לחבר קודם את החנות לשופיפיי.',
+            'remove_cta' => 'הסר משופיפיי',
+            'remove_confirm' => 'להפסיק להציע את המנוי בצ׳קאאוט? מנויים קיימים ימשיכו להתחייב.',
+            'removed' => 'הוסר — המוצר כבר לא מציע את המנוי בצ׳קאאוט.',
+        ],
         'all_variants' => 'כל הוריאציות',
         'variant' => 'וריאציה',
         'add_subscription_plan' => 'הוספת תוכנית מנוי',
@@ -146,6 +171,11 @@ return [
         'type_subscription' => 'תוכנית מנוי',
         'type_one_time' => 'רכישה חד-פעמית',
 
+        'rail_label' => 'מחויב על ידי',
+        'rail_hint' => 'איזה מנוע מחייב את המנוי הזה. השאר על הגדרת החנות אלא אם המוצר הזה חייב להיות שונה.',
+        'rail' => [
+            'inherit' => 'הגדרת החנות (:rail)',
+        ],
         'ship_label' => 'שלח מוצר זה כל',
         'frequency_unit' => 'תדירות',
 

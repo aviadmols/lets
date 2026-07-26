@@ -41,6 +41,16 @@ class ProductSubscriptionPlan extends Model
     public const STATUS_DRAFT = 'draft';
     public const STATUS_ACTIVE = 'active';
 
+    /**
+     * Which engine bills THIS template. null/'' = follow the shop's
+     * subscription_rail (the normal case); the explicit values let one product
+     * opt into the other engine without moving the whole store.
+     */
+    public const RAIL_INHERIT = '';
+    public const RAIL_PAYPLUS = Shop::RAIL_PAYPLUS;
+    public const RAIL_SHOPIFY_PAYMENTS = Shop::RAIL_SHOPIFY_PAYMENTS;
+    public const BILLING_RAILS = [self::RAIL_PAYPLUS, self::RAIL_SHOPIFY_PAYMENTS];
+
     // === CONSTANTS — channels this template is offered through ===
     public const CHANNEL_STOREFRONT_WIDGET = 'storefront_widget';
     public const CHANNEL_CUSTOMER_PORTAL = 'customer_portal';
@@ -72,6 +82,7 @@ class ProductSubscriptionPlan extends Model
             'expire_after_charges' => 'integer',
             'position' => 'integer',
             'channels' => 'array',
+            'shopify_synced_at' => 'datetime',
         ];
     }
 
@@ -111,6 +122,41 @@ class ProductSubscriptionPlan extends Model
     public function isSubscription(): bool
     {
         return $this->plan_type === self::TYPE_SUBSCRIPTION;
+    }
+
+    // === Billing rail (which engine bills this template) ===
+
+    /**
+     * The rail this template ACTUALLY bills on: its own override when set to a
+     * known value, otherwise the shop's choice. One-time templates have no rail
+     * (nothing recurs) — they always charge through PayPlus like any order.
+     */
+    public function effectiveRail(?Shop $shop = null): string
+    {
+        $own = (string) ($this->billing_rail ?? '');
+        if (in_array($own, self::BILLING_RAILS, true)) {
+            return $own;
+        }
+
+        $shop ??= $this->shop;
+
+        return $shop instanceof Shop ? $shop->subscriptionRail() : Shop::RAIL_PAYPLUS;
+    }
+
+    public function usesShopifyPayments(?Shop $shop = null): bool
+    {
+        return $this->isSubscription()
+            && $this->effectiveRail($shop) === Shop::RAIL_SHOPIFY_PAYMENTS;
+    }
+
+    /**
+     * Is this template LIVE at Shopify as a selling plan? Configuration alone
+     * does not make a product subscribable at checkout — only the selling plan
+     * does, and without it no contract (and so no billing) can ever exist.
+     */
+    public function isPublishedToShopify(): bool
+    {
+        return (string) ($this->shopify_selling_plan_gid ?? '') !== '';
     }
 
     // === HasGuardedStatus contract ===

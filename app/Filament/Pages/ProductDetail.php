@@ -2,13 +2,16 @@
 
 namespace App\Filament\Pages;
 
+use App\Domain\ShopifySubscriptions\SellingPlanService;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Filament\Resources\ProductResource;
 use App\Models\Product;
 use App\Models\ProductSubscriptionPlan;
 use App\Models\ProductVariant;
+use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanTemplateStatus;
+use App\Support\Tenant;
 use App\Support\Ui\Money;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
@@ -84,6 +87,9 @@ class ProductDetail extends Page
 
     /** Whether the configured plan is a subscription (drives the drawer title/fields). */
     public bool $planIsSubscription = true;
+
+    /** '' = follow the store's engine; else an explicit per-plan rail override. */
+    public string $billingRail = ProductSubscriptionPlan::RAIL_INHERIT;
 
     private ?Product $resolved = null;
 
@@ -225,6 +231,8 @@ class ProductDetail extends Page
         return $plans->values()->map(function (ProductSubscriptionPlan $plan) use ($basePrice): array {
             $isSub = $plan->plan_type === ProductSubscriptionPlan::TYPE_SUBSCRIPTION;
 
+            $shopifyRail = $isSub && $plan->usesShopifyPayments($this->shop());
+
             return [
                 'id' => $plan->id,
                 'is_subscription' => $isSub,
@@ -235,6 +243,15 @@ class ProductDetail extends Page
                 'channels' => $this->channelLabels($plan),
                 'status' => $plan->status instanceof PlanTemplateStatus ? $plan->status->value : (string) $plan->status,
                 'price' => Money::format($plan->discountedPrice($basePrice)),
+                // The engine this plan bills on, and — on the Shopify rail — whether
+                // it is actually LIVE at Shopify. A configured-but-unpublished plan
+                // cannot be bought as a subscription, so the row must say so.
+                'rail' => $isSub ? $plan->effectiveRail($this->shop()) : null,
+                'rail_label' => $isSub ? __('products.detail.rail.'.$plan->effectiveRail($this->shop())) : null,
+                'rail_inherited' => ! in_array((string) ($plan->billing_rail ?? ''), ProductSubscriptionPlan::BILLING_RAILS, true),
+                'shopify_rail' => $shopifyRail,
+                'published' => $plan->isPublishedToShopify(),
+                'synced_at' => $plan->shopify_synced_at?->diffForHumans(),
             ];
         })->all();
     }
@@ -279,6 +296,129 @@ class ProductDetail extends Page
             ->map(fn (string $c): string => __('products.plan_drawer.channel.' . $c))
             ->values()
             ->all();
+    }
+
+    /** The bound tenant shop (the rail default every plan inherits from). */
+    public function shop(): ?Shop
+    {
+        return Tenant::current() instanceof Shop ? Tenant::current() : $this->product()->shop;
+    }
+
+    /**
+     * The product's subscription summary — what the merchant needs to see at a
+     * glance: which engine bills it, how many subscription plans exist, and how
+     * many are actually live at Shopify (the Shopify rail's real readiness).
+     *
+     * @return array<string, mixed>
+     */
+    public function subscriptionSummary(): array
+    {
+        $shop = $this->shop();
+        $subs = $this->product()->subscriptionPlans
+            ->filter(fn (ProductSubscriptionPlan $p): bool => $p->isSubscription());
+
+        $onShopify = $subs->filter(fn (ProductSubscriptionPlan $p): bool => $p->usesShopifyPayments($shop));
+        $active = $subs->filter(fn (ProductSubscriptionPlan $p): bool => ($p->status instanceof PlanTemplateStatus
+            ? $p->status->value
+            : (string) $p->status) === ProductSubscriptionPlan::STATUS_ACTIVE);
+
+        return [
+            'shop_rail' => $shop?->subscriptionRail() ?? Shop::RAIL_PAYPLUS,
+            'shop_rail_label' => __('products.detail.rail.'.($shop?->subscriptionRail() ?? Shop::RAIL_PAYPLUS)),
+            'total' => $subs->count(),
+            'active' => $active->count(),
+            'shopify_rail' => $onShopify->count(),
+            'published' => $onShopify->filter(fn (ProductSubscriptionPlan $p): bool => $p->isPublishedToShopify())->count(),
+        ];
+    }
+
+    /**
+     * @return array<string, string> billing-rail options for the plan drawer.
+     *   The empty key = "follow the store setting" (the default, and what keeps a
+     *   store-wide engine switch from silently skipping this product).
+     */
+    public function railOptions(): array
+    {
+        return [
+            ProductSubscriptionPlan::RAIL_INHERIT => __('products.plan_drawer.rail.inherit', [
+                'rail' => __('products.detail.rail.'.($this->shop()?->subscriptionRail() ?? Shop::RAIL_PAYPLUS)),
+            ]),
+            ProductSubscriptionPlan::RAIL_PAYPLUS => __('products.detail.rail.payplus'),
+            ProductSubscriptionPlan::RAIL_SHOPIFY_PAYMENTS => __('products.detail.rail.shopify_payments'),
+        ];
+    }
+
+    // === Publish to Shopify (the Shopify-Payments rail's "make it real" step) ===
+
+    /**
+     * Publish ONE subscription template to Shopify as a selling plan, which is
+     * what makes the product subscribable at checkout. Tenant-scoped by
+     * product_id, so a foreign plan id is a no-op.
+     */
+    public function publishPlanToShopify(int $planId): void
+    {
+        $shop = $this->shop();
+        $plan = $this->scopedPlan($planId);
+        if (! $shop instanceof Shop || $plan === null) {
+            return;
+        }
+
+        if (! $plan->usesShopifyPayments($shop)) {
+            Notification::make()->title(__('products.detail.publish.not_shopify_rail'))->warning()->send();
+
+            return;
+        }
+
+        if (! $shop->hasShopifyConnection()) {
+            Notification::make()->title(__('products.detail.publish.no_connection'))->danger()->send();
+
+            return;
+        }
+
+        try {
+            app(SellingPlanService::class)->publishTemplate($shop, $plan);
+        } catch (\Throwable $e) {
+            Notification::make()
+                ->title(__('products.detail.publish.failed'))
+                ->body($e->getMessage())
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        $this->resolved = null; // re-read so the row shows the new gids
+        Notification::make()->title(__('products.detail.publish.done'))->success()->send();
+    }
+
+    /** Remove the template's selling plan from Shopify (existing contracts stay). */
+    public function unpublishPlanFromShopify(int $planId): void
+    {
+        $shop = $this->shop();
+        $plan = $this->scopedPlan($planId);
+        if (! $shop instanceof Shop || $plan === null) {
+            return;
+        }
+
+        try {
+            app(SellingPlanService::class)->unpublishTemplate($shop, $plan);
+        } catch (\Throwable $e) {
+            Notification::make()->title(__('products.detail.publish.failed'))->body($e->getMessage())->danger()->send();
+
+            return;
+        }
+
+        $this->resolved = null;
+        Notification::make()->title(__('products.detail.publish.removed'))->success()->send();
+    }
+
+    /** A plan of THIS product only (tenant + product scoped) — else null. */
+    private function scopedPlan(int $planId): ?ProductSubscriptionPlan
+    {
+        return ProductSubscriptionPlan::query()
+            ->where('product_id', $this->productId)
+            ->with('product')
+            ->find($planId);
     }
 
     /** The Shopify admin deep-link for the product (derived from the external id). */
@@ -456,6 +596,9 @@ class ProductDetail extends Page
             ->filter(fn (string $c): bool => in_array($c, ProductSubscriptionPlan::CHANNELS, true))
             ->values()
             ->all();
+        $this->billingRail = in_array((string) ($plan->billing_rail ?? ''), ProductSubscriptionPlan::BILLING_RAILS, true)
+            ? (string) $plan->billing_rail
+            : ProductSubscriptionPlan::RAIL_INHERIT;
         $this->planDrawerOpen = true;
     }
 
@@ -506,8 +649,15 @@ class ProductDetail extends Page
             ->values()
             ->all();
 
+        // billing_rail ∈ {null} ∪ BILLING_RAILS. null = follow the store engine;
+        // one-time templates never carry a rail (nothing recurs to bill).
+        $rail = in_array((string) $this->billingRail, ProductSubscriptionPlan::BILLING_RAILS, true)
+            ? (string) $this->billingRail
+            : null;
+
         $plan->forceFill([
             'plan_name' => mb_substr(trim($this->planName), 0, 120),
+            'billing_rail' => $isSub ? $rail : null,
             'interval_count' => $isSub ? $interval : 1,
             'billing_frequency' => $isSub ? $frequency : null,
             'discount_type' => $discountOn ? ProductSubscriptionPlan::DISCOUNT_PERCENT : ProductSubscriptionPlan::DISCOUNT_NONE,

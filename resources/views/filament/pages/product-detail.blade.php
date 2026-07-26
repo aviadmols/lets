@@ -16,6 +16,7 @@
         $product = $this->product();
         $statusKey = $product->status;
         $groups = $this->variantGroups();
+        $subs = $this->subscriptionSummary();
     @endphp
 
     {{-- Header: back + title + product status --}}
@@ -60,6 +61,40 @@
                     </div>
                 </div>
             </div>
+
+            {{-- Subscription summary: which engine bills this product, and whether
+                 the Shopify-rail plans are actually LIVE at Shopify. --}}
+            @if($subs['total'] > 0)
+                <div class="rc-section">
+                    <div class="rc-section__title">{{ __('products.detail.subs_heading') }}</div>
+                    <div class="rc-kv">
+                        <div class="rc-kv__row">
+                            <span class="rc-kv__key">{{ __('products.detail.subs_engine') }}</span>
+                            <span class="rc-kv__val">
+                                <x-rc.badge
+                                    tone="{{ $subs['shop_rail'] === \App\Models\Shop::RAIL_SHOPIFY_PAYMENTS ? 'teal' : 'gray' }}"
+                                    label="products.detail.rail.{{ $subs['shop_rail'] }}"
+                                />
+                            </span>
+                        </div>
+                        <div class="rc-kv__row">
+                            <span class="rc-kv__key">{{ __('products.detail.subs_plans') }}</span>
+                            <span class="rc-kv__val">{{ __('products.detail.subs_plans_count', ['active' => $subs['active'], 'total' => $subs['total']]) }}</span>
+                        </div>
+                        @if($subs['shopify_rail'] > 0)
+                            <div class="rc-kv__row">
+                                <span class="rc-kv__key">{{ __('products.detail.subs_published') }}</span>
+                                <span class="rc-kv__val">
+                                    {{ __('products.detail.subs_published_count', ['published' => $subs['published'], 'total' => $subs['shopify_rail']]) }}
+                                    @if($subs['published'] < $subs['shopify_rail'])
+                                        <span class="rc-muted">— {{ __('products.detail.subs_publish_hint') }}</span>
+                                    @endif
+                                </span>
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            @endif
 
             {{-- Per-variant plan groupings --}}
             <div class="rc-section">
@@ -123,6 +158,17 @@
                                             <span class="rc-muted">·</span>
                                             <span class="rc-muted">{{ implode(', ', $plan['channels']) }}</span>
                                         @endif
+                                        @if($plan['is_subscription'])
+                                            <span class="rc-muted">·</span>
+                                            <span class="rc-muted">{{ $plan['rail_label'] }}</span>
+                                            @if($plan['shopify_rail'])
+                                                <span class="rc-muted">·</span>
+                                                <x-rc.badge
+                                                    tone="{{ $plan['published'] ? 'green' : 'amber' }}"
+                                                    label="products.detail.{{ $plan['published'] ? 'live_on_shopify' : 'not_on_shopify' }}"
+                                                />
+                                            @endif
+                                        @endif
                                     </div>
                                 </div>
 
@@ -142,6 +188,20 @@
                                             wire:confirm="{{ __('products.detail.unpublish_confirm') }}">
                                             {{ __('products.detail.set_draft_plan') }}
                                         </button>
+                                    @endif
+                                    @if($plan['shopify_rail'])
+                                        @if($plan['published'])
+                                            <button type="button" class="rc-cta rc-cta--ghost rc-cta--sm"
+                                                wire:click="unpublishPlanFromShopify({{ $plan['id'] }})"
+                                                wire:confirm="{{ __('products.detail.publish.remove_confirm') }}">
+                                                {{ __('products.detail.publish.remove_cta') }}
+                                            </button>
+                                        @else
+                                            <button type="button" class="rc-cta rc-cta--primary rc-cta--sm"
+                                                wire:click="publishPlanToShopify({{ $plan['id'] }})">
+                                                {{ __('products.detail.publish.cta') }}
+                                            </button>
+                                        @endif
                                     @endif
                                     <button type="button" class="rc-cta rc-cta--ghost rc-cta--sm"
                                         wire:click="openPlanConfig({{ $plan['id'] }})">
@@ -266,6 +326,18 @@
                         </div>
 
                         @if($planIsSubscription)
+                            {{-- Which engine bills this plan: the store default, or an
+                                 explicit override for this product alone. --}}
+                            <div class="rc-field">
+                                <label class="rc-field__label" for="rc-plan-rail">{{ __('products.plan_drawer.rail_label') }}</label>
+                                <select id="rc-plan-rail" class="rc-pp-select" wire:model.live="billingRail">
+                                    @foreach($this->railOptions() as $value => $railLabel)
+                                        <option value="{{ $value }}">{{ $railLabel }}</option>
+                                    @endforeach
+                                </select>
+                                <p class="rc-drawer__subtitle">{{ __('products.plan_drawer.rail_hint') }}</p>
+                            </div>
+
                             {{-- Ship this product every: stepper + unit select --}}
                             <div class="rc-field">
                                 <label class="rc-field__label" for="rc-plan-interval">{{ __('products.plan_drawer.ship_label') }}</label>
