@@ -27,6 +27,23 @@ Route::get('/', function () {
 });
 
 /*
+ * Shopify's SUBSCRIPTION DEEP LINKS. From an order, a customer, or the
+ * Subscriptions section, Shopify sends the merchant to the owning app at
+ * {app_url}/subscriptions?customer_id=…&id=… — a path this app never served, so
+ * every one of those links 404'd. Forward them (query string intact, so the
+ * embedded entry params survive) to the contracts screen.
+ *
+ * The id/customer_id are passed through rather than dropped: the screen uses
+ * them to focus the right row, and keeping them means a future deep link needs
+ * no second redirect.
+ */
+Route::get('/subscriptions', function () {
+    $qs = request()->getQueryString();
+
+    return redirect('/admin/shopify-subscriptions'.($qs !== null && $qs !== '' ? '?'.$qs : ''));
+})->name('shopify.subscriptions.deeplink');
+
+/*
  * Platform-admin "Exit shop": clear the entered-shop session selection and return
  * to the Shops list. POST (state-changing, CSRF-protected by the web group). The
  * action is a no-op for anyone who is not an entered platform admin — clearing an

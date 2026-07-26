@@ -6,6 +6,7 @@
 return [
 
     'empty' => 'אין עדיין מנויי Shopify. הם יופיעו כאן כשלקוח יירשם למנוי בקופה.',
+    'empty_needs_scopes' => 'אם לקוח כבר נרשם למנוי, המנוי קיים ב-Shopify אבל האפליקציה עדיין לא רשאית לקרוא אותו: Shopify חוסמת חוזי מנויים מאחורי בקשת גישה מאושרת (read_own_subscription_contracts, write_own_subscription_contracts, read_customer_payment_methods). יש לבקש אותה בפרטנר דשבורד תחת API access; המנויים יופיעו כאן — ויתחילו להתחייב — מרגע שהיא תאושר.',
 
     'status' => [
         'ACTIVE' => 'פעיל',

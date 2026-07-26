@@ -6,6 +6,7 @@
 return [
 
     'empty' => 'No Shopify subscriptions yet. They appear here when a shopper subscribes at checkout.',
+    'empty_needs_scopes' => 'If a shopper has already subscribed, the subscription exists at Shopify but this app cannot read it yet: Shopify gates subscription contracts behind an approved API access request (read_own_subscription_contracts, write_own_subscription_contracts, read_customer_payment_methods). Request it in the Partner Dashboard under API access; subscriptions appear here — and start billing — once it is granted.',
 
     'status' => [
         'ACTIVE' => 'Active',

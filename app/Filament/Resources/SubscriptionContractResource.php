@@ -8,6 +8,7 @@ use App\Filament\Resources\SubscriptionContractResource\Pages;
 use App\Models\ActivityEvent;
 use App\Models\Shop;
 use App\Models\SubscriptionContract;
+use App\Services\Shopify\ShopifyApps;
 use App\Support\Tenant;
 use App\Support\Ui\Money;
 use Filament\Notifications\Notification;
@@ -154,7 +155,30 @@ class SubscriptionContractResource extends Resource
             ])
             ->defaultSort('next_billing_date', 'asc')
             ->emptyStateHeading(__('shopify_subscriptions.empty'))
+            // An empty table is ambiguous: no subscriptions yet, or subscriptions
+            // that exist at Shopify but that this app is not permitted to read?
+            // Say which — silence here reads as a broken app.
+            ->emptyStateDescription(fn (): ?string => self::awaitingScopeApproval()
+                ? __('shopify_subscriptions.empty_needs_scopes')
+                : null)
             ->emptyStateIcon('heroicon-o-arrow-path-rounded-square');
+    }
+
+    /**
+     * Is this shop on the Shopify rail but WITHOUT the scopes that let the app
+     * read contracts? Then Shopify may well hold live subscriptions this app
+     * cannot see — which is the difference between "none yet" and "not allowed
+     * to look", and the merchant deserves to be told which.
+     */
+    private static function awaitingScopeApproval(): bool
+    {
+        $shop = Tenant::current();
+        if (! $shop instanceof Shop || ! $shop->usesShopifyPaymentsRail()) {
+            return false;
+        }
+
+        return ShopifyApps::missingScopes($shop->shopifyAppKey(), $shop->shopify_scopes) !== []
+            || ! str_contains((string) $shop->shopify_scopes, 'own_subscription_contracts');
     }
 
     /** Run one merchant verb through the action service and report the outcome. */

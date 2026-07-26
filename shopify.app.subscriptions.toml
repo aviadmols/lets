@@ -70,6 +70,12 @@ extension_directories = [
 # and unlike the subscription-contract scopes it is not gated behind the
 # protected-customer-data review — so a product can be made subscribable before
 # that approval lands (managing the resulting CONTRACTS still needs it).
+# PROVEN 2026-07-26: adding read_own_subscription_contracts,
+# write_own_subscription_contracts or read_customer_payment_methods here makes
+# Shopify REJECT the whole version ("app_access / Validation errors: scopes:
+# …"). They are gated behind the API-access request in the Partner Dashboard —
+# there is no code-side way around it, unlike write_purchase_options, which is
+# free and is what makes a product subscribable in the first place.
 scopes = "read_customers,read_products,write_products,read_purchase_options,write_purchase_options,write_orders,write_draft_orders,write_fulfillments,write_merchant_managed_fulfillment_orders"
 use_legacy_install_flow = false
 
