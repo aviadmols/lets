@@ -40,6 +40,13 @@
     --rc-ink-on-primary: #FFFFFF;
     --rc-link: var(--rc-blue);
 
+    /* --- 1.2b Brand mark — the LETS half-discs. These are the LOGO's own
+           colours, not themeable surfaces: they stay constant while the wordmark
+           inherits the shell's ink (light + dark). Only components/logo.css
+           consumes them. --- */
+    --rc-logo-blue: #0066FF;
+    --rc-logo-orchid: #EE82EE;
+
     /* --- 1.3 Status / semantic (Tailwind / Horizon semantic ramp) --- */
     --rc-green: #10B981;   --rc-green-bg: #D1FAE5;
     --rc-gray: #6B7280;    --rc-gray-bg: #F3F4F6;
@@ -911,6 +918,55 @@ a.rc-railed:hover { background: var(--rc-blue-bg); }
 @keyframes rc-shimmer {
     0%   { background-position: 100% 0; }
     100% { background-position: 0 0; }
+}
+
+/* =============================================================================
+   logo.css — the LETS brand lockup (.rc-logo), used wherever the app is named:
+   the panel brand slot, the login screen, and any square mark slot.
+
+   Consumes tokens from theme.css only. The two half-discs are the ONE place the
+   brand's own colours appear (they are the mark, not a themeable surface), so
+   they are declared as --rc-logo-* tokens here and referenced by the paths.
+   ========================================================================== */
+
+.rc-logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    line-height: 1;
+    color: var(--rc-ink);
+}
+
+/* The mark scales with the lockup's font-size, so one size knob drives both. */
+.rc-logo__mark {
+    inline-size: 0.86em;
+    block-size: 0.9em;
+    flex: none;
+    overflow: visible;
+}
+
+.rc-logo__mark-top {
+    fill: var(--rc-logo-blue);
+}
+
+.rc-logo__mark-bottom {
+    fill: var(--rc-logo-orchid);
+}
+
+/* Real text in the panel font — crisp at any zoom, and it inherits the shell's
+   ink so the lockup reads on a light or a dark surface. */
+.rc-logo__word {
+    font-weight: 900;
+    font-size: 1.05em;
+    letter-spacing: -0.03em;
+    color: currentColor;
+}
+
+/* Filament's brand slot constrains height; keep the lockup from inheriting the
+   heading styles of whatever container it lands in. */
+.fi-logo .rc-logo,
+.fi-sidebar-header .rc-logo {
+    font-size: 1.35rem;
 }
 
 /* mail-settings.css — Settings → Email notifications (W9 Part A)
@@ -2169,6 +2225,11 @@ button.rc-fb-node:focus-visible {
 .rc-timeline__dot--success { background: var(--rc-green); }
 .rc-timeline__dot--failure { background: var(--rc-red); }
 .rc-timeline__dot--info    { background: var(--rc-blue); }
+/* An act that succeeded but warrants a second look — today, a merchant issuing a
+   document whose earlier attempt had an unknown outcome. Not a failure (red would
+   be wrong) and not routine (info would hide it in an audit scan). Same amber
+   reasoning as the `unresolved` badge. */
+.rc-timeline__dot--warning { background: var(--rc-amber); }
 
 .rc-timeline__body { display: flex; flex-direction: column; gap: var(--rc-space-1); }
 .rc-timeline__title { font: var(--rc-type-body-strong); color: var(--rc-ink); }

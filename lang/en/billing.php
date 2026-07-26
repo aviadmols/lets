@@ -86,6 +86,7 @@ return [
             'shopify_payments' => 'Shopify Payments',
             'shopify_payments_help' => 'Shoppers subscribe at the Shopify checkout; Shopify vaults the card and processes each cycle when this app requests it. Requires Shopify Payments and an install through the subscriptions (custom) app.',
             'switch_warning' => 'Switching does not move existing subscriptions between engines: active Shopify contracts stop billing if you leave the Shopify Payments engine, and PayPlus plans keep charging regardless of this choice.',
+            'detected_shopify_payments' => 'This store sells through Shopify Payments, so it was set to bill subscriptions there and the PayPlus connection settings are hidden. Switch to PayPlus below to use a PayPlus terminal instead.',
         ],
 
         'retries' => [

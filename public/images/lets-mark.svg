@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 222 232" role="img" aria-label="LETS">
+  <title>LETS</title>
+  <!-- The mark alone (no wordmark) — favicon, avatars, and any square slot. -->
+  <path d="M0 0 H222 A111 111 0 0 1 0 0 Z" fill="#0066FF"/>
+  <path d="M0 232 H222 A111 111 0 0 0 0 232 Z" fill="#EE82EE"/>
+</svg>

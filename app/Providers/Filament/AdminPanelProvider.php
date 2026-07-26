@@ -49,9 +49,13 @@ use Illuminate\View\Middleware\ShareErrorsFromSession;
 class AdminPanelProvider extends PanelProvider
 {
     // === CONSTANTS ===
-    public const BRAND_NAME = 'PayPlus Subscriptions';
+    /** The app ships as LETS; this is the accessible name behind the logo lockup. */
+    public const BRAND_NAME = 'LETS';
     public const THEME_ASSET_ID = 'rc-admin-theme';
     public const THEME_ASSET_PATH = 'css/rc-admin.css';
+    /** Standalone brand files for slots that cannot render Blade (favicon, docs). */
+    public const LOGO_PATH = 'images/lets-logo.svg';
+    public const MARK_PATH = 'images/lets-mark.svg';
     public const LOCALES = ['en', 'he'];
 
     /**
@@ -127,7 +131,11 @@ class AdminPanelProvider extends PanelProvider
             ->path('admin')
             ->login()
             ->brandName(self::BRAND_NAME)
-            ->favicon(asset('favicon.ico'))
+            // The brand slot renders the LETS lockup (inline SVG mark + wordmark in
+            // the panel font) instead of the app name as text — brandName stays as
+            // the accessible name Filament uses for the alt/title.
+            ->brandLogo(fn (): View => view('components.rc.logo'))
+            ->favicon(asset(self::MARK_PATH))
             ->colors([
                 // Horizon palette: violet primary + Tailwind's cool "gray" ramp
                 // (#6B7280 / #111827 — exactly Horizon's neutrals).

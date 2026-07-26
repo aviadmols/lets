@@ -85,6 +85,7 @@ return [
             'shopify_payments' => 'Shopify Payments',
             'shopify_payments_help' => 'הלקוח נרשם למנוי בצ׳קאאוט של שופיפיי; שופיפיי שומרת את הכרטיס ומבצעת כל חיוב כשהאפליקציה מבקשת. דורש Shopify Payments והתקנה דרך אפליקציית המנויים (Custom).',
             'switch_warning' => 'החלפה אינה מעבירה מנויים קיימים בין המנועים: חוזי שופיפיי פעילים מפסיקים להתחייב אם עוזבים את מנוע Shopify Payments, ותוכניות PayPlus ממשיכות לחייב ללא קשר לבחירה זו.',
+            'detected_shopify_payments' => 'החנות הזו סולקת דרך Shopify Payments, ולכן היא הוגדרה לחייב שם את המנויים והגדרות החיבור ל־PayPlus מוסתרות. עברו ל־PayPlus למטה כדי להשתמש במסוף PayPlus במקום.',
         ],
 
         'retries' => [

@@ -7,6 +7,7 @@ use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusAccountDiscovery;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
 use App\Support\Tenant;
+use App\Support\Ui\PanelAccess;
 use Filament\Forms\Components\Actions;
 use Filament\Forms\Components\Actions\Action;
 use Filament\Forms\Components\Placeholder;
@@ -52,6 +53,35 @@ class ManagePayPlusConnection extends Page implements HasForms
 
     /** Credential keys that are sensitive → masked after save, never re-shown. */
     public const SECRET_KEYS = ['api_key', 'secret_key', 'webhook_secret'];
+
+    /**
+     * PayPlus is this screen's whole subject, so a store that bills through
+     * Shopify Payments and has NO PayPlus credentials should never be shown it —
+     * the gateway it configures plays no part in that store's money. A shop that
+     * DOES hold credentials keeps the screen (see Shop::hidesPayplusSettings), or
+     * switching rails would strand those credentials unreachable.
+     */
+    private static function hiddenForShop(): bool
+    {
+        $shop = Tenant::current();
+
+        return $shop instanceof Shop && $shop->hidesPayplusSettings();
+    }
+
+    /** A direct URL is denied too — not merely hidden from the sidebar. */
+    public static function canAccess(): bool
+    {
+        return ! self::hiddenForShop() && PanelAccess::canSeeShopScoped();
+    }
+
+    public static function shouldRegisterNavigation(): bool
+    {
+        if (self::hiddenForShop()) {
+            return false;
+        }
+
+        return PanelAccess::canSeeShopScoped() && static::$shouldRegisterNavigation;
+    }
 
     /** Plain (non-secret) keys persisted directly into the encrypted bag. */
     public const PLAIN_KEYS = ['terminal_uid', 'cashier_uid', 'payment_page_uid', 'base_url'];

@@ -57,6 +57,20 @@ class Shop extends Model
     public const RAIL_SHOPIFY_PAYMENTS = 'shopify_payments';
     public const SUBSCRIPTION_RAILS = [self::RAIL_PAYPLUS, self::RAIL_SHOPIFY_PAYMENTS];
 
+    /**
+     * Whether the store sells through Shopify Payments, as reported by Shopify.
+     * UNKNOWN is a real state, not a placeholder: the detection needs an API the
+     * app may not be granted, and no screen may be hidden on a guess.
+     */
+    public const SHOPIFY_PAYMENTS_UNKNOWN = 'unknown';
+    public const SHOPIFY_PAYMENTS_ACTIVE = 'active';
+    public const SHOPIFY_PAYMENTS_INACTIVE = 'inactive';
+    public const SHOPIFY_PAYMENTS_STATUSES = [
+        self::SHOPIFY_PAYMENTS_UNKNOWN,
+        self::SHOPIFY_PAYMENTS_ACTIVE,
+        self::SHOPIFY_PAYMENTS_INACTIVE,
+    ];
+
     /** PayPlus credential keys expected inside the encrypted bag. */
     public const PAYPLUS_KEYS = [
         'api_key', 'secret_key', 'terminal_uid', 'cashier_uid',
@@ -114,6 +128,7 @@ class Shop extends Model
             // secret is undecryptable can't 500 (see EncryptedString).
             'lets_api_secret' => EncryptedString::class,
             'trial_ends_at' => 'datetime',
+            'shopify_payments_checked_at' => 'datetime',
             'installed_at' => 'datetime',
             'uninstalled_at' => 'datetime',
         ];
@@ -188,6 +203,34 @@ class Shop extends Model
     public function usesShopifyPaymentsRail(): bool
     {
         return $this->subscriptionRail() === self::RAIL_SHOPIFY_PAYMENTS;
+    }
+
+    /** The detected Shopify-Payments state, normalised (unknown on anything odd). */
+    public function shopifyPaymentsStatus(): string
+    {
+        $status = (string) ($this->shopify_payments_status ?? '');
+
+        return in_array($status, self::SHOPIFY_PAYMENTS_STATUSES, true)
+            ? $status
+            : self::SHOPIFY_PAYMENTS_UNKNOWN;
+    }
+
+    /** Shopify CONFIRMED the store sells through Shopify Payments. */
+    public function hasShopifyPayments(): bool
+    {
+        return $this->shopifyPaymentsStatus() === self::SHOPIFY_PAYMENTS_ACTIVE;
+    }
+
+    /**
+     * Should the PayPlus-only screens (the gateway connection, its credentials)
+     * be hidden for this shop? Only when the store bills on the Shopify-Payments
+     * rail AND has no PayPlus connection to manage — a shop that already holds
+     * PayPlus credentials keeps the screen, or switching rails would strand
+     * those credentials with no way to review or remove them.
+     */
+    public function hidesPayplusSettings(): bool
+    {
+        return $this->usesShopifyPaymentsRail() && ! $this->hasPayplusConnection();
     }
 
     // === Shopify credentials + lifecycle ===

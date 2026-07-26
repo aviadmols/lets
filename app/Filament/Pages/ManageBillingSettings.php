@@ -127,7 +127,9 @@ class ManageBillingSettings extends Page implements HasForms
         $shop = Tenant::current();
 
         return Section::make(__('billing.settings.rail.heading'))
-            ->description(__('billing.settings.rail.intro'))
+            ->description($shop instanceof Shop && $shop->hasShopifyPayments()
+                ? __('billing.settings.rail.detected_shopify_payments')
+                : __('billing.settings.rail.intro'))
             ->schema([
                 Radio::make('subscription_rail')
                     ->label(__('billing.settings.rail.label'))

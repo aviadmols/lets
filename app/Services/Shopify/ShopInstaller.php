@@ -3,6 +3,7 @@
 namespace App\Services\Shopify;
 
 use App\Jobs\Products\ImportShopProductsJob;
+use App\Jobs\Shopify\DetectShopifyPaymentsJob;
 use App\Jobs\Shopify\RegisterShopifyWebhooksJob;
 use App\Models\Shop;
 use Illuminate\Support\Facades\Log;
@@ -62,6 +63,12 @@ final class ShopInstaller
 
         // Register webhooks for THIS shop (idempotent, tenant-bound job).
         RegisterShopifyWebhooksJob::dispatch($shop->id);
+
+        // Ask Shopify whether this store sells through Shopify Payments, so a store
+        // that does is tagged onto that rail (and its PayPlus-only settings hidden)
+        // before the merchant first opens the admin. Never overrides a merchant
+        // choice or a shop that already holds PayPlus credentials.
+        DetectShopifyPaymentsJob::dispatch($shop->id);
 
         // Backfill the local product cache from this shop's source (idempotent,
         // tenant-bound, on the `sync` queue). Product webhooks keep it fresh after.

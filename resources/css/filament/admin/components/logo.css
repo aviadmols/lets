@@ -1,0 +1,48 @@
+/* =============================================================================
+   logo.css — the LETS brand lockup (.rc-logo), used wherever the app is named:
+   the panel brand slot, the login screen, and any square mark slot.
+
+   Consumes tokens from theme.css only. The two half-discs are the ONE place the
+   brand's own colours appear (they are the mark, not a themeable surface), so
+   they are declared as --rc-logo-* tokens here and referenced by the paths.
+   ========================================================================== */
+
+.rc-logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    line-height: 1;
+    color: var(--rc-ink);
+}
+
+/* The mark scales with the lockup's font-size, so one size knob drives both. */
+.rc-logo__mark {
+    inline-size: 0.86em;
+    block-size: 0.9em;
+    flex: none;
+    overflow: visible;
+}
+
+.rc-logo__mark-top {
+    fill: var(--rc-logo-blue);
+}
+
+.rc-logo__mark-bottom {
+    fill: var(--rc-logo-orchid);
+}
+
+/* Real text in the panel font — crisp at any zoom, and it inherits the shell's
+   ink so the lockup reads on a light or a dark surface. */
+.rc-logo__word {
+    font-weight: 900;
+    font-size: 1.05em;
+    letter-spacing: -0.03em;
+    color: currentColor;
+}
+
+/* Filament's brand slot constrains height; keep the lockup from inheriting the
+   heading styles of whatever container it lands in. */
+.fi-logo .rc-logo,
+.fi-sidebar-header .rc-logo {
+    font-size: 1.35rem;
+}
