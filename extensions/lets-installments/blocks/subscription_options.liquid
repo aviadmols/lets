@@ -1,22 +1,25 @@
 {%- comment -%}
-  LETS subscription options app block — the storefront SUBSCRIBE entry.
+  LETS purchase options app block — the storefront BUY area for a product page.
 
   The merchant drops "LETS Subscribe & Save" onto the product page in the theme
-  editor and the shopper gets: one-time vs subscribe, a cadence picker, and an
-  add-to-cart that carries the chosen `selling_plan`.
+  editor and it ALWAYS renders a working buy area, in one of two shapes:
 
-  This renders from Shopify's NATIVE product.selling_plan_groups — the groups our
-  app publishes from the admin (Products -> a plan -> "Publish to Shopify"). That
-  is deliberate and is what makes the Shopify-Payments rail work end to end:
-  the cart line carries a selling_plan id, so Shopify's checkout vaults the card
-  and creates a SubscriptionContract our app owns (and then bills, cycle by
-  cycle, from BillingAttemptJob). No App Proxy call is needed or wanted here —
-  the price, the discount and the cadence all come from Shopify itself, so the
-  storefront can never be talked into a price we did not publish.
+    - the product HAS published subscription plans → a choice: one-time purchase
+      vs subscribe, a cadence picker, and an add-to-cart carrying the chosen
+      `selling_plan`;
+    - the product has NO subscription plans → the plain one-time add-to-cart.
 
-  A product with no published selling plan renders NOTHING for shoppers (and a
-  short hint inside the theme editor only), so dropping the block on every
-  product page is safe.
+  So the block can be placed on every product page once and it never leaves a
+  page with a dead area: publishing a plan later (LETS admin → Products → a plan
+  → "Publish to Shopify") turns the same block into the choice, with no theme
+  edit.
+
+  Subscriptions render from Shopify's NATIVE selling_plan_allocations — the
+  groups our app publishes. That is what makes the Shopify-Payments rail work
+  end to end: the cart line carries a selling_plan id, so Shopify's checkout
+  vaults the card and creates a SubscriptionContract our app owns (and then
+  bills, cycle by cycle, from BillingAttemptJob). No App Proxy call is involved,
+  so the storefront can never be talked into a price we did not publish.
 
   For DEPOSIT + installments (the PayPlus rail) use the sibling block
   "LETS Deposit Plan" (blocks/installments_button.liquid) instead — that rail
@@ -24,16 +27,18 @@
 {%- endcomment -%}
 
 {%- assign current_variant = product.selected_or_first_available_variant -%}
-{%- assign groups = product.selling_plan_groups -%}
+{%- assign allocations = current_variant.selling_plan_allocations -%}
 {%- assign has_plans = false -%}
-{%- if groups != blank and groups.size > 0 -%}
+{%- if allocations != blank and allocations.size > 0 -%}
   {%- assign has_plans = true -%}
 {%- endif -%}
+{%- assign subscribe_first = false -%}
+{%- if has_plans and block.settings.default_selection == 'subscribe' -%}
+  {%- assign subscribe_first = true -%}
+{%- endif -%}
 
-{%- if product and current_variant and has_plans -%}
-  {%- assign first_group = groups | first -%}
-
-  <div class="lets-subs" data-lets-subs data-variant-id="{{ current_variant.id }}">
+{%- if product and current_variant -%}
+  <div class="lets-subs" data-lets-subs data-has-plans="{{ has_plans }}">
     <form method="post" action="{{ routes.cart_add_url }}" data-lets-subs-form>
       <input type="hidden" name="form_type" value="product">
       <input type="hidden" name="utf8" value="✓">
@@ -43,55 +48,83 @@
         <p class="lets-subs__heading">{{ block.settings.heading }}</p>
       {%- endif -%}
 
-      {%- comment -%} Purchase type: one-time vs subscribe. {%- endcomment -%}
-      <label class="lets-subs__option">
-        <input type="radio" name="lets_purchase_type" value="onetime" checked data-lets-subs-type>
-        <span class="lets-subs__option-label">{{ block.settings.one_time_label | default: 'One-time purchase' }}</span>
-        <span class="lets-subs__price">{{ current_variant.price | money }}</span>
-      </label>
+      {%- if has_plans -%}
+        {%- comment -%} Both options exist → let the shopper choose. {%- endcomment -%}
+        <label class="lets-subs__option">
+          <input type="radio" name="lets_purchase_type" value="onetime" data-lets-subs-type
+            {% unless subscribe_first %}checked{% endunless %}>
+          <span class="lets-subs__option-label">{{ block.settings.one_time_label | default: 'One-time purchase' }}</span>
+          <span class="lets-subs__price">{{ current_variant.price | money }}</span>
+        </label>
 
-      <label class="lets-subs__option">
-        <input type="radio" name="lets_purchase_type" value="subscribe" data-lets-subs-type>
-        <span class="lets-subs__option-label">{{ block.settings.subscribe_label | default: 'Subscribe & save' }}</span>
-      </label>
+        <label class="lets-subs__option">
+          <input type="radio" name="lets_purchase_type" value="subscribe" data-lets-subs-type
+            {% if subscribe_first %}checked{% endif %}>
+          <span class="lets-subs__option-label">{{ block.settings.subscribe_label | default: 'Subscribe & save' }}</span>
+          {%- assign first_allocation = allocations | first -%}
+          {%- if first_allocation.per_delivery_price < current_variant.price -%}
+            <span class="lets-subs__price">{{ first_allocation.per_delivery_price | money }}</span>
+          {%- endif -%}
+        </label>
 
-      {%- comment -%}
-        Cadence. Every published plan across every group is listed; the option's
-        value IS the selling_plan id Shopify expects on the cart line.
-      {%- endcomment -%}
-      <div class="lets-subs__plans" data-lets-subs-plans hidden>
-        <select name="selling_plan" class="lets-subs__select" data-lets-subs-select aria-label="{{ first_group.name | escape }}">
-          {%- for group in groups -%}
-            {%- for allocation in current_variant.selling_plan_allocations -%}
-              {%- if allocation.selling_plan_group_id == group.id -%}
-                <option value="{{ allocation.selling_plan.id }}">
-                  {{ allocation.selling_plan.name }} — {{ allocation.per_delivery_price | money }}
-                </option>
-              {%- endif -%}
+        {%- comment -%}
+          Cadence. The option value IS the selling_plan id Shopify expects on the
+          cart line, so what the shopper picks is exactly what gets billed.
+        {%- endcomment -%}
+        <div class="lets-subs__plans" data-lets-subs-plans {% unless subscribe_first %}hidden{% endunless %}>
+          <select name="selling_plan" class="lets-subs__select" data-lets-subs-select
+            aria-label="{{ block.settings.subscribe_label | default: 'Subscribe & save' | escape }}">
+            {%- for allocation in allocations -%}
+              <option value="{{ allocation.selling_plan.id }}">
+                {{ allocation.selling_plan.name }} — {{ allocation.per_delivery_price | money }}
+              </option>
             {%- endfor -%}
-          {%- endfor -%}
-        </select>
+          </select>
 
-        {%- if block.settings.subscribe_note != blank -%}
-          <p class="lets-subs__note">{{ block.settings.subscribe_note }}</p>
+          {%- if block.settings.subscribe_note != blank -%}
+            <p class="lets-subs__note">{{ block.settings.subscribe_note }}</p>
+          {%- endif -%}
+        </div>
+      {%- else -%}
+        {%- comment -%}
+          No published subscription plan → a plain one-time buy area, so the block
+          is safe to leave on every product page. It becomes the choice above the
+          moment a plan is published; no theme edit needed.
+        {%- endcomment -%}
+        <div class="lets-subs__single">
+          <span class="lets-subs__option-label">{{ block.settings.one_time_label | default: 'One-time purchase' }}</span>
+          <span class="lets-subs__price">{{ current_variant.price | money }}</span>
+        </div>
+      {%- endif -%}
+
+      <button type="submit" class="lets-subs__cta" data-lets-subs-cta {% unless current_variant.available %}disabled{% endunless %}>
+        {%- if current_variant.available -%}
+          {{ block.settings.button_label | default: 'Add to cart' }}
+        {%- else -%}
+          {{ block.settings.sold_out_label | default: 'Sold out' }}
         {%- endif -%}
-      </div>
-
-      <button type="submit" class="lets-subs__cta" data-lets-subs-cta>
-        {{ block.settings.button_label | default: 'Add to cart' }}
       </button>
+
+      {%- if request.design_mode and has_plans == false -%}
+        {%- comment -%} Theme-editor-only hint; shoppers never see this. {%- endcomment -%}
+        <p class="lets-subs__note">
+          {{ 'No subscription plan is published for this product yet, so this block shows a one-time purchase. In the LETS app: Products → this product → a subscription plan → "Publish to Shopify".' }}
+        </p>
+      {%- endif -%}
     </form>
   </div>
 
   {%- style -%}
     .lets-subs { margin: 12px 0; }
     .lets-subs__heading { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
-    .lets-subs__option {
-      display: flex; align-items: center; gap: 8px; cursor: pointer;
+    .lets-subs__option,
+    .lets-subs__single {
+      display: flex; align-items: center; gap: 8px;
       padding: 10px 12px; margin-bottom: 6px;
       border: 1px solid {{ block.settings.border_color | default: '#d1d5db' }};
       border-radius: 10px;
     }
+    .lets-subs__option { cursor: pointer; }
     .lets-subs__option-label { flex: 1; font-size: 14px; }
     .lets-subs__price { font-size: 14px; font-weight: 600; }
     .lets-subs__plans { margin: 0 0 10px; padding-inline-start: 12px; }
@@ -108,6 +141,7 @@
       color: {{ block.settings.button_fg | default: '#ffffff' }};
       font-size: 15px; font-weight: 600;
     }
+    .lets-subs__cta[disabled] { opacity: .5; cursor: not-allowed; }
   {%- endstyle -%}
 
   <script>
@@ -120,18 +154,19 @@
       var plans = root.querySelector('[data-lets-subs-plans]');
       var select = root.querySelector('[data-lets-subs-select]');
       var variantInput = root.querySelector('[data-lets-subs-variant]');
+      var types = root.querySelectorAll('[data-lets-subs-type]');
 
       function syncType() {
-        var subscribing = root.querySelector('[data-lets-subs-type][value="subscribe"]').checked;
+        if (!plans || !select) { return; }
+        var subscribeInput = root.querySelector('[data-lets-subs-type][value="subscribe"]');
+        var subscribing = !!subscribeInput && subscribeInput.checked;
         plans.hidden = !subscribing;
         // A one-time purchase must NOT carry a selling_plan — Shopify would
         // create a subscription contract for a shopper who did not ask for one.
         select.disabled = !subscribing;
       }
 
-      root.querySelectorAll('[data-lets-subs-type]').forEach(function (input) {
-        input.addEventListener('change', syncType);
-      });
+      types.forEach(function (input) { input.addEventListener('change', syncType); });
       syncType();
 
       // Keep the posted variant in sync with the theme's variant picker, so the
@@ -146,12 +181,6 @@
       });
     })();
   </script>
-
-{%- elsif request.design_mode -%}
-  {%- comment -%} Theme-editor-only hint; shoppers never see this. {%- endcomment -%}
-  <p class="lets-subs__empty">
-    {{ 'No subscription plan is published for this product yet. In the LETS app open Products → this product → a subscription plan → "Publish to Shopify".' }}
-  </p>
 {%- endif -%}
 
 {% schema %}
@@ -160,10 +189,25 @@
   "target": "section",
   "settings": [
     {
+      "type": "paragraph",
+      "content": "Shows a subscribe-or-buy-once choice when this product has a published subscription plan, and a plain add-to-cart when it does not — so it is safe to add to every product page. If your theme already shows its own add-to-cart, hide that one to avoid two buttons."
+    },
+    {
       "type": "text",
       "id": "heading",
       "label": "Heading",
       "default": "Purchase options"
+    },
+    {
+      "type": "select",
+      "id": "default_selection",
+      "label": "Pre-selected option",
+      "info": "Which option is selected when the page loads (only when a subscription plan exists).",
+      "options": [
+        { "value": "onetime", "label": "One-time purchase" },
+        { "value": "subscribe", "label": "Subscription" }
+      ],
+      "default": "onetime"
     },
     {
       "type": "text",
@@ -189,6 +233,12 @@
       "id": "button_label",
       "label": "Add-to-cart label",
       "default": "Add to cart"
+    },
+    {
+      "type": "text",
+      "id": "sold_out_label",
+      "label": "Sold-out label",
+      "default": "Sold out"
     },
     {
       "type": "color",
