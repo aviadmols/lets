@@ -27,6 +27,22 @@ Route::get('/', function () {
 });
 
 /*
+ * The PUBLIC privacy notice. Deliberately outside every auth/tenant middleware:
+ * a Shopify reviewer, a merchant comparing apps, and a shopper exercising a data
+ * right all reach it with no session — a privacy page behind a login is not a
+ * privacy page. `?lang=he` serves the Hebrew translation; otherwise the app's
+ * default locale applies.
+ */
+Route::get('/privacy', function () {
+    $requested = (string) request()->query('lang', '');
+    if (in_array($requested, \App\Providers\Filament\AdminPanelProvider::LOCALES, true)) {
+        app()->setLocale($requested);
+    }
+
+    return response()->view('legal.privacy');
+})->name('legal.privacy');
+
+/*
  * Shopify's SUBSCRIPTION DEEP LINKS. From an order, a customer, or the
  * Subscriptions section, Shopify sends the merchant to the owning app at
  * {app_url}/subscriptions?customer_id=…&id=… — a path this app never served, so
