@@ -130,12 +130,19 @@ final class OAuthController extends Controller
             abort(Response::HTTP_BAD_GATEWAY, 'Access token missing in Shopify response.');
         }
 
+        // An expiring offline token carries expires_in. When it is ABSENT the token
+        // is a legacy non-expiring one, which the Admin API now rejects (403) — so
+        // storing null here is not a shrug, it is the flag that makes the next
+        // embedded load re-mint the token through token exchange.
+        $expiresIn = $response->json('expires_in');
+        $expiresIn = is_numeric($expiresIn) ? (int) $expiresIn : null;
+
         // 5–7. Upsert the Shop (matched by domain ⇒ reinstall reuses the row),
         //   store the ENCRYPTED offline token + granted scopes, provision the
         //   store-scoped admin login, and register webhooks + backfill products.
         //   This shared routine is ALSO used by the managed-install / token-exchange
         //   path (EmbeddedAuthenticate) — one install routine, never duplicated.
-        app(ShopInstaller::class)->installFromToken($shop, $accessToken, $scopes !== '' ? $scopes : null, $appKey);
+        app(ShopInstaller::class)->installFromToken($shop, $accessToken, $scopes !== '' ? $scopes : null, $appKey, $expiresIn);
 
         // 8. Handoff to saas-multitenancy-billing: trial/subscribe confirmation.
         // TODO(saas agent): redirect into the AppSubscription trial flow here

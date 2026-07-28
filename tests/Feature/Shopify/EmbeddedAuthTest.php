@@ -235,14 +235,15 @@ final class EmbeddedAuthTest extends TestCase
             'status' => Shop::STATUS_INSTALLED,
         ]);
 
-        // A HEALTHY install records the scopes the app currently asks for.
-        // Anything less is a token that predates a scope change, which
-        // EmbeddedAuthenticate deliberately re-exchanges (see ScopeRefreshTest) —
-        // so a fixture with stale scopes would make "no second exchange" fail for
-        // the wrong reason.
+        // A HEALTHY install records the scopes the app currently asks for AND an
+        // expiring token. Either gap makes EmbeddedAuthenticate deliberately
+        // re-mint (see ScopeRefreshTest / TokenRefreshTest) — a legacy token with
+        // no expiry is one the Admin API now rejects outright — so a fixture
+        // missing either would fail "no second exchange" for the wrong reason.
         $shop->captureShopifyInstall(
             'shpat_existing_token',
             (string) config('shopify.oauth_scopes'),
+            86400,
         );
 
         return $shop->fresh();

@@ -37,6 +37,9 @@ class Shop extends Model
     /** Statuses for which background charge dispatch + Shopify API calls are allowed. */
     public const LIVE_STATUSES = [self::STATUS_INSTALLED, self::STATUS_ACTIVE];
 
+    /** Re-mint an offline token this many seconds before it lapses (10 minutes). */
+    public const TOKEN_REFRESH_WINDOW = 600;
+
     /**
      * Which Shopify Partner app installed this shop. ONE deployment serves both:
      * 'public' is the App-Store LETS app; 'custom' is the stage-1 custom app real
@@ -140,6 +143,7 @@ class Shop extends Model
             // secret is undecryptable can't 500 (see EncryptedString).
             'lets_api_secret' => EncryptedString::class,
             'trial_ends_at' => 'datetime',
+            'shopify_token_expires_at' => 'datetime',
             'shopify_payments_checked_at' => 'datetime',
             'installed_at' => 'datetime',
             'uninstalled_at' => 'datetime',
@@ -312,15 +316,43 @@ class Shop extends Model
      * Capture (or re-capture on reinstall) the offline OAuth token. Matched by
      * shopify_domain upstream so reinstall never duplicates the Shop row.
      */
-    public function captureShopifyInstall(string $accessToken, ?string $scopes): void
+    public function captureShopifyInstall(string $accessToken, ?string $scopes, ?int $expiresIn = null): void
     {
         $this->forceFill([
             'shopify_access_token' => $accessToken,   // 'encrypted' cast encrypts on write
             'shopify_scopes' => $scopes,
+            // Shopify REJECTS non-expiring tokens now, so a token with no expiry
+            // is a legacy one we must replace — recording null says exactly that
+            // (see shopifyTokenNeedsRefresh).
+            'shopify_token_expires_at' => $expiresIn !== null && $expiresIn > 0
+                ? now()->addSeconds($expiresIn)
+                : null,
             'status' => self::STATUS_INSTALLED,
             'installed_at' => now(),
             'uninstalled_at' => null,
         ])->save();
+    }
+
+    /**
+     * Must the offline token be re-minted before it is used again?
+     *
+     * TRUE in three cases, and the first is the one that matters today:
+     *   - no expiry recorded → a legacy NON-EXPIRING token, which the Admin API
+     *     now rejects outright (403). Every shop installed before expiring
+     *     tokens existed is in this state and is otherwise silently dead.
+     *   - already past expiry.
+     *   - inside the refresh window, so a long job cannot start on a token that
+     *     lapses mid-flight.
+     */
+    public function shopifyTokenNeedsRefresh(): bool
+    {
+        if ($this->shopifyAccessToken() === null) {
+            return false; // nothing to refresh; the shop is uninstalled
+        }
+
+        $expiry = $this->shopify_token_expires_at;
+
+        return $expiry === null || $expiry->isBefore(now()->addSeconds(self::TOKEN_REFRESH_WINDOW));
     }
 
     /** Read a single PayPlus credential from the encrypted bag. */

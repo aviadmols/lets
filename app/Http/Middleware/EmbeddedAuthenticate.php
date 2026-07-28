@@ -135,15 +135,27 @@ final class EmbeddedAuthenticate
             // sellingPlanGroupCreate" appears after a scope change). Re-exchange
             // once and the fresh token carries them.
             $missing = ShopifyApps::missingScopes($appKey, $shop->shopify_scopes);
-            if ($missing !== []) {
+
+            // A token that cannot be used is as broken as a missing scope, and
+            // more urgent: Shopify REJECTS non-expiring offline tokens outright,
+            // so every shop still holding a legacy one is silently cut off from
+            // the Admin API. Both conditions are fixed the same way — re-mint.
+            $stale = $shop->shopifyTokenNeedsRefresh();
+
+            if ($missing !== [] || $stale) {
                 $exchanged = $this->tokenExchange->exchange($shopDomain, $sessionToken, $appKey);
                 if ($exchanged !== null) {
                     $shop->captureShopifyInstall(
                         $exchanged['access_token'],
                         $exchanged['scope'] !== '' ? $exchanged['scope'] : null,
+                        $exchanged['expires_in'] ?? null,
                     );
-                    Log::info('shopify.embedded.scopes_refreshed', [
-                        'shop' => $shopDomain, 'app' => $appKey, 'was_missing' => $missing,
+                    Log::info('shopify.embedded.token_refreshed', [
+                        'shop' => $shopDomain,
+                        'app' => $appKey,
+                        'was_missing' => $missing,
+                        'was_stale' => $stale,
+                        'expires_in' => $exchanged['expires_in'] ?? null,
                     ]);
 
                     return $shop->fresh() ?? $shop;
@@ -168,6 +180,7 @@ final class EmbeddedAuthenticate
             $exchanged['access_token'],
             $exchanged['scope'] !== '' ? $exchanged['scope'] : null,
             $appKey,
+            $exchanged['expires_in'] ?? null,
         );
 
         Log::info('shopify.embedded.managed_install', ['shop' => $shopDomain, 'app' => $appKey]);
