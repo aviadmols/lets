@@ -5,8 +5,10 @@ namespace App\Filament\Resources;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Filament\Resources\SubscriptionResource\Pages;
 use App\Models\InstallmentPlan;
+use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Support\Tenant;
 use App\Support\Ui\Money;
 use App\Support\Ui\StatusBadge;
 use Filament\Resources\Resource;
@@ -52,6 +54,36 @@ class SubscriptionResource extends Resource
     public static function getPluralModelLabel(): string
     {
         return __('subscriptions.list.title');
+    }
+
+    /**
+     * Hide this screen on a shop billing its subscriptions through SHOPIFY.
+     *
+     * This list is the PayPlus engine's (installment_plans): we hold the card
+     * token and we charge. A shop on the Shopify-Payments rail has its
+     * subscriptions in SubscriptionContractResource instead, so leaving both in
+     * the sidebar gave the merchant two near-identically named screens, one of
+     * which was empty by construction and always would be — which reads as a
+     * broken app, not as a rail that does not apply.
+     *
+     * The mirror image of SubscriptionContractResource::shouldRegisterNavigation:
+     * each rail is invisible exactly where it is inert.
+     *
+     * Existing rows still win. A shop that moved rails keeps historical PayPlus
+     * plans, and hiding the only screen that shows them would hide real money.
+     */
+    public static function shouldRegisterNavigation(): bool
+    {
+        if (! parent::shouldRegisterNavigation()) {
+            return false;
+        }
+
+        $shop = Tenant::current();
+        if ($shop instanceof Shop && $shop->usesShopifyPaymentsRail()) {
+            return InstallmentPlan::query()->exists();
+        }
+
+        return true;
     }
 
     public static function table(Table $table): Table
