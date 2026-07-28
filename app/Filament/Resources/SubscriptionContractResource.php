@@ -192,7 +192,11 @@ class SubscriptionContractResource extends Resource
             // merchant reaches for without looking; everything else — skip,
             // reschedule, the attempt history — lives on the detail page, where
             // there is room to say what each one does.
-            ->recordUrl(fn (SubscriptionContract $r): string => Pages\ViewSubscriptionContract::getUrl(['record' => $r]))
+            // The KEY, never the model: passing the record itself serialises the
+            // whole row into the URL, and mount() then receives that JSON where an
+            // id belongs. Named `contract` rather than `record` to stay clear of
+            // Filament's own record binding, matching ViewSubscription's `{plan}`.
+            ->recordUrl(fn (SubscriptionContract $r): string => Pages\ViewSubscriptionContract::getUrl(['contract' => $r->getKey()]))
             ->defaultSort('next_billing_date', 'asc')
             ->emptyStateHeading(__('shopify_subscriptions.empty'))
             // An empty table is ambiguous: no subscriptions yet, or subscriptions
@@ -254,7 +258,7 @@ class SubscriptionContractResource extends Resource
     {
         return [
             'index' => Pages\ListSubscriptionContracts::route('/'),
-            'view' => Pages\ViewSubscriptionContract::route('/{record}'),
+            'view' => Pages\ViewSubscriptionContract::route('/{contract}'),
         ];
     }
 }

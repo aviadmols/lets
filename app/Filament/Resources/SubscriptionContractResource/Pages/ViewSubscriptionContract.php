@@ -47,11 +47,16 @@ class ViewSubscriptionContract extends Page
     #[Locked]
     public SubscriptionContract $record;
 
-    public function mount(int|string $record): void
+    /**
+     * The route parameter is `contract`, not `record`: Filament binds `{record}`
+     * itself, and the mismatch handed mount() the serialised MODEL where an id
+     * belongs — a JSON blob straight into a bigint column comparison.
+     */
+    public function mount(int|string $contract): void
     {
         // The tenant global scope fails closed, so a foreign id resolves to null
         // rather than to another shop's contract.
-        $found = SubscriptionContractResource::getEloquentQuery()->find($record);
+        $found = SubscriptionContractResource::getEloquentQuery()->find($contract);
 
         abort_if($found === null, 404);
 

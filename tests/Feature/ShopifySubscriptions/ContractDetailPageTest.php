@@ -30,6 +30,21 @@ final class ContractDetailPageTest extends TestCase
         parent::tearDown();
     }
 
+    public function test_the_row_link_carries_the_key_not_the_model(): void
+    {
+        $shop = $this->shop();
+        Tenant::set($shop);
+        $contract = $this->contract($shop);
+
+        // Passing the MODEL serialises the whole row into the URL, and mount()
+        // then receives that JSON where an id belongs — which reaches Postgres as
+        // a JSON blob compared against a bigint.
+        $url = ViewSubscriptionContract::getUrl(['contract' => $contract->getKey()]);
+
+        $this->assertStringEndsWith('/'.$contract->getKey(), $url);
+        $this->assertStringNotContainsString('shopify_gid', $url);
+    }
+
     public function test_it_shows_the_contract_cadence_in_words(): void
     {
         $shop = $this->shop();
