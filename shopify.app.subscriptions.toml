@@ -39,18 +39,27 @@ application_url = "https://app.lets.co.il"
 embedded = true
 
 # Which extensions this app ships. NOT the default (all of extensions/*) because
-# two of them cannot be RELEASED on this app yet and a version only releases if
-# EVERY extension in it can:
-#   - lets-thank-you + lets-subscriptions-account declare `network_access`, which
-#     Shopify must approve per app ("Network access must be requested and
-#     approved…"). Neither is usable on this store today anyway — the thank-you
-#     widget charges a PayPlus token (this store bills through Shopify Payments)
-#     and the customer-account page needs the still-unapproved subscription
-#     scopes. Add them back here once both approvals land.
+# a version only releases if EVERY extension in it can be released, so one that
+# is still waiting on an approval would hold back the other three.
+#
+# `network_access` (which lets-thank-you and lets-subscriptions-account both
+# declare) was the shared blocker. GRANTED 2026-07-28 — "Checkout and account UI
+# extensions are enabled" in the Partner Dashboard — so lets-thank-you ships now.
+#
+# lets-subscriptions-account stays out: it reads subscriptionContracts through
+# the Customer Account API, which needs the subscription scopes Shopify has not
+# granted yet (requested 2026-07-28, up to 7 business days). Add it back the day
+# that approval lands.
+#
+# Shipping lets-thank-you is about the APP, not this one store: it charges a
+# saved PayPlus token, which the pilot store — billing through Shopify Payments —
+# has no use for, but any PayPlus merchant installing through this app does.
+#
 # The public app (shopify.app.toml) keeps the default and ships all four.
 extension_directories = [
   "extensions/lets-installments",
   "extensions/lets-post-purchase",
+  "extensions/lets-thank-you",
 ]
 
 [access_scopes]
