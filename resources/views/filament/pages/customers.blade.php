@@ -37,8 +37,12 @@
                             <tr wire:key="cust-{{ $row['id'] }}">
                                 <td>
                                     <a class="rc-strong" href="{{ \App\Filament\Pages\CustomerDetail::getUrl(['customer' => $row['id']]) }}">
-                                        {{ $row['id'] }}
+                                        {{ $row['label'] }}
                                     </a>
+                                    {{-- The email under the name, when the name is not itself the email. --}}
+                                    @if($row['email'] && $row['email'] !== $row['label'])
+                                        <div class="rc-muted rc-ltr">{{ $row['email'] }}</div>
+                                    @endif
                                 </td>
                                 <td class="rc-ltr">{{ $row['active_subs'] }}</td>
                                 <td><span class="rc-dot rc-dot--{{ $row['dot'] }}" aria-hidden="true"></span></td>

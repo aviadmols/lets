@@ -62,8 +62,17 @@ class Customers extends Page
     public function customers(): Collection
     {
         $plans = InstallmentPlan::query()
-            ->when($this->search !== '', fn ($q) => $q->where('shopify_customer_id', 'like', '%' . $this->search . '%'))
-            ->get(['shopify_customer_id', 'status']);
+            // The box says "name or email" — so search those, not only the id. It
+            // searched the id alone, which is why typing a customer's name found
+            // nobody on a store whose ids are opaque numbers.
+            ->when($this->search !== '', function ($q): void {
+                $term = '%'.$this->search.'%';
+                $q->where(fn ($w) => $w
+                    ->where('customer_name', 'like', $term)
+                    ->orWhere('customer_email', 'like', $term)
+                    ->orWhere('shopify_customer_id', 'like', $term));
+            })
+            ->get(['shopify_customer_id', 'customer_name', 'customer_email', 'status']);
 
         return $plans
             ->whereNotNull('shopify_customer_id')
@@ -71,8 +80,17 @@ class Customers extends Page
             ->map(function (Collection $group, string $customerId): array {
                 $statuses = $group->map(fn ($p) => $p->status instanceof PlanStatus ? $p->status->value : (string) $p->status);
 
+                // A NAME, not the raw external id. Checkout captured it on the plan;
+                // showing the id instead made every row read like a database key —
+                // and on a WooCommerce store those ids are bare numbers, so the
+                // screen listed customers called "1".
+                $named = $group->first(fn ($p): bool => trim((string) $p->customer_name) !== '')
+                    ?? $group->first(fn ($p): bool => trim((string) $p->customer_email) !== '');
+
                 return [
                     'id' => $customerId,
+                    'label' => $named?->customerLabel() ?? $customerId,
+                    'email' => trim((string) ($named?->customer_email ?? '')) ?: null,
                     'active_subs' => $statuses->filter(fn (string $s): bool => $s === 'active')->count(),
                     'dot' => $this->dotTone($statuses->all()),
                 ];

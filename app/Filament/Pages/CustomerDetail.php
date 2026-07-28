@@ -40,9 +40,22 @@ class CustomerDetail extends Page
         $this->customer = $customer;
     }
 
+    /**
+     * The customer's NAME, from the plan that captured it at checkout — the raw
+     * external id is a database key, not a title. Falls back to the id when this
+     * customer has no plan carrying a name (a WooCommerce guest, say).
+     */
     public function getTitle(): string|Htmlable
     {
-        return $this->customer;
+        return $this->displayName();
+    }
+
+    public function displayName(): string
+    {
+        $named = $this->plans()->first(fn (InstallmentPlan $p): bool => trim((string) $p->customer_name) !== '')
+            ?? $this->plans()->first(fn (InstallmentPlan $p): bool => trim((string) $p->customer_email) !== '');
+
+        return $named?->customerLabel() ?? $this->customer;
     }
 
     /** @return Collection<int, InstallmentPlan> the customer's plans (tenant-scoped) */
