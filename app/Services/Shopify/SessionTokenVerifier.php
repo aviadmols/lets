@@ -12,6 +12,11 @@ namespace App\Services\Shopify;
  * aud == SHOPIFY_API_KEY; exp > now; nbf <= now (small leeway); iss & dest share
  * the same shop host. The caller derives the shop from the dest claim.
  *
+ * Two token SHAPES reach here and both are legitimate: the embedded admin's App
+ * Bridge sends iss/dest as full https://{shop}/admin URLs, while a checkout or
+ * customer-account UI extension sends the bare {shop}.myshopify.com host. See
+ * host() — assuming the first shape is what silently rejected every extension.
+ *
  * Session tokens are per-request and ~1 min lived — never persisted, never used
  * as the API token. They only authenticate the embedded-admin REQUEST and tell us
  * which shop is looking; the offline token (from OAuth) does the API work.
@@ -68,7 +73,9 @@ final class SessionTokenVerifier
             return null;
         }
 
-        // iss and dest must be the same shop (both are https://{shop}/admin URLs).
+        // iss and dest must name the same shop. Both must still resolve to a valid
+        // *.myshopify.com host — the check is unchanged in strictness, only in what
+        // shapes it can read.
         $issHost = $this->host((string) ($claims['iss'] ?? ''));
         $destHost = $this->host((string) ($claims['dest'] ?? ''));
         if ($issHost === '' || $destHost === '' || $issHost !== $destHost) {
@@ -84,9 +91,23 @@ final class SessionTokenVerifier
         return $this->host((string) ($claims['dest'] ?? ''));
     }
 
+    /**
+     * The shop host named by an iss/dest claim, whatever shape Shopify sent.
+     *
+     * The embedded admin's App Bridge sends full URLs (https://{shop}/admin), but
+     * a CHECKOUT / CUSTOMER-ACCOUNT UI extension sends the BARE host — and
+     * parse_url() reads a scheme-less string as a path, so PHP_URL_HOST came back
+     * null and every extension token failed verification with no way to tell it
+     * from a forged one. That is what left the thank-you upsell silently blank.
+     *
+     * ShopifyDomain::normalize is the project's existing gate for exactly this: it
+     * strips an optional scheme and path, then validates against the myshopify.com
+     * regex. Anything that is not a real shop domain still returns '' and still
+     * fails the caller closed.
+     */
     private function host(string $url): string
     {
-        return strtolower((string) (parse_url($url, PHP_URL_HOST) ?? ''));
+        return ShopifyDomain::normalize($url);
     }
 
     /** @return array<string, mixed>|null */

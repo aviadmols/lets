@@ -75,6 +75,45 @@ final class SessionTokenAuthTest extends TestCase
         $this->withToken($jwt)->getJson('/test/embedded-probe')->assertStatus(401);
     }
 
+    public function test_a_checkout_extension_token_with_a_bare_host_is_accepted(): void
+    {
+        $shop = $this->makeInstalledShop();
+
+        // A checkout / customer-account UI extension sends iss and dest as the BARE
+        // host, not as https://{shop}/admin. parse_url() reads a scheme-less string
+        // as a PATH, so the host came back empty and every extension token was
+        // rejected as unverifiable — which is what left the thank-you upsell blank
+        // while the admin worked perfectly.
+        $jwt = $this->makeJwt(self::SHOP, self::API_KEY, self::API_SECRET, bareHost: true);
+
+        $this->withToken($jwt)->getJson('/test/embedded-probe')
+            ->assertOk()
+            ->assertJsonPath('bound_shop_id', $shop->id);
+    }
+
+    public function test_a_token_whose_iss_and_dest_name_different_shops_is_rejected(): void
+    {
+        $this->makeInstalledShop();
+
+        // Accepting the bare-host shape must not weaken the check that both claims
+        // name the SAME shop — otherwise a token minted for one store could be
+        // replayed against another.
+        $jwt = $this->makeJwt(self::SHOP, self::API_KEY, self::API_SECRET, issShop: 'attacker.myshopify.com');
+
+        $this->withToken($jwt)->getJson('/test/embedded-probe')->assertStatus(401);
+    }
+
+    public function test_a_dest_that_is_not_a_shop_domain_is_rejected(): void
+    {
+        $this->makeInstalledShop();
+
+        // The host still has to BE a shop domain; normalising the shape must not
+        // start letting arbitrary hosts through.
+        $jwt = $this->makeJwt('evil.example.com', self::API_KEY, self::API_SECRET, bareHost: true);
+
+        $this->withToken($jwt)->getJson('/test/embedded-probe')->assertStatus(401);
+    }
+
     public function test_token_for_unknown_or_uninstalled_shop_is_rejected(): void
     {
         // No Shop row for the dest shop ⇒ reject.
@@ -97,13 +136,27 @@ final class SessionTokenAuthTest extends TestCase
         return $shop->fresh();
     }
 
-    private function makeJwt(string $shop, string $aud, string $secret, ?int $exp = null): string
-    {
+    /**
+     * @param  bool  $bareHost  emit iss/dest as the bare host (a checkout / customer-
+     *                          account UI extension) instead of https://{shop}/admin
+     *                          (the embedded admin's App Bridge)
+     * @param  string|null  $issShop  override iss only, to prove both claims must
+     *                                still name the same shop
+     */
+    private function makeJwt(
+        string $shop,
+        string $aud,
+        string $secret,
+        ?int $exp = null,
+        bool $bareHost = false,
+        ?string $issShop = null,
+    ): string {
         $now = time();
+        $format = static fn (string $s): string => $bareHost ? $s : 'https://'.$s.'/admin';
         $header = $this->b64(json_encode(['alg' => 'HS256', 'typ' => 'JWT']));
         $payload = $this->b64(json_encode([
-            'iss' => 'https://'.$shop.'/admin',
-            'dest' => 'https://'.$shop.'/admin',
+            'iss' => $format($issShop ?? $shop),
+            'dest' => $format($shop),
             'aud' => $aud,
             'sub' => '123',
             'exp' => $exp ?? ($now + 60),
