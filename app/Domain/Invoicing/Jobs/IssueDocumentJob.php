@@ -181,13 +181,17 @@ final class IssueDocumentJob implements ShouldQueue, ShouldBeUnique
     private function issue(DocumentIssuer $issuer, DocumentContext $context): void
     {
         if ($this->ledgerId !== null) {
-            $issuer->issueForLedger(
+            // Ledger-path documents notify the store too: a deposit/recurring
+            // document on a Woo shop belongs to a WC order (external_order_id),
+            // and without the notify leg that order never learns its own invoice
+            // exists — the plugin metabox would show plan orders as undocumented.
+            $this->notifyStore($issuer->issueForLedger(
                 $this->shopId,
                 $this->ledgerId,
                 $context,
                 $this->linkedDocumentId,
                 $this->amount,
-            );
+            ));
 
             return;
         }
@@ -198,19 +202,26 @@ final class IssueDocumentJob implements ShouldQueue, ShouldBeUnique
     }
 
     /**
-     * The RETURN LEG of the `all_orders` scope: tell the WooCommerce plugin the
-     * document's number + URL so it stamps the order meta and adds an order note the
-     * merchant sees inside WooCommerce.
+     * The RETURN LEG to the store: tell the WooCommerce plugin the document's
+     * number + URL so it stamps the order meta and adds an order note the merchant
+     * sees inside WooCommerce. Covers BOTH the `all_orders` scope's platform
+     * documents and ledger-path documents that belong to a WC order.
      *
-     * Only for a shop that opted into attach-to-order, only for a WooCommerce shop,
-     * and wrapped so a notification problem can never fail (and therefore re-run) a
-     * job whose document has ALREADY been issued — a retry there would be the one way
-     * to mint a second document.
+     * Only for a document that names its order (external_order_id — a Shopify-era
+     * row or an upsell without a child order has nothing to stamp), only for a shop
+     * that opted into attach-to-order, only for a WooCommerce shop, and wrapped so
+     * a notification problem can never fail (and therefore re-run) a job whose
+     * document has ALREADY been issued — a retry there would be the one way to
+     * mint a second document.
      */
     private function notifyStore(?IssuedDocument $document): void
     {
         if ($document === null || ! $document->isIssued()) {
             return;
+        }
+
+        if (trim((string) $document->external_order_id) === '') {
+            return; // no order to stamp — nothing the store could attach this to.
         }
 
         try {

@@ -2,28 +2,41 @@
 
 namespace App\Services\WooCommerce\Orders;
 
+use App\Domain\Billing\IdempotencyKey;
+use App\Domain\Billing\Ledger;
 use App\Domain\Installments\PlanActivationService;
 use App\Models\InstallmentPaymentMethod;
+use App\Models\PaymentLedger;
 use App\Models\Shop;
+use App\Modules\PayPlusShopifyInstallments\Enums\LedgerStatus;
+use App\Modules\PayPlusShopifyInstallments\Support\ResponseMasker;
 use App\Services\WooCommerce\WooClientFactory;
 use App\Support\Tenant;
 use Illuminate\Support\Facades\Log;
 // WooCommercePaidOrderPlanResolver is in this same namespace (App\Services\WooCommerce\Orders).
 
 /**
- * Finalises a paid WooCommerce gateway order: marks it paid via the WC REST API AND vaults the
- * reusable PayPlus token (so the one-click thank-you upsell has a card to charge).
+ * Finalises a paid WooCommerce gateway order: marks it paid via the WC REST API, vaults the
+ * reusable PayPlus token (so the one-click thank-you upsell has a card to charge), AND records
+ * the payment as a `gateway` ledger row.
+ *
+ * The ledger row is a DELIBERATE REVERSAL of the original "money law" (which held that a plain
+ * checkout's money is WooCommerce's record alone, and LETS keeps no row). WooCommerce remains the
+ * ORDER truth — but the Payments screen is the product's face, and a payment the merchant cannot
+ * see there reads as a broken app, not as a design principle. The row is a RECORD of money PayPlus
+ * already moved, never an instruction to charge; nothing downstream charges from it.
  *
  * ONE place for this, called by BOTH confirmation paths:
  *   - WooGatewayCallbackController — PayPlus PUSHES the callback (when it does).
  *   - WooGatewayVerifyController   — the plugin PULLS on the thank-you page (verify-on-return),
  *     the reliable path when PayPlus doesn't push (which is why orders were stuck "pending").
  *
- * Idempotent: WooCommerce set_paid on an already-paid order is a no-op, and the vault dedupes on
- * the decrypted token — so a push + a pull, or a replay, finalise exactly once.
+ * Idempotent: WooCommerce set_paid on an already-paid order is a no-op, the vault dedupes on
+ * the decrypted token, and the ledger row keys on gateway:{shop}:{order} — so a push + a pull,
+ * or a replay, finalise exactly once and record exactly one row.
  *
- * Never throws: the money already moved on the PayPlus page; a WC/vault hiccup is logged, not
- * propagated, so it can't leave the caller in a bad state.
+ * Never throws: the money already moved on the PayPlus page; a WC/vault/ledger hiccup is logged,
+ * not propagated, so it can't leave the caller in a bad state.
  */
 final class WooGatewayFinalizer
 {
@@ -73,6 +86,16 @@ final class WooGatewayFinalizer
                     $this->activateSubscriptionPlans($shop, $orderId, $order, $payplusBody);
                 } catch (\Throwable $e) {
                     Log::warning('woocommerce.gateway.subscription_activate_failed', [
+                        'shop_id' => $shop->getKey(), 'order_id' => $orderId, 'error' => $e->getMessage(),
+                    ]);
+                }
+
+                // Record the payment in the LETS ledger (the design reversal — see the class
+                // docblock). Fail-soft like its siblings: a record failure never un-pays.
+                try {
+                    $this->recordLedgerRow($shop, $orderId, $order, $payplusBody);
+                } catch (\Throwable $e) {
+                    Log::warning('woocommerce.gateway.ledger_failed', [
                         'shop_id' => $shop->getKey(), 'order_id' => $orderId, 'error' => $e->getMessage(),
                     ]);
                 }
@@ -150,10 +173,7 @@ final class WooGatewayFinalizer
      */
     private function recordConfirmationNote(Shop $shop, string $orderId, array $payplusBody): void
     {
-        $txnUid = $this->pick($payplusBody, [
-            'data.transaction.uid', 'data.transaction.transaction_uid', 'data.transaction_uid',
-            'transaction.uid', 'transaction.transaction_uid', 'data.uid', 'uid',
-        ]);
+        $txnUid = $this->transactionUid($payplusBody);
         $statusCode = $this->pick($payplusBody, ['data.transaction.status_code', 'transaction.status_code', 'status_code', 'status']);
         $statusDesc = $this->pick($payplusBody, ['data.transaction.status_description', 'transaction.status_description', 'status_description', 'results.description']);
         $approval = $this->pick($payplusBody, ['data.transaction.approval_number', 'transaction.approval_number', 'data.approval_number', 'approval_number']);
@@ -186,6 +206,84 @@ final class WooGatewayFinalizer
                 'meta_data' => [['key' => 'lets_payplus_transaction_uid', 'value' => $txnUid]],
             ]);
         }
+    }
+
+    /**
+     * Record the payment as a `gateway` ledger row — money PayPlus already moved,
+     * never an instruction to charge. Idempotent on gateway:{shop}:{order}
+     * (Ledger::open is find-then-create), so push + pull collapse to one row.
+     *
+     * Skipped for cart-subscription orders: their first cycle is already ledgered
+     * by PlanActivationService at activation, and a full-order row on top would
+     * double-count the money on the Payments screen. (Documented v1 limitation: a
+     * MIXED cart records the plan cycle only.)
+     *
+     * Refund caveat, deliberate: a gateway sale's document (the plugin's
+     * platform_order pipeline) has ledger_id = null, so a ledger-driven refund's
+     * credit note will not auto-link to it — acceptable v1.
+     *
+     * @param  array<string, mixed>  $order        the paid WC order (REST shape)
+     * @param  array<string, mixed>  $payplusBody
+     */
+    private function recordLedgerRow(Shop $shop, string $orderId, array $order, array $payplusBody): void
+    {
+        if ($this->subscriptionPlanIds($order) !== []) {
+            Log::info('woocommerce.gateway.ledger_skipped_subscription', [
+                'shop_id' => $shop->getKey(), 'order_id' => $orderId,
+            ]);
+
+            return;
+        }
+
+        $shopId = (int) $shop->getKey();
+        $key = IdempotencyKey::gateway($shopId, $orderId);
+
+        // Money truth: PayPlus's own amount first; the WC order total as the
+        // fallback (WooCommerce is the declared order truth). Never invent money —
+        // no readable amount, no row.
+        $amount = (float) ($this->pick($payplusBody, [
+            'data.transaction.amount', 'transaction.amount', 'data.amount', 'amount',
+        ]) ?: ($order['total'] ?? 0));
+
+        if ($amount <= 0) {
+            Log::warning('woocommerce.gateway.ledger_no_amount', [
+                'shop_id' => $shopId, 'order_id' => $orderId,
+            ]);
+
+            return;
+        }
+
+        $row = Ledger::open(
+            shopId: $shopId,
+            chargeContext: PaymentLedger::CONTEXT_GATEWAY,
+            idempotencyKey: $key,
+            amount: $amount,
+            currency: (string) ($order['currency'] ?? config('payplus.currency', 'ILS')),
+            attributes: [
+                'shopify_order_id' => $orderId,
+                'shopify_customer_id' => $this->customerRef($order) ?: null,
+                'payplus_transaction_uid' => $this->transactionUid($payplusBody) ?: null,
+            ],
+        );
+
+        Ledger::transition($row, LedgerStatus::SUCCEEDED, [
+            'raw_response_masked' => ResponseMasker::mask($payplusBody),
+        ]);
+    }
+
+    /**
+     * The PayPlus transaction uid, wherever this path's body shape put it —
+     * shared by the confirmation note and the ledger row so the two can never
+     * name different transactions.
+     *
+     * @param  array<string, mixed>  $payplusBody
+     */
+    private function transactionUid(array $payplusBody): string
+    {
+        return $this->pick($payplusBody, [
+            'data.transaction.uid', 'data.transaction.transaction_uid', 'data.transaction_uid',
+            'transaction.uid', 'transaction.transaction_uid', 'data.uid', 'uid',
+        ]);
     }
 
     /**

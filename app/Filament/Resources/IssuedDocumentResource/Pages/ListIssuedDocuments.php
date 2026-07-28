@@ -12,10 +12,11 @@ use Illuminate\Database\Eloquent\Builder;
  * Invoices list — read-only. No header create action (documents are issued by the
  * engine, never by hand).
  *
- * The tabs are ordered by urgency, not by volume: "Needs attention" is FIRST and
- * is where a merchant lands, because a document that failed or whose outcome is
- * unknown is the only thing on this screen that requires them to act. Everything
- * else is a record.
+ * Tabs stay ordered by urgency — "Needs attention" first, with its warning badge —
+ * but the LANDING tab is "All". Landing on the attention tab meant a merchant whose
+ * documents all issued correctly opened an empty screen and read it as "no invoices
+ * were created", which is the opposite of what happened. The badge is what calls
+ * for action; the default view must show the record.
  */
 class ListIssuedDocuments extends ListRecords
 {
@@ -25,6 +26,11 @@ class ListIssuedDocuments extends ListRecords
     protected function getHeaderActions(): array
     {
         return [];
+    }
+
+    public function getDefaultActiveTab(): string|int|null
+    {
+        return 'all';
     }
 
     public function getTabs(): array

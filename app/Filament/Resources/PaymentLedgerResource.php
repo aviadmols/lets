@@ -51,6 +51,27 @@ class PaymentLedgerResource extends Resource
         return false; // the ledger is append-only via the engine, never hand-created.
     }
 
+    /**
+     * Every charge context the ledger can hold — the model's constants, in
+     * display order. The filter derives from this so a context that exists in
+     * rows can never be missing from the filter (a test pins constants ↔ list ↔
+     * lang keys to each other).
+     *
+     * @return list<string>
+     */
+    public static function chargeContexts(): array
+    {
+        return [
+            PaymentLedger::CONTEXT_DEPOSIT,
+            PaymentLedger::CONTEXT_INSTALLMENT,
+            PaymentLedger::CONTEXT_RECURRING,
+            PaymentLedger::CONTEXT_UPSELL,
+            PaymentLedger::CONTEXT_RETRY,
+            PaymentLedger::CONTEXT_MANUAL,
+            PaymentLedger::CONTEXT_GATEWAY,
+        ];
+    }
+
     public static function table(Table $table): Table
     {
         return $table
@@ -108,14 +129,11 @@ class PaymentLedgerResource extends Resource
                         ->all()),
                 Tables\Filters\SelectFilter::make('charge_context')
                     ->label(__('subscriptions.detail.col.context'))
-                    ->options([
-                        'deposit' => __('billing.charge_context.deposit'),
-                        'installment' => __('billing.charge_context.installment'),
-                        'recurring' => __('billing.charge_context.recurring'),
-                        'upsell' => __('billing.charge_context.upsell'),
-                        'retry' => __('billing.charge_context.retry'),
-                        'manual' => __('billing.charge_context.manual'),
-                    ]),
+                    // Derived from the model's constants so a new context can
+                    // never exist in rows but be missing here (a test pins this).
+                    ->options(collect(PaymentLedgerResource::chargeContexts())
+                        ->mapWithKeys(fn (string $c): array => [$c => __('billing.charge_context.'.$c)])
+                        ->all()),
             ])
             ->actions([
                 Tables\Actions\Action::make('refund')

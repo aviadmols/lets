@@ -3,7 +3,7 @@
  * Plugin Name: LETS — PayPlus Subscriptions & Installments for WooCommerce
  * Plugin URI: https://app.lets.co.il
  * Description: Connect your WooCommerce store to LETS to offer PayPlus deposits + installments, recurring subscriptions, one-click post-purchase upsells, and optional full PayPlus checkout. Paste the connection token from your LETS dashboard to link this store.
- * Version: 0.17.0
+ * Version: 0.18.0
  * Author: LETS
  * Author URI: https://app.lets.co.il
  * Text Domain: lets-payplus
@@ -24,10 +24,19 @@ if (! defined('ABSPATH')) {
     exit; // never run outside WordPress
 }
 
-define('LETS_PAYPLUS_VERSION', '0.17.0');
+define('LETS_PAYPLUS_VERSION', '0.18.0');
 define('LETS_PAYPLUS_OPT', 'lets_payplus_connection'); // wp_option holding the decoded token
 define('LETS_PAYPLUS_FILE', __FILE__);
 define('LETS_PAYPLUS_URL', plugin_dir_url(__FILE__)); // base URL for assets
+
+// HPOS (custom order tables) compatibility — truthful: every order read/write in this
+// plugin goes through WC_Order getters/setters, never direct postmeta. Without the
+// declaration WooCommerce marks the plugin "incompatible" and blocks enabling HPOS.
+add_action('before_woocommerce_init', function () {
+    if (class_exists('\Automattic\WooCommerce\Utilities\FeaturesUtil')) {
+        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', __FILE__, true);
+    }
+});
 
 /** Decode the base64url connection token into its parts, or null when invalid. */
 function lets_payplus_decode_token($token)
@@ -390,6 +399,11 @@ require_once __DIR__ . '/includes/class-lets-diagnostics.php';
 // AFTER the signer (uses lets_payplus_signed_get/post) and BEFORE notify, whose
 // document_issued handler calls this file's lets_payplus_invoicing_stamp_order().
 require_once __DIR__ . '/includes/class-lets-invoicing.php';
+
+// Invoices & receipts ON the order (W20): admin order metabox + customer order-page
+// link. Loads AFTER invoicing (uses its meta constants + stamp + settings helpers)
+// and AFTER the signer (fallback documents read).
+require_once __DIR__ . '/includes/class-lets-order-documents.php';
 
 // Inbound notifications (SaaS-signed /notify + browser /iframe-error) → activity log + admin email.
 require_once __DIR__ . '/includes/class-lets-notify.php';

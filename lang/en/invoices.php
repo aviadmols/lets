@@ -10,6 +10,7 @@ return [
     'col' => [
         'type' => 'Document',
         'number' => 'Number',
+        'order' => 'Order',
         'reason' => 'Reason',
     ],
 

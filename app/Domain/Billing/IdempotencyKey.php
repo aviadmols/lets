@@ -34,4 +34,25 @@ final class IdempotencyKey
     {
         return "retry:{$shopId}:{$paymentEventId}:{$attemptNumber}";
     }
+
+    /**
+     * A plain storefront checkout paid on the PayPlus page (the WooCommerce
+     * gateway). PayPlus already charged; this key only keeps the RECORD single
+     * under the push + pull double-confirmation.
+     */
+    public static function gateway(int $shopId, string $orderId): string
+    {
+        return "gateway:{$shopId}:{$orderId}";
+    }
+
+    /**
+     * A FAILED gateway attempt. Deliberately NOT the success key: failed →
+     * succeeded is an illegal ledger transition, so a shopper who retries the
+     * same order and succeeds must land on a fresh row — one row per failed
+     * attempt ($ref = transaction uid or a status hash), one for the success.
+     */
+    public static function gatewayFailure(int $shopId, string $orderId, string $ref): string
+    {
+        return "gateway:{$shopId}:{$orderId}:fail:{$ref}";
+    }
 }

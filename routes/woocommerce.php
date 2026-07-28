@@ -76,6 +76,10 @@ Route::middleware(VerifyWooCommerceSignature::class)
             ->name('woocommerce.invoicing.settings');
         Route::post('/orders/issue-document', [InvoicingController::class, 'issue'])
             ->name('woocommerce.invoicing.issue');
+        // READ: the issued documents for one order (admin metabox + customer link).
+        // POST, not GET — the plugin's GET signer excludes the query string.
+        Route::post('/orders/documents', [InvoicingController::class, 'documents'])
+            ->name('woocommerce.invoicing.documents');
 
         /*
         |----------------------------------------------------------------------

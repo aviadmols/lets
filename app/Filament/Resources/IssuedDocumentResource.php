@@ -108,6 +108,14 @@ class IssuedDocumentResource extends Resource
                     ->label(__('invoices.col.number'))
                     ->placeholder('—'),
 
+                // The store order this document belongs to — searchable, because
+                // "which invoice covers order X?" is how a merchant actually asks.
+                Tables\Columns\TextColumn::make('external_order_id')
+                    ->label(__('invoices.col.order'))
+                    ->searchable()
+                    ->placeholder('—')
+                    ->toggleable(),
+
                 Tables\Columns\TextColumn::make('amount')
                     ->label(__('subscriptions.detail.col.amount'))
                     ->formatStateUsing(fn ($state, IssuedDocument $record): string => Money::format(

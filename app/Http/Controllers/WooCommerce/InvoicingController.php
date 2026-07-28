@@ -33,8 +33,9 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * The signed body is still MERCHANT INPUT. Everything is read by name, coerced, and
  * bounded here; the money on the document is the total the plugin reports for its own
- * order (WooCommerce is the money truth for a plain order — LETS holds no ledger row
- * for it), and the double-issue walls are:
+ * order (WooCommerce is the ORDER truth for a plain order — the `gateway` ledger row
+ * WooGatewayFinalizer records is a payment record, and documents key on the order, not
+ * on that row), and the double-issue walls are:
  *   1. an order carrying a LETS plan id is REJECTED (it is already invoiced through
  *      the plan pipeline, and invoicing it twice would double-declare the income);
  *   2. the deterministic doc:order:{shop}:{order} key + its unique index.
@@ -241,6 +242,60 @@ final class InvoicingController extends WooStorefrontController
     }
 
     // === Existing-document lookup ===
+
+    /**
+     * POST /api/woocommerce/orders/documents — every ISSUED document for ONE store
+     * order, so the plugin can show the merchant (and, behind attach_to_order, the
+     * shopper) what paperwork exists for it.
+     *
+     * A READ, so deliberately NONE of issue()'s gates: no scope check and no
+     * belongsToPlan wall, because a plan order's documents — issued through the
+     * ledger pipeline with external_order_id set — are exactly what must be
+     * returned too. Only `issued` rows: failed/unresolved are the SaaS admin's
+     * work queue, never the store's.
+     *
+     * POST, not GET: the plugin's GET signer excludes the query string, so a GET
+     * with parameters could not be signed by the existing signer.
+     */
+    public function documents(Request $request): JsonResponse
+    {
+        $shop = $this->verifiedShop($request);
+        if ($shop === null) {
+            return response()->json(['error' => 'unauthorized'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $orderId = $this->cleanString($request->input('order_id'));
+        if ($orderId === null) {
+            return response()->json(['error' => 'invalid_order'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $shopId = (int) $shop->getKey();
+        $platformKey = DocumentIssuer::keyForPlatformOrder($shopId, $orderId);
+
+        // Tenant-bound read: the BelongsToShop global scope — not a hand-written
+        // where — is what confines the query to this tenant.
+        $documents = Tenant::run($shop, static fn () => IssuedDocument::query()
+            ->where('status', IssuedDocument::STATUS_ISSUED)
+            ->where(fn ($q) => $q
+                ->where('idempotency_key', $platformKey)
+                ->orWhere('external_order_id', $orderId))
+            ->orderBy('issued_at')
+            ->get());
+
+        return response()->json([
+            'ok' => true,
+            'documents' => $documents
+                ->map(fn (IssuedDocument $d): array => $this->documentPayload($d) + [
+                    'type' => (string) ($d->document_type ?? ''),
+                    'context' => (string) $d->context,
+                    'amount' => (float) ($d->amount ?? 0),
+                    'currency' => (string) $d->currency,
+                    'issued_at' => $d->issued_at?->toIso8601String(),
+                ])
+                ->values()
+                ->all(),
+        ]);
+    }
 
     /**
      * The already-ISSUED document for this order, read INSIDE the shop's tenant

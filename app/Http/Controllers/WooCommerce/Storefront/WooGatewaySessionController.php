@@ -24,9 +24,9 @@ use Symfony\Component\HttpFoundation\Response;
  * On payment, PayPlus calls /woocommerce/gateway/callback/{wc_shop_token}, which marks the
  * WC order paid. Coexists with the deposit/subscribe widgets.
  *
- * Money law: no ledger row here — a plain checkout's money is recorded by WooCommerce when
- * the callback marks the order paid (this gateway is "normal checkout via PayPlus", not a
- * LETS plan). The amount is the order total the plugin reports; the SaaS does not re-price
+ * Money law: no ledger row HERE — a row only exists once money moved, and it is written at
+ * finalize time by WooGatewayFinalizer (context `gateway`; see its docblock for the design
+ * reversal). The amount is the order total the plugin reports; the SaaS does not re-price
  * a cart it doesn't own (it is WooCommerce's order). Tenant law: the shop is the
  * HMAC-verified shop; the per-shop gateway is built from its decrypted PayPlus creds.
  */

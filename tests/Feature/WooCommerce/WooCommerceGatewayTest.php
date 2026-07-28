@@ -2,7 +2,10 @@
 
 namespace Tests\Feature\WooCommerce;
 
+use App\Domain\Billing\IdempotencyKey;
+use App\Domain\Invoicing\Jobs\IssueDocumentJob;
 use App\Models\InstallmentPaymentMethod;
+use App\Models\PaymentLedger;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Contracts\PayPlusGatewayInterface;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\GatewayResult;
@@ -191,6 +194,154 @@ final class WooCommerceGatewayTest extends TestCase
         ])->assertOk()->assertJsonPath('paid', true);
 
         Tenant::run($shop, fn () => $this->assertSame(0, InstallmentPaymentMethod::count()));
+    }
+
+    /**
+     * The design reversal: a plain gateway payment now RECORDS itself as a
+     * `gateway` ledger row, so the merchant's Payments screen shows the money
+     * PayPlus moved. The row is a record, never a charge instruction.
+     */
+    public function test_a_paid_gateway_order_records_a_succeeded_ledger_row(): void
+    {
+        Http::fake(['*/wp-json/wc/v3/orders/6100' => Http::response([
+            'id' => 6100, 'status' => 'processing', 'total' => '250.00', 'currency' => 'ILS',
+            'customer_id' => 12,
+        ], 200)]);
+        [$shop] = $this->connectedShop('gw-ledger.example.com');
+
+        $this->postJson('/woocommerce/gateway/callback/'.(string) $shop->wc_shop_token, [
+            'transaction' => ['more_info' => 'gw:6100', 'status_code' => '000', 'uid' => 'txn-9', 'amount' => '250.00'],
+        ])->assertOk()->assertJsonPath('paid', true);
+
+        Tenant::run($shop, function () use ($shop): void {
+            $row = PaymentLedger::sole();
+
+            $this->assertSame(PaymentLedger::CONTEXT_GATEWAY, $row->charge_context);
+            $this->assertSame('succeeded', (string) $row->status);
+            $this->assertSame(250.00, (float) $row->amount);
+            $this->assertSame('ILS', (string) $row->currency);
+            $this->assertSame('6100', (string) $row->shopify_order_id);
+            $this->assertSame('txn-9', (string) $row->payplus_transaction_uid);
+            $this->assertSame('12', (string) $row->shopify_customer_id);
+            $this->assertSame(IdempotencyKey::gateway((int) $shop->getKey(), '6100'), $row->idempotency_key);
+        });
+    }
+
+    /** Push + pull may BOTH confirm the same order; the record must stay single. */
+    public function test_a_replayed_callback_records_exactly_one_ledger_row(): void
+    {
+        Http::fake(['*/wp-json/wc/v3/orders/6200' => Http::response([
+            'id' => 6200, 'status' => 'processing', 'total' => '99.00',
+        ], 200)]);
+        [$shop] = $this->connectedShop('gw-ledger2.example.com');
+
+        $payload = ['transaction' => ['more_info' => 'gw:6200', 'status_code' => '000', 'amount' => '99.00']];
+        $this->postJson('/woocommerce/gateway/callback/'.(string) $shop->wc_shop_token, $payload)->assertOk();
+        $this->postJson('/woocommerce/gateway/callback/'.(string) $shop->wc_shop_token, $payload)->assertOk();
+
+        Tenant::run($shop, function (): void {
+            $this->assertSame(1, PaymentLedger::query()->count());
+        });
+    }
+
+    /** No readable PayPlus amount → the WC order total is the fallback money truth. */
+    public function test_the_ledger_amount_falls_back_to_the_wc_order_total(): void
+    {
+        Http::fake(['*/wp-json/wc/v3/orders/6300' => Http::response([
+            'id' => 6300, 'status' => 'processing', 'total' => '123.45', 'currency' => 'ILS',
+        ], 200)]);
+        [$shop] = $this->connectedShop('gw-ledger3.example.com');
+
+        $this->postJson('/woocommerce/gateway/callback/'.(string) $shop->wc_shop_token, [
+            'transaction' => ['more_info' => 'gw:6300', 'status_code' => '000'], // no amount anywhere
+        ])->assertOk();
+
+        Tenant::run($shop, function (): void {
+            $this->assertSame(123.45, (float) PaymentLedger::sole()->amount);
+        });
+    }
+
+    /**
+     * A cart-subscription order's first cycle is already ledgered at activation
+     * (PlanActivationService); a full-order gateway row on top would double-count
+     * the money on the Payments screen.
+     */
+    public function test_a_subscription_cart_order_records_no_gateway_row(): void
+    {
+        Http::fake(['*/wp-json/wc/v3/orders/6400' => Http::response([
+            'id' => 6400, 'status' => 'processing', 'total' => '80.00',
+            'meta_data' => [['key' => 'lets_subscription_plan_ids', 'value' => 'PLN-PUB-1']],
+        ], 200)]);
+        [$shop] = $this->connectedShop('gw-ledger4.example.com');
+
+        $this->postJson('/woocommerce/gateway/callback/'.(string) $shop->wc_shop_token, [
+            'transaction' => ['more_info' => 'gw:6400', 'status_code' => '000', 'amount' => '80.00'],
+        ])->assertOk();
+
+        Tenant::run($shop, function (): void {
+            $this->assertSame(
+                0,
+                PaymentLedger::query()->where('charge_context', PaymentLedger::CONTEXT_GATEWAY)->count(),
+                'The plan pipeline owns this order\'s money record.',
+            );
+        });
+    }
+
+    /** The finalizer must never mint documents — the plugin's status hook is the single trigger. */
+    public function test_the_finalizer_dispatches_no_document_job(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+        Http::fake(['*/wp-json/wc/v3/orders/6500' => Http::response([
+            'id' => 6500, 'status' => 'processing', 'total' => '50.00',
+        ], 200)]);
+        [$shop] = $this->connectedShop('gw-ledger5.example.com');
+
+        $this->postJson('/woocommerce/gateway/callback/'.(string) $shop->wc_shop_token, [
+            'transaction' => ['more_info' => 'gw:6500', 'status_code' => '000', 'amount' => '50.00'],
+        ])->assertOk();
+
+        \Illuminate\Support\Facades\Queue::assertNotPushed(IssueDocumentJob::class);
+    }
+
+    /**
+     * The user asked to SEE declines, not only money that arrived. A failed
+     * attempt records a FAILED row — under its OWN per-attempt key, because
+     * failed → succeeded is an illegal transition and the retry that succeeds
+     * must land on a fresh row.
+     */
+    public function test_a_declined_payment_records_a_failed_row_and_a_later_success_still_succeeds(): void
+    {
+        Http::fake(['*/wp-json/wc/v3/orders/6600' => Http::response([
+            'id' => 6600, 'status' => 'processing', 'total' => '75.00',
+        ], 200)]);
+        [$shop] = $this->connectedShop('gw-ledger6.example.com');
+        $token = (string) $shop->wc_shop_token;
+
+        // Decline first.
+        $this->postJson('/woocommerce/gateway/callback/'.$token, [
+            'transaction' => [
+                'more_info' => 'gw:6600', 'status_code' => '999',
+                'status_description' => 'insufficient funds', 'uid' => 'txn-fail-1', 'amount' => '75.00',
+            ],
+        ])->assertOk()->assertJsonPath('paid', false);
+
+        // The shopper retries and succeeds — this must NOT hit the failed row.
+        $this->postJson('/woocommerce/gateway/callback/'.$token, [
+            'transaction' => ['more_info' => 'gw:6600', 'status_code' => '000', 'uid' => 'txn-ok-2', 'amount' => '75.00'],
+        ])->assertOk()->assertJsonPath('paid', true);
+
+        Tenant::run($shop, function () use ($shop): void {
+            $failed = PaymentLedger::query()->where('status', 'failed')->sole();
+            $this->assertSame('999', (string) $failed->failure_code);
+            $this->assertSame('insufficient funds', (string) $failed->failure_message);
+            $this->assertSame(
+                IdempotencyKey::gatewayFailure((int) $shop->getKey(), '6600', 'txn-fail-1'),
+                $failed->idempotency_key,
+            );
+
+            $succeeded = PaymentLedger::query()->where('status', 'succeeded')->sole();
+            $this->assertSame(IdempotencyKey::gateway((int) $shop->getKey(), '6600'), $succeeded->idempotency_key);
+        });
     }
 
     public function test_a_non_gateway_callback_does_not_mark_anything_paid(): void

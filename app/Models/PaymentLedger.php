@@ -26,6 +26,8 @@ class PaymentLedger extends Model
     public const CONTEXT_UPSELL = 'upsell';
     public const CONTEXT_RETRY = 'retry';
     public const CONTEXT_MANUAL = 'manual';
+    /** A plain WooCommerce storefront checkout paid on the PayPlus page. */
+    public const CONTEXT_GATEWAY = 'gateway';
 
     public const STATUS_PENDING = 'pending';
     public const STATUS_SUCCEEDED = 'succeeded';

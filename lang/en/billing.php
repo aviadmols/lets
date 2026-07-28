@@ -53,6 +53,7 @@ return [
         'upsell' => 'Post-purchase upsell',
         'retry' => 'Retry',
         'manual' => 'Manual',
+        'gateway' => 'Store checkout (PayPlus)',
     ],
 
     // common labels
