@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.16.0
+Stable tag: 0.18.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,15 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.18.0 =
+* Invoices & receipts on the order: an order-screen box (classic and HPOS) listing the
+  Green Invoice documents issued for that order, with open links — including documents
+  issued through LETS plans (deposits, subscription cycles), fetched from LETS when the
+  order was never stamped. A document link also renders on the customer's order page,
+  honouring the "attach to order" setting in the LETS dashboard.
+* Declares WooCommerce HPOS (custom order tables) compatibility.
+
 
 = 0.16.0 =
 * Access to the LETS management dashboard from inside WordPress: a "LETS" shortcut in the
