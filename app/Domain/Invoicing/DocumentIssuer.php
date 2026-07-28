@@ -575,7 +575,13 @@ final class DocumentIssuer
         ?InstallmentPlan $plan,
     ): ?string {
         if ($context->isCredit()) {
-            return $this->documentIdForLedger($shopId, (int) $ledger->getKey());
+            return $this->documentIdForLedger($shopId, (int) $ledger->getKey())
+                // A store-checkout sale was invoiced through the PLATFORM-ORDER
+                // path, whose document carries no ledger_id — it was issued from
+                // the order, not from a ledger row. The credit note for that sale
+                // still has to name the document it credits, so fall back to the
+                // document that belongs to the same ORDER.
+                ?? $this->documentIdForOrder($shopId, (string) ($ledger->shopify_order_id ?? ''));
         }
 
         if (! $decision->shouldLinkToPreviousDocument || $plan === null) {
@@ -585,6 +591,25 @@ final class DocumentIssuer
         return IssuedDocument::acrossAllTenants()
             ->where('shop_id', $shopId)
             ->where('plan_id', $plan->getKey())
+            ->where('status', IssuedDocument::STATUS_ISSUED)
+            ->latest('id')
+            ->first()?->provider_document_id;
+    }
+
+    /**
+     * The issued document recorded against one STORE ORDER, or null. The
+     * platform-order path keys on the order rather than on a ledger row, so this
+     * is the only way a credit note can name the sale it reverses.
+     */
+    private function documentIdForOrder(int $shopId, string $orderId): ?string
+    {
+        if ($orderId === '') {
+            return null;
+        }
+
+        return IssuedDocument::acrossAllTenants()
+            ->where('shop_id', $shopId)
+            ->where('external_order_id', $orderId)
             ->where('status', IssuedDocument::STATUS_ISSUED)
             ->latest('id')
             ->first()?->provider_document_id;

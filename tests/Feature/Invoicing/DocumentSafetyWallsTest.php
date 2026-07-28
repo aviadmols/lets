@@ -113,6 +113,41 @@ final class DocumentSafetyWallsTest extends TestCase
         $this->assertSame($firstDoc?->provider_document_id, $creditRequest->linkedDocumentId);
     }
 
+    /**
+     * A STORE-CHECKOUT sale is invoiced from the ORDER (the platform-order path),
+     * so its document carries no ledger_id. Its refund is still a ledger row, and
+     * the credit note must name the sale it reverses — otherwise the merchant's
+     * books hold a credit that points at nothing.
+     */
+    public function test_a_credit_note_for_a_store_checkout_links_by_the_order(): void
+    {
+        $shop = $this->connectedShop('credit-order.myshopify.com', Shop::PLATFORM_WOOCOMMERCE);
+        $this->fakeProvider();
+
+        $shopId = (int) $shop->getKey();
+        $issuer = new DocumentIssuer();
+
+        // The sale: issued from the order, no ledger_id on the row.
+        $saleDoc = $issuer->issueForPlatformOrder($shopId, [
+            'order_id' => '2817',
+            'order_number' => '2817',
+            'total' => 100.0,
+            'currency' => 'ILS',
+            'customer' => ['name' => 'Buyer', 'email' => 'buyer@example.com'],
+            'lines' => [['description' => 'Item', 'unit_price' => 100.0, 'quantity' => 1]],
+        ]);
+        $this->assertNotNull($saleDoc);
+
+        // The refund: a ledger row that names the same order.
+        $ledger = $this->succeededLedger($shop, key: 'gateway-2817', orderId: '2817');
+        $issuer->issueForLedger($shopId, (int) $ledger->getKey(), DocumentContext::REFUND, amountOverride: 100.0);
+
+        /** @var IssueDocumentRequest $creditRequest */
+        $creditRequest = end($this->issued);
+
+        $this->assertSame($saleDoc->provider_document_id, $creditRequest->linkedDocumentId);
+    }
+
     public function test_a_mid_stream_receipt_is_not_chained_to_its_predecessor(): void
     {
         $shop = $this->connectedShop('nochain.myshopify.com');
@@ -401,8 +436,9 @@ final class DocumentSafetyWallsTest extends TestCase
         string $key = 'cycle-1',
         ?string $documentMode = null,
         ?InstallmentPlan $plan = null,
+        ?string $orderId = null,
     ): PaymentLedger {
-        return Tenant::run($shop, function () use ($shop, $key, $documentMode, $plan): PaymentLedger {
+        return Tenant::run($shop, function () use ($shop, $key, $documentMode, $plan, $orderId): PaymentLedger {
             if ($plan === null) {
                 $plan = new InstallmentPlan;
                 $plan->fill([
@@ -431,7 +467,10 @@ final class DocumentSafetyWallsTest extends TestCase
                 idempotencyKey: 'shop:'.$shop->getKey().':plan:'.$plan->getKey().':'.$key,
                 amount: 100.0,
                 currency: 'ILS',
-                attributes: ['plan_id' => $plan->getKey()],
+                attributes: array_filter([
+                    'plan_id' => $plan->getKey(),
+                    'shopify_order_id' => $orderId,
+                ], static fn ($v): bool => $v !== null),
             );
 
             return Ledger::transition($ledger, LedgerStatus::SUCCEEDED);

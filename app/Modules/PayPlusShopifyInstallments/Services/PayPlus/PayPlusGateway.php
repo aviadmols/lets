@@ -23,7 +23,15 @@ final class PayPlusGateway implements PayPlusGatewayInterface
 {
     // === CONSTANTS ===
     private const PATH_CHARGE = '/Transactions/Charge';
-    private const PATH_REFUND = '/Transactions/Refund';
+    /**
+     * PayPlus has TWO refund endpoints and they take different identifiers:
+     * /Transactions/Refund refunds by CREDIT CARD DETAILS, and
+     * /Transactions/RefundByTransactionUID refunds by the uid of an earlier
+     * transaction. We hold the uid, never the card — posting it to the card
+     * endpoint is what returned VALIDATION_ERROR (the card fields it requires
+     * were simply absent).
+     */
+    private const PATH_REFUND = '/Transactions/RefundByTransactionUID';
     private const PATH_GENERATE_LINK = '/PaymentPages/generateLink';
     private const PATH_TOKEN_LIST = '/Token/List';
 
@@ -91,14 +99,26 @@ final class PayPlusGateway implements PayPlusGatewayInterface
         return $this->post(self::PATH_CHARGE, $payload, $idempotencyKey);
     }
 
+    /**
+     * Refund by the uid of the original transaction.
+     *
+     * EXACTLY the two fields RefundByTransactionUID documents as required, and
+     * nothing else: the endpoint identifies the terminal and the currency from
+     * the original transaction, and extra keys are what a validating API rejects.
+     *
+     * `initial_invoice` is deliberately never sent. It would have PayPlus issue
+     * its own credit document — and this app already issues one through the
+     * merchant's invoicing provider, so enabling it would credit the same money
+     * twice on their books.
+     */
     public function refund(string $transactionUid, float $amount, array $meta = []): GatewayResult
     {
-        $payload = [
-            'terminal_uid' => $this->cred('terminal_uid'),
+        $payload = array_filter([
             'transaction_uid' => $transactionUid,
             'amount' => round($amount, 2),
-            'currency_code' => $meta['currency'] ?? $this->currency,
-        ];
+            // Optional: PayPlus puts this on the credit line of a PARTIAL refund.
+            'more_info' => $meta['more_info'] ?? null,
+        ], static fn ($v): bool => $v !== null);
 
         // Refunds carry their own idempotency key when the caller supplies one.
         return $this->post(self::PATH_REFUND, $payload, $meta['idempotency_key'] ?? null);
