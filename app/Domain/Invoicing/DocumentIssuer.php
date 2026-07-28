@@ -58,12 +58,18 @@ final class DocumentIssuer
      * The idempotency key is the LEDGER's own key, prefixed: one money movement can
      * only ever produce one document, and a re-queued job reuses the same row.
      */
+    /**
+     * @param  string|null  $itemTitle  what the customer BOUGHT, when the caller knows
+     *                                  it and no plan carries it (an upsell offer, say).
+     *                                  A tax document must name a product, never an id.
+     */
     public function issueForLedger(
         int $shopId,
         int $ledgerId,
         DocumentContext $context,
         ?string $linkedDocumentId = null,
         ?float $amountOverride = null,
+        ?string $itemTitle = null,
     ): ?IssuedDocument {
         try {
             $shop = $this->shop($shopId);
@@ -117,7 +123,7 @@ final class DocumentIssuer
                     ? DocumentCustomer::fromPlan($plan)
                     : new DocumentCustomer(name: $ledger->customerLabel()),
                 lines: [DocumentLine::single(
-                    $this->lineDescriptionFor($context, $ledger, $plan),
+                    $this->lineDescriptionFor($context, $ledger, $plan, $itemTitle),
                     $amount,
                 )],
                 amount: $amount,
@@ -132,7 +138,11 @@ final class DocumentIssuer
             return $this->issue($shop, $context, $key, $request, [
                 'ledger_id' => $ledger->getKey(),
                 'plan_id' => $ledger->plan_id,
-                'external_order_id' => $ledger->shopify_order_id,
+                // An UPSELL belongs to the purchase it followed: it carries the
+                // parent order, not an order of its own. Without this fallback its
+                // receipt named no order at all, so it never appeared on the order
+                // it was actually bought from.
+                'external_order_id' => $ledger->shopify_order_id ?: $ledger->parent_order_id,
             ]);
         } catch (Throwable $e) {
             return $this->recordBuildFailure($shopId, $context, $e);
@@ -532,12 +542,26 @@ final class DocumentIssuer
         DocumentContext $context,
         PaymentLedger $ledger,
         ?InstallmentPlan $plan,
+        ?string $itemTitle = null,
     ): string {
+        // What the caller says was bought outranks everything: an UPSELL has no
+        // plan, so without this its line fell all the way through to the
+        // idempotency key — and a customer's tax receipt read
+        // "upsell:2:3:4:2820:buyer@example.com" where a product name belongs.
+        $explicit = trim((string) $itemTitle);
+        if ($explicit !== '') {
+            return $explicit;
+        }
+
         $title = $plan?->itemTitle();
         if ($title !== null) {
             return $title;
         }
 
+        // The last resort is a translated, context-specific label. It falls back to
+        // the plan's public id — a short human reference — and only reaches the
+        // idempotency key when there is no plan at all, which every caller that
+        // knows its product should now prevent.
         return __('invoicing.line.'.$context->value, [
             'reference' => (string) ($plan?->public_id ?? $ledger->idempotency_key),
         ]);

@@ -264,6 +264,11 @@ final class UpsellChargeService
             shopId: $shopId,
             context: DocumentContext::UPSELL->value,
             ledgerId: (int) $ledger->getKey(),
+            // An upsell has no PLAN, and the plan is where the issuer normally finds
+            // the product name — so without this the customer's tax receipt printed
+            // the idempotency key. The offer knows what was sold; say so.
+            itemTitle: $offer->resolveProduct()?->title
+                ?: ($offer->offer_title ?: null),
         );
 
         return UpsellChargeResult::charged($ledger->idempotency_key, $result->transactionUid, $this->nextOfferOnAccept($req));

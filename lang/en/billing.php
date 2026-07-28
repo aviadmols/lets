@@ -83,6 +83,11 @@ return [
 
     // Refund (a row action on a succeeded ledger entry)
     'refund' => [
+        'order_label' => 'Refund whole order (:count charges)',
+        'order_heading' => 'Refund every charge on this order?',
+        'order_body' => 'All :count charges on this order — :amount — are refunded to the shopper, and each gets its own credit note. This cannot be undone.',
+        'order_success' => 'Refunded :count charges. A credit note was issued for each.',
+        'order_partial' => 'Refunded :refunded, :failed failed. The refunds that went through were kept.',
         'label' => 'Refund',
         'heading' => 'Refund this charge?',
         'body' => ':amount will be refunded to the customer via PayPlus. This cannot be undone.',

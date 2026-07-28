@@ -118,6 +118,12 @@ final class WooCommerceCartSubscriptionFlowTest extends TestCase
                 ->where('status', LedgerStatus::SUCCEEDED->value)->sole();
             $this->assertEqualsWithDelta(90.0, (float) $ledger->amount, 0.001);
 
+            // …and it is labelled as what it IS. A subscription's first payment is a
+            // recurring cycle, not a deposit against a balance — the document side
+            // has always invoiced it as recurring, so a ledger row reading "Deposit"
+            // made the Payments and Invoices screens describe one charge two ways.
+            $this->assertSame(PaymentLedger::CONTEXT_RECURRING, $ledger->charge_context);
+
             // Recurring consent (the charge engine's gate looks it up by this context).
             $consent = CustomerConsent::query()->where('plan_id', $plan->getKey())->sole();
             $this->assertSame(CustomerConsent::CONTEXT_RECURRING, $consent->consent_context);

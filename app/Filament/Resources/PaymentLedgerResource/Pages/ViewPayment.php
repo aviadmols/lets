@@ -2,10 +2,12 @@
 
 namespace App\Filament\Resources\PaymentLedgerResource\Pages;
 
+use App\Domain\Lifecycle\OrderRefundService;
 use App\Domain\Lifecycle\RefundService;
 use App\Filament\Resources\PaymentLedgerResource;
 use App\Models\ActivityEvent;
 use App\Models\PaymentLedger;
+use App\Support\Tenant;
 use App\Support\Ui\Money;
 use Filament\Actions;
 use Filament\Notifications\Notification;
@@ -117,9 +119,78 @@ class ViewPayment extends Page
             ->get();
     }
 
+    /** Every succeeded charge that belongs to this payment's order. */
+    public function orderCharges(): Collection
+    {
+        $shop = Tenant::current();
+        $orderId = (string) ($this->record->shopify_order_id ?: $this->record->parent_order_id ?: '');
+
+        if (! $shop instanceof \App\Models\Shop || $orderId === '') {
+            return collect();
+        }
+
+        return app(OrderRefundService::class)->chargesFor($shop, $orderId);
+    }
+
     protected function getHeaderActions(): array
     {
         return [
+            // Refund the WHOLE order when it holds more than one charge — a
+            // checkout plus an accepted upsell is two charges, and reversing only
+            // the row the merchant clicked leaves the shopper still out of pocket
+            // for the other. Each charge keeps its own credit note, because a
+            // credit note credits ONE sale document and these were two sales.
+            Actions\Action::make('refund_order')
+                ->label(fn (): string => __('billing.refund.order_label', [
+                    'count' => $this->orderCharges()->count(),
+                ]))
+                ->icon('heroicon-m-arrow-uturn-left')
+                ->color('danger')
+                ->visible(fn (): bool => $this->record->status === PaymentLedger::STATUS_SUCCEEDED
+                    && $this->orderCharges()->count() > 1)
+                ->requiresConfirmation()
+                ->modalHeading(__('billing.refund.order_heading'))
+                ->modalDescription(fn (): string => __('billing.refund.order_body', [
+                    'count' => $this->orderCharges()->count(),
+                    'amount' => Money::format(
+                        (float) $this->orderCharges()->sum('amount'),
+                        (string) $this->record->currency,
+                    ),
+                ]))
+                ->action(function (): void {
+                    $shop = Tenant::current();
+                    if (! $shop instanceof \App\Models\Shop) {
+                        return;
+                    }
+
+                    $result = app(OrderRefundService::class)->refundOrder(
+                        $shop,
+                        (string) ($this->record->shopify_order_id ?: $this->record->parent_order_id),
+                    );
+
+                    $this->record = $this->record->fresh() ?? $this->record;
+
+                    if ($result['ok']) {
+                        Notification::make()
+                            ->title(__('billing.refund.order_success', ['count' => $result['refunded']]))
+                            ->success()
+                            ->send();
+
+                        return;
+                    }
+
+                    // Partial success is reported as such: the charges that DID
+                    // reverse are not rolled back — that money is already moving.
+                    Notification::make()
+                        ->title(__('billing.refund.order_partial', [
+                            'refunded' => $result['refunded'],
+                            'failed' => $result['failed'],
+                        ]))
+                        ->body(implode(' · ', $result['messages']))
+                        ->danger()
+                        ->send();
+                }),
+
             Actions\Action::make('refund')
                 ->label(__('billing.refund.label'))
                 ->icon('heroicon-m-arrow-uturn-left')

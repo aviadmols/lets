@@ -61,6 +61,8 @@ final class IssueDocumentJob implements ShouldQueue, ShouldBeUnique
         public readonly ?array $order = null,
         public readonly ?string $linkedDocumentId = null,
         public readonly ?float $amount = null,
+        /** What the customer bought, when no plan carries it (e.g. an upsell offer). */
+        public readonly ?string $itemTitle = null,
     ) {
         $this->onQueue((string) config('invoicing.queue', TenantContext::QUEUE_INVOICES));
     }
@@ -88,9 +90,10 @@ final class IssueDocumentJob implements ShouldQueue, ShouldBeUnique
         ?array $order = null,
         ?string $linkedDocumentId = null,
         ?float $amount = null,
+        ?string $itemTitle = null,
     ): void {
         try {
-            self::dispatch($shopId, $context, $ledgerId, $order, $linkedDocumentId, $amount)->afterCommit();
+            self::dispatch($shopId, $context, $ledgerId, $order, $linkedDocumentId, $amount, $itemTitle)->afterCommit();
         } catch (Throwable $e) {
             Log::warning('invoicing.dispatch_failed', [
                 'shop_id' => $shopId,
@@ -191,6 +194,7 @@ final class IssueDocumentJob implements ShouldQueue, ShouldBeUnique
                 $context,
                 $this->linkedDocumentId,
                 $this->amount,
+                $this->itemTitle,
             ));
 
             return;

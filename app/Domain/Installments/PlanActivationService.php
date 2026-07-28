@@ -12,6 +12,7 @@ use App\Models\InstallmentPayment;
 use App\Models\InstallmentPaymentMethod;
 use App\Models\InstallmentPlan;
 use App\Models\MerchantBillingSettings;
+use App\Models\PaymentLedger;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\LedgerStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
@@ -92,15 +93,26 @@ final class PlanActivationService
                 $plan->payment_method_id = $method->getKey();
             }
 
-            // 2) Record the deposit as a SUCCEEDED ledger row (idempotent on the key).
-            // The checkout ref is plan-scoped + stable so a replayed webhook reuses
-            // the same key and never records a second deposit.
+            // 2) Record the first payment as a SUCCEEDED ledger row (idempotent on
+            // the key). The checkout ref is plan-scoped + stable so a replayed
+            // webhook reuses the same key and never records it twice.
+            //
+            // The KEY keeps its `deposit:` prefix whatever the plan kind — it is an
+            // identity, not a label, and rewriting it would make a replay for any
+            // plan already in flight miss its own row and record a second one.
             $key = IdempotencyKey::deposit((int) $shop->getKey(), 'plan:'.(string) $plan->public_id);
             $ledgerId = null;
             if (! Ledger::hasSucceeded((int) $shop->getKey(), $key)) {
                 $ledger = Ledger::open(
                     shopId: (int) $shop->getKey(),
-                    chargeContext: 'deposit',
+                    // …but the CONTEXT is the label a merchant reads, and a
+                    // subscription's first payment is a recurring cycle, not a
+                    // deposit against a balance. The document side has always asked
+                    // this exact question (step 6 below); the ledger said "Deposit"
+                    // for the same money, so the two screens disagreed about it.
+                    chargeContext: $plan->isRecurring()
+                        ? PaymentLedger::CONTEXT_RECURRING
+                        : PaymentLedger::CONTEXT_DEPOSIT,
                     idempotencyKey: $key,
                     amount: $depositAmount,
                     currency: (string) $plan->currency,
