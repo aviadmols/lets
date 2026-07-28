@@ -125,6 +125,19 @@ final class PostPurchasePresentationTest extends TestCase
         $this->assertNotEmpty((new ManageUpsellAppearance())->inertSettings());
     }
 
+    public function test_the_previewed_platform_is_actually_routable(): void
+    {
+        Tenant::set($this->shop(Shop::PLATFORM_SHOPIFY));
+
+        // The route whitelists `platform` because each value draws a different
+        // surface — so pointing the preview at a new one without listing it there
+        // resolves to 404, which is exactly what the iframe showed. Not-404 is the
+        // assertion: a redirect to login still proves the route matched.
+        $response = $this->get((new ManageUpsellAppearance())->previewUrl());
+
+        $this->assertNotSame(404, $response->getStatusCode(), 'The preview platform must be routable.');
+    }
+
     public function test_a_woocommerce_shop_still_previews_its_own_card(): void
     {
         Tenant::set($this->shop(Shop::PLATFORM_WOOCOMMERCE));

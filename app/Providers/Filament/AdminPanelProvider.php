@@ -3,6 +3,7 @@
 namespace App\Providers\Filament;
 
 use App\Domain\Upsell\Http\Controllers\AdminUpsellPreviewController;
+use App\Domain\Upsell\Http\Controllers\PostPurchaseController;
 use App\Domain\Upsell\Rendering\UpsellCardPresenter;
 use App\Http\Middleware\BindDevTenant;
 use App\Http\Middleware\BindTenantFromUser;
@@ -178,13 +179,22 @@ class AdminPanelProvider extends PanelProvider
             )
             // Tenant-scoped, Filament-authed PREVIEW of the post-purchase card (Phase 3). Registered
             // on the panel so it inherits the persistent middleware (session + BindTenantFromUser +
-            // SetAdminLocale); the explicit Authenticate is a belt on top. `platform` is constrained
-            // to woocommerce for now (shopify added later); offer=0 renders the built-in sample.
+            // SetAdminLocale); the explicit Authenticate is a belt on top. offer=0 renders the
+            // built-in sample.
+            //
+            // `platform` is an explicit WHITELIST, and it is the surface the preview draws: each
+            // value maps to a different renderer, so an unlisted one must 404 rather than fall back
+            // to the wrong card. shopify_post_purchase joined it when that surface got its own view
+            // — without this line the Shopify preview iframe resolves to 404, which is exactly what
+            // it did.
             //   → GET /admin/upsell/preview/{platform}/{offer}  (name filament.admin.upsell.preview)
             ->routes(function (): void {
                 Route::get('upsell/preview/{platform}/{offer}', AdminUpsellPreviewController::class)
                     ->middleware(Authenticate::class)
-                    ->whereIn('platform', [UpsellCardPresenter::PLATFORM_WOOCOMMERCE])
+                    ->whereIn('platform', [
+                        UpsellCardPresenter::PLATFORM_WOOCOMMERCE,
+                        PostPurchaseController::PLATFORM,
+                    ])
                     ->whereNumber('offer')
                     ->name('upsell.preview');
             })
