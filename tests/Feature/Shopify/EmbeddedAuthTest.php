@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
+use App\Services\Shopify\ShopifyToken;
 
 /**
  * Embedded-admin auth + MANAGED INSTALL (the keystone seam). On the first embedded
@@ -240,11 +241,11 @@ final class EmbeddedAuthTest extends TestCase
         // re-mint (see ScopeRefreshTest / TokenRefreshTest) — a legacy token with
         // no expiry is one the Admin API now rejects outright — so a fixture
         // missing either would fail "no second exchange" for the wrong reason.
-        $shop->captureShopifyInstall(
+        $shop->captureShopifyInstall(new ShopifyToken(
             'shpat_existing_token',
             (string) config('shopify.oauth_scopes'),
             86400,
-        );
+        ));
 
         return $shop->fresh();
     }

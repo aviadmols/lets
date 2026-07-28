@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Shopify;
 use App\Http\Controllers\Controller;
 use App\Services\Shopify\ShopifyApps;
 use App\Services\Shopify\ShopifyDomain;
+use App\Services\Shopify\ShopifyToken;
 use App\Services\Shopify\ShopInstaller;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -117,6 +118,11 @@ final class OAuthController extends Controller
                 'client_id' => $app['api_key'],
                 'client_secret' => $app['api_secret'],
                 'code' => $code,
+                // Ask for an EXPIRING offline token. Omitting this is what left the
+                // pilot store holding a token the Admin API refuses outright (403,
+                // "Non-expiring access tokens are no longer accepted") — an install
+                // that looked successful and could not make a single call.
+                ...ShopifyToken::expiringParams(),
             ]);
 
         if (! $response->successful()) {
@@ -124,25 +130,24 @@ final class OAuthController extends Controller
             abort(Response::HTTP_BAD_GATEWAY, 'Failed to exchange code for an access token.');
         }
 
-        $accessToken = (string) ($response->json('access_token') ?? '');
-        $scopes = (string) ($response->json('scope') ?? '');
-        if ($accessToken === '') {
+        $token = ShopifyToken::fromResponse((array) $response->json());
+        if ($token === null) {
             abort(Response::HTTP_BAD_GATEWAY, 'Access token missing in Shopify response.');
         }
 
-        // An expiring offline token carries expires_in. When it is ABSENT the token
-        // is a legacy non-expiring one, which the Admin API now rejects (403) — so
-        // storing null here is not a shrug, it is the flag that makes the next
-        // embedded load re-mint the token through token exchange.
-        $expiresIn = $response->json('expires_in');
-        $expiresIn = is_numeric($expiresIn) ? (int) $expiresIn : null;
+        // We asked for an expiring token; if none came back, the install is about
+        // to store one the Admin API will refuse. Record it rather than discover it
+        // days later as a blanket 403 with no explanation.
+        if (! $token->isExpiring()) {
+            Log::error('shopify.oauth.non_expiring_token', ['shop' => $shop, 'app' => $appKey]);
+        }
 
         // 5–7. Upsert the Shop (matched by domain ⇒ reinstall reuses the row),
-        //   store the ENCRYPTED offline token + granted scopes, provision the
+        //   store the ENCRYPTED offline grant + granted scopes, provision the
         //   store-scoped admin login, and register webhooks + backfill products.
         //   This shared routine is ALSO used by the managed-install / token-exchange
         //   path (EmbeddedAuthenticate) — one install routine, never duplicated.
-        app(ShopInstaller::class)->installFromToken($shop, $accessToken, $scopes !== '' ? $scopes : null, $appKey, $expiresIn);
+        app(ShopInstaller::class)->installFromToken($shop, $token, $appKey);
 
         // 8. Handoff to saas-multitenancy-billing: trial/subscribe confirmation.
         // TODO(saas agent): redirect into the AppSubscription trial flow here

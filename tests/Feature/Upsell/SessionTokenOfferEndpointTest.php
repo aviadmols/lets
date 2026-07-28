@@ -12,6 +12,7 @@ use App\Models\Shop;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use App\Services\Shopify\ShopifyToken;
 
 /**
  * The DIRECT-fetch extension seam: GET /upsell/offer behind SessionTokenAuth.
@@ -219,7 +220,7 @@ final class SessionTokenOfferEndpointTest extends TestCase
             'status' => Shop::STATUS_INSTALLED,
         ]);
         // SessionTokenAuth requires a live shop; capture an install so isLive() holds.
-        $shop->captureShopifyInstall('shpat_token', 'read_orders');
+        $shop->captureShopifyInstall(new ShopifyToken('shpat_token', 'read_orders', 86400));
 
         return $shop->fresh();
     }

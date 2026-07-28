@@ -15,6 +15,7 @@ use App\Services\WooCommerce\Orders\WooCommerceDepositInvoiceService;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use App\Services\Shopify\ShopifyToken;
 
 /**
  * W11 Phase 0 — the deposit-invoice seam. DepositPlanService now resolves the
@@ -44,7 +45,7 @@ final class PlatformInvoiceServiceFactoryTest extends TestCase
             'status' => Shop::STATUS_INSTALLED,
             'platform' => Shop::PLATFORM_SHOPIFY,
         ]);
-        $shop->captureShopifyInstall('shpat_token', 'read_orders');
+        $shop->captureShopifyInstall(new ShopifyToken('shpat_token', 'read_orders', 86400));
 
         $service = PlatformInvoiceServiceFactory::for($shop->fresh());
 

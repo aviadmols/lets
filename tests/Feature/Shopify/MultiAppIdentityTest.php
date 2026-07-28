@@ -11,6 +11,7 @@ use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
+use App\Services\Shopify\ShopifyToken;
 
 /**
  * ONE deployment, TWO Partner apps (the public App-Store app + the custom
@@ -132,11 +133,11 @@ final class MultiAppIdentityTest extends TestCase
     {
         Queue::fake();
 
-        $shop = app(ShopInstaller::class)->installFromToken(self::SHOP, 'tok-custom', 'read_orders', 'custom');
+        $shop = app(ShopInstaller::class)->installFromToken(self::SHOP, new ShopifyToken('tok-custom', 'read_orders', 86400), 'custom');
         $this->assertSame(Shop::APP_CUSTOM, $shop->fresh()->shopifyAppKey());
 
         // Reinstall through the PUBLIC app — the stamp follows the new token.
-        $shop = app(ShopInstaller::class)->installFromToken(self::SHOP, 'tok-public', 'read_orders', 'public');
+        $shop = app(ShopInstaller::class)->installFromToken(self::SHOP, new ShopifyToken('tok-public', 'read_orders', 86400), 'public');
         $this->assertSame(Shop::APP_PUBLIC, $shop->fresh()->shopifyAppKey());
         $this->assertSame(1, Shop::query()->where('shopify_domain', self::SHOP)->count());
     }

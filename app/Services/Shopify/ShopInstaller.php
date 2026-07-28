@@ -37,19 +37,14 @@ final class ShopInstaller
      * install side-effects. Idempotent: a second call for the same domain reuses the
      * existing row + user and re-runs the (idempotent) sync jobs.
      *
-     * @param  string       $shopDomain  a validated *.myshopify.com domain (caller-proven)
-     * @param  string       $accessToken the offline access token to store (encrypted)
-     * @param  string|null  $scopes      the granted scope string, or null
-     * @param  string       $appKey      which Partner app minted the token ('public'|'custom')
-     * @param  int|null     $expiresIn   seconds until the token lapses; null = a legacy
-     *                                   NON-EXPIRING token, which the Admin API rejects
+     * @param  string        $shopDomain  a validated *.myshopify.com domain (caller-proven)
+     * @param  ShopifyToken  $token       the freshly minted offline grant (stored encrypted)
+     * @param  string        $appKey      which Partner app minted the token ('public'|'custom')
      */
     public function installFromToken(
         string $shopDomain,
-        string $accessToken,
-        ?string $scopes,
+        ShopifyToken $token,
         string $appKey = Shop::APP_PUBLIC,
-        ?int $expiresIn = null,
     ): Shop {
         $newInstall = ! Shop::query()->where('shopify_domain', $shopDomain)->exists();
 
@@ -62,7 +57,7 @@ final class ShopInstaller
             ['name' => $shopDomain, 'platform' => Shop::PLATFORM_SHOPIFY, 'status' => Shop::STATUS_INSTALLED],
         );
         $shop->forceFill(['shopify_app_key' => in_array($appKey, Shop::APP_KEYS, true) ? $appKey : Shop::APP_PUBLIC])->save();
-        $shop->captureShopifyInstall($accessToken, ($scopes !== null && $scopes !== '') ? $scopes : null, $expiresIn);
+        $shop->captureShopifyInstall($token);
 
         // Provision/link an admin login BOUND to this shop, so the merchant gets a
         // store-scoped login. Idempotent on reinstall (reuses the existing user).

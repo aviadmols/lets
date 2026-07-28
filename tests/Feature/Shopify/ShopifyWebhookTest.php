@@ -7,6 +7,7 @@ use App\Models\WebhookEvent;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use App\Services\Shopify\ShopifyToken;
 
 /**
  * The webhook transport contract (shopify-integration.md §4):
@@ -170,7 +171,7 @@ final class ShopifyWebhookTest extends TestCase
         // Runs on the sync queue (phpunit default) so the handler executes
         // end-to-end: controller → ProcessShopifyWebhookJob → AppUninstalledHandler.
         $shop = $this->makeShop('alpha.myshopify.com');
-        $shop->captureShopifyInstall('shpat_live_token', 'read_orders');
+        $shop->captureShopifyInstall(new ShopifyToken('shpat_live_token', 'read_orders', 86400));
         $this->assertNotNull($shop->fresh()->shopifyAccessToken());
 
         $this->postWebhook('app/uninstalled', $shop->shopify_domain, ['domain' => $shop->shopify_domain], 'wh-uninstall')

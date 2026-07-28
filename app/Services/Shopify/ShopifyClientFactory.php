@@ -34,6 +34,13 @@ final class ShopifyClientFactory
             return (self::$fakeResolver)($shop);
         }
 
+        // Expiring offline tokens lapse in about a day, and background work runs on
+        // days no merchant opens the admin — so the ONE place every Admin API call
+        // passes through is the only place a renewal can reliably happen. Best
+        // effort by design: when it cannot be renewed we still build the client and
+        // let Shopify answer, rather than turn a token problem into an exception.
+        app(ShopifyTokenRefresher::class)->ensureFresh($shop);
+
         $token = $shop->shopifyAccessToken();
         if ($token === null) {
             throw new RuntimeException(

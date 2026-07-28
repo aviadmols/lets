@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Casts\EncryptedCredentials;
 use App\Casts\EncryptedString;
 use App\Domain\Billing\BillingPlan;
+use App\Services\Shopify\ShopifyToken;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -125,6 +126,7 @@ class Shop extends Model
 
     protected $hidden = [
         'shopify_access_token',
+        'shopify_refresh_token',
         'payplus_credentials',
         'woocommerce_credentials',
         'invoicing_credentials',
@@ -138,12 +140,14 @@ class Shop extends Model
             'woocommerce_credentials' => EncryptedCredentials::class,
             'invoicing_credentials' => EncryptedCredentials::class,
             'shopify_access_token' => 'encrypted',
+            'shopify_refresh_token' => 'encrypted',
             // Resilient cast: a stale-key ciphertext degrades to null on read AND never
             // gets decrypted during save()'s dirty-check, so re-minting a shop whose old
             // secret is undecryptable can't 500 (see EncryptedString).
             'lets_api_secret' => EncryptedString::class,
             'trial_ends_at' => 'datetime',
             'shopify_token_expires_at' => 'datetime',
+            'shopify_refresh_token_expires_at' => 'datetime',
             'shopify_payments_checked_at' => 'datetime',
             'installed_at' => 'datetime',
             'uninstalled_at' => 'datetime',
@@ -309,28 +313,91 @@ class Shop extends Model
             'status' => self::STATUS_UNINSTALLED,
             'uninstalled_at' => now(),
             'shopify_access_token' => null,
+            // The refresh token dies with the install too, and keeping a spent
+            // credential around only invites a pointless refresh call later.
+            'shopify_refresh_token' => null,
+            'shopify_refresh_token_expires_at' => null,
         ])->save();
     }
 
     /**
-     * Capture (or re-capture on reinstall) the offline OAuth token. Matched by
+     * Capture (or re-capture on reinstall) the offline OAuth grant. Matched by
      * shopify_domain upstream so reinstall never duplicates the Shop row.
      */
-    public function captureShopifyInstall(string $accessToken, ?string $scopes, ?int $expiresIn = null): void
+    public function captureShopifyInstall(ShopifyToken $token): void
     {
-        $this->forceFill([
-            'shopify_access_token' => $accessToken,   // 'encrypted' cast encrypts on write
-            'shopify_scopes' => $scopes,
-            // Shopify REJECTS non-expiring tokens now, so a token with no expiry
-            // is a legacy one we must replace — recording null says exactly that
-            // (see shopifyTokenNeedsRefresh).
-            'shopify_token_expires_at' => $expiresIn !== null && $expiresIn > 0
-                ? now()->addSeconds($expiresIn)
-                : null,
+        $this->forceFill($this->shopifyTokenAttributes($token) + [
             'status' => self::STATUS_INSTALLED,
             'installed_at' => now(),
             'uninstalled_at' => null,
         ])->save();
+    }
+
+    /**
+     * Store a REFRESHED grant without touching the install lifecycle — a refresh
+     * is not an install, and stamping installed_at on one would rewrite history
+     * every time a background job renews a token.
+     */
+    public function captureShopifyToken(ShopifyToken $token): void
+    {
+        $this->forceFill($this->shopifyTokenAttributes($token))->save();
+    }
+
+    /**
+     * The columns one grant writes.
+     *
+     * `scope` and `refresh_token` are only written when the grant actually
+     * carried them: a response that omits a field must not BLANK what we already
+     * hold. Blanking the scopes in particular would make every later request look
+     * like it is missing every scope, and re-exchange forever.
+     *
+     * @return array<string, mixed>
+     */
+    private function shopifyTokenAttributes(ShopifyToken $token): array
+    {
+        $attributes = [
+            'shopify_access_token' => $token->accessToken,   // 'encrypted' cast encrypts on write
+            // Shopify REJECTS non-expiring tokens now, so a token with no expiry
+            // is a legacy one we must replace — recording null says exactly that
+            // (see shopifyTokenNeedsRefresh).
+            'shopify_token_expires_at' => $token->isExpiring()
+                ? now()->addSeconds((int) $token->expiresIn)
+                : null,
+        ];
+
+        if ($token->scope !== null) {
+            $attributes['shopify_scopes'] = $token->scope;
+        }
+
+        if ($token->refreshToken !== null) {
+            $attributes['shopify_refresh_token'] = $token->refreshToken;
+            $attributes['shopify_refresh_token_expires_at'] = $token->refreshTokenExpiresIn !== null
+                && $token->refreshTokenExpiresIn > 0
+                    ? now()->addSeconds($token->refreshTokenExpiresIn)
+                    : null;
+        }
+
+        return $attributes;
+    }
+
+    /**
+     * The decrypted refresh token, or null when there is none we can still spend.
+     * An EXPIRED refresh token is reported as absent: both mean the same thing to
+     * every caller — this shop cannot be revived without a merchant opening it.
+     */
+    public function shopifyRefreshToken(): ?string
+    {
+        $token = $this->shopify_refresh_token; // 'encrypted' cast decrypts on read
+        if ($token === null || $token === '') {
+            return null;
+        }
+
+        $expiry = $this->shopify_refresh_token_expires_at;
+        if ($expiry !== null && $expiry->isPast()) {
+            return null;
+        }
+
+        return (string) $token;
     }
 
     /**

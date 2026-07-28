@@ -8,6 +8,7 @@ use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
+use App\Services\Shopify\ShopifyToken;
 
 /**
  * Embedded-admin session-token auth (§6): a valid App Bridge JWT (HS256 w/ the app
@@ -91,7 +92,7 @@ final class SessionTokenAuthTest extends TestCase
             'name' => self::SHOP,
             'status' => Shop::STATUS_INSTALLED,
         ]);
-        $shop->captureShopifyInstall('shpat_token', 'read_orders');
+        $shop->captureShopifyInstall(new ShopifyToken('shpat_token', 'read_orders', 86400));
 
         return $shop->fresh();
     }

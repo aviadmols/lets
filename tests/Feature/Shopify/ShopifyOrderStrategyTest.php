@@ -13,6 +13,7 @@ use App\Services\Shopify\ShopifyClientFactory;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use App\Services\Shopify\ShopifyToken;
 
 /**
  * The Shopify order strategy (§5). Uses a recording fake Admin client (no HTTP) to
@@ -101,7 +102,7 @@ final class ShopifyOrderStrategyTest extends TestCase
             'name' => $domain,
             'status' => Shop::STATUS_INSTALLED,
         ]);
-        $shop->captureShopifyInstall('shpat_token_'.$domain, 'read_orders,write_orders');
+        $shop->captureShopifyInstall(new ShopifyToken('shpat_token_'.$domain, 'read_orders,write_orders', 86400));
 
         return $shop->fresh();
     }

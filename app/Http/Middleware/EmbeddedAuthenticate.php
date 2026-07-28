@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Jobs\Shopify\RegisterShopifyWebhooksJob;
 use App\Models\Shop;
 use App\Models\User;
 use App\Services\Shopify\SessionTokenVerifier;
@@ -145,18 +146,24 @@ final class EmbeddedAuthenticate
             if ($missing !== [] || $stale) {
                 $exchanged = $this->tokenExchange->exchange($shopDomain, $sessionToken, $appKey);
                 if ($exchanged !== null) {
-                    $shop->captureShopifyInstall(
-                        $exchanged['access_token'],
-                        $exchanged['scope'] !== '' ? $exchanged['scope'] : null,
-                        $exchanged['expires_in'] ?? null,
-                    );
+                    $shop->captureShopifyInstall($exchanged);
                     Log::info('shopify.embedded.token_refreshed', [
                         'shop' => $shopDomain,
                         'app' => $appKey,
                         'was_missing' => $missing,
                         'was_stale' => $stale,
-                        'expires_in' => $exchanged['expires_in'] ?? null,
+                        'expires_in' => $exchanged->expiresIn,
                     ]);
+
+                    // A shop whose token was dead could not register a single
+                    // webhook — every attempt 403'd — so it has been deaf to
+                    // orders and subscription events for as long as the token was
+                    // broken. Re-run the (idempotent) registration now that a
+                    // usable token exists; otherwise the app comes back to life
+                    // able to CALL Shopify but never to HEAR from it.
+                    if ($stale) {
+                        RegisterShopifyWebhooksJob::dispatch((int) $shop->getKey());
+                    }
 
                     return $shop->fresh() ?? $shop;
                 }
@@ -175,13 +182,7 @@ final class EmbeddedAuthenticate
             return null;
         }
 
-        $shop = $this->installer->installFromToken(
-            $shopDomain,
-            $exchanged['access_token'],
-            $exchanged['scope'] !== '' ? $exchanged['scope'] : null,
-            $appKey,
-            $exchanged['expires_in'] ?? null,
-        );
+        $shop = $this->installer->installFromToken($shopDomain, $exchanged, $appKey);
 
         Log::info('shopify.embedded.managed_install', ['shop' => $shopDomain, 'app' => $appKey]);
 
