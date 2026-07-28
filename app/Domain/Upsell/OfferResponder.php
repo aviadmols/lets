@@ -41,6 +41,24 @@ final class OfferResponder
      */
     public function respond(Request $request, Shop $shop): array
     {
+        // This responder feeds the PAYPLUS-TOKEN rail (the App-Proxy widget and the
+        // thank-you / order-status extensions). Accepting one of these offers
+        // charges a vaulted PayPlus token, so a shop with no PayPlus connection
+        // cannot complete the purchase the offer invites — UpsellChargeService
+        // would answer noMethod and the shopper would meet a dead button.
+        //
+        // Offering nothing is the honest outcome, and the gate sits BEFORE
+        // resolve() on purpose: resolve() records an impression, and a funnel that
+        // counts offers that could never convert reports a conversion rate that
+        // is not real.
+        //
+        // The NATIVE post-purchase rail is unaffected — PostPurchaseController
+        // calls the resolver itself, because Shopify re-charges the card there and
+        // no PayPlus token is involved.
+        if (! $shop->hasPayplusConnection()) {
+            return ['offer' => null, 'reason' => 'no_payplus_rail'];
+        }
+
         $context = $this->buildContext($request, $shop);
         $resolution = $this->resolver->resolve($context);
 

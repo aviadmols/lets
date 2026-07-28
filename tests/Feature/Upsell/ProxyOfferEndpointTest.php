@@ -169,11 +169,23 @@ final class ProxyOfferEndpointTest extends TestCase
 
     private function makeShop(string $domain): Shop
     {
-        return Shop::create([
+        $shop = Shop::create([
             'shopify_domain' => $domain,
             'name' => $domain,
             'status' => Shop::STATUS_INSTALLED,
         ]);
+
+        // This endpoint feeds the PayPlus-token rail, which offers nothing to a
+        // shop that cannot charge one. Without credentials these tests would pass
+        // for the wrong reason — an isolation test proving the connection gate
+        // instead of the tenant boundary.
+        $shop->payplus_credentials = [
+            'api_key' => 'k', 'secret_key' => 's',
+            'terminal_uid' => 't', 'payment_page_uid' => 'p',
+        ];
+        $shop->save();
+
+        return $shop->fresh();
     }
 
     private function makeMatchingFlowWithDiscount(

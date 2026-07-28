@@ -87,6 +87,32 @@ final class SessionTokenOfferEndpointTest extends TestCase
             ->count());
     }
 
+    public function test_a_shop_without_payplus_is_offered_nothing_on_this_rail(): void
+    {
+        $shop = $this->makeInstalledShop('alpha.myshopify.com');
+        $shop->payplus_credentials = []; // a Shopify-Payments store: no vaulted token, ever
+        $shop->save();
+
+        $this->makeMatchingFlowWithDiscount($shop, base: 50.0, percent: 0);
+
+        $response = $this->getOfferWithToken($shop->shopify_domain, [
+            'parent_order' => 'P-1',
+            'customer' => 'c',
+            'subtotal' => '99',
+            'products' => 'gid://shopify/Product/1',
+        ]);
+
+        // The flow MATCHES. Offering it anyway would put a button in front of the
+        // shopper that UpsellChargeService can only answer with noMethod.
+        $response->assertOk();
+        $response->assertJsonPath('offer', null);
+        $response->assertJsonPath('reason', 'no_payplus_rail');
+
+        // And no impression: a funnel that counts offers which could never convert
+        // reports a conversion rate that is not real.
+        $this->assertSame(0, \App\Domain\Upsell\Models\UpsellOfferEvent::query()->count());
+    }
+
     public function test_returns_null_offer_when_nothing_matches(): void
     {
         $shop = $this->makeInstalledShop('alpha.myshopify.com');
@@ -221,6 +247,16 @@ final class SessionTokenOfferEndpointTest extends TestCase
         ]);
         // SessionTokenAuth requires a live shop; capture an install so isLive() holds.
         $shop->captureShopifyInstall(new ShopifyToken('shpat_token', 'read_orders', 86400));
+
+        // This endpoint feeds the PayPlus-token rail, which offers nothing to a
+        // shop that cannot charge one. Without credentials these tests would pass
+        // for the wrong reason — an isolation test proving the connection gate
+        // instead of the tenant boundary.
+        $shop->payplus_credentials = [
+            'api_key' => 'k', 'secret_key' => 's',
+            'terminal_uid' => 't', 'payment_page_uid' => 'p',
+        ];
+        $shop->save();
 
         return $shop->fresh();
     }
