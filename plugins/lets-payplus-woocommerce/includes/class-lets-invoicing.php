@@ -40,6 +40,10 @@ define('LETS_PAYPLUS_INVOICE_NUMBER_META', '_lets_invoice_document_number');
 /** Order meta stamped by LETS on plan orders (WooCommerceOrderStrategy). */
 define('LETS_PAYPLUS_PLAN_META', 'lets_plan_public_id');
 
+/** Order meta stamped by LETS naming what an order IS; 'gift_order' is not a sale. */
+define('LETS_PAYPLUS_ORDER_ROLE_META', 'lets_order_role');
+define('LETS_PAYPLUS_GIFT_ROLE', 'gift_order');
+
 /** Hard cap on reported line items — LETS bounds this again server-side. */
 define('LETS_PAYPLUS_INVOICE_MAX_LINES', 100);
 
@@ -111,6 +115,13 @@ function lets_payplus_invoicing_on_status_changed($order_id, $old_status, $new_s
     // Wall 1: a LETS plan order is invoiced by the plan pipeline. Reporting it here
     // would ask for a SECOND document for money already declared once.
     if ('' !== (string) $order->get_meta(LETS_PAYPLUS_PLAN_META)) {
+        return;
+    }
+
+    // Wall 1b: a LETS loyalty GIFT. Nothing was sold and nothing was paid, so
+    // there is no income to declare — a tax document here would report revenue the
+    // merchant never received.
+    if (LETS_PAYPLUS_GIFT_ROLE === (string) $order->get_meta(LETS_PAYPLUS_ORDER_ROLE_META)) {
         return;
     }
 

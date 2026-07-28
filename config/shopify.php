@@ -194,6 +194,9 @@ return [
         'recurring_order' => 'subscription-recurring',
         'upsell_child' => 'upsell-child',
         'payment_order' => 'installments-payment',
+        // A loyalty gift: zero-total, given not sold. Tagged so the merchant can
+        // filter these out of revenue reporting at a glance.
+        'gift_order' => 'lets-gift',
     ],
     'metafields' => [
         'fulfillment_lock' => 'fulfillment_lock',

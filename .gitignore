@@ -4,6 +4,8 @@
 # committed; node_modules/dist are not).
 extensions/**/node_modules
 extensions/**/dist
+# The WordPress plugin zip is built from the committed sources by bin/build-plugin.sh.
+plugins/**/dist
 /public/build
 /public/hot
 /public/storage

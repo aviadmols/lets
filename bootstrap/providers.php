@@ -7,4 +7,5 @@ return [
     App\Modules\PayPlusShopifyInstallments\PayPlusShopifyInstallmentsServiceProvider::class,
     App\Domain\Upsell\UpsellServiceProvider::class,
     App\Domain\ShopifySubscriptions\ShopifySubscriptionsServiceProvider::class,
+    App\Domain\Campaigns\CampaignsServiceProvider::class,
 ];

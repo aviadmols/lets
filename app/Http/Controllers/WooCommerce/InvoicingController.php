@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\WooCommerce;
 
+use App\Domain\Campaigns\Models\GiftRecipient;
 use App\Domain\Invoicing\DocumentContext;
 use App\Domain\Invoicing\DocumentIssuer;
 use App\Domain\Invoicing\Jobs\IssueDocumentJob;
@@ -108,6 +109,15 @@ final class InvoicingController extends WooStorefrontController
             return response()->json(['ok' => true, 'queued' => false, 'reason' => 'plan_order']);
         }
 
+        // Wall 1b: a LOYALTY GIFT. Nothing was sold and nothing was paid, so there
+        // is no income to declare — a tax document for it would report revenue the
+        // merchant never received. The plugin skips gift orders too, but only
+        // updated builds do; this is the wall that holds regardless of what the
+        // store is running or whether its meta survived.
+        if ($this->isGiftOrder($shop, $orderId)) {
+            return response()->json(['ok' => true, 'queued' => false, 'reason' => 'gift_order']);
+        }
+
         // The merchant chose which statuses count as "paid". Re-check server-side: the
         // plugin's cached settings can be stale, and a status the merchant did NOT pick
         // must never mint a tax document.
@@ -159,6 +169,19 @@ final class InvoicingController extends WooStorefrontController
             ->where(fn (Builder $q) => $q
                 ->where('external_order_id', $orderId)
                 ->orWhere('shopify_order_id', $orderId))
+            ->exists());
+    }
+
+    /**
+     * Did THIS app create this order as a loyalty gift? Looked up in our own
+     * records rather than trusted from the reported meta — the plugin's report is
+     * merchant input, and a gift order is exactly the case where a stripped meta
+     * field would mint a tax document for revenue that does not exist.
+     */
+    private function isGiftOrder(Shop $shop, string $orderId): bool
+    {
+        return Tenant::run($shop, static fn (): bool => GiftRecipient::query()
+            ->where('external_order_id', $orderId)
             ->exists());
     }
 

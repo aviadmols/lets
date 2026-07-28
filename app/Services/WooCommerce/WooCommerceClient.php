@@ -67,6 +67,55 @@ final class WooCommerceClient
     }
 
     /**
+     * GET /wp-json/wc/v3/customers/{id} → the customer array, or null on 404.
+     *
+     * Read on demand, never stored: the SaaS holds no address of its own, so a gift
+     * order ships to whatever the customer's profile says TODAY rather than to a
+     * copy that was right when they subscribed.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function fetchCustomer(int $id): ?array
+    {
+        if ($id <= 0) {
+            return null; // a guest checkout has no customer record to read.
+        }
+
+        $response = $this->get('customers/'.$id);
+        if ($response->status() === 404) {
+            return null;
+        }
+
+        $body = $response->json();
+
+        return is_array($body) && ! empty($body['id']) ? $body : null;
+    }
+
+    /**
+     * GET /wp-json/wc/v3/orders/{id} → the order array, or null on 404.
+     *
+     * The fallback address source: a guest has no profile, but the order they
+     * subscribed through carries the address they gave.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function fetchOrder(string $id): ?array
+    {
+        if (trim($id) === '') {
+            return null;
+        }
+
+        $response = $this->get('orders/'.rawurlencode($id));
+        if ($response->status() === 404) {
+            return null;
+        }
+
+        $body = $response->json();
+
+        return is_array($body) && ! empty($body['id']) ? $body : null;
+    }
+
+    /**
      * POST /wp-json/wc/v3/orders → the created order array (carries `id`). The caller
      * (WooCommerceOrderStrategy) owns the WC order SHAPE; this is transport only.
      *
