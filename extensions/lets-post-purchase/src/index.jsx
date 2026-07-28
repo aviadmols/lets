@@ -85,8 +85,52 @@ function App({ extensionPoint, storage, inputData, applyChangeset, done, calcula
     return null;
   }
 
+  // The merchant's own copy + element choices, resolved and localized by the app.
+  // The extension decides NOTHING about wording or order — it walks what it was
+  // given, so what the merchant sees in the admin preview is what ships.
+  const p = offer.presentation ?? {};
+  const copy = p.copy ?? {};
+  const on = p.elements ?? {};
+  const order = p.order ?? [];
+
   const money = (amount) => `${Number(amount).toFixed(2)} ${offer.currency || ''}`.trim();
   const saves = Number(offer.base_price) > Number(offer.price);
+  const priceDisplay = copy.price_display ?? money(offer.price);
+  const wasDisplay = copy.was_display ?? (saves ? money(offer.base_price) : null);
+
+  // One element key → its node. Rendered in the merchant's order; an unknown or
+  // disabled key simply yields nothing.
+  const block = (key) => {
+    if (!on[key]) return null;
+
+    switch (key) {
+      case 'eyebrow':
+        return copy.eyebrow ? <TextBlock key={key} size="small" appearance="subdued">{copy.eyebrow}</TextBlock> : null;
+      case 'badge':
+        return copy.badge ? <TextBlock key={key} size="small" emphasized>{copy.badge}</TextBlock> : null;
+      case 'headline':
+        return copy.headline ? <Heading key={key}>{copy.headline}</Heading> : null;
+      case 'product_name':
+        return copy.product_name ? <TextBlock key={key}>{copy.product_name}</TextBlock> : null;
+      case 'subcopy':
+        return copy.subcopy ? <TextBlock key={key} appearance="subdued">{copy.subcopy}</TextBlock> : null;
+      case 'price':
+        return (
+          <Tiles key={key}>
+            {wasDisplay ? <Text role="deletion" appearance="subdued">{wasDisplay}</Text> : null}
+            <Text emphasized size="large">{priceDisplay}</Text>
+          </Tiles>
+        );
+      case 'save':
+        return copy.save_label ? <TextBlock key={key} size="small" appearance="accent">{copy.save_label}</TextBlock> : null;
+      case 'trust':
+        return copy.trust ? <TextBlock key={key} size="small" appearance="subdued">{copy.trust}</TextBlock> : null;
+      case 'disclosure':
+        return copy.disclosure ? <TextBlock key={key} size="small" appearance="subdued">{copy.disclosure}</TextBlock> : null;
+      default:
+        return null;
+    }
+  };
 
   async function accept() {
     setBusy(true);
@@ -123,58 +167,71 @@ function App({ extensionPoint, storage, inputData, applyChangeset, done, calcula
     }
   }
 
+  // Text blocks in the merchant's order, minus the ones with their own slot
+  // (image sits in the media column; the buttons are pinned below the copy so a
+  // reordered list can never put "No thanks" above the price it declines).
+  const textBlocks = order.filter((k) => k !== 'image' && k !== 'cta' && k !== 'decline').map(block);
+
+  const showImage = on.image && offer.image_url;
+  const mediaSide = p.layout === 'media_side';
+  const spacing = p.spacing ?? 'loose';
+
+  const copyColumn = (
+    <BlockStack spacing="xloose">
+      <TextContainer>{textBlocks}</TextContainer>
+
+      {error ? <TextBlock appearance="critical">{copy.error_text}</TextBlock> : null}
+
+      <BlockStack spacing="tight">
+        <Button submit onPress={accept} loading={busy}>
+          {busy ? copy.accept_busy : copy.accept_cta}
+        </Button>
+        {on.decline ? (
+          <Button
+            plain={p.decline_style === 'link'}
+            subdued={p.decline_style !== 'link'}
+            onPress={done}
+            disabled={busy}
+          >
+            {copy.decline_cta}
+          </Button>
+        ) : null}
+      </BlockStack>
+    </BlockStack>
+  );
+
   return (
-    <BlockStack spacing="loose">
-      <CalloutBanner title={offer.title}>
-        <TextContainer>
-          <Text size="medium">{offer.description}</Text>
-        </TextContainer>
-      </CalloutBanner>
-
-      <Layout
-        media={[
-          { viewportSize: 'small', sizes: [1, 0, 1] },
-          { viewportSize: 'medium', sizes: [532, 0, 1] },
-          { viewportSize: 'large', sizes: [560, 38, 340] },
-        ]}
-      >
-        <View>
-          {offer.image_url ? <Image description={offer.title} source={offer.image_url} /> : null}
-        </View>
-
-        <View />
-
-        <BlockStack spacing="xloose">
+    <BlockStack spacing={spacing}>
+      {copy.headline ? (
+        <CalloutBanner title={copy.headline}>
           <TextContainer>
-            <Heading>{offer.title}</Heading>
-            <Tiles>
-              <Text role="deletion" appearance="subdued">
-                {saves ? money(offer.base_price) : ''}
-              </Text>
-              <Text emphasized size="large">{money(offer.price)}</Text>
-            </Tiles>
+            <Text size="medium">{copy.subcopy ?? offer.description}</Text>
           </TextContainer>
+        </CalloutBanner>
+      ) : null}
 
-          {error ? (
-            <TextBlock appearance="critical">
-              We could not add this to your order. You have not been charged for it.
-            </TextBlock>
+      {mediaSide && showImage ? (
+        <Layout
+          media={[
+            { viewportSize: 'small', sizes: [1, 0, 1] },
+            { viewportSize: 'medium', sizes: [532, 0, 1] },
+            { viewportSize: 'large', sizes: [560, 38, 340] },
+          ]}
+        >
+          <View>
+            <Image description={copy.product_name ?? offer.title} source={offer.image_url} />
+          </View>
+          <View />
+          {copyColumn}
+        </Layout>
+      ) : (
+        <BlockStack spacing={spacing}>
+          {showImage ? (
+            <Image description={copy.product_name ?? offer.title} source={offer.image_url} />
           ) : null}
-
-          <BlockStack spacing="tight">
-            <Button submit onPress={accept} loading={busy}>
-              Pay now · {money(offer.price)}
-            </Button>
-            <Button subdued onPress={done} disabled={busy}>
-              No thanks
-            </Button>
-          </BlockStack>
-
-          <TextBlock size="small" appearance="subdued">
-            Charged to the payment method you just used. No card details are re-entered.
-          </TextBlock>
+          {copyColumn}
         </BlockStack>
-      </Layout>
+      )}
     </BlockStack>
   );
 }

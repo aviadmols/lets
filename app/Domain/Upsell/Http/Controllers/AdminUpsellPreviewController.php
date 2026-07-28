@@ -2,7 +2,9 @@
 
 namespace App\Domain\Upsell\Http\Controllers;
 
+use App\Domain\Upsell\Http\Controllers\PostPurchaseController;
 use App\Domain\Upsell\Models\UpsellFlowOffer;
+use App\Domain\Upsell\Rendering\PostPurchasePresenter;
 use App\Domain\Upsell\Rendering\UpsellCardPresenter;
 use App\Http\Controllers\Controller;
 use App\Models\MerchantUpsellAppearance;
@@ -29,7 +31,10 @@ use Illuminate\Contracts\View\View;
  */
 final class AdminUpsellPreviewController extends Controller
 {
-    public function __construct(private readonly UpsellCardPresenter $presenter) {}
+    public function __construct(
+        private readonly UpsellCardPresenter $presenter,
+        private readonly PostPurchasePresenter $postPurchase,
+    ) {}
 
     public function __invoke(string $platform, int $offer): View
     {
@@ -40,6 +45,18 @@ final class AdminUpsellPreviewController extends Controller
         $viewModel = $offer > 0
             ? $this->presenter->forOffer($this->offer($offer), $appearance, $platform)
             : $this->presenter->sample($appearance, $platform);
+
+        // Shopify's post-purchase page is drawn from SHOPIFY'S components, not our
+        // markup, so previewing it with the storefront card would show a surface
+        // the shopper never sees. It gets its own view, built from the SAME
+        // contract the extension consumes — which is what keeps it faithful.
+        if ($platform === PostPurchaseController::PLATFORM) {
+            return view('upsell.preview-post-purchase', [
+                'viewModel' => $viewModel,
+                'presentation' => $this->postPurchase->present($viewModel, $appearance),
+                'platform' => $platform,
+            ]);
+        }
 
         return view('upsell.preview', [
             'viewModel' => $viewModel,

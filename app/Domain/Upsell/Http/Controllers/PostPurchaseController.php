@@ -8,8 +8,11 @@ use App\Domain\Upsell\Models\UpsellOfferEvent;
 use App\Domain\Upsell\PostPurchase\ChangesetSigner;
 use App\Domain\Upsell\PostPurchase\PostPurchaseTokenVerifier;
 use App\Domain\Upsell\PurchaseContext;
+use App\Domain\Upsell\Rendering\PostPurchasePresenter;
+use App\Domain\Upsell\Rendering\UpsellCardPresenter;
 use App\Domain\Upsell\UpsellResolver;
 use App\Http\Controllers\Controller;
+use App\Models\MerchantUpsellAppearance;
 use App\Models\Shop;
 use App\Support\Tenant;
 use Illuminate\Http\JsonResponse;
@@ -43,10 +46,15 @@ final class PostPurchaseController extends Controller
     /** Money answers come from the offer; this is only the display fallback. */
     private const DEFAULT_CURRENCY = 'ILS';
 
+    /** The presenter's platform discriminator for this surface. */
+    public const PLATFORM = 'shopify_post_purchase';
+
     public function __construct(
         private readonly PostPurchaseTokenVerifier $verifier,
         private readonly UpsellResolver $resolver,
         private readonly ChangesetSigner $signer,
+        private readonly UpsellCardPresenter $card,
+        private readonly PostPurchasePresenter $presenter,
     ) {}
 
     /** POST /post-purchase/offer — resolve the offer for the just-completed checkout. */
@@ -83,6 +91,16 @@ final class PostPurchaseController extends Controller
                 'currency' => (string) ($offer->currency ?: self::DEFAULT_CURRENCY),
             ]);
 
+            // The merchant's own copy and element choices, translated to what the
+            // post-purchase component set can express. Without this the extension
+            // renders hardcoded English and the headline, sub-copy and button
+            // labels the merchant actually configured are discarded in transit.
+            $appearance = MerchantUpsellAppearance::current();
+            $presentation = $this->presenter->present(
+                $this->card->forOffer($offer, $appearance, self::PLATFORM),
+                $appearance,
+            );
+
             return response()->json(['offer' => [
                 'flow_id' => (int) $resolution->flow->getKey(),
                 'offer_id' => (int) $offer->getKey(),
@@ -94,6 +112,7 @@ final class PostPurchaseController extends Controller
                 'price' => $resolution->discountedPrice(),
                 'base_price' => round((float) $offer->base_price, 2),
                 'currency' => (string) ($offer->currency ?: self::DEFAULT_CURRENCY),
+                'presentation' => $presentation,
             ]]);
         });
     }

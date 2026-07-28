@@ -43,6 +43,8 @@ return [
     // The Filament / storefront preview host.
     'preview' => [
         'title' => 'Post-purchase card preview',
+        'shopify_owned_title' => 'This is Shopify’s page.',
+        'shopify_owned_body' => 'Shopify draws the post-purchase page from its own components and does not allow custom CSS, so colours, fonts, corner radius and shadows come from your Shopify checkout branding — not from the settings on this page. What you CAN control here is the wording, which elements appear, and their order. Change the look in Shopify admin → Settings → Checkout → Branding.',
         'sample_headline' => 'Complete the look',
         'sample_product' => 'Signature Add-On',
         'sample_subcopy' => 'A perfect companion to what you just bought — added straight to your order, charged to the card you already used.',

@@ -2,10 +2,13 @@
 
 namespace App\Filament\Pages;
 
+use App\Domain\Upsell\Http\Controllers\PostPurchaseController;
 use App\Domain\Upsell\Models\UpsellFlowOffer;
+use App\Domain\Upsell\Rendering\PostPurchasePresenter;
 use App\Domain\Upsell\Rendering\UpsellCardPresenter;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Models\MerchantUpsellAppearance;
+use App\Models\Shop;
 use App\Support\Tenant;
 use Filament\Forms\Components\ColorPicker;
 use Filament\Forms\Components\Hidden;
@@ -245,15 +248,50 @@ class ManageUpsellAppearance extends Page implements HasForms
         return $block;
     }
 
-    /** The preview iframe URL: the shop's latest offer (or 0 → the built-in sample). */
+    /**
+     * The preview iframe URL: the shop's latest offer (or 0 → the built-in sample),
+     * on the surface THIS shop actually ships.
+     *
+     * The platform was pinned to WooCommerce, so a Shopify merchant tuned colours
+     * and radii against our HTML card and then met Shopify's own components on the
+     * real post-purchase page — a preview that was not merely imprecise but of a
+     * different surface entirely.
+     */
     public function previewUrl(): string
     {
         $offerId = (int) (UpsellFlowOffer::query()->orderByDesc('id')->value('id') ?? 0);
 
         return route('filament.admin.upsell.preview', [
-            'platform' => UpsellCardPresenter::PLATFORM_WOOCOMMERCE,
+            'platform' => $this->previewPlatform(),
             'offer' => $offerId,
         ]);
+    }
+
+    /** Which upsell surface this shop ships, and therefore what to preview. */
+    public function previewPlatform(): string
+    {
+        $shop = Tenant::current();
+
+        return ($shop instanceof Shop && $shop->platform === Shop::PLATFORM_SHOPIFY)
+            ? PostPurchaseController::PLATFORM
+            : UpsellCardPresenter::PLATFORM_WOOCOMMERCE;
+    }
+
+    /** Is the previewed surface one Shopify styles for us? Drives the admin notice. */
+    public function previewIsShopifyOwned(): bool
+    {
+        return $this->previewPlatform() === PostPurchaseController::PLATFORM;
+    }
+
+    /**
+     * The appearance controls that have NO effect on the previewed surface, so the
+     * form can say so instead of letting a merchant tune a dead knob.
+     *
+     * @return list<string>
+     */
+    public function inertSettings(): array
+    {
+        return $this->previewIsShopifyOwned() ? PostPurchasePresenter::UNSUPPORTED_SETTINGS : [];
     }
 
     /** Re-push the draft to the preview on every form change (fields are ->live()). */
