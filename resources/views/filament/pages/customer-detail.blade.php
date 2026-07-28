@@ -31,7 +31,10 @@
                                     default => '',
                                 };
                             @endphp
-                            <a class="rc-railed {{ $rail }}" href="{{ \App\Filament\Resources\SubscriptionResource\Pages\ViewSubscription::getUrl(['record' => $plan]) }}">
+                            {{-- The route parameter is `plan` and the value is its KEY:
+                                 `record` matches nothing on this route, so the URL could
+                                 not be generated at all and the whole page 500'd. --}}
+                            <a class="rc-railed {{ $rail }}" href="{{ \App\Filament\Resources\SubscriptionResource\Pages\ViewSubscription::getUrl(['plan' => $plan->getKey()]) }}">
                                 <div class="rc-row rc-row--between">
                                     <span class="rc-strong">{{ $this->kindLabel($plan) }} · PLN-{{ $plan->getKey() }}</span>
                                     <x-rc.badge :status="$statusValue" />

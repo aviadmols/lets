@@ -11,6 +11,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use Livewire\Livewire;
 use Tests\TestCase;
 
 /**
@@ -97,6 +98,26 @@ final class CustomerNamingTest extends TestCase
         $page->mount('1');
 
         $this->assertSame('Meir Sella', $page->displayName());
+    }
+
+    /**
+     * The page RENDERS. Its subscription link passed `record` to a route whose
+     * parameter is `plan`, so the URL could not be generated and the whole detail
+     * page 500'd for any customer who had a plan — which is every customer it
+     * exists to show. Asserting the view compiles is what catches that; asserting
+     * the page class in isolation never would.
+     */
+    public function test_the_detail_page_renders_with_a_linked_plan(): void
+    {
+        $shop = $this->shop();
+        Tenant::set($shop);
+        $this->plan($shop, customerId: '1', name: 'Meir Sella', email: 'meir@example.com');
+
+        Livewire::test(CustomerDetail::class, ['customer' => '1'])
+            ->assertOk()
+            ->assertSee('Meir Sella')
+            // The link resolves to the plan's own URL rather than blowing up.
+            ->assertSee('/admin/subscriptions/', escape: false);
     }
 
     public function test_a_customer_with_no_captured_name_still_renders(): void
