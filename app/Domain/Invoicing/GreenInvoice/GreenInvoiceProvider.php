@@ -200,6 +200,13 @@ final class GreenInvoiceProvider implements InvoiceProvider
      * quantity itself, so sending a pre-multiplied line total here would inflate the
      * document by the quantity factor (see DocumentLine::total()).
      *
+     * `vatType` here is the ROW field, which is NOT the document field: 1 means
+     * "this price already contains VAT", 0 means "add VAT on top". Falling back to
+     * the DOCUMENT default (0) told the provider to gross the line up while the
+     * receipt row still carried the amount actually charged — which is exactly the
+     * 2422 rejection, "a mismatch between the sum of receipts and the sum of
+     * payments". The merchant's own answer to that question now decides it.
+     *
      * @return array<string, mixed>
      */
     private function incomeRow(DocumentLine $line, IssueDocumentRequest $request): array
@@ -210,7 +217,9 @@ final class GreenInvoiceProvider implements InvoiceProvider
             'quantity' => max(1, $line->quantity),
             'price' => round($line->unitPrice, 2),
             'currency' => strtoupper($request->currency),
-            'vatType' => $line->vatType ?? $this->settings->vatType(),
+            // 0 is a MEANINGFUL row value, so `??` (not `?:`) — a line that
+            // explicitly says "before VAT" must not be overwritten.
+            'vatType' => $line->vatType ?? $this->settings->rowVatType(),
         ], static fn ($v): bool => $v !== null && $v !== '');
     }
 

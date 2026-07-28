@@ -99,6 +99,7 @@ class ManageInvoicing extends Page implements HasForms
             'send_email_to_customer' => $settings->sendsEmailToCustomer(),
             'document_language' => $settings->documentLanguage(),
             'default_vat_type' => $settings->vatType(),
+            'prices_include_vat' => $settings->pricesIncludeVat(),
             'rounding' => $settings->rounding(),
             'attach_to_order' => $settings->attachesToOrder(),
         ], $this->documentTypeState($settings)));
@@ -233,6 +234,14 @@ class ManageInvoicing extends Page implements HasForms
                     ->native(false)
                     ->selectablePlaceholder(false)
                     ->default(MerchantInvoicingSettings::DEFAULT_LANGUAGE),
+                // The answer that decides whether the document's income lines and
+                // its receipt line agree. Off means "add VAT on top", which makes
+                // the provider gross the line up past the amount actually charged
+                // and reject the whole document.
+                Toggle::make('prices_include_vat')
+                    ->label(__('settings.invoicing.prices_include_vat'))
+                    ->helperText(__('settings.invoicing.prices_include_vat_help'))
+                    ->default(MerchantInvoicingSettings::DEFAULT_PRICES_INCLUDE_VAT),
                 TextInput::make('default_vat_type')
                     ->label(__('settings.invoicing.vat_type'))
                     ->helperText(__('settings.invoicing.vat_type_help'))
@@ -301,6 +310,7 @@ class ManageInvoicing extends Page implements HasForms
                 ? $input['document_language']
                 : MerchantInvoicingSettings::DEFAULT_LANGUAGE,
             'default_vat_type' => max(0, (int) ($input['default_vat_type'] ?? 0)),
+            'prices_include_vat' => (bool) ($input['prices_include_vat'] ?? MerchantInvoicingSettings::DEFAULT_PRICES_INCLUDE_VAT),
             'rounding' => (bool) ($input['rounding'] ?? false),
             'attach_to_order' => (bool) ($input['attach_to_order'] ?? true),
         ])->save();

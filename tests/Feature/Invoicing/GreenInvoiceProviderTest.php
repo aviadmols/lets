@@ -90,6 +90,70 @@ final class GreenInvoiceProviderTest extends TestCase
         $this->assertSame(3, $income['quantity']);
     }
 
+    /**
+     * THE 2422 rejection: "a mismatch between the sum of receipts and the sum of
+     * payments". The income row's vatType is a DIFFERENT field from the document's
+     * — 1 says "this price already contains VAT", 0 says "add VAT on top" — and we
+     * were feeding the document default (0) into the row. Green Invoice grossed a
+     * ₪1.00 line up to ₪1.18 while the receipt row still said ₪1.00, and refused
+     * the whole document.
+     */
+    public function test_a_vat_inclusive_price_is_declared_as_such_on_the_income_row(): void
+    {
+        $this->fakeApi();
+
+        $this->provider()->issue($this->request(
+            amount: 1.0,
+            lines: [new DocumentLine(description: 'Guard', unitPrice: 1.0, quantity: 1)],
+        ));
+
+        $payload = $this->lastDocumentPayload();
+
+        $this->assertSame(MerchantInvoicingSettings::ROW_VAT_INCLUDED, $payload['income'][0]['vatType']);
+        // The DOCUMENT field is untouched — it means "apply this business's VAT",
+        // which is a different question from what the price already contains.
+        $this->assertSame(MerchantInvoicingSettings::DEFAULT_VAT_TYPE, $payload['vatType']);
+        // And the two sides of the document agree, which is all 2422 was about.
+        $this->assertSame($payload['income'][0]['price'], $payload['payment'][0]['price']);
+    }
+
+    public function test_a_merchant_whose_prices_exclude_vat_says_so(): void
+    {
+        $this->fakeApi();
+
+        $this->provider(pricesIncludeVat: false)->issue($this->request(
+            amount: 1.0,
+            lines: [new DocumentLine(description: 'Guard', unitPrice: 1.0, quantity: 1)],
+        ));
+
+        $this->assertSame(
+            MerchantInvoicingSettings::ROW_VAT_BEFORE,
+            $this->lastDocumentPayload()['income'][0]['vatType'],
+        );
+    }
+
+    /** A line that states its own VAT treatment outranks the shop default. */
+    public function test_an_explicit_line_vat_type_is_never_overwritten(): void
+    {
+        $this->fakeApi();
+
+        $this->provider()->issue($this->request(
+            amount: 1.0,
+            lines: [new DocumentLine(
+                description: 'Guard',
+                unitPrice: 1.0,
+                quantity: 1,
+                vatType: MerchantInvoicingSettings::ROW_VAT_BEFORE,
+            )],
+        ));
+
+        // 0 is a MEANINGFUL value here, so the fallback must be `??`, not `?:`.
+        $this->assertSame(
+            MerchantInvoicingSettings::ROW_VAT_BEFORE,
+            $this->lastDocumentPayload()['income'][0]['vatType'],
+        );
+    }
+
     public function test_a_credit_note_without_a_linked_document_is_refused_before_any_http(): void
     {
         $this->fakeApi();
@@ -184,7 +248,7 @@ final class GreenInvoiceProviderTest extends TestCase
         ]);
     }
 
-    private function provider(bool $sendEmail = false): GreenInvoiceProvider
+    private function provider(bool $sendEmail = false, bool $pricesIncludeVat = true): GreenInvoiceProvider
     {
         $shop = $this->shop();
 
@@ -192,6 +256,7 @@ final class GreenInvoiceProviderTest extends TestCase
         $settings->forceFill([
             'enabled' => true,
             'send_email_to_customer' => $sendEmail,
+            'prices_include_vat' => $pricesIncludeVat,
         ])->save();
 
         return new GreenInvoiceProvider(

@@ -89,9 +89,22 @@ class MerchantInvoicingSettings extends Model
     public const DEFAULT_SEND_EMAIL_TO_CUSTOMER = false;
     public const DEFAULT_LANGUAGE = 'he';
     public const SELECTABLE_LANGUAGES = ['he', 'en'];
-    public const DEFAULT_VAT_TYPE = 0;      // Green Invoice: 0 = default/inclusive per business setup
+    public const DEFAULT_VAT_TYPE = 0;      // Green Invoice DOCUMENT vatType: 0 = apply this business's VAT
     public const DEFAULT_ROUNDING = false;
     public const DEFAULT_ATTACH_TO_ORDER = true;
+
+    /**
+     * Green Invoice INCOME-ROW vatType — a different field from the document one
+     * above, and the distinction is load-bearing: sending the document default
+     * into the row means "this price is BEFORE VAT", so the provider grosses the
+     * line up while the receipt line still says the amount that was charged, and
+     * rejects the document with 2422 (receipts ≠ payments).
+     */
+    public const ROW_VAT_INCLUDED = 1;      // the price already contains VAT
+    public const ROW_VAT_BEFORE = 0;        // add VAT on top of the price
+
+    /** A storefront price in Israel is what the shopper pays — VAT inside. */
+    public const DEFAULT_PRICES_INCLUDE_VAT = true;
 
     /**
      * shop_id (and the surrogate id) are guarded — shop_id is auto-stamped by
@@ -107,6 +120,7 @@ class MerchantInvoicingSettings extends Model
             'document_type_map' => 'array',
             'send_email_to_customer' => 'boolean',
             'default_vat_type' => 'integer',
+            'prices_include_vat' => 'boolean',
             'rounding' => 'boolean',
             'attach_to_order' => 'boolean',
         ];
@@ -283,9 +297,25 @@ class MerchantInvoicingSettings extends Model
         return in_array($lang, self::SELECTABLE_LANGUAGES, true) ? $lang : self::DEFAULT_LANGUAGE;
     }
 
+    /** The DOCUMENT-level vatType (0 = apply this business's own VAT setup). */
     public function vatType(): int
     {
         return max(0, (int) ($this->default_vat_type ?? self::DEFAULT_VAT_TYPE));
+    }
+
+    /** Do the prices we report already contain VAT? */
+    public function pricesIncludeVat(): bool
+    {
+        return (bool) ($this->prices_include_vat ?? self::DEFAULT_PRICES_INCLUDE_VAT);
+    }
+
+    /**
+     * The INCOME-ROW vatType this merchant's prices call for. Separate from
+     * vatType() on purpose — conflating the two is what produced 2422.
+     */
+    public function rowVatType(): int
+    {
+        return $this->pricesIncludeVat() ? self::ROW_VAT_INCLUDED : self::ROW_VAT_BEFORE;
     }
 
     public function rounding(): bool

@@ -162,6 +162,8 @@ return [
         'document_language' => 'Document language',
         'lang_he' => 'Hebrew',
         'lang_en' => 'English',
+        'prices_include_vat' => 'Prices already include VAT',
+        'prices_include_vat_help' => 'On — the amounts you charge are what the customer pays, VAT inside (the normal case for an Israeli storefront). Off — VAT is added on top of them. Getting this wrong makes Green Invoice reject the document: the invoice lines and the receipt line stop agreeing.',
         'vat_type' => 'VAT type',
         'vat_type_help' => 'The Green Invoice VAT type code for your business. Leave at 0 unless your accountant tells you otherwise.',
         'rounding' => 'Round document totals',
