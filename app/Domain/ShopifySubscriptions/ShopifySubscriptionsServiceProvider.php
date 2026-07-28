@@ -2,6 +2,7 @@
 
 namespace App\Domain\ShopifySubscriptions;
 
+use App\Domain\ShopifySubscriptions\Console\BackfillContractsCommand;
 use App\Domain\ShopifySubscriptions\Console\DispatchDueBillingCyclesCommand;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Foundation\Application;
@@ -32,6 +33,11 @@ final class ShopifySubscriptionsServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 DispatchDueBillingCyclesCommand::class,
+                // Deliberately NOT scheduled: webhooks keep the mirror fresh, and a
+                // recurring full re-read would spend a shop's API budget re-proving
+                // what it already knows. This is the catch-up for what predates the
+                // webhooks, run when something changed that made contracts visible.
+                BackfillContractsCommand::class,
             ]);
         }
 

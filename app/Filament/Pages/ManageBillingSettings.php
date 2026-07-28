@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Domain\ShopifySubscriptions\Jobs\BackfillContractsJob;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Jobs\Shopify\RegisterShopifyWebhooksJob;
 use App\Models\MerchantBillingSettings;
@@ -293,7 +294,10 @@ class ManageBillingSettings extends Page implements HasForms
      * Persist the subscriptions-engine choice onto the CURRENT tenant's Shop row.
      * Shopify shops only (the section is hidden elsewhere); an unknown value is
      * ignored, never written. Entering the Shopify-Payments rail re-runs webhook
-     * registration so the subscription topics get subscribed for this shop.
+     * registration so the subscription topics get subscribed for this shop, and
+     * pulls the contracts that already exist — a store switching rails usually
+     * has live subscribers, and webhooks only ever announce a CHANGE, so without
+     * the backfill the screen would stay empty until each one next moved.
      */
     private function saveSubscriptionRail(mixed $value): void
     {
@@ -310,6 +314,7 @@ class ManageBillingSettings extends Page implements HasForms
 
         if ($value === Shop::RAIL_SHOPIFY_PAYMENTS && $shop->hasShopifyConnection()) {
             RegisterShopifyWebhooksJob::dispatch($shop->id);
+            BackfillContractsJob::dispatch($shop->id);
         }
     }
 
