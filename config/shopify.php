@@ -60,15 +60,23 @@ return [
             | a mismatch means the merchant grants one set and the app expects
             | another. read/write_purchase_options is what creates selling plans
             | (Shopify names it as the alternative to write_own_subscription_
-            | contracts) and is NOT gated behind the protected-data review; the
-            | subscription-contract scopes stay out until that approval lands.
+            | contracts) and is NOT gated behind an API-access request.
+            |
+            | The subscription scopes joined this list on 2026-07-28, when Shopify
+            | approved "Access subscriptions APIs" + "Read all orders scope". This
+            | set being WIDER than a shop's stored grant is what makes
+            | EmbeddedAuthenticate re-exchange on the next embedded load
+            | (ShopifyApps::missingScopes) — i.e. adding them here is what actually
+            | upgrades the installed store's token.
             */
             'oauth_scopes' => env(
                 'SHOPIFY_CUSTOM_OAUTH_SCOPES',
                 'read_customers,read_products,write_products,'.
                 'read_purchase_options,write_purchase_options,'.
-                'write_orders,write_draft_orders,write_fulfillments,'.
-                'write_merchant_managed_fulfillment_orders'
+                'write_orders,read_all_orders,write_draft_orders,write_fulfillments,'.
+                'write_merchant_managed_fulfillment_orders,'.
+                'read_own_subscription_contracts,write_own_subscription_contracts,'.
+                'read_customer_payment_methods'
             ),
         ],
     ],

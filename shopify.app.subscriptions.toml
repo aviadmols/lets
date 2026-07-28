@@ -46,46 +46,54 @@ embedded = true
 # declare) was the shared blocker. GRANTED 2026-07-28 — "Checkout and account UI
 # extensions are enabled" in the Partner Dashboard — so lets-thank-you ships now.
 #
-# lets-subscriptions-account stays out: it reads subscriptionContracts through
-# the Customer Account API, which needs the subscription scopes Shopify has not
-# granted yet (requested 2026-07-28, up to 7 business days). Add it back the day
-# that approval lands.
+# lets-subscriptions-account also needed the subscription scopes for its
+# Customer Account API reads. GRANTED the same day, so all four ship.
 #
 # Shipping lets-thank-you is about the APP, not this one store: it charges a
 # saved PayPlus token, which the pilot store — billing through Shopify Payments —
 # has no use for, but any PayPlus merchant installing through this app does.
 #
-# The public app (shopify.app.toml) keeps the default and ships all four.
+# The list is now the same four the public app (shopify.app.toml) ships by
+# default; it stays explicit so that adding a fifth extension is a decision here
+# rather than a side effect of creating a directory.
 extension_directories = [
   "extensions/lets-installments",
   "extensions/lets-post-purchase",
   "extensions/lets-thank-you",
+  "extensions/lets-subscriptions-account",
 ]
 
 [access_scopes]
-# EXACTLY the set the installed store has already granted. Declaring a scope the
-# app has not been approved for makes Shopify reject the whole version, and
-# declaring MORE than the store granted forces the merchant to re-authorise —
-# so the subscription scopes below stay commented until Shopify approves them:
-#   read_all_orders, read_own_subscription_contracts,
-#   write_own_subscription_contracts, read_customer_payment_methods,
-#   read_checkout_external_data
+# Declaring a scope the app has NOT been approved for makes Shopify reject the
+# whole version, so this list may only ever contain what is actually granted.
 # Keep in lockstep with config('shopify.apps.custom.oauth_scopes').
 #
-# read/write_purchase_options is what actually creates SELLING PLANS. Shopify's
-# own error names it as the alternative to write_own_subscription_contracts:
+# The subscription scopes were rejected here on 2026-07-26 ("app_access /
+# Validation errors: scopes"), which is exactly what being gated behind an
+# API-access request looks like from the code side. GRANTED 2026-07-28 —
+# "Access subscriptions APIs" and "Read all orders scope" both approved in the
+# Partner Dashboard — so the four now appear for the first time:
+#   read_own_subscription_contracts   → ContractMirror + ContractBackfill reads
+#   write_own_subscription_contracts  → ContractActionService pause/resume/cancel
+#   read_customer_payment_methods     → required BY the Subscription APIs to bill
+#   read_all_orders                   → billing-attempt orders past the 60-day
+#                                       window read_orders covers
+#
+# read_checkout_external_data stays OUT: neither approval covers it, and one
+# unapproved scope rejects the entire version — so it is not worth carrying for a
+# call this app does not yet make.
+#
+# read/write_purchase_options remains what actually creates SELLING PLANS, and is
+# NOT gated — Shopify's own error names it as the alternative to
+# write_own_subscription_contracts:
 #   "Required access: write_products as well as any of
 #    write_own_subscription_contracts, write_purchase_options"
-# and unlike the subscription-contract scopes it is not gated behind the
-# protected-customer-data review — so a product can be made subscribable before
-# that approval lands (managing the resulting CONTRACTS still needs it).
-# PROVEN 2026-07-26: adding read_own_subscription_contracts,
-# write_own_subscription_contracts or read_customer_payment_methods here makes
-# Shopify REJECT the whole version ("app_access / Validation errors: scopes:
-# …"). They are gated behind the API-access request in the Partner Dashboard —
-# there is no code-side way around it, unlike write_purchase_options, which is
-# free and is what makes a product subscribable in the first place.
-scopes = "read_customers,read_products,write_products,read_purchase_options,write_purchase_options,write_orders,write_draft_orders,write_fulfillments,write_merchant_managed_fulfillment_orders"
+# which is how products were made subscribable before this approval landed.
+#
+# NOTE: this list is now WIDER than the installed store granted, so the merchant
+# is asked to re-authorise on the next embedded load. That prompt is the point —
+# it is what re-mints the token with the subscription scopes.
+scopes = "read_customers,read_products,write_products,read_purchase_options,write_purchase_options,write_orders,read_all_orders,write_draft_orders,write_fulfillments,write_merchant_managed_fulfillment_orders,read_own_subscription_contracts,write_own_subscription_contracts,read_customer_payment_methods"
 use_legacy_install_flow = false
 
 [auth]
@@ -108,18 +116,23 @@ api_version = "2026-04"
   topics = ["products/create", "products/update", "products/delete"]
   uri = "/shopify/webhooks"
 
-  # BLOCKED ON APPROVAL — re-add once "protected customer data access" and the
-  # subscription APIs are granted for THIS app. Until then Shopify rejects the
-  # version outright ("not approved to subscribe to webhook topics containing
-  # protected customer data"). The handlers already exist; per-shop registration
-  # via the Admin API (RegisterShopifyWebhooksJob) covers what the grant allows.
-  # [[webhooks.subscriptions]]
-  # topics = [
-  #   "subscription_contracts/create", "subscription_contracts/update",
-  #   "subscription_billing_attempts/success", "subscription_billing_attempts/failure",
-  #   "subscription_billing_attempts/challenged",
-  # ]
-  # uri = "/shopify/webhooks"
+  # The Shopify-Payments rail. Declared here as well as registered per-shop
+  # (RegisterShopifyWebhooksJob) — belt and braces: the toml makes Shopify
+  # VALIDATE the topics at deploy, the per-shop registration makes them exist for
+  # a given store the moment it installs.
+  #
+  # Was rejected outright until 2026-07-28 ("not approved to subscribe to webhook
+  # topics containing protected customer data") and unblocked by the "Access
+  # subscriptions APIs" grant. These are what keep the mirror honest after the
+  # one-time ContractBackfill: a webhook announces a CHANGE, the backfill covers
+  # what predates it, and neither substitutes for the other.
+  [[webhooks.subscriptions]]
+  topics = [
+    "subscription_contracts/create", "subscription_contracts/update",
+    "subscription_billing_attempts/success", "subscription_billing_attempts/failure",
+    "subscription_billing_attempts/challenged",
+  ]
+  uri = "/shopify/webhooks"
   #
   # [[webhooks.subscriptions]]
   # compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
