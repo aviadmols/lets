@@ -2,6 +2,7 @@
 
 namespace App\Services\Shopify\Webhooks;
 
+use App\Domain\ShopifySubscriptions\ContractBackfill;
 use App\Domain\ShopifySubscriptions\ContractMirror;
 use App\Models\Shop;
 use App\Models\SubscriptionBillingAttempt;
@@ -29,7 +30,10 @@ final class SubscriptionWebhookHandler implements WebhookHandler
     private const TOPIC_FAILURE = 'subscription_billing_attempts/failure';
     private const TOPIC_CHALLENGED = 'subscription_billing_attempts/challenged';
 
-    public function __construct(private readonly ContractMirror $mirror) {}
+    public function __construct(
+        private readonly ContractMirror $mirror,
+        private readonly ContractBackfill $backfill,
+    ) {}
 
     public function handle(WebhookEvent $event): void
     {
@@ -42,12 +46,46 @@ final class SubscriptionWebhookHandler implements WebhookHandler
         $payload = (array) ($event->raw_payload ?? []);
 
         if (str_starts_with($topic, 'subscription_contracts/')) {
-            $this->mirror->fromWebhook($shop, $payload);
+            $contract = $this->mirror->fromWebhook($shop, $payload);
+            $this->enrich($shop, $payload, $contract);
 
             return;
         }
 
         $this->resolveAttempt($shop, $topic, $payload);
+    }
+
+    /**
+     * Read the contract back in full.
+     *
+     * Shopify's subscription_contracts payload is a NOTIFICATION, not a record:
+     * gid, cadence, currency, customer id, status, origin order — and nothing
+     * else. No nextBillingDate, no amount, no lines. Mirroring only that leaves a
+     * row the merchant reads as broken (blank amount, blank next charge) and,
+     * worse, one the due-cycle scanner SKIPS, because it filters on a
+     * next_billing_date the webhook never carried. So the read-back is not
+     * decoration — it is what makes the subscription billable.
+     *
+     * Failure is non-fatal by design: the sparse row still beats no row, and
+     * ContractBackfill can fill it in later.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function enrich(Shop $shop, array $payload, ?SubscriptionContract $contract): void
+    {
+        $gid = (string) ($payload['admin_graphql_api_id'] ?? '');
+        if ($gid === '' && $contract !== null) {
+            $gid = (string) $contract->shopify_gid;
+        }
+        if ($gid === '') {
+            return;
+        }
+
+        if ($this->backfill->refresh($shop, $gid) === null) {
+            Log::info('shopify_subscriptions.contract_not_enriched', [
+                'shop_id' => $shop->getKey(), 'gid' => $gid,
+            ]);
+        }
     }
 
     /**

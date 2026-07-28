@@ -6,7 +6,9 @@ use App\Domain\ShopifySubscriptions\ContractBackfill;
 use App\Domain\ShopifySubscriptions\Jobs\BackfillContractsJob;
 use App\Models\Shop;
 use App\Models\SubscriptionContract;
+use App\Models\WebhookEvent;
 use App\Services\Shopify\ShopifyClientFactory;
+use App\Services\Shopify\Webhooks\SubscriptionWebhookHandler;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Feature\Shopify\RecordingShopifyClient;
@@ -91,6 +93,35 @@ final class ContractBackfillTest extends TestCase
         $this->assertSame(0, SubscriptionContract::acrossAllTenants()->count());
     }
 
+    public function test_protected_customer_data_costs_the_name_not_the_subscription(): void
+    {
+        $shop = $this->shop();
+
+        // Protected customer data is a SEPARATE approval from the subscription
+        // scopes. Shopify refuses the three customer fields and fails the whole
+        // read; the contract itself is perfectly readable without them.
+        $recorder = new RecordingShopifyClient();
+        $recorder->graphqlResponses = [$this->page([$this->contractWithoutCustomerFields('1')], hasNext: false)];
+        $recorder->graphqlThrowsOnce = new \RuntimeException(
+            'shopify.graphql_errors: This app is not approved to use the email field.'
+            .' This app is not approved to use the firstName field.'
+        );
+        ShopifyClientFactory::fake(fn (): RecordingShopifyClient => $recorder);
+
+        $result = Tenant::run($shop, fn (): array => app(ContractBackfill::class)->run($shop));
+
+        $this->assertSame(ContractBackfill::RESULT_OK, $result['result']);
+        $this->assertSame(1, $result['mirrored'], 'A missing label is not a reason to lose the subscription.');
+
+        $mirrored = SubscriptionContract::acrossAllTenants()->firstOrFail();
+        $this->assertSame(SubscriptionContract::STATUS_ACTIVE, $mirrored->status);
+        $this->assertNull($mirrored->customer_email);
+
+        // The retry must drop the protected fields — asking again for what was
+        // just refused would loop.
+        $this->assertStringNotContainsString('email', $recorder->graphqlCalls[1]['query']);
+    }
+
     public function test_any_other_failure_is_reported_as_a_failure(): void
     {
         $shop = $this->shop();
@@ -117,6 +148,81 @@ final class ContractBackfillTest extends TestCase
         $this->assertSame(1, SubscriptionContract::acrossAllTenants()->count());
         $this->assertSame(
             SubscriptionContract::STATUS_PAUSED,
+            SubscriptionContract::acrossAllTenants()->firstOrFail()->status,
+        );
+    }
+
+    public function test_a_contract_webhook_is_read_back_in_full(): void
+    {
+        $shop = $this->shop();
+
+        // Shopify's subscription_contracts/create payload verbatim: a
+        // NOTIFICATION, not a record. No nextBillingDate, no amount, no lines.
+        $payload = [
+            'admin_graphql_api_id' => 'gid://shopify/SubscriptionContract/1',
+            'id' => 1,
+            'billing_policy' => ['interval' => 'month', 'interval_count' => 1],
+            'currency_code' => 'ILS',
+            'customer_id' => 10226744000815,
+            'status' => 'active',
+        ];
+
+        $recorder = new RecordingShopifyClient();
+        $recorder->graphqlResponses = [
+            ['data' => ['subscriptionContract' => $this->contract('1', 'ACTIVE')]],
+        ];
+        ShopifyClientFactory::fake(fn (): RecordingShopifyClient => $recorder);
+
+        $event = WebhookEvent::create([
+            'shop_id' => (int) $shop->getKey(),
+            'source' => WebhookEvent::SOURCE_SHOPIFY,
+            'topic' => 'subscription_contracts/create',
+            'webhook_id' => 'wh-1',
+            'raw_payload' => $payload,
+            'hmac_valid' => true,
+            'received_at' => now(),
+        ]);
+
+        Tenant::run($shop, fn () => app(SubscriptionWebhookHandler::class)->handle($event));
+
+        $mirrored = SubscriptionContract::acrossAllTenants()->firstOrFail();
+
+        // The load-bearing one: the due-cycle scanner filters on
+        // next_billing_date, so a null here is a subscription that never bills.
+        $this->assertNotNull($mirrored->next_billing_date, 'Without this the contract is never billed.');
+        $this->assertSame('49.90', (string) $mirrored->amount);
+        $this->assertNotNull($mirrored->lines);
+    }
+
+    public function test_a_failed_read_back_keeps_the_sparse_row(): void
+    {
+        $shop = $this->shop();
+
+        $recorder = new RecordingShopifyClient();
+        $recorder->graphqlThrows = new \RuntimeException('shopify.graphql_failed — status=500');
+        ShopifyClientFactory::fake(fn (): RecordingShopifyClient => $recorder);
+
+        $event = WebhookEvent::create([
+            'shop_id' => (int) $shop->getKey(),
+            'source' => WebhookEvent::SOURCE_SHOPIFY,
+            'topic' => 'subscription_contracts/create',
+            'webhook_id' => 'wh-2',
+            'raw_payload' => [
+                'admin_graphql_api_id' => 'gid://shopify/SubscriptionContract/9',
+                'billing_policy' => ['interval' => 'month', 'interval_count' => 1],
+                'currency_code' => 'ILS',
+                'status' => 'active',
+            ],
+            'hmac_valid' => true,
+            'received_at' => now(),
+        ]);
+
+        Tenant::run($shop, fn () => app(SubscriptionWebhookHandler::class)->handle($event));
+
+        // A subscription we can only half-describe is still one the merchant has.
+        $this->assertSame(1, SubscriptionContract::acrossAllTenants()->count());
+        $this->assertSame(
+            SubscriptionContract::STATUS_ACTIVE,
             SubscriptionContract::acrossAllTenants()->firstOrFail()->status,
         );
     }
@@ -176,6 +282,15 @@ final class ContractBackfillTest extends TestCase
                 ['node' => ['title' => 'כובע מצחיה NY', 'quantity' => 1, 'currentPrice' => ['amount' => '49.90']]],
             ]],
         ];
+    }
+
+    /** The same node as Shopify returns it when the customer fields are dropped. */
+    private function contractWithoutCustomerFields(string $id): array
+    {
+        $node = $this->contract($id, 'ACTIVE');
+        $node['customer'] = ['id' => 'gid://shopify/Customer/'.$id];
+
+        return $node;
     }
 
     /**

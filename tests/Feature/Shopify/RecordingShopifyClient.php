@@ -36,6 +36,13 @@ final class RecordingShopifyClient implements ShopifyAdminApi
     public ?\Throwable $graphqlThrows = null;
 
     /**
+     * When set, only the FIRST graphql() call throws and the rest succeed — for
+     * flows that RECOVER from a refusal by asking again differently (e.g. a read
+     * retried without the protected customer fields Shopify just refused).
+     */
+    public ?\Throwable $graphqlThrowsOnce = null;
+
+    /**
      * When set, graphql() succeeds this many times and throws from then on —
      * for flows where an EARLY call must survive a LATER failure (e.g. a live
      * selling plan whose cosmetic follow-up write fails).
@@ -52,7 +59,16 @@ final class RecordingShopifyClient implements ShopifyAdminApi
             throw new \RuntimeException('scripted failure after '.$this->graphqlThrowsAfter.' call(s)');
         }
 
+        // Recorded BEFORE throwing: a caller that recovers by asking differently
+        // must be able to assert what the refused call actually looked like.
         $this->graphqlCalls[] = ['query' => $query, 'variables' => $variables];
+
+        if ($this->graphqlThrowsOnce !== null) {
+            $once = $this->graphqlThrowsOnce;
+            $this->graphqlThrowsOnce = null;
+
+            throw $once;
+        }
 
         return $this->graphqlResponses !== [] ? array_shift($this->graphqlResponses) : [];
     }

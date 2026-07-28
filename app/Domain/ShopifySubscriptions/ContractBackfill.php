@@ -49,31 +49,64 @@ final class ContractBackfill
      * the message because the Admin API returns it as a plain GraphQL error with
      * no code of its own.
      */
-    private const DENIAL_MARKERS = ['Access denied', 'not approved', 'ACCESS_DENIED'];
+    private const DENIAL_MARKERS = ['Access denied', 'ACCESS_DENIED'];
+
+    /**
+     * How Shopify refuses a PROTECTED CUSTOMER DATA field ("This app is not
+     * approved to use the email field"). Distinct from a scope denial because the
+     * remedy is different — and so is the damage: the contract is readable, only
+     * the shopper's name and email are not.
+     */
+    private const PROTECTED_FIELD_MARKER = 'not approved to use the';
 
     /**
      * The field selection MUST stay in step with ContractMirror::fromGraphQl —
      * that method is the only reader of this shape.
+     *
+     * `customer { email firstName lastName }` is PROTECTED CUSTOMER DATA and needs
+     * its own approval, separate from the subscription scopes. It is kept in its
+     * own fragment so the whole read can be retried without it: those three fields
+     * only label a row on screen, and losing the label is not a reason to lose the
+     * subscription.
      */
+    private const CUSTOMER_FIELDS_FULL = 'customer { id email firstName lastName }';
+
+    private const CUSTOMER_FIELDS_MINIMAL = 'customer { id }';
+
+    /** The one node shape, shared by the paged read and the single-contract one. */
+    private const NODE_FIELDS = <<<'GQL'
+    id
+    status
+    currencyCode
+    nextBillingDate
+    billingPolicy { interval intervalCount }
+    deliveryPrice { amount }
+    %CUSTOMER%
+    lines(first: $lines) {
+      edges { node { title quantity currentPrice { amount } } }
+    }
+    GQL;
+
     private const QUERY = <<<'GQL'
     query mirrorContracts($first: Int!, $after: String, $lines: Int!) {
       subscriptionContracts(first: $first, after: $after) {
         pageInfo { hasNextPage endCursor }
-        edges {
-          node {
-            id
-            status
-            currencyCode
-            nextBillingDate
-            billingPolicy { interval intervalCount }
-            deliveryPrice { amount }
-            customer { id email firstName lastName }
-            lines(first: $lines) {
-              edges { node { title quantity currentPrice { amount } } }
-            }
-          }
-        }
+        edges { node { %NODE% } }
       }
+    }
+    GQL;
+
+    /**
+     * ONE contract, by gid. This is what turns a webhook into a usable row:
+     * Shopify's subscription_contracts/create payload is a NOTIFICATION, not a
+     * record — it carries the gid, the cadence, the currency and the customer id,
+     * and nothing else. No nextBillingDate, no amount, no lines. A mirror fed only
+     * by that payload has a null next_billing_date, which the due-cycle scanner
+     * filters on, so the subscription would never bill.
+     */
+    private const QUERY_ONE = <<<'GQL'
+    query mirrorContract($id: ID!, $lines: Int!) {
+      subscriptionContract(id: $id) { %NODE% }
     }
     GQL;
 
@@ -93,15 +126,36 @@ final class ContractBackfill
         $mirrored = 0;
         $pages = 0;
         $cursor = null;
+        $customerFields = self::CUSTOMER_FIELDS_FULL;
 
-        do {
+        $hasNext = false;
+
+        // A plain while(true): the retry below has to re-enter the loop WITHOUT
+        // evaluating a continuation condition, which `continue` in a do/while
+        // would do — against a $hasNext the first pass has not set yet.
+        while (true) {
             try {
-                $body = $client->graphql(self::QUERY, [
+                $body = $client->graphql($this->query(self::QUERY, $customerFields), [
                     'first' => self::PAGE_SIZE,
                     'after' => $cursor,
                     'lines' => self::LINES_PER_CONTRACT,
                 ]);
             } catch (\Throwable $e) {
+                // Protected customer data is a SEPARATE approval from the
+                // subscription scopes, and only costs us the shopper's name and
+                // email. Refusing to mirror the subscription over a missing label
+                // would be the app punishing the merchant for Shopify's gate — so
+                // drop the three fields and read the contracts anyway, once.
+                if ($customerFields === self::CUSTOMER_FIELDS_FULL
+                    && str_contains($e->getMessage(), self::PROTECTED_FIELD_MARKER)) {
+                    Log::info('shopify_subscriptions.backfill_without_customer_fields', [
+                        'shop_id' => $shop->getKey(),
+                    ]);
+                    $customerFields = self::CUSTOMER_FIELDS_MINIMAL;
+
+                    continue;
+                }
+
                 return $this->failure($shop, $e, $mirrored, $pages);
             }
 
@@ -117,7 +171,11 @@ final class ContractBackfill
             $pages++;
             $cursor = data_get($connection, 'pageInfo.endCursor');
             $hasNext = (bool) data_get($connection, 'pageInfo.hasNextPage', false);
-        } while ($hasNext && $cursor !== null && $pages < self::MAX_PAGES);
+
+            if (! $hasNext || $cursor === null || $pages >= self::MAX_PAGES) {
+                break;
+            }
+        }
 
         // Never let a bound truncate silently: a merchant reading "synced" must
         // not be looking at a partial list without being told.
@@ -132,6 +190,59 @@ final class ContractBackfill
         ]);
 
         return ['result' => self::RESULT_OK, 'mirrored' => $mirrored, 'pages' => $pages, 'reason' => null];
+    }
+
+    /**
+     * Re-read ONE contract and mirror the full record over whatever the webhook
+     * left. Returns null when Shopify will not give it to us — the caller keeps
+     * the sparse row rather than losing it, because a subscription we can only
+     * half-describe is still a subscription the merchant has.
+     */
+    public function refresh(Shop $shop, string $gid): ?\App\Models\SubscriptionContract
+    {
+        if ($gid === '') {
+            return null;
+        }
+
+        $client = ShopifyClientFactory::for($shop);
+        $customerFields = self::CUSTOMER_FIELDS_FULL;
+
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            try {
+                $body = $client->graphql($this->query(self::QUERY_ONE, $customerFields), [
+                    'id' => $gid,
+                    'lines' => self::LINES_PER_CONTRACT,
+                ]);
+            } catch (\Throwable $e) {
+                if ($attempt === 0 && str_contains($e->getMessage(), self::PROTECTED_FIELD_MARKER)) {
+                    $customerFields = self::CUSTOMER_FIELDS_MINIMAL;
+
+                    continue;
+                }
+
+                Log::warning('shopify_subscriptions.refresh_failed', [
+                    'shop_id' => $shop->getKey(), 'gid' => $gid, 'error' => $e->getMessage(),
+                ]);
+
+                return null;
+            }
+
+            $node = (array) data_get($body, 'data.subscriptionContract', []);
+
+            return $node !== [] ? $this->mirror->fromGraphQl($shop, $node) : null;
+        }
+
+        return null;
+    }
+
+    /** A read, with whichever customer selection this attempt is allowed. */
+    private function query(string $template, string $customerFields): string
+    {
+        return str_replace(
+            '%NODE%',
+            str_replace('%CUSTOMER%', $customerFields, self::NODE_FIELDS),
+            $template,
+        );
     }
 
     /**
