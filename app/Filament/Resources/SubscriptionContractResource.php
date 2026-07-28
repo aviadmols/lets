@@ -6,6 +6,7 @@ use App\Domain\ShopifySubscriptions\ContractActionService;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Filament\Resources\SubscriptionContractResource\Pages;
 use App\Models\ActivityEvent;
+use App\Models\InstallmentPlan;
 use App\Models\Shop;
 use App\Models\SubscriptionContract;
 use App\Services\Shopify\ShopifyApps;
@@ -37,19 +38,53 @@ class SubscriptionContractResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-arrow-path-rounded-square';
     protected static ?int $navigationSort = 30;
 
+    /**
+     * Where this list lives depends on whether it IS the shop's subscriptions.
+     *
+     * On a Shopify-Payments shop with no PayPlus plans, this is the only
+     * subscriptions list there is, so it takes the name and the place a merchant
+     * looks for them: "Subscriptions", under Customers. Where BOTH rails have
+     * rows it keeps the qualified name, because then the distinction is real and
+     * hiding it would make two different things look like one.
+     */
+    public static function isPrimarySubscriptionsScreen(): bool
+    {
+        $shop = Tenant::current();
+
+        return $shop instanceof Shop
+            && $shop->usesShopifyPaymentsRail()
+            && ! InstallmentPlan::query()->exists();
+    }
+
     public static function getNavigationGroup(): ?string
     {
-        return __('nav.group.payments');
+        return self::isPrimarySubscriptionsScreen()
+            ? __('nav.group.customers')
+            : __('nav.group.payments');
+    }
+
+    public static function getNavigationSort(): ?int
+    {
+        // Sit exactly where the PayPlus list would have, so the sidebar order does
+        // not shuffle when a shop's rail decides which one shows.
+        return self::isPrimarySubscriptionsScreen() ? 20 : 30;
     }
 
     public static function getNavigationLabel(): string
     {
-        return __('nav.shopify_subscriptions');
+        return self::isPrimarySubscriptionsScreen()
+            ? __('nav.subscriptions')
+            : __('nav.shopify_subscriptions');
+    }
+
+    public static function getModelLabel(): string
+    {
+        return self::getNavigationLabel();
     }
 
     public static function getPluralModelLabel(): string
     {
-        return __('nav.shopify_subscriptions');
+        return self::getNavigationLabel();
     }
 
     public static function canCreate(): bool
@@ -153,6 +188,11 @@ class SubscriptionContractResource extends Resource
                     ->modalDescription(__('shopify_subscriptions.action.cancel_body'))
                     ->action(fn (SubscriptionContract $r) => self::verb('cancel', $r)),
             ])
+            // The row itself opens the record. The list carries the two verbs a
+            // merchant reaches for without looking; everything else — skip,
+            // reschedule, the attempt history — lives on the detail page, where
+            // there is room to say what each one does.
+            ->recordUrl(fn (SubscriptionContract $r): string => Pages\ViewSubscriptionContract::getUrl(['record' => $r]))
             ->defaultSort('next_billing_date', 'asc')
             ->emptyStateHeading(__('shopify_subscriptions.empty'))
             // An empty table is ambiguous: no subscriptions yet, or subscriptions
@@ -214,6 +254,7 @@ class SubscriptionContractResource extends Resource
     {
         return [
             'index' => Pages\ListSubscriptionContracts::route('/'),
+            'view' => Pages\ViewSubscriptionContract::route('/{record}'),
         ];
     }
 }
