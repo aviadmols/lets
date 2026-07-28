@@ -3,8 +3,10 @@
 namespace Tests\Feature\WooCommerce;
 
 use App\Domain\Billing\IdempotencyKey;
+use App\Domain\Invoicing\DocumentContext;
 use App\Domain\Invoicing\Jobs\IssueDocumentJob;
 use App\Models\InstallmentPaymentMethod;
+use App\Models\MerchantInvoicingSettings;
 use App\Models\PaymentLedger;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Contracts\PayPlusGatewayInterface;
@@ -15,6 +17,7 @@ use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
@@ -287,10 +290,13 @@ final class WooCommerceGatewayTest extends TestCase
         });
     }
 
-    /** The finalizer must never mint documents — the plugin's status hook is the single trigger. */
-    public function test_the_finalizer_dispatches_no_document_job(): void
+    /**
+     * A shop that has not asked for documents gets none — the reporter runs the
+     * same gates as the plugin's endpoint, and `plans_only` (the default) is one.
+     */
+    public function test_the_finalizer_dispatches_no_document_when_invoicing_is_off(): void
     {
-        \Illuminate\Support\Facades\Queue::fake();
+        Queue::fake();
         Http::fake(['*/wp-json/wc/v3/orders/6500' => Http::response([
             'id' => 6500, 'status' => 'processing', 'total' => '50.00',
         ], 200)]);
@@ -300,7 +306,60 @@ final class WooCommerceGatewayTest extends TestCase
             'transaction' => ['more_info' => 'gw:6500', 'status_code' => '000', 'amount' => '50.00'],
         ])->assertOk();
 
-        \Illuminate\Support\Facades\Queue::assertNotPushed(IssueDocumentJob::class);
+        Queue::assertNotPushed(IssueDocumentJob::class);
+    }
+
+    /**
+     * THE production failure this reverses: order 2816 was marked paid, then
+     * another plugin on the site fataled inside the same status-change hook chain
+     * (WP answered 500 AFTER the status saved), so the plugin's invoicing hook
+     * never fired — and a status change happens once, so the document was lost
+     * permanently. We are the party that marked it paid; we report it ourselves.
+     */
+    public function test_an_all_orders_shop_gets_its_document_reported_by_the_saas(): void
+    {
+        Queue::fake();
+        Http::fake(['*/wp-json/wc/v3/orders/6700' => Http::response([
+            'id' => 6700, 'number' => '6700', 'status' => 'processing',
+            'total' => '120.00', 'currency' => 'ILS',
+            'billing' => ['first_name' => 'Meir', 'last_name' => 'Sella', 'email' => 'meir@example.com'],
+            'line_items' => [['name' => 'Coffee', 'quantity' => 2, 'total' => '120.00', 'sku' => 'CF-1']],
+        ], 200)]);
+        [$shop] = $this->connectedShop('gw-invoice.example.com');
+        $this->enableAllOrdersInvoicing($shop);
+
+        $this->postJson('/woocommerce/gateway/callback/'.(string) $shop->wc_shop_token, [
+            'transaction' => ['more_info' => 'gw:6700', 'status_code' => '000', 'amount' => '120.00', 'four_digits' => '4242'],
+        ])->assertOk();
+
+        Queue::assertPushed(IssueDocumentJob::class, function (IssueDocumentJob $job) use ($shop): bool {
+            return $job->shopId === (int) $shop->getKey()
+                && $job->context === DocumentContext::PLATFORM_ORDER->value
+                && ($job->order['order_id'] ?? null) === '6700'
+                && (float) ($job->order['total'] ?? 0) === 120.00
+                && ($job->order['customer']['name'] ?? null) === 'Meir Sella'
+                && ($job->order['card_last4'] ?? null) === '4242'
+                // Line unit price is the line TOTAL ÷ quantity, as the plugin reports it.
+                && (float) ($job->order['lines'][0]['unit_price'] ?? 0) === 60.00;
+        });
+    }
+
+    /** A plan order's paperwork belongs to the plan pipeline — never reported twice. */
+    public function test_a_plan_order_is_not_reported_for_invoicing(): void
+    {
+        Queue::fake();
+        Http::fake(['*/wp-json/wc/v3/orders/6800' => Http::response([
+            'id' => 6800, 'status' => 'processing', 'total' => '90.00',
+            'meta_data' => [['key' => 'lets_subscription_plan_ids', 'value' => 'PLN-PUB-2']],
+        ], 200)]);
+        [$shop] = $this->connectedShop('gw-invoice2.example.com');
+        $this->enableAllOrdersInvoicing($shop);
+
+        $this->postJson('/woocommerce/gateway/callback/'.(string) $shop->wc_shop_token, [
+            'transaction' => ['more_info' => 'gw:6800', 'status_code' => '000', 'amount' => '90.00'],
+        ])->assertOk();
+
+        Queue::assertNotPushed(IssueDocumentJob::class);
     }
 
     /**
@@ -483,6 +542,22 @@ final class WooCommerceGatewayTest extends TestCase
                 return GatewayResult::fromResponse(['results' => ['status' => 'success']]);
             }
         });
+    }
+
+    /** Green Invoice connected + the merchant's `all_orders` scope. */
+    private function enableAllOrdersInvoicing(Shop $shop): void
+    {
+        $shop->invoicing_credentials = [
+            'provider' => Shop::INVOICING_PROVIDER_GREEN_INVOICE,
+            'api_key_id' => 'key-id',
+            'api_secret' => 'key-secret',
+            'environment' => Shop::INVOICING_ENV_SANDBOX,
+        ];
+        $shop->save();
+
+        MerchantInvoicingSettings::forShop((int) $shop->getKey())
+            ->forceFill(['enabled' => true, 'scope' => 'all_orders'])
+            ->save();
     }
 
     /** @param array<string,mixed> $body */

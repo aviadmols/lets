@@ -100,6 +100,13 @@ final class WooGatewayFinalizer
                     ]);
                 }
 
+                // Report the order for invoicing OURSELVES. We are the party that marked
+                // it paid; waiting for WordPress to echo that back through a status-change
+                // hook loses the document whenever anything else on the site breaks that
+                // hook chain. Same gates + same idempotency key as the plugin's report, so
+                // the two converge on one document. (WooGatewayInvoiceReporter never throws.)
+                app(WooGatewayInvoiceReporter::class)->report($shop, $orderId, $order, $payplusBody);
+
                 return true;
             } catch (\Throwable $e) {
                 Log::error('woocommerce.gateway.mark_paid_failed', [
@@ -262,6 +269,10 @@ final class WooGatewayFinalizer
             attributes: [
                 'shopify_order_id' => $orderId,
                 'shopify_customer_id' => $this->customerRef($order) ?: null,
+                // Named on the row: a plain checkout has no plan to borrow a name
+                // from, so without this the Payments screen shows a bare id.
+                'customer_name' => $this->customerName($order),
+                'customer_email' => ((string) data_get($order, 'billing.email', '')) ?: null,
                 'payplus_transaction_uid' => $this->transactionUid($payplusBody) ?: null,
             ],
         );
@@ -370,6 +381,23 @@ final class WooGatewayFinalizer
      *
      * @param  array<string, mixed>  $order
      */
+    /**
+     * The shopper's full name from the WC billing address, or null. Kept separate
+     * from customerRef(): that one is an IDENTITY the upsell must match on, this
+     * one is a LABEL a human reads.
+     *
+     * @param  array<string, mixed>  $order
+     */
+    private function customerName(array $order): ?string
+    {
+        $name = trim(
+            ((string) data_get($order, 'billing.first_name', '')).' '
+            .((string) data_get($order, 'billing.last_name', ''))
+        );
+
+        return $name !== '' ? $name : null;
+    }
+
     private function customerRef(array $order): string
     {
         $customerId = (int) ($order['customer_id'] ?? 0);

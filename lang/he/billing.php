@@ -45,6 +45,25 @@ return [
     ],
 
     // הקשרי חיוב
+    'col' => [
+        'order' => 'הזמנה',
+    ],
+
+    'detail' => [
+        'title' => 'תשלום',
+        'email' => 'אימייל',
+        'gateway' => 'תשובת הסליקה',
+        'no_document' => 'לא הופק מסמך חשבונאי לתשלום הזה.',
+        'fact' => [
+            'approval' => 'מספר אישור',
+            'card' => 'כרטיס',
+            'brand' => 'סוג כרטיס',
+            'method' => 'אמצעי',
+            'payments' => 'תשלומים',
+            'status_code' => 'קוד סטטוס',
+            'status_description' => 'סטטוס',
+        ],
+    ],
     'charge_context' => [
         'deposit' => 'מקדמה',
         'installment' => 'תשלום',

@@ -46,6 +46,25 @@ return [
     ],
 
     // charge contexts
+    'col' => [
+        'order' => 'Order',
+    ],
+
+    'detail' => [
+        'title' => 'Payment',
+        'email' => 'Email',
+        'gateway' => 'Gateway response',
+        'no_document' => 'No accounting document for this payment.',
+        'fact' => [
+            'approval' => 'Approval number',
+            'card' => 'Card',
+            'brand' => 'Card brand',
+            'method' => 'Method',
+            'payments' => 'Instalments',
+            'status_code' => 'Status code',
+            'status_description' => 'Status',
+        ],
+    ],
     'charge_context' => [
         'deposit' => 'Deposit',
         'installment' => 'Installment',

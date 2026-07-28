@@ -92,9 +92,22 @@ class PaymentLedger extends Model
      */
     public function customerLabel(): string
     {
+        // A name captured ON the row wins: a plain store checkout has no plan to
+        // borrow one from, and it is also the only identity that is guaranteed to
+        // still describe THIS charge if the customer is later renamed.
+        $name = trim((string) ($this->customer_name ?? ''));
+        if ($name !== '') {
+            return $name;
+        }
+
         $plan = $this->plan ?: $this->resolveCustomerPlan();
         if ($plan !== null) {
             return $plan->customerLabel();
+        }
+
+        $email = trim((string) ($this->customer_email ?? ''));
+        if ($email !== '') {
+            return $email;
         }
 
         $shopifyId = trim((string) ($this->shopify_customer_id ?? ''));

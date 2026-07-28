@@ -89,6 +89,13 @@ class PaymentLedgerResource extends Resource
                     ->state(fn (PaymentLedger $record): string => $record->customerLabel())
                     ->weight('semibold'),
 
+                // The store order this money belongs to — searchable, because "what did
+                // order 2816 pay?" is how a merchant reconciles against their store.
+                Tables\Columns\TextColumn::make('shopify_order_id')
+                    ->label(__('billing.col.order'))
+                    ->searchable()
+                    ->placeholder('—'),
+
                 Tables\Columns\TextColumn::make('charge_context')
                     ->label(__('subscriptions.detail.col.context'))
                     ->formatStateUsing(fn (string $state): string => __('billing.charge_context.' . $state)),
@@ -163,6 +170,10 @@ class PaymentLedgerResource extends Resource
             // hidden by default, but a merchant who toggles it on would otherwise pay
             // one query per row.
             ->modifyQueryUsing(fn (Builder $query): Builder => $query->with(['plan', 'issuedDocument']))
+            // The row opens the full record: the transaction id in full, the card,
+            // the approval number, the order, the document. A list can only ever
+            // show a handful of columns.
+            ->recordUrl(fn (PaymentLedger $record): string => Pages\ViewPayment::getUrl(['payment' => $record->getKey()]))
             ->defaultSort('created_at', 'desc')
             ->emptyStateHeading(__('subscriptions.detail.ledger_empty'))
             ->emptyStateIcon('heroicon-o-banknotes');
@@ -172,6 +183,9 @@ class PaymentLedgerResource extends Resource
     {
         return [
             'index' => Pages\ListPaymentLedger::route('/'),
+            // Named `payment`, not `record`: Filament binds `{record}` itself, and
+            // the mismatch hands mount() the serialised model where an id belongs.
+            'view' => Pages\ViewPayment::route('/{payment}'),
         ];
     }
 }
