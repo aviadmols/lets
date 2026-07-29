@@ -48,6 +48,7 @@ class GiftCampaign extends Model
     {
         return [
             'min_cycles' => 'integer',
+            'source_product_ids' => 'array',
             'unit_price' => 'decimal:2',
             'generated_at' => 'datetime',
         ];
@@ -66,6 +67,20 @@ class GiftCampaign extends Model
     public function variant(): BelongsTo
     {
         return $this->belongsTo(ProductVariant::class, 'product_variant_id');
+    }
+
+    /**
+     * The products this campaign is limited to, as LOCAL Product ids. An empty
+     * list means every product — the rule is "at least N cycles", full stop.
+     *
+     * @return array<int, int>
+     */
+    public function sourceProductIds(): array
+    {
+        return array_values(array_filter(array_map(
+            static fn ($id): int => (int) $id,
+            (array) ($this->source_product_ids ?? []),
+        )));
     }
 
     /** Has this campaign already been generated? Drives the UI's Generate button. */

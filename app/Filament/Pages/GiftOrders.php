@@ -82,10 +82,20 @@ class GiftOrders extends Page
      */
     public ?int $campaignId = null;
 
-    // --- Product picker state ---
+    // --- Gift picker state (WHAT is sent) ---
     public string $productSearch = '';
     public ?int $selectedProductId = null;
     public ?int $selectedVariantId = null;
+
+    // --- Rule picker state (WHICH subscribers qualify) ---
+    /**
+     * Local Product ids the campaign is limited to. Empty means every product —
+     * the rule stays "at least N paid cycles", which is what it was before.
+     *
+     * @var array<int, int>
+     */
+    public array $sourceProductIds = [];
+    public string $sourceSearch = '';
 
     /** Set once the merchant has previewed THIS rule — Generate stays shut until then. */
     public bool $previewed = false;
@@ -192,6 +202,46 @@ class GiftOrders extends Page
         return round((float) $price, 2);
     }
 
+    // === Which subscriptions qualify (the rule's product filter) ===
+
+    /** @return Collection<int, Product> */
+    public function sourceOptions(): Collection
+    {
+        return $this->pickerTermSearchable($this->sourceSearch)
+            ? $this->pickerResults($this->sourceSearch)
+                ->reject(fn (Product $p): bool => in_array((int) $p->getKey(), $this->sourceProductIds, true))
+            : collect();
+    }
+
+    public function addSourceProduct(int $productId): void
+    {
+        $product = $this->pickedProduct($productId);
+        if ($product === null || in_array((int) $product->getKey(), $this->sourceProductIds, true)) {
+            return;
+        }
+
+        $this->sourceProductIds[] = (int) $product->getKey();
+        $this->sourceSearch = '';
+        $this->previewed = false; // the rule changed — re-preview before sending.
+    }
+
+    public function removeSourceProduct(int $productId): void
+    {
+        $this->sourceProductIds = array_values(array_filter(
+            $this->sourceProductIds,
+            static fn (int $id): bool => $id !== $productId,
+        ));
+        $this->previewed = false;
+    }
+
+    /** @return Collection<int, Product> */
+    public function sourceProducts(): Collection
+    {
+        return $this->sourceProductIds === []
+            ? collect()
+            : Product::query()->whereKey($this->sourceProductIds)->orderBy('title')->get();
+    }
+
     // === Preview ===
 
     public function preview(): void
@@ -206,7 +256,7 @@ class GiftOrders extends Page
             return collect();
         }
 
-        return app(GiftEligibility::class)->qualifying($this->minCycles);
+        return app(GiftEligibility::class)->qualifying($this->minCycles, null, $this->sourceProductIds);
     }
 
     // === Export ===
@@ -223,7 +273,9 @@ class GiftOrders extends Page
             return null;
         }
 
-        return app(GiftListExporter::class)->download($shop, $this->minCycles);
+        // The same rule the preview above it is showing — a file that disagreed
+        // with the list on screen would be worse than no file.
+        return app(GiftListExporter::class)->download($shop, $this->minCycles, $this->sourceProductIds);
     }
 
     // === Save ===
@@ -242,7 +294,10 @@ class GiftOrders extends Page
     /** Start a fresh campaign, leaving any saved draft untouched. */
     public function newCampaign(): void
     {
-        $this->reset(['campaignId', 'campaignTitle', 'selectedProductId', 'selectedVariantId', 'previewed']);
+        $this->reset([
+            'campaignId', 'campaignTitle', 'selectedProductId', 'selectedVariantId',
+            'sourceProductIds', 'sourceSearch', 'previewed',
+        ]);
         $this->shippingLabel = __('gifts.default_shipping_label');
     }
 
@@ -257,6 +312,7 @@ class GiftOrders extends Page
         $this->campaignId = (int) $campaign->getKey();
         $this->campaignTitle = (string) $campaign->title;
         $this->minCycles = (int) $campaign->min_cycles;
+        $this->sourceProductIds = $campaign->sourceProductIds();
         $this->shippingLabel = (string) $campaign->shipping_label;
         $this->selectedProductId = $campaign->product_id !== null ? (int) $campaign->product_id : null;
         $this->selectedVariantId = $campaign->product_variant_id !== null ? (int) $campaign->product_variant_id : null;
@@ -373,6 +429,9 @@ class GiftOrders extends Page
             'shop_id' => (int) $shop->getKey(),
             'title' => trim($this->campaignTitle),
             'min_cycles' => max(GiftEligibility::MIN_THRESHOLD, $this->minCycles),
+            // Null, not [], when unrestricted: the column reads as "no filter"
+            // rather than as an empty one.
+            'source_product_ids' => $this->sourceProductIds !== [] ? array_values($this->sourceProductIds) : null,
             'product_id' => $product->getKey(),
             'product_variant_id' => $variant?->getKey(),
             'product_title' => (string) $product->title,

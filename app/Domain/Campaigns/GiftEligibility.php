@@ -5,12 +5,14 @@ namespace App\Domain\Campaigns;
 use App\Domain\Campaigns\Models\GiftCampaign;
 use App\Domain\Campaigns\Models\GiftRecipient;
 use App\Models\InstallmentPlan;
+use App\Models\Product;
 use App\Models\SubscriptionBillingAttempt;
 use App\Models\SubscriptionContract;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 
 /**
  * Who has earned a gift: every ACTIVE subscriber with at least N successfully
@@ -33,16 +35,37 @@ final class GiftEligibility
     /**
      * Everyone who qualifies, as display rows.
      *
+     * `$productIds` are LOCAL Product ids narrowing the rule to the subscribers of
+     * those products; empty means every product. When a campaign is given and no
+     * ids are passed, the campaign's own choice applies — so the preview, the
+     * generator and the "would receive now" count can never disagree about who a
+     * saved campaign is for.
+     *
+     * @param  array<int, int>  $productIds
      * @return Collection<int, array{
      *     source_type: string, source_id: int, label: string, email: ?string,
      *     rail: string, cycles: int, already_gifted: bool
      * }>
      */
-    public function qualifying(int $minCycles, ?GiftCampaign $campaign = null): Collection
+    public function qualifying(int $minCycles, ?GiftCampaign $campaign = null, array $productIds = []): Collection
     {
         $minCycles = max(self::MIN_THRESHOLD, $minCycles);
 
-        $rows = $this->fromPlans($minCycles)->concat($this->fromContracts($minCycles));
+        if ($productIds === [] && $campaign !== null) {
+            $productIds = $campaign->sourceProductIds();
+        }
+
+        $externalIds = $this->externalIds($productIds);
+
+        // The merchant picked products, and not one of them is in this shop's
+        // catalog. Matching nothing is the honest answer — matching EVERYONE would
+        // gift the whole subscriber base off a filter that silently evaporated.
+        if ($productIds !== [] && $externalIds === []) {
+            return collect();
+        }
+
+        $rows = $this->fromPlans($minCycles, $externalIds)
+            ->concat($this->fromContracts($minCycles, $externalIds));
 
         $rows = $this->dedupeByEmail($rows);
 
@@ -54,15 +77,45 @@ final class GiftEligibility
     }
 
     /**
+     * The catalog products' platform ids. Tenant-scoped, so an id belonging to
+     * another shop resolves to nothing rather than to their product.
+     *
+     * @param  array<int, int>  $productIds
+     * @return array<int, string>
+     */
+    private function externalIds(array $productIds): array
+    {
+        if ($productIds === []) {
+            return [];
+        }
+
+        return Product::query()
+            ->whereKey($productIds)
+            ->pluck('external_id')
+            ->map(static fn ($id): string => (string) $id)
+            ->filter(static fn (string $id): bool => $id !== '')
+            ->values()
+            ->all();
+    }
+
+    /**
      * The PayPlus rail. `whereHas(..., '>=', $n)` rather than withCount + having:
      * Postgres cannot reference a SELECT alias in HAVING, and production is
      * Postgres. The extra withCount is display only.
      *
+     * @param  array<int, string>  $externalIds  empty = every product
      * @return Collection<int, array<string, mixed>>
      */
-    private function fromPlans(int $minCycles): Collection
+    private function fromPlans(int $minCycles, array $externalIds): Collection
     {
         return InstallmentPlan::query()
+            ->when($externalIds !== [], fn ($q) => $q->where(function ($q) use ($externalIds): void {
+                // One column per platform: WooCommerce fills external_product_id,
+                // the Shopify-via-PayPlus rail fills shopify_product_id. Grouped so
+                // the OR cannot escape and widen the cycle threshold beside it.
+                $q->whereIn('external_product_id', $externalIds)
+                    ->orWhereIn('shopify_product_id', $externalIds);
+            }))
             ->where('plan_kind', PlanKind::RECURRING->value)
             // Gifts reward CURRENT subscribers: someone who cancelled last year met
             // the threshold once, but they are not who this campaign is thanking.
@@ -92,9 +145,15 @@ final class GiftEligibility
      * attempt SUCCEEDED — an attempt whose transport died stays `requested` and is
      * deliberately not counted as a paid cycle.
      *
+     * The product filter is applied in PHP against the mirrored lines: `lines` is a
+     * JSON column whose product ids sit inside an array of objects, and every
+     * database this runs on spells that query differently. The set is already
+     * loaded, so this costs nothing extra.
+     *
+     * @param  array<int, string>  $externalIds  empty = every product
      * @return Collection<int, array<string, mixed>>
      */
-    private function fromContracts(int $minCycles): Collection
+    private function fromContracts(int $minCycles, array $externalIds): Collection
     {
         return SubscriptionContract::query()
             ->where('status', SubscriptionContract::STATUS_ACTIVE)
@@ -107,6 +166,7 @@ final class GiftEligibility
             ->withCount(['billingAttempts as succeeded_cycles' => fn ($q) => $q->where('status', SubscriptionBillingAttempt::STATUS_SUCCEEDED)])
             ->orderBy('id')
             ->get()
+            ->filter(fn (SubscriptionContract $contract): bool => $this->contractSells($contract, $externalIds))
             ->map(fn (SubscriptionContract $contract): array => [
                 'source_type' => GiftRecipient::SOURCE_CONTRACT,
                 'source_id' => (int) $contract->getKey(),
@@ -118,6 +178,40 @@ final class GiftEligibility
                 'cycles' => (int) $contract->succeeded_cycles,
                 'already_gifted' => false,
             ]);
+    }
+
+    /**
+     * Does this contract renew one of the chosen products?
+     *
+     * Contracts mirrored before the line query carried product ids have none, and
+     * they are EXCLUDED rather than assumed to match: a merchant who narrowed the
+     * campaign to one product must not be handed subscribers we cannot place. Re-run
+     * `subscriptions:backfill-contracts` and they come back.
+     *
+     * @param  array<int, string>  $externalIds  empty = every product
+     */
+    private function contractSells(SubscriptionContract $contract, array $externalIds): bool
+    {
+        if ($externalIds === []) {
+            return true;
+        }
+
+        foreach ((array) ($contract->lines ?? []) as $line) {
+            $gid = (string) (is_array($line) ? ($line['product_id'] ?? '') : '');
+            if ($gid === '') {
+                continue;
+            }
+
+            // Stored as a gid ("gid://shopify/Product/123"); the catalog holds the
+            // bare numeric id.
+            $numeric = str_contains($gid, '/') ? (string) Str::afterLast($gid, '/') : $gid;
+
+            if (in_array($numeric, $externalIds, true) || in_array($gid, $externalIds, true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

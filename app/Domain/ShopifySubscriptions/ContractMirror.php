@@ -70,6 +70,11 @@ final class ContractMirror
                 'title' => (string) data_get($edge, 'node.title', ''),
                 'quantity' => (int) data_get($edge, 'node.quantity', 1),
                 'amount' => (string) data_get($edge, 'node.currentPrice.amount', ''),
+                // WHICH product this contract renews. Needed to answer "gift only
+                // the subscribers of X" — the titles alone cannot, two products can
+                // share one.
+                'product_id' => (string) data_get($edge, 'node.productId', '') ?: null,
+                'variant_id' => (string) data_get($edge, 'node.variantId', '') ?: null,
             ],
             (array) data_get($node, 'lines.edges', []),
         );

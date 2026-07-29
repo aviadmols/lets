@@ -83,7 +83,7 @@ final class ContractBackfill
     deliveryPrice { amount }
     %CUSTOMER%
     lines(first: $lines) {
-      edges { node { title quantity currentPrice { amount } } }
+      edges { node { title quantity currentPrice { amount } productId variantId } }
     }
     GQL;
 

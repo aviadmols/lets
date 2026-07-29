@@ -29,6 +29,53 @@
                 <span class="rc-muted">{{ __('gifts.field.min_cycles_hint') }}</span>
             </div>
 
+            {{-- WHICH subscriptions qualify. Empty = every product, which is what
+                 the rule meant before this filter existed. --}}
+            <div class="rc-field">
+                <label class="rc-field__label" for="gift-source">{{ __('gifts.field.source_products') }}</label>
+
+                @php $sources = $this->sourceProducts(); @endphp
+                @if($sources->isNotEmpty())
+                    <ul class="rc-picker">
+                        @foreach($sources as $source)
+                            <li wire:key="src-{{ $source->getKey() }}">
+                                <div class="rc-row rc-row--between">
+                                    <span class="rc-strong">{{ $source->title }}</span>
+                                    <button type="button" class="rc-link"
+                                            wire:click="removeSourceProduct({{ $source->getKey() }})">
+                                        {{ __('gifts.action.remove_source') }}
+                                    </button>
+                                </div>
+                            </li>
+                        @endforeach
+                    </ul>
+                @endif
+
+                <input id="gift-source" type="text" class="rc-input"
+                       wire:model.live.debounce.400ms="sourceSearch"
+                       placeholder="{{ __('gifts.field.source_products_placeholder') }}">
+
+                @php $sourceOptions = $this->sourceOptions(); @endphp
+                @if($sourceOptions->isNotEmpty())
+                    <ul class="rc-picker">
+                        @foreach($sourceOptions as $option)
+                            <li>
+                                <button type="button" class="rc-picker__item"
+                                        wire:click="addSourceProduct({{ $option->getKey() }})">
+                                    {{ $option->title }}
+                                </button>
+                            </li>
+                        @endforeach
+                    </ul>
+                @endif
+
+                <span class="rc-muted">
+                    {{ $sources->isEmpty()
+                        ? __('gifts.field.source_products_all')
+                        : __('gifts.field.source_products_hint') }}
+                </span>
+            </div>
+
             {{-- Product picker --}}
             <div class="rc-field">
                 <label class="rc-field__label" for="gift-product">{{ __('gifts.field.product') }}</label>

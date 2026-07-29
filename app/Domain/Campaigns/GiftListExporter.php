@@ -60,11 +60,12 @@ final class GiftListExporter
         private readonly GiftAddressResolver $addresses,
     ) {}
 
-    public function download(Shop $shop, int $minCycles): StreamedResponse
+    /** @param  array<int, int>  $productIds  local Product ids; empty = every product */
+    public function download(Shop $shop, int $minCycles, array $productIds = []): StreamedResponse
     {
         // Built eagerly, not inside the stream callback: the tenant binding and the
         // store reads belong to the request, not to response-send time.
-        $csv = $this->csv($shop, $minCycles);
+        $csv = $this->csv($shop, $minCycles, $productIds);
         $filename = 'gift-recipients-'.now()->format('Y-m-d').'.csv';
 
         return response()->streamDownload(
@@ -76,10 +77,11 @@ final class GiftListExporter
         );
     }
 
-    public function csv(Shop $shop, int $minCycles): string
+    /** @param  array<int, int>  $productIds  local Product ids; empty = every product */
+    public function csv(Shop $shop, int $minCycles, array $productIds = []): string
     {
-        return Tenant::run($shop, function () use ($shop, $minCycles): string {
-            $rows = $this->eligibility->qualifying($minCycles);
+        return Tenant::run($shop, function () use ($shop, $minCycles, $productIds): string {
+            $rows = $this->eligibility->qualifying($minCycles, null, $productIds);
             $total = $rows->count();
 
             $handle = fopen('php://temp', 'r+');
