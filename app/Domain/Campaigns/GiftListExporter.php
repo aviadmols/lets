@@ -35,6 +35,17 @@ final class GiftListExporter
      */
     public const MAX_ROWS = 500;
 
+    /** RFC-4180 CSV: quotes are doubled, nothing is backslash-escaped. */
+    private const SEPARATOR = ',';
+    private const ENCLOSURE = '"';
+
+    /**
+     * PHP 8.4 deprecates calling fputcsv() without this, because the default is
+     * changing to exactly this value. Stating it keeps the file RFC-correct today
+     * and silences a deprecation that would otherwise be logged per row.
+     */
+    private const ESCAPE = '';
+
     public function __construct(
         private readonly GiftEligibility $eligibility,
         private readonly GiftAddressResolver $addresses,
@@ -64,14 +75,14 @@ final class GiftListExporter
 
             $handle = fopen('php://temp', 'r+');
             fwrite($handle, self::BOM);
-            fputcsv($handle, $this->headers());
+            $this->put($handle, $this->headers());
 
             foreach ($rows->take(self::MAX_ROWS) as $row) {
-                fputcsv($handle, $this->line($shop, $row));
+                $this->put($handle, $this->line($shop, $row));
             }
 
             if ($overflow > 0) {
-                fputcsv($handle, [__('gifts.export.truncated', ['count' => $overflow])]);
+                $this->put($handle, [__('gifts.export.truncated', ['count' => $overflow])]);
             }
 
             rewind($handle);
@@ -80,6 +91,15 @@ final class GiftListExporter
 
             return $csv;
         });
+    }
+
+    /**
+     * @param  resource  $handle
+     * @param  array<int, string>  $fields
+     */
+    private function put($handle, array $fields): void
+    {
+        fputcsv($handle, $fields, self::SEPARATOR, self::ENCLOSURE, self::ESCAPE);
     }
 
     /** @return array<int, string> */
