@@ -40,7 +40,16 @@ final class ShopifyGiftOrderService
 
     private const ROLE_ATTRIBUTE = 'lets_order_role';
     private const CAMPAIGN_ATTRIBUTE = 'lets_gift_campaign_id';
+    /**
+     * Public: GiftOrderReconciler searches Shopify on exactly this attribute when
+     * an attempt's outcome is unknown. Without it stamped, a gift that landed
+     * during an outage could never be traced back to its recipient.
+     */
+    public const RECIPIENT_ATTRIBUTE = 'lets_gift_recipient_id';
     public const ROLE_GIFT = 'gift_order';
+
+    /** The tag used when the config names none — also the reconciler's search. */
+    public const DEFAULT_TAG = 'lets-gift';
 
     /**
      * @return string|null the created Shopify order id, or null when Shopify refused
@@ -66,7 +75,7 @@ final class ShopifyGiftOrderService
             'email' => (string) ($recipient->customer_email ?? ''),
             'currency' => (string) ($recipient->currency ?: $campaign->currency),
             'source_name' => (string) config('shopify.order_source_name', 'payplus-subscriptions'),
-            'tags' => (string) (config('shopify.tags.gift_order') ?: 'lets-gift'),
+            'tags' => (string) (config('shopify.tags.gift_order') ?: self::DEFAULT_TAG),
             // The merchant is giving a present, not announcing a purchase.
             'send_receipt' => false,
             'send_fulfillment_receipt' => false,
@@ -92,6 +101,7 @@ final class ShopifyGiftOrderService
             'note_attributes' => [
                 ['name' => self::ROLE_ATTRIBUTE, 'value' => self::ROLE_GIFT],
                 ['name' => self::CAMPAIGN_ATTRIBUTE, 'value' => (string) $campaign->getKey()],
+                ['name' => self::RECIPIENT_ATTRIBUTE, 'value' => (string) $recipient->getKey()],
             ],
         ];
 

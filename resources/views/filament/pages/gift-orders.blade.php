@@ -132,7 +132,10 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach($rows as $row)
+                            {{-- The counts above are exact; this bounds the HTML.
+                                 A merchant with a thousand subscribers is confirming
+                                 a number, not reading a thousand names. --}}
+                            @foreach($rows->take(\App\Filament\Pages\GiftOrders::PREVIEW_ROWS) as $row)
                                 <tr>
                                     <td>
                                         {{ $row['label'] }}
@@ -146,6 +149,15 @@
                             @endforeach
                         </tbody>
                     </table>
+
+                    @if($rows->count() > \App\Filament\Pages\GiftOrders::PREVIEW_ROWS)
+                        <span class="rc-muted">
+                            {{ __('gifts.preview_more', [
+                                'shown' => \App\Filament\Pages\GiftOrders::PREVIEW_ROWS,
+                                'total' => $rows->count(),
+                            ]) }}
+                        </span>
+                    @endif
 
                     <div class="rc-row">
                         @if($ready > 0)
@@ -206,7 +218,28 @@
                             </div>
                         @endif
 
-                        @if($campaign->recipients->isNotEmpty())
+                        {{-- Counts, not rows. A campaign can hold thousands, and a
+                             delivered gift needs no line of its own. --}}
+                        @php
+                            $counts = $this->recipientCounts()[$campaign->getKey()] ?? [];
+                            $attention = $this->attentionRecipients($campaign);
+                            $outstanding = array_sum(array_intersect_key(
+                                $counts,
+                                array_flip(\App\Filament\Pages\GiftOrders::ATTENTION),
+                            ));
+                        @endphp
+
+                        @if($counts !== [])
+                            <div class="rc-row">
+                                @foreach($counts as $status => $total)
+                                    <span class="rc-muted">
+                                        {{ __('gifts.recipient_status.'.$status) }}: <span class="rc-ltr">{{ $total }}</span>
+                                    </span>
+                                @endforeach
+                            </div>
+                        @endif
+
+                        @if($attention->isNotEmpty())
                         <table class="rc-table">
                             <thead>
                                 <tr>
@@ -217,7 +250,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach($campaign->recipients as $recipient)
+                                @foreach($attention as $recipient)
                                     <tr wire:key="rcpt-{{ $recipient->getKey() }}">
                                         <td>{{ $recipient->label() }}</td>
                                         <td>
@@ -228,14 +261,15 @@
                                         </td>
                                         <td class="rc-ltr">{{ $recipient->external_order_id ?: '—' }}</td>
                                         <td>
-                                            {{-- Only a REJECTED attempt may be retried: a `creating`
-                                                 row may already have an order in the store. --}}
+                                            {{-- Only a REJECTED attempt may be retried. `creating`
+                                                 and `unresolved` may already have an order in the
+                                                 store, and a retry there ships a second package. --}}
                                             @if($recipient->status === \App\Domain\Campaigns\Models\GiftRecipient::STATUS_FAILED)
                                                 <button type="button" class="rc-link"
                                                         wire:click="retryRecipient({{ $recipient->getKey() }})">
                                                     {{ __('gifts.action.retry') }}
                                                 </button>
-                                            @elseif($recipient->status === \App\Domain\Campaigns\Models\GiftRecipient::STATUS_CREATING)
+                                            @elseif(in_array($recipient->status, \App\Domain\Campaigns\Models\GiftRecipient::AWAITING_HUMAN, true))
                                                 <span class="rc-muted">{{ __('gifts.needs_check') }}</span>
                                             @endif
                                         </td>
@@ -243,6 +277,15 @@
                                 @endforeach
                             </tbody>
                         </table>
+
+                        @if($outstanding > $attention->count())
+                            <span class="rc-muted">
+                                {{ __('gifts.attention_more', [
+                                    'shown' => $attention->count(),
+                                    'total' => $outstanding,
+                                ]) }}
+                            </span>
+                        @endif
                         @endif
                     </div>
                 @endforeach

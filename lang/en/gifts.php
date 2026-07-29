@@ -26,6 +26,8 @@ return [
     'preview_heading' => 'Who qualifies',
     'preview_empty' => 'Nobody has reached that many paid cycles yet.',
     'preview_summary' => ':qualify qualify · :ready will receive a gift now',
+    'preview_more' => 'Showing the first :shown of :total. The counts above cover everyone.',
+    'attention_more' => 'Showing :shown of :total that need attention.',
     'already_gifted' => 'already gifted',
 
     'col' => [
@@ -98,6 +100,7 @@ return [
         'created' => 'Sent',
         'skipped' => 'Skipped',
         'failed' => 'Failed',
+        'unresolved' => 'Needs checking',
     ],
 
     'reason' => [
@@ -105,6 +108,7 @@ return [
         'address_access_pending' => 'Shopify has not granted this app access to customer addresses. Select the Address field in the Partner Dashboard under Protected customer data, then retry.',
         'no_price' => 'The gift has no price, so its value could not be shown on the order.',
         'api_error' => 'The store refused the order. Retry once the cause is fixed.',
+        'unknown_outcome' => 'Your store broke while creating this order, so we could not tell whether it was created. We looked and did not find it — check your orders before doing anything, because retrying could send a second gift.',
     ],
 
     'error' => [

@@ -116,6 +116,28 @@ final class WooCommerceClient
     }
 
     /**
+     * GET /wp-json/wc/v3/orders → the newest orders first, with their meta.
+     *
+     * Used to answer "did the order we could not confirm actually land?" — a store
+     * that fatals AFTER creating an order tells us nothing, so we go and look.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function fetchRecentOrders(int $perPage): array
+    {
+        $response = $this->get('orders', [
+            'per_page' => max(1, min(100, $perPage)), // WC caps a page at 100.
+            'orderby' => 'id',
+            'order' => 'desc',
+        ]);
+        $response->throw();
+
+        $body = $response->json();
+
+        return is_array($body) ? array_values(array_filter($body, 'is_array')) : [];
+    }
+
+    /**
      * POST /wp-json/wc/v3/orders → the created order array (carries `id`). The caller
      * (WooCommerceOrderStrategy) owns the WC order SHAPE; this is transport only.
      *

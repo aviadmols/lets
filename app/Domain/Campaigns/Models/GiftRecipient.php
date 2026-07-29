@@ -36,6 +36,13 @@ class GiftRecipient extends Model
     public const STATUS_SKIPPED = 'skipped';
     /** The platform REJECTED the call — no order exists, so a retry is safe. */
     public const STATUS_FAILED = 'failed';
+    /**
+     * The call's outcome is UNKNOWN — the store answered 5xx, or timed out, after
+     * we had already sent the order. It may well exist there. Never auto-retried
+     * and never offered as a retry: this is the `unresolved` of the invoicing
+     * module, applied to store orders.
+     */
+    public const STATUS_UNRESOLVED = 'unresolved';
 
     /** The two subscription rails a recipient can come from. */
     public const SOURCE_PLAN = 'plan';
@@ -46,6 +53,8 @@ class GiftRecipient extends Model
     public const REASON_ADDRESS_ACCESS_PENDING = 'address_access_pending';
     public const REASON_NO_PRICE = 'no_price';
     public const REASON_API_ERROR = 'api_error';
+    /** The store broke mid-request; we could not tell whether the order landed. */
+    public const REASON_UNKNOWN_OUTCOME = 'unknown_outcome';
 
     /** Where the shipping address came from — shown so the merchant can judge it. */
     public const ADDRESS_FROM_PROFILE = 'customer_profile';
@@ -114,6 +123,21 @@ class GiftRecipient extends Model
             'reason' => mb_substr($reason, 0, 255),
         ])->save();
     }
+
+    /**
+     * The store's answer never arrived, or arrived as a fault. An order may exist
+     * there — so this waits for a human, exactly like `creating`.
+     */
+    public function markUnresolved(): void
+    {
+        $this->forceFill([
+            'status' => self::STATUS_UNRESOLVED,
+            'reason' => self::REASON_UNKNOWN_OUTCOME,
+        ])->save();
+    }
+
+    /** The states no automation may act on, because an order might already exist. */
+    public const AWAITING_HUMAN = [self::STATUS_CREATING, self::STATUS_UNRESOLVED];
 
     /** Put a REJECTED attempt back in the queue. Never valid for `creating`. */
     public function resetForRetry(): bool

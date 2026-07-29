@@ -35,6 +35,15 @@ final class GiftListExporter
      */
     public const MAX_ROWS = 500;
 
+    /**
+     * The real bound at scale. A store read takes what it takes, so a thousand
+     * recipients cannot be counted into a safe limit ahead of time — but they can
+     * be timed. The file closes when the budget is spent and says how many rows it
+     * did not reach, which beats a request that dies at the gateway and hands the
+     * merchant nothing at all.
+     */
+    public const MAX_SECONDS = 20;
+
     /** RFC-4180 CSV: quotes are doubled, nothing is backslash-escaped. */
     private const SEPARATOR = ',';
     private const ENCLOSURE = '"';
@@ -71,16 +80,24 @@ final class GiftListExporter
     {
         return Tenant::run($shop, function () use ($shop, $minCycles): string {
             $rows = $this->eligibility->qualifying($minCycles);
-            $overflow = max(0, $rows->count() - self::MAX_ROWS);
+            $total = $rows->count();
 
             $handle = fopen('php://temp', 'r+');
             fwrite($handle, self::BOM);
             $this->put($handle, $this->headers());
 
-            foreach ($rows->take(self::MAX_ROWS) as $row) {
+            $deadline = microtime(true) + self::MAX_SECONDS;
+            $written = 0;
+
+            foreach ($rows as $row) {
+                if ($written >= self::MAX_ROWS || microtime(true) > $deadline) {
+                    break;
+                }
                 $this->put($handle, $this->line($shop, $row));
+                $written++;
             }
 
+            $overflow = $total - $written;
             if ($overflow > 0) {
                 $this->put($handle, [__('gifts.export.truncated', ['count' => $overflow])]);
             }

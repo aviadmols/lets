@@ -24,6 +24,21 @@ final class GiftCampaignGenerator
     /** insertOrIgnore chunk — a campaign can enrol thousands at once. */
     private const CHUNK = 500;
 
+    /**
+     * Seconds between two order-creation jobs for the same shop.
+     *
+     * A gift campaign is the only place in this app that creates a THOUSAND orders
+     * from one click. Firing them at queue speed would put a small WooCommerce host
+     * under a sustained write load it never sees in normal trading — and a store
+     * that starts timing out turns confident results into unresolved ones. Paced
+     * dispatch keeps a big campaign boring: 1000 recipients spread over ~33
+     * minutes, at a rate any shared host serves without noticing.
+     */
+    public const SECONDS_BETWEEN_ORDERS = 2;
+
+    /** Dispatch in batches so a huge campaign never holds every id in memory. */
+    private const DISPATCH_CHUNK = 200;
+
     public function __construct(private readonly GiftEligibility $eligibility) {}
 
     /**
@@ -66,21 +81,31 @@ final class GiftCampaignGenerator
         });
 
         // Dispatch only what is still PENDING — this is what makes a re-run add
-        // newcomers without touching anyone already served.
-        $pending = GiftRecipient::query()
+        // newcomers without touching anyone already served. Chunked, so a campaign
+        // of thousands never loads every id at once.
+        $dispatched = 0;
+
+        GiftRecipient::query()
             ->where('gift_campaign_id', $campaign->getKey())
             ->where('status', GiftRecipient::STATUS_PENDING)
-            ->pluck('id');
+            ->orderBy('id')
+            ->chunkById(self::DISPATCH_CHUNK, function ($chunk) use ($shopId, $campaign, &$dispatched): void {
+                foreach ($chunk as $recipient) {
+                    // Spread over time rather than all at once — see
+                    // SECONDS_BETWEEN_ORDERS. The delay grows with position, so
+                    // recipient 1 goes now and recipient 1000 in half an hour.
+                    $delay = $dispatched * self::SECONDS_BETWEEN_ORDERS;
+                    $recipientId = (int) $recipient->getKey();
 
-        $dispatched = 0;
-        foreach ($pending as $recipientId) {
-            // afterCommit: the worker must not read a recipient row that this
-            // transaction has not committed yet.
-            DB::afterCommit(function () use ($shopId, $campaign, $recipientId): void {
-                GiftOrderJob::dispatch($shopId, (int) $campaign->getKey(), (int) $recipientId);
+                    // afterCommit: the worker must not read a recipient row that
+                    // this transaction has not committed yet.
+                    DB::afterCommit(function () use ($shopId, $campaign, $recipientId, $delay): void {
+                        GiftOrderJob::dispatch($shopId, (int) $campaign->getKey(), $recipientId)
+                            ->delay(now()->addSeconds($delay));
+                    });
+                    $dispatched++;
+                }
             });
-            $dispatched++;
-        }
 
         // Nothing to do at all → the campaign is already finished.
         if ($dispatched === 0) {

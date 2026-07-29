@@ -126,6 +126,24 @@ final class GiftListExportTest extends TestCase
             && str_ends_with($request->url(), '/wp-json/wc/v3/orders'));
     }
 
+    public function test_a_huge_list_is_bounded_and_says_so(): void
+    {
+        Http::fake(['*' => Http::response([], 200)]);
+        $this->manySubscribers(GiftListExporter::MAX_ROWS + 20);
+
+        $csv = app(GiftListExporter::class)->csv($this->shop, 1);
+
+        // Header + at most MAX_ROWS recipients + the closing note.
+        $lines = substr_count(rtrim($csv), "\n") + 1;
+        $this->assertLessThanOrEqual(GiftListExporter::MAX_ROWS + 2, $lines);
+
+        // Each row costs a live store read, so the file is bounded — by count and
+        // by a time budget. What it must never do is look complete when it is not.
+        [$before, $after] = explode('{n}', __('gifts.export.truncated', ['count' => '{n}']));
+        $this->assertStringContainsString(trim($before) ?: $after, $csv);
+        $this->assertStringContainsString(trim($after) ?: $before, $csv);
+    }
+
     public function test_someone_below_the_threshold_is_not_in_the_file(): void
     {
         Http::fake(['*' => Http::response([], 200)]);
@@ -139,6 +157,47 @@ final class GiftListExportTest extends TestCase
     }
 
     // === Fixtures ===
+
+    /** Bulk — a fixture of hundreds is about the bound, not about each subscriber. */
+    private function manySubscribers(int $count): void
+    {
+        Tenant::run($this->shop, function () use ($count): void {
+            $now = now();
+            $plans = [];
+            for ($i = 1; $i <= $count; $i++) {
+                $plans[] = [
+                    'shop_id' => $this->shop->getKey(),
+                    'plan_kind' => PlanKind::RECURRING->value,
+                    'charge_context' => 'recurring',
+                    'status' => PlanStatus::ACTIVE->value,
+                    'total_amount' => 100,
+                    'installment_amount' => 100,
+                    'currency' => 'ILS',
+                    'public_id' => (string) Str::ulid(),
+                    'customer_name' => 'Subscriber '.$i,
+                    'customer_email' => 'sub'.$i.'@example.com',
+                    'external_customer_id' => '0',
+                    'created_at' => $now, 'updated_at' => $now,
+                ];
+            }
+            InstallmentPlan::query()->insert($plans);
+
+            $payments = [];
+            foreach (InstallmentPlan::query()->pluck('id') as $planId) {
+                $payments[] = [
+                    'shop_id' => $this->shop->getKey(),
+                    'plan_id' => $planId,
+                    'payment_type' => PaymentType::RECURRING->value,
+                    'sequence' => 1,
+                    'amount' => 100,
+                    'currency' => 'ILS',
+                    'status' => PaymentStatus::SUCCEEDED->value,
+                    'created_at' => $now, 'updated_at' => $now,
+                ];
+            }
+            InstallmentPayment::query()->insert($payments);
+        });
+    }
 
     private function subscriber(string $name, int $succeeded, string $customerId, string $email = 'dana@example.com'): void
     {

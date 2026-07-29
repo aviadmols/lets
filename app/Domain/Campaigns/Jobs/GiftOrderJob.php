@@ -3,6 +3,7 @@
 namespace App\Domain\Campaigns\Jobs;
 
 use App\Domain\Campaigns\GiftAddressResolver;
+use App\Domain\Campaigns\GiftOrderReconciler;
 use App\Domain\Campaigns\Models\GiftCampaign;
 use App\Domain\Campaigns\Models\GiftRecipient;
 use App\Models\Shop;
@@ -13,6 +14,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
@@ -45,8 +47,15 @@ final class GiftOrderJob implements ShouldBeUnique, ShouldQueue
     /** No money moves here — this belongs on the sync lane, not the charge lane. */
     public const QUEUE = TenantContext::QUEUE_SYNC;
 
-    /** ShouldBeUnique lock TTL (seconds) — released when the job completes. */
-    public int $uniqueFor = 600;
+    /**
+     * ShouldBeUnique lock TTL (seconds) — released when the job completes.
+     *
+     * Generous on purpose: a thousand-recipient campaign is dispatched PACED (see
+     * GiftCampaignGenerator::SECONDS_BETWEEN_ORDERS), so the last job waits ~33
+     * minutes before it runs. A TTL shorter than that window would expire while the
+     * job is still queued and let a second Generate enqueue a duplicate.
+     */
+    public int $uniqueFor = 3600;
 
     /**
      * One attempt. A queue-level retry would re-enter a recipient whose order may
@@ -99,6 +108,7 @@ final class GiftOrderJob implements ShouldBeUnique, ShouldQueue
         }
 
         $recipient->refresh();
+        $source = null;
 
         try {
             $resolved = $addresses->resolve($shop, $recipient);
@@ -111,29 +121,84 @@ final class GiftOrderJob implements ShouldBeUnique, ShouldQueue
                 return;
             }
 
+            $source = $resolved['source'];
+
             $orderId = $shop->platform === Shop::PLATFORM_WOOCOMMERCE
                 ? app(WooGiftOrderService::class)->create($shop, $campaign, $recipient, $resolved['address'])
                 : app(ShopifyGiftOrderService::class)->create($shop, $campaign, $recipient, $resolved['address']);
 
             if ($orderId === null) {
+                // A 2xx with no id in it. The store said yes to something we cannot
+                // name, so this is unknown, not refused.
+                $this->settleUnknown($shop, $recipient, $source);
+
+                return;
+            }
+
+            $recipient->markCreated($orderId, $source);
+        } catch (\Throwable $e) {
+            Log::warning('campaigns.gift.order_failed', [
+                'shop_id' => $this->shopId,
+                'recipient_id' => $this->recipientId,
+                'status' => $this->statusOf($e),
+                'error' => $e->getMessage(),
+            ]);
+
+            if ($this->storeRefused($e)) {
+                // The store understood the request and said no, so nothing was
+                // created and a retry is safe. That is what `failed` means here.
                 $recipient->markFailed(GiftRecipient::REASON_API_ERROR);
 
                 return;
             }
 
-            $recipient->markCreated($orderId, $resolved['source']);
-        } catch (\Throwable $e) {
-            // The platform rejected the call, so no order exists and a retry is
-            // safe — which is exactly what `failed` means here, unlike `creating`.
-            Log::warning('campaigns.gift.order_failed', [
-                'shop_id' => $this->shopId,
-                'recipient_id' => $this->recipientId,
-                'error' => $e->getMessage(),
-            ]);
-
-            $recipient->markFailed(GiftRecipient::REASON_API_ERROR);
+            $this->settleUnknown($shop, $recipient, $source);
         } finally {
             $campaign->refresh()->settleStatus();
         }
+    }
+
+    /**
+     * The outcome is unknown: the store broke, or never answered, AFTER we sent the
+     * order. Both platforms create the order first and run the merchant's hooks
+     * afterwards, so a fatal in somebody's plugin looks exactly like this — and the
+     * order is sitting there.
+     *
+     * So go and look before deciding. Found → the gift landed. Not found → nobody
+     * retries this automatically; a human checks the store.
+     */
+    private function settleUnknown(Shop $shop, GiftRecipient $recipient, ?string $source): void
+    {
+        $orderId = app(GiftOrderReconciler::class)->find($shop, $recipient);
+
+        if ($orderId !== null) {
+            $recipient->markCreated($orderId, $source);
+
+            return;
+        }
+
+        $recipient->markUnresolved();
+    }
+
+    /**
+     * Did the store REFUSE, or did it break?
+     *
+     * A 4xx is an answer: the store understood the request and rejected it, so no
+     * order exists. A 5xx, a timeout, or a dead connection is not an answer at all
+     * — 408 and 429 sit on that side too, because a request that timed out or was
+     * throttled may still have been processed.
+     */
+    private function storeRefused(\Throwable $e): bool
+    {
+        $status = $this->statusOf($e);
+
+        return $status !== null
+            && $status >= 400 && $status < 500
+            && ! in_array($status, [408, 429], true);
+    }
+
+    private function statusOf(\Throwable $e): ?int
+    {
+        return $e instanceof RequestException ? $e->response->status() : null;
     }
 }

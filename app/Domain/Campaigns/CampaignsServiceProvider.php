@@ -20,5 +20,13 @@ final class CampaignsServiceProvider extends ServiceProvider
         $this->app->singleton(GiftEligibility::class);
         $this->app->singleton(GiftAddressResolver::class);
         $this->app->singleton(GiftCampaignGenerator::class);
+        $this->app->singleton(GiftOrderReconciler::class);
+    }
+
+    public function boot(): void
+    {
+        if ($this->app->runningInConsole()) {
+            $this->commands([Console\ReconcileGiftOrdersCommand::class]);
+        }
     }
 }

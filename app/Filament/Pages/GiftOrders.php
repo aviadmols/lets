@@ -45,6 +45,29 @@ class GiftOrders extends Page
     /** How many past campaigns the screen lists. */
     public const CAMPAIGN_LIMIT = 20;
 
+    /**
+     * How many qualifying subscribers the preview PAINTS. The counts above the
+     * table stay exact — this bounds the HTML, not the campaign. A merchant with a
+     * thousand subscribers is confirming a number, not reading a thousand names.
+     */
+    public const PREVIEW_ROWS = 100;
+
+    /**
+     * Per campaign, how many recipient rows are listed. Only the ones that need a
+     * decision are listed at all (see ATTENTION); the rest are summarised as
+     * counts, because a page that renders a thousand "Sent" rows is a page nobody
+     * can open.
+     */
+    public const ATTENTION_ROWS = 50;
+
+    /** The recipient states a merchant may have to do something about. */
+    public const ATTENTION = [
+        GiftRecipient::STATUS_FAILED,
+        GiftRecipient::STATUS_UNRESOLVED,
+        GiftRecipient::STATUS_CREATING,
+        GiftRecipient::STATUS_SKIPPED,
+    ];
+
     // --- Campaign form state (plain Livewire props; this page has no Filament form) ---
     /** The campaign's name. NOT $title — Filament's BasePage owns that one statically. */
     public string $campaignTitle = '';
@@ -66,6 +89,18 @@ class GiftOrders extends Page
 
     /** Set once the merchant has previewed THIS rule — Generate stays shut until then. */
     public bool $previewed = false;
+
+    /**
+     * Per-render memos. Livewire re-renders on every interaction, and both of these
+     * are aggregate queries over every recipient — recomputing them per campaign
+     * row is what turns a big campaign into a slow screen.
+     *
+     * @var array<int, array<string, int>>|null
+     */
+    private ?array $counts = null;
+
+    /** @var array<int, int> campaign id → how many would receive a gift now */
+    private array $readyMemo = [];
 
     public static function getNavigationGroup(): ?string
     {
@@ -253,10 +288,16 @@ class GiftOrders extends Page
         $this->send($campaign);
     }
 
-    /** How many would receive a gift if this saved campaign were sent now. */
+    /**
+     * How many would receive a gift if this saved campaign were sent now. Memoized:
+     * the blade asks once per draft per render, and the answer costs a full
+     * eligibility sweep.
+     */
     public function readyFor(GiftCampaign $campaign): int
     {
-        return app(GiftEligibility::class)
+        $id = (int) $campaign->getKey();
+
+        return $this->readyMemo[$id] ??= app(GiftEligibility::class)
             ->qualifying((int) $campaign->min_cycles, $campaign)
             ->where('already_gifted', false)
             ->count();
@@ -370,13 +411,64 @@ class GiftOrders extends Page
 
     // === Past campaigns ===
 
-    /** @return Collection<int, GiftCampaign> */
+    /**
+     * The campaign list. Recipients are deliberately NOT eager-loaded: a campaign
+     * can hold thousands, and twenty of those would be a page that never paints.
+     * The screen shows counts, plus only the rows that need a decision.
+     *
+     * @return Collection<int, GiftCampaign>
+     */
     public function campaigns(): Collection
     {
         return GiftCampaign::query()
-            ->with(['recipients' => fn ($q) => $q->orderBy('id')])
             ->latest('id')
             ->limit(self::CAMPAIGN_LIMIT)
+            ->get();
+    }
+
+    /**
+     * Recipient counts per status, for every listed campaign, in ONE query rather
+     * than one per campaign.
+     *
+     * @return array<int, array<string, int>>
+     */
+    public function recipientCounts(): array
+    {
+        if ($this->counts !== null) {
+            return $this->counts;
+        }
+
+        $ids = $this->campaigns()->modelKeys();
+        if ($ids === []) {
+            return $this->counts = [];
+        }
+
+        $counts = [];
+        GiftRecipient::query()
+            ->selectRaw('gift_campaign_id, status, count(*) as total')
+            ->whereIn('gift_campaign_id', $ids)
+            ->groupBy('gift_campaign_id', 'status')
+            ->get()
+            ->each(function ($row) use (&$counts): void {
+                $counts[(int) $row->gift_campaign_id][(string) $row->status] = (int) $row->total;
+            });
+
+        return $this->counts = $counts;
+    }
+
+    /**
+     * The recipients of one campaign that a merchant might have to act on. A
+     * delivered gift needs no row of its own — it is one of the counts.
+     *
+     * @return Collection<int, GiftRecipient>
+     */
+    public function attentionRecipients(GiftCampaign $campaign): Collection
+    {
+        return GiftRecipient::query()
+            ->where('gift_campaign_id', $campaign->getKey())
+            ->whereIn('status', self::ATTENTION)
+            ->orderBy('id')
+            ->limit(self::ATTENTION_ROWS)
             ->get();
     }
 

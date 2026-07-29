@@ -35,7 +35,8 @@ final class WooGiftOrderService
     /** Reuses the role key WooUpsellChildOrderService already stamps. */
     private const META_ORDER_ROLE = 'lets_order_role';
     private const META_CAMPAIGN_ID = 'lets_gift_campaign_id';
-    private const META_RECIPIENT_ID = 'lets_gift_recipient_id';
+    /** Public: GiftOrderReconciler searches the store on exactly this key. */
+    public const META_RECIPIENT_ID = 'lets_gift_recipient_id';
     public const ROLE_GIFT = 'gift_order';
 
     /** The shipping line's machine id; its TITLE is the merchant's own label. */
