@@ -39,12 +39,19 @@ return [
     ],
 
     'action' => [
+        'save' => 'Save campaign',
+        'new' => 'New campaign',
+        'edit' => 'Edit',
         'preview' => 'Preview recipients',
-        'generate' => 'Create :count gift orders',
+        'generate' => 'Send :count gift orders',
+        'send' => 'Send now',
         'generate_confirm' => ':count free orders will be created in your store, shipped to each customer’s current address. Continue?',
         'retry' => 'Retry',
     ],
 
+    'editing' => 'Editing the saved campaign “:title”. Saving updates it; sending creates the orders.',
+    'saved' => 'Campaign saved. Nothing has been created yet — send it when you are ready.',
+    'draft_empty' => 'Saved, not sent yet.',
     'generated' => 'Creating :count gift orders. They appear below as each one lands.',
     'retry_queued' => 'Queued again.',
     'needs_check' => 'Check in your store',

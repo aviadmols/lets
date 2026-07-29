@@ -49,6 +49,14 @@ class GiftOrders extends Page
     public int $minCycles = 3;
     public string $shippingLabel = '';
 
+    /**
+     * The saved campaign this form is editing, if any. Saving is separate from
+     * sending: a merchant can write the rule down today and send it tomorrow. Only
+     * a DRAFT is ever loaded here — a campaign that has already created orders is
+     * a record of what was given away, and editing its snapshot would rewrite that.
+     */
+    public ?int $campaignId = null;
+
     // --- Product picker state ---
     public string $productSearch = '';
     public ?int $selectedProductId = null;
@@ -164,26 +172,116 @@ class GiftOrders extends Page
         return app(GiftEligibility::class)->qualifying($this->minCycles);
     }
 
-    // === Generate ===
+    // === Save ===
+
+    /**
+     * Write the campaign down without creating anything. The rule survives a
+     * reload, and the merchant can come back and send it when they are ready.
+     */
+    public function save(): void
+    {
+        if ($this->persist() !== null) {
+            Notification::make()->title(__('gifts.saved'))->success()->send();
+        }
+    }
+
+    /** Start a fresh campaign, leaving any saved draft untouched. */
+    public function newCampaign(): void
+    {
+        $this->reset(['campaignId', 'campaignTitle', 'selectedProductId', 'selectedVariantId', 'previewed']);
+        $this->shippingLabel = __('gifts.default_shipping_label');
+    }
+
+    /** Load a DRAFT back into the form. A sent campaign is history, not a form. */
+    public function editCampaign(int $campaignId): void
+    {
+        $campaign = GiftCampaign::query()->find($campaignId);
+        if ($campaign === null || $campaign->status !== GiftCampaign::STATUS_DRAFT) {
+            return;
+        }
+
+        $this->campaignId = (int) $campaign->getKey();
+        $this->campaignTitle = (string) $campaign->title;
+        $this->minCycles = (int) $campaign->min_cycles;
+        $this->shippingLabel = (string) $campaign->shipping_label;
+        $this->selectedProductId = $campaign->product_id !== null ? (int) $campaign->product_id : null;
+        $this->selectedVariantId = $campaign->product_variant_id !== null ? (int) $campaign->product_variant_id : null;
+        $this->previewed = false; // a rule reloaded is a rule not yet reviewed.
+    }
+
+    // === Send ===
 
     public function generate(): void
+    {
+        $campaign = $this->persist();
+        if ($campaign === null) {
+            return;
+        }
+
+        $this->send($campaign);
+    }
+
+    /** Send a campaign saved earlier, straight from the list. */
+    public function sendCampaign(int $campaignId): void
+    {
+        $campaign = GiftCampaign::query()->find($campaignId);
+        // Only a draft: re-sending a generated campaign is a separate, explicit
+        // decision, not a button that sits next to its history.
+        if ($campaign === null || $campaign->status !== GiftCampaign::STATUS_DRAFT) {
+            return;
+        }
+
+        $this->send($campaign);
+    }
+
+    /** How many would receive a gift if this saved campaign were sent now. */
+    public function readyFor(GiftCampaign $campaign): int
+    {
+        return app(GiftEligibility::class)
+            ->qualifying((int) $campaign->min_cycles, $campaign)
+            ->where('already_gifted', false)
+            ->count();
+    }
+
+    private function send(GiftCampaign $campaign): void
     {
         $shop = Tenant::current();
         if (! $shop instanceof Shop) {
             return;
         }
 
+        $result = app(GiftCampaignGenerator::class)->generate($shop, $campaign);
+
+        Notification::make()
+            ->title(__('gifts.generated', ['count' => $result['dispatched']]))
+            ->success()
+            ->send();
+
+        $this->newCampaign();
+    }
+
+    /**
+     * Create or update the campaign row from the form. Returns null — having told
+     * the merchant why — when the rule is not yet something that could be sent.
+     */
+    private function persist(): ?GiftCampaign
+    {
+        $shop = Tenant::current();
+        if (! $shop instanceof Shop) {
+            return null;
+        }
+
         if (trim($this->campaignTitle) === '') {
             $this->fail(__('gifts.error.no_title'));
 
-            return;
+            return null;
         }
 
         $product = $this->selectedProduct();
         if ($product === null) {
             $this->fail(__('gifts.error.no_product'));
 
-            return;
+            return null;
         }
 
         // The gift's VALUE is what makes the 100% discount meaningful. Without a
@@ -193,14 +291,24 @@ class GiftOrders extends Page
         if ($price === null) {
             $this->fail(__('gifts.error.no_price'));
 
-            return;
+            return null;
         }
 
         $variant = $this->selectedVariantId !== null
             ? $this->pickedVariant($product, $this->selectedVariantId)
             : $product->primaryVariant();
 
-        $campaign = new GiftCampaign();
+        // Saving twice edits the same draft instead of leaving a trail of them.
+        // The lookup is tenant-scoped, and a campaign that has already been sent is
+        // never reopened — that would rewrite the record of what was given away.
+        $campaign = $this->campaignId !== null
+            ? GiftCampaign::query()->find($this->campaignId)
+            : null;
+
+        if ($campaign === null || $campaign->status !== GiftCampaign::STATUS_DRAFT) {
+            $campaign = new GiftCampaign();
+        }
+
         $campaign->forceFill([
             'shop_id' => (int) $shop->getKey(),
             'title' => trim($this->campaignTitle),
@@ -214,15 +322,9 @@ class GiftOrders extends Page
             'status' => GiftCampaign::STATUS_DRAFT,
         ])->save();
 
-        $result = app(GiftCampaignGenerator::class)->generate($shop, $campaign);
+        $this->campaignId = (int) $campaign->getKey();
 
-        Notification::make()
-            ->title(__('gifts.generated', ['count' => $result['dispatched']]))
-            ->success()
-            ->send();
-
-        $this->reset(['campaignTitle', 'selectedProductId', 'selectedVariantId', 'previewed']);
-        $this->shippingLabel = __('gifts.default_shipping_label');
+        return $campaign;
     }
 
     /** Put a REJECTED recipient back in the queue. Never offered for `creating`. */

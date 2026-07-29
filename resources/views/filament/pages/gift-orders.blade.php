@@ -10,7 +10,11 @@
         {{-- 1. The rule + the gift --}}
         <div class="rc-section">
             <div class="rc-section__title">{{ __('gifts.rule_heading') }}</div>
-            <span class="rc-muted">{{ __('gifts.rule_intro') }}</span>
+            @if($campaignId)
+                <span class="rc-muted">{{ __('gifts.editing', ['title' => $campaignTitle]) }}</span>
+            @else
+                <span class="rc-muted">{{ __('gifts.rule_intro') }}</span>
+            @endif
 
             <div class="rc-field">
                 <label class="rc-field__label" for="gift-title">{{ __('gifts.field.title') }}</label>
@@ -83,10 +87,20 @@
                 <span class="rc-muted">{{ __('gifts.field.shipping_label_hint') }}</span>
             </div>
 
+            {{-- Saving keeps the rule; sending is what creates orders, and it lives
+                 behind the preview so nothing goes out unseen. --}}
             <div class="rc-row">
+                <button type="button" class="rc-cta rc-cta--primary" wire:click="save">
+                    {{ __('gifts.action.save') }}
+                </button>
                 <button type="button" class="rc-cta rc-cta--ghost" wire:click="preview">
                     {{ __('gifts.action.preview') }}
                 </button>
+                @if($campaignId)
+                    <button type="button" class="rc-link" wire:click="newCampaign">
+                        {{ __('gifts.action.new') }}
+                    </button>
+                @endif
             </div>
         </div>
 
@@ -135,7 +149,7 @@
 
                     @if($ready > 0)
                         <div class="rc-row">
-                            <button type="button" class="rc-cta" wire:click="generate"
+                            <button type="button" class="rc-cta rc-cta--primary" wire:click="generate"
                                     wire:confirm="{{ __('gifts.action.generate_confirm', ['count' => $ready]) }}">
                                 {{ __('gifts.action.generate', ['count' => $ready]) }}
                             </button>
@@ -167,6 +181,27 @@
                             ]) }}
                         </span>
 
+                        {{-- A saved-but-unsent campaign is still editable, and can be
+                             sent from here without retyping the rule. --}}
+                        @if($campaign->status === \App\Domain\Campaigns\Models\GiftCampaign::STATUS_DRAFT)
+                            @php $ready = $this->readyFor($campaign); @endphp
+                            <div class="rc-row">
+                                <span class="rc-muted">{{ __('gifts.draft_empty') }}</span>
+                                <button type="button" class="rc-link"
+                                        wire:click="editCampaign({{ $campaign->getKey() }})">
+                                    {{ __('gifts.action.edit') }}
+                                </button>
+                                @if($ready > 0)
+                                    <button type="button" class="rc-cta rc-cta--primary rc-cta--sm"
+                                            wire:click="sendCampaign({{ $campaign->getKey() }})"
+                                            wire:confirm="{{ __('gifts.action.generate_confirm', ['count' => $ready]) }}">
+                                        {{ __('gifts.action.send') }}
+                                    </button>
+                                @endif
+                            </div>
+                        @endif
+
+                        @if($campaign->recipients->isNotEmpty())
                         <table class="rc-table">
                             <thead>
                                 <tr>
@@ -203,6 +238,7 @@
                                 @endforeach
                             </tbody>
                         </table>
+                        @endif
                     </div>
                 @endforeach
             </div>

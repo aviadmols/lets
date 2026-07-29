@@ -177,6 +177,112 @@ final class GiftOrdersPageTest extends TestCase
         Queue::assertPushed(GiftOrderJob::class, 1);
     }
 
+    public function test_saving_keeps_the_rule_without_creating_anything(): void
+    {
+        Queue::fake();
+        $this->subscriber('Dana', succeeded: 4);
+        [$product] = $this->giftProduct(price: 40.00);
+
+        Livewire::test(GiftOrders::class)
+            ->set('campaignTitle', 'Later')
+            ->set('minCycles', 3)
+            ->call('selectProduct', (int) $product->getKey())
+            ->call('save');
+
+        $campaign = GiftCampaign::query()->sole();
+        $this->assertSame(GiftCampaign::STATUS_DRAFT, $campaign->status);
+        $this->assertNull($campaign->generated_at);
+
+        // Saved is not sent: no recipient is enrolled and no order is on its way.
+        $this->assertSame(0, GiftRecipient::query()->count());
+        Queue::assertNothingPushed();
+    }
+
+    public function test_saving_twice_edits_one_draft_rather_than_piling_up(): void
+    {
+        [$product] = $this->giftProduct(price: 40.00);
+
+        Livewire::test(GiftOrders::class)
+            ->set('campaignTitle', 'First name')
+            ->call('selectProduct', (int) $product->getKey())
+            ->call('save')
+            ->set('campaignTitle', 'Better name')
+            ->call('save');
+
+        $campaign = GiftCampaign::query()->sole();
+        $this->assertSame('Better name', $campaign->title);
+    }
+
+    public function test_sending_a_saved_draft_does_not_open_a_second_campaign(): void
+    {
+        Queue::fake();
+        $this->subscriber('Dana', succeeded: 4);
+        [$product] = $this->giftProduct(price: 40.00);
+
+        Livewire::test(GiftOrders::class)
+            ->set('campaignTitle', 'Saved then sent')
+            ->set('minCycles', 3)
+            ->call('selectProduct', (int) $product->getKey())
+            ->call('save')
+            ->call('preview')
+            ->call('generate')
+            // The form empties, so the merchant is not left editing a sent campaign.
+            ->assertSet('campaignId', null);
+
+        $campaign = GiftCampaign::query()->sole();
+        $this->assertNotNull($campaign->generated_at);
+        Queue::assertPushed(GiftOrderJob::class, 1);
+    }
+
+    public function test_a_draft_can_be_reopened_and_sent_from_the_list(): void
+    {
+        Queue::fake();
+        $this->subscriber('Dana', succeeded: 4);
+        [$product] = $this->giftProduct(price: 40.00);
+
+        $draft = Livewire::test(GiftOrders::class)
+            ->set('campaignTitle', 'Saved for later')
+            ->set('minCycles', 3)
+            ->set('shippingLabel', 'By courier')
+            ->call('selectProduct', (int) $product->getKey())
+            ->call('save')
+            ->call('newCampaign')
+            ->assertSet('campaignTitle', '');
+
+        $campaignId = (int) GiftCampaign::query()->sole()->getKey();
+
+        $draft->call('editCampaign', $campaignId)
+            ->assertSet('campaignTitle', 'Saved for later')
+            ->assertSet('shippingLabel', 'By courier')
+            ->assertSet('selectedProductId', (int) $product->getKey())
+            // A rule pulled back onto the screen has not been reviewed yet.
+            ->assertSet('previewed', false);
+
+        $draft->call('sendCampaign', $campaignId);
+
+        $this->assertSame(1, GiftRecipient::query()->count());
+        Queue::assertPushed(GiftOrderJob::class, 1);
+    }
+
+    public function test_a_campaign_that_already_went_out_is_not_reopened(): void
+    {
+        Queue::fake();
+        $sent = $this->campaign(); // status generating — orders are already out
+        $this->subscriber('Dana', succeeded: 4);
+
+        $page = Livewire::test(GiftOrders::class)
+            ->call('editCampaign', (int) $sent->getKey())
+            // Its snapshot records what was given away; editing it would rewrite
+            // history and disagree with the orders it created.
+            ->assertSet('campaignId', null)
+            ->assertSet('campaignTitle', '');
+
+        $page->call('sendCampaign', (int) $sent->getKey());
+
+        $this->assertSame(0, GiftRecipient::query()->count());
+        Queue::assertNothingPushed();
+    }
+
     public function test_only_a_rejected_recipient_can_be_retried_from_the_screen(): void
     {
         Queue::fake();
