@@ -47,6 +47,32 @@ return [
         'send' => 'Send now',
         'generate_confirm' => ':count free orders will be created in your store, shipped to each customer’s current address. Continue?',
         'retry' => 'Retry',
+        'export' => 'Export list with addresses (CSV)',
+    ],
+
+    // The spreadsheet. Addresses are read from the store as the file is built, so
+    // it says where each gift would go today.
+    'export' => [
+        'col' => [
+            'customer' => 'Customer',
+            'email' => 'Email',
+            'first_name' => 'First name',
+            'last_name' => 'Last name',
+            'address1' => 'Street address',
+            'address2' => 'Address line 2',
+            'city' => 'City',
+            'zip' => 'Postal code',
+            'country' => 'Country',
+            'phone' => 'Phone',
+            'company' => 'Company',
+            'address_source' => 'Address taken from',
+            'note' => 'Note',
+        ],
+        'source' => [
+            'customer_profile' => 'Customer profile',
+            'origin_order' => 'The order they subscribed with',
+        ],
+        'truncated' => ':count more recipients were left out of this file.',
     ],
 
     'editing' => 'Editing the saved campaign “:title”. Saving updates it; sending creates the orders.',

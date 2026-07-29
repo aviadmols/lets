@@ -4,6 +4,7 @@ namespace App\Filament\Pages;
 
 use App\Domain\Campaigns\GiftCampaignGenerator;
 use App\Domain\Campaigns\GiftEligibility;
+use App\Domain\Campaigns\GiftListExporter;
 use App\Domain\Campaigns\Jobs\GiftOrderJob;
 use App\Domain\Campaigns\Models\GiftCampaign;
 use App\Domain\Campaigns\Models\GiftRecipient;
@@ -16,6 +17,7 @@ use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Support\Collection;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Gift orders — thank the subscribers who stayed.
@@ -170,6 +172,23 @@ class GiftOrders extends Page
         }
 
         return app(GiftEligibility::class)->qualifying($this->minCycles);
+    }
+
+    // === Export ===
+
+    /**
+     * The qualifying list as a spreadsheet, with each recipient's address as it
+     * stands right now. Reads only — nobody is enrolled and no order is created,
+     * so a merchant can ship the gifts by hand if they prefer.
+     */
+    public function exportList(): ?StreamedResponse
+    {
+        $shop = Tenant::current();
+        if (! $shop instanceof Shop) {
+            return null;
+        }
+
+        return app(GiftListExporter::class)->download($shop, $this->minCycles);
     }
 
     // === Save ===

@@ -147,14 +147,19 @@
                         </tbody>
                     </table>
 
-                    @if($ready > 0)
-                        <div class="rc-row">
+                    <div class="rc-row">
+                        @if($ready > 0)
                             <button type="button" class="rc-cta rc-cta--primary" wire:click="generate"
                                     wire:confirm="{{ __('gifts.action.generate_confirm', ['count' => $ready]) }}">
                                 {{ __('gifts.action.generate', ['count' => $ready]) }}
                             </button>
-                        </div>
-                    @endif
+                        @endif
+                        {{-- Reads only: the file is for shipping by hand, and building
+                             it enrols nobody. --}}
+                        <button type="button" class="rc-cta rc-cta--ghost" wire:click="exportList">
+                            {{ __('gifts.action.export') }}
+                        </button>
+                    </div>
                 @endif
             </div>
         @endif

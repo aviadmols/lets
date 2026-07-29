@@ -177,6 +177,21 @@ final class GiftOrdersPageTest extends TestCase
         Queue::assertPushed(GiftOrderJob::class, 1);
     }
 
+    public function test_the_export_hands_back_a_downloadable_file(): void
+    {
+        \Illuminate\Support\Facades\Http::fake(['*' => \Illuminate\Support\Facades\Http::response([], 200)]);
+        $this->subscriber('Dana', succeeded: 4);
+
+        $response = Livewire::test(GiftOrders::class)
+            ->set('minCycles', 3)
+            ->instance()
+            ->exportList();
+
+        $this->assertNotNull($response);
+        $this->assertStringContainsString('text/csv', (string) $response->headers->get('Content-Type'));
+        $this->assertStringContainsString('gift-recipients-', (string) $response->headers->get('Content-Disposition'));
+    }
+
     public function test_saving_keeps_the_rule_without_creating_anything(): void
     {
         Queue::fake();
