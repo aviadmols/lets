@@ -141,6 +141,40 @@ final class TimelineEmailPreviewTest extends TestCase
         $this->assertSame('הכרטיס פג תוקף', $vars['failure_reason']);
     }
 
+    public function test_an_open_ended_subscription_is_never_told_it_finished(): void
+    {
+        $plan = $this->plan();
+
+        $preview = EmailPreviewRenderer::forPlan(
+            self::TEMPLATE,
+            $plan,
+            $this->shop,
+            ['amount' => '1.00', 'sequence' => 3],
+        );
+
+        // A recurring plan has no total to count towards. Deriving one from
+        // total/per made it "payment 3 of 1" — which reads as "your subscription
+        // ended two cycles ago".
+        $this->assertStringNotContainsString('מתוך', $preview['html']);
+        $this->assertStringContainsString('התקבל בהצלחה.', $preview['html']);
+    }
+
+    public function test_an_installments_plan_still_counts_its_payments(): void
+    {
+        $plan = $this->plan(meta: ['item_title' => 'ספר', 'installment_count' => 6]);
+        $plan->forceFill(['plan_kind' => PlanKind::INSTALLMENTS->value])->save();
+
+        $preview = EmailPreviewRenderer::forPlan(
+            self::TEMPLATE,
+            $plan->fresh(),
+            $this->shop,
+            ['sequence' => 2],
+        );
+
+        // Where a total genuinely exists, the customer still gets their progress.
+        $this->assertStringContainsString('תשלום 2 מתוך 6', $preview['html']);
+    }
+
     public function test_the_settings_page_preview_still_uses_samples(): void
     {
         // Nobody has received that template yet, so there is no real customer to

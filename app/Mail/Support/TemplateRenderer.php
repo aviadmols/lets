@@ -5,6 +5,7 @@ namespace App\Mail\Support;
 use App\Models\InstallmentPayment;
 use App\Models\InstallmentPlan;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
+use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use Illuminate\Support\Carbon;
 
 /**
@@ -37,6 +38,20 @@ final class TemplateRenderer
 
     /** Default customer salutation when no name is on file. */
     private const FALLBACK_CUSTOMER = 'there';
+
+    /**
+     * The "(payment X of Y)" aside, as a single substituted fragment.
+     *
+     * It cannot be a conditional in the template: the default bodies are token
+     * STRINGS, substituted with strtr long after any Blade ran, so a `@if` there
+     * sees the literal `{installment_sequence}` and is always true. The decision
+     * therefore belongs to the var bag — and an open-ended subscription gets an
+     * empty string, not a fabricated total.
+     */
+    private const PROGRESS_FORMAT = ' (תשלום %s מתוך %s)';
+
+    /** The welcome email's "N payments in the plan" sentence — same rule. */
+    private const TOTAL_NOTE_FORMAT = 'סך הכל %s תשלומים בתוכנית. ';
 
     /**
      * Substitute {token} placeholders using strtr() ONLY.
@@ -80,6 +95,9 @@ final class TemplateRenderer
             ? (float) $payment->amount
             : (float) ($plan->installment_amount ?: 0);
 
+        $count = self::installmentCountFor($plan);
+        $sequence = $payment !== null ? (string) ($payment->sequence ?? '') : '';
+
         return [
             'customer_name' => self::nonEmpty($plan->customer_name, self::FALLBACK_CUSTOMER),
             'customer_email' => (string) ($plan->customer_email ?? ''),
@@ -88,8 +106,10 @@ final class TemplateRenderer
             'amount' => self::money($amount),
             'currency' => $currency,
             'plan_id' => (string) $plan->getKey(),
-            'installment_count' => self::installmentCountFor($plan),
-            'installment_sequence' => $payment !== null ? (string) ($payment->sequence ?? '') : '',
+            'installment_count' => $count,
+            'installment_sequence' => $sequence,
+            'installment_progress' => self::progress($sequence, $count),
+            'installment_total_note' => $count !== '' ? sprintf(self::TOTAL_NOTE_FORMAT, $count) : '',
             'next_charge_date' => self::date($plan->next_charge_at),
             'portal_url' => (string) ($portalUrl ?? ''),
             'invoice_url' => (string) ($invoiceUrl ?? ''),
@@ -140,13 +160,38 @@ final class TemplateRenderer
         return $plan->productTitle();
     }
 
-    /** Total installment count for the plan (from meta, else derived). */
+    /**
+     * "(payment X of Y)", or nothing at all when either half is unknown.
+     *
+     * Public because the admin's Timeline preview recomputes it: it recovers the
+     * sequence from the event AFTER planVars() has run, and a stale progress line
+     * built from the empty sequence would silently drop the aside.
+     */
+    public static function progress(string $sequence, string $count): string
+    {
+        return ($sequence !== '' && $count !== '')
+            ? sprintf(self::PROGRESS_FORMAT, $sequence, $count)
+            : '';
+    }
+
+    /**
+     * Total installment count for the plan (from meta, else derived).
+     *
+     * EMPTY for an open-ended recurring subscription, because there is no total to
+     * count towards. Deriving one from total/per gave a plan billing ₪1 a month a
+     * "count" of 1, and customers were emailed "payment 3 of 1" — a sentence that
+     * is not merely odd, it tells them their subscription ended two cycles ago.
+     */
     private static function installmentCountFor(InstallmentPlan $plan): string
     {
         $count = $plan->meta['installment_count'] ?? null;
 
         if ($count !== null) {
             return (string) (int) $count;
+        }
+
+        if ($plan->plan_kind === PlanKind::RECURRING) {
+            return '';
         }
 
         // Derived: total / per-installment amount, when both are known.

@@ -7,7 +7,9 @@
         <h1 style="font-size:20px;font-weight:700;margin:0 0 16px;color:#111827;">שלום {{ $customer_name }},</h1>
         <p style="font-size:15px;line-height:1.6;margin:0 0 14px;">תודה! התשלום הראשון עבור <strong>{{ $product_title }}</strong> התקבל בהצלחה.</p>
         <p style="font-size:15px;line-height:1.6;margin:0 0 14px;font-weight:700;">סכום: {{ $amount }} {{ $currency }}</p>
-        <p style="font-size:15px;line-height:1.6;margin:0 0 14px;">סך הכל {{ $installment_count }} תשלומים בתוכנית. החיוב הבא צפוי בתאריך {{ $next_charge_date }}.</p>
+        {{-- $installment_total_note is the whole "N payments in the plan" sentence,
+             empty for an open-ended subscription — which has no total to announce. --}}
+        <p style="font-size:15px;line-height:1.6;margin:0 0 14px;">{{ $installment_total_note ?? '' }}החיוב הבא צפוי בתאריך {{ $next_charge_date }}.</p>
         @if (! empty($portal_url))
             <a href="{{ $portal_url }}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:8px;font-size:15px;font-weight:600;margin:8px 0 16px;">צפייה בתוכנית שלי</a>
         @endif

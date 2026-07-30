@@ -42,7 +42,7 @@ final class DefaultEmailTemplates
     private const PLACEHOLDERS = [
         MerchantMailSettings::TEMPLATE_FIRST_PAYMENT_WELCOME => [
             'customer_name', 'business_name', 'product_title', 'amount', 'currency',
-            'installment_count', 'plan_id', 'portal_url', 'next_charge_date',
+            'installment_count', 'installment_total_note', 'plan_id', 'portal_url', 'next_charge_date',
         ],
         MerchantMailSettings::TEMPLATE_RECURRING_PAYMENT_REMINDER => [
             'customer_name', 'business_name', 'product_title', 'amount', 'currency',
@@ -54,7 +54,7 @@ final class DefaultEmailTemplates
         ],
         MerchantMailSettings::TEMPLATE_CHARGE_SUCCEEDED => [
             'customer_name', 'business_name', 'product_title', 'amount', 'currency',
-            'installment_sequence', 'installment_count', 'invoice_url', 'portal_url', 'plan_id',
+            'installment_sequence', 'installment_count', 'installment_progress', 'invoice_url', 'portal_url', 'plan_id',
         ],
         MerchantMailSettings::TEMPLATE_CHARGE_FAILED => [
             'customer_name', 'business_name', 'product_title', 'amount', 'currency',
@@ -121,7 +121,10 @@ final class DefaultEmailTemplates
             .'<h1 '.self::H1.'>שלום {customer_name},</h1>'
             .'<p '.self::P.'>תודה! התשלום הראשון עבור <strong>{product_title}</strong> התקבל בהצלחה.</p>'
             .'<p '.self::AMOUNT.'>סכום: {amount} {currency}</p>'
-            .'<p '.self::P.'>סך הכל {installment_count} תשלומים בתוכנית. החיוב הבא צפוי בתאריך {next_charge_date}.</p>'
+            // Same reason as {installment_progress}: an open-ended subscription has
+            // no "N payments in the plan" to state, so the sentence disappears
+            // rather than announcing a total nobody agreed to.
+            .'<p '.self::P.'>{installment_total_note}החיוב הבא צפוי בתאריך {next_charge_date}.</p>'
             .'<a href="{portal_url}" '.self::CTA.'>צפייה בתוכנית שלי</a>'
             .'<p '.self::MUTED.'>מספר תוכנית #{plan_id} · {business_name}</p>'
             .self::CARD_CLOSE;
@@ -153,7 +156,10 @@ final class DefaultEmailTemplates
     {
         return self::CARD_OPEN
             .'<h1 '.self::H1.'>שלום {customer_name},</h1>'
-            .'<p '.self::P.'>התשלום עבור <strong>{product_title}</strong> התקבל בהצלחה (תשלום {installment_sequence} מתוך {installment_count}).</p>'
+            // {installment_progress} carries the whole "(payment X of Y)" aside, and
+            // is EMPTY for an open-ended subscription — which has no Y, and was
+            // being told "payment 3 of 1".
+            .'<p '.self::P.'>התשלום עבור <strong>{product_title}</strong> התקבל בהצלחה{installment_progress}.</p>'
             .'<p '.self::AMOUNT.'>סכום: {amount} {currency}</p>'
             .'<a href="{invoice_url}" '.self::CTA.'>צפייה בחשבונית</a>'
             .'<p '.self::P.'><a href="{portal_url}" style="color:#2563eb;">ניהול התוכנית שלי</a></p>'

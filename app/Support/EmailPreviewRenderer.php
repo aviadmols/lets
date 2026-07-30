@@ -36,6 +36,11 @@ final class EmailPreviewRenderer
         'plan_id' => '1042',
         'installment_count' => '6',
         'installment_sequence' => '2',
+        // The two ready-made sentences. They are vars and not template
+        // conditionals because an open-ended subscription must show neither —
+        // see TemplateRenderer::PROGRESS_FORMAT.
+        'installment_progress' => ' (תשלום 2 מתוך 6)',
+        'installment_total_note' => 'סך הכל 6 תשלומים בתוכנית. ',
         'next_charge_date' => '15/07/2026',
         'next_charge_date_he' => '15/07/2026',
         'next_retry_date' => '18/06/2026',
@@ -138,6 +143,14 @@ final class EmailPreviewRenderer
         );
 
         $vars = array_merge($vars, self::fromEventDetails($eventDetails, $vars));
+
+        // Recompute the "(payment X of Y)" aside: the sequence only became known
+        // when the event's details were layered on, and the line built during
+        // planVars() was made without it.
+        $vars['installment_progress'] = TemplateRenderer::progress(
+            (string) ($vars['installment_sequence'] ?? ''),
+            (string) ($vars['installment_count'] ?? ''),
+        );
 
         $placeholders = DefaultEmailTemplates::placeholders($template);
         if ($placeholders === []) {
