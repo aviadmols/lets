@@ -11,6 +11,21 @@
 @php
     $dir = in_array(app()->getLocale(), ['he', 'ar'], true) ? 'rtl' : 'ltr';
     $dark = ($viewModel['appearance']['theme'] ?? 'light') === 'dark';
+
+    /*
+     * Content cache-busters, the same reason AdminPanelProvider::themeAssetUrl()
+     * carries one: these are plain public files, so without a changing query a
+     * browser keeps serving the STALE card CSS/JS and the merchant's preview shows
+     * the previous design after a deploy — while the storefront (enqueued with the
+     * plugin version) shows the new one. Two answers to "what does my card look
+     * like?" is worse than either.
+     */
+    $asset = static function (string $path): string {
+        $url = asset($path);
+        $file = public_path($path);
+
+        return is_file($file) ? $url.'?v='.filemtime($file) : $url;
+    };
 @endphp
 <!DOCTYPE html>
 <html lang="{{ app()->getLocale() }}" dir="{{ $dir }}">
@@ -22,7 +37,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap" rel="stylesheet">
-    <link href="{{ asset('upsell/lets-ppu.css') }}" rel="stylesheet">
+    <link href="{{ $asset('upsell/lets-ppu.css') }}" rel="stylesheet">
     <style>
         html, body { margin: 0; padding: 0; }
         .lets-preview {
@@ -43,7 +58,7 @@
     </div>
 
     <script>window.LetsUpsellPreview = @json($viewModel);</script>
-    <script src="{{ asset('upsell/lets-ppu.js') }}"></script>
+    <script src="{{ $asset('upsell/lets-ppu.js') }}"></script>
     <script>
         (function () {
             'use strict';

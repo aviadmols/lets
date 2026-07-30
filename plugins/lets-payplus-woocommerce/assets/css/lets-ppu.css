@@ -160,6 +160,39 @@
   box-shadow: 0 18px 28px -18px rgba(0, 0, 0, 0.35);
   transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.5s ease;
 }
+
+/* ==================== SIDE-BY-SIDE LAYOUT ("media_side") ====================
+   The renderer has always emitted .lets-ppu__body/.lets-ppu__content for this
+   layout — the stylesheet had no rule for either, so choosing "image beside the
+   text" produced exactly the stacked card it was meant to replace.
+
+   Desktop: the product beside its copy, the way a product page presents it.
+   Mobile: one above the other, because two columns on a phone is two cramped
+   columns. The grid does both with one declaration and no JS.
+   ========================================================================== */
+.lets-ppu[data-layout="media_side"] {
+  /* The stacked card is a narrow column; a two-column one needs the room. */
+  max-inline-size: 780px;
+}
+.lets-ppu__body {
+  display: grid;
+  gap: 28px;
+  align-items: center;
+}
+.lets-ppu__content {
+  min-inline-size: 0; /* let long product names wrap instead of stretching the grid */
+}
+/* Side by side only where there is width for it. */
+@media (min-width: 640px) {
+  .lets-ppu__body {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  }
+}
+/* In the two-column layout the image is a column, not a banner with a gap under it. */
+.lets-ppu__body .lets-ppu__media {
+  margin-block-end: 0;
+  align-self: start;
+}
 .lets-ppu__img {
   display: block;
   inline-size: 100%;

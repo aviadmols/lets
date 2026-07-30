@@ -77,9 +77,41 @@ function lets_payplus_signed_post($path, $body)
 }
 
 /**
+ * Turn whatever a caller passed as a query into a query STRING.
+ *
+ * This exists because it did not, and the omission took the store down. Callers
+ * pass two shapes — a built string (thank-you upsell) and an empty array() for "no
+ * query" (invoicing settings, checkout settings) — and the code did
+ * `ltrim($query, '?')` on both. On PHP 7 an array there was a warning that returned
+ * ''; on PHP 8 it is a TypeError, so the moment this store moved to PHP 8.4 EVERY
+ * read of the invoicing settings became a fatal 500 — which is the error the
+ * merchant saw on their thank-you page and on every order status change, and the
+ * reason gift orders came back 500 after WooCommerce had already created them.
+ *
+ * Accepts both shapes rather than fixing the two call sites, because a plugin in the
+ * wild is a mix of versions and a helper that only works when every caller is
+ * up to date is the same trap again.
+ */
+function lets_payplus_query_string($query)
+{
+    if (is_array($query)) {
+        return $query === array() ? '' : http_build_query($query);
+    }
+
+    if (is_string($query)) {
+        return ltrim($query, '?');
+    }
+
+    return ''; // null, false, an object — none of them are a query.
+}
+
+/**
  * Server-side HMAC-signed GET to the SaaS. Signs ts + 'GET' + $path + '' (empty body —
  * the SaaS VerifyWooCommerceSignature signs the path + raw body, NOT the query string), and
  * appends $query to the URL. Returns the decoded JSON array on 2xx, or a WP_Error.
+ *
+ * $query may be a query string OR an array of parameters (see
+ * lets_payplus_query_string) — never assume one and hand it to a string function.
  */
 function lets_payplus_signed_get($path, $query)
 {
@@ -95,7 +127,8 @@ function lets_payplus_signed_get($path, $query)
     $ts = (string) time();
     // The body is empty for a GET; the signature covers the PATH only (not the query).
     $signature = base64_encode(hash_hmac('sha256', $ts . 'GET' . $path . '', $conn['api_secret'], true));
-    $url = $origin . $path . (($query !== '') ? ('?' . ltrim($query, '?')) : '');
+    $queryString = lets_payplus_query_string($query);
+    $url = $origin . $path . ($queryString !== '' ? ('?' . $queryString) : '');
 
     $resp = wp_remote_get($url, array(
         'timeout' => 20,

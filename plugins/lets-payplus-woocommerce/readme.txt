@@ -66,6 +66,12 @@ WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 == Changelog ==
 
 = 0.20.0 =
+* FIX (critical): reading the invoicing settings crashed the site on PHP 8. Two callers
+  pass an empty array for "no query" and the helper handed it straight to ltrim(), which is a
+  warning on PHP 7 and a fatal on PHP 8 — so on a PHP 8 host every order status change and
+  every thank-you page returned a 500, and orders LETS created came back as failures after
+  WooCommerce had already created them. The helper now accepts both shapes, and reading the
+  settings can no longer throw into a WooCommerce hook at all.
 * A "LETS" column and filter on WooCommerce → Orders, showing which orders LETS
   created and which kind each is (subscription cycle, upsell, gift, installments).
   WooCommerce has no order tags of its own, so the mark LETS stamps on the order is

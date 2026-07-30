@@ -55,24 +55,49 @@ define('LETS_PAYPLUS_INVOICE_MAX_LINES', 100);
  */
 function lets_payplus_invoicing_settings()
 {
-    $cached = get_transient(LETS_PAYPLUS_INVOICING_TRANSIENT);
-    if (is_array($cached)) {
-        return $cached;
-    }
+    /*
+     * Wrapped, because this function runs inside `woocommerce_order_status_changed`
+     * and on the customer's order-received page — and a fatal in a WordPress hook
+     * does not fail the hook, it fails the whole REQUEST. A TypeError in here once
+     * turned every order save and every thank-you page on a live store into a 500,
+     * and took gift-order creation down with it.
+     *
+     * Nothing this function can fail at is worth a merchant's checkout. Null is
+     * already the "do nothing" answer every caller understands, so any breakage
+     * degrades to "no document was requested" — a missing document is a button
+     * click; a broken store is lost orders.
+     */
+    try {
+        $cached = get_transient(LETS_PAYPLUS_INVOICING_TRANSIENT);
+        if (is_array($cached)) {
+            return $cached;
+        }
 
-    if (! lets_payplus_connection()) {
+        if (! lets_payplus_connection()) {
+            return null;
+        }
+
+        $result = lets_payplus_signed_get('/api/woocommerce/invoicing-settings', array());
+
+        if (is_wp_error($result) || empty($result['settings']) || ! is_array($result['settings'])) {
+            return null;
+        }
+
+        set_transient(LETS_PAYPLUS_INVOICING_TRANSIENT, $result['settings'], LETS_PAYPLUS_INVOICING_TTL);
+
+        return $result['settings'];
+    } catch (\Throwable $e) {
+        // Logged so it is findable, then swallowed so the page still renders.
+        if (function_exists('lets_payplus_log_event')) {
+            lets_payplus_log_event(
+                sprintf('Could not read the invoicing settings: %s', $e->getMessage()),
+                'invoicing',
+                'error'
+            );
+        }
+
         return null;
     }
-
-    $result = lets_payplus_signed_get('/api/woocommerce/invoicing-settings', array());
-
-    if (is_wp_error($result) || empty($result['settings']) || ! is_array($result['settings'])) {
-        return null;
-    }
-
-    set_transient(LETS_PAYPLUS_INVOICING_TRANSIENT, $result['settings'], LETS_PAYPLUS_INVOICING_TTL);
-
-    return $result['settings'];
 }
 
 /** Drop the cached scope so the next order re-reads the merchant's current choice. */
