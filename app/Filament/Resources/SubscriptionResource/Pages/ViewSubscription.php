@@ -98,15 +98,25 @@ class ViewSubscription extends Page
         $this->record = $plan;
     }
 
-    /** The page title is the CUSTOMER, not the opaque plan code (the plan code moves to the subheading). */
+    /** The page title is the CUSTOMER, not the opaque plan code. */
     public function getTitle(): string|Htmlable
     {
         return $this->record->customerLabel();
     }
 
+    /**
+     * What they subscribed to. This used to be the PLN-{id} code, which named a row
+     * in our database and told the merchant nothing they were looking for.
+     */
     public function getSubheading(): string|Htmlable|null
     {
-        return 'PLN-' . $this->record->getKey();
+        return $this->productTitle();
+    }
+
+    /** The plan's product, for the heading and the summary card. */
+    public function productTitle(): ?string
+    {
+        return $this->record->productTitle();
     }
 
     /**
@@ -320,14 +330,27 @@ class ViewSubscription extends Page
             return view('filament.pages.partials.mail-preview-unavailable');
         }
 
-        // Use the shop's saved custom copy when set, else the platform default —
-        // the same per-shop settings row the live send used (tenant-keyed).
-        $preview = EmailPreviewRenderer::preview($template, MerchantMailSettings::current());
+        // THIS customer's details, not sample ones. A merchant opening a Timeline
+        // row is checking what a particular person was told; a stranger's name in
+        // that modal answers a question nobody asked.
+        //
+        // Custom copy when the shop has it, else the platform default — the same
+        // per-shop settings row the live send used (tenant-keyed).
+        $preview = EmailPreviewRenderer::forPlan(
+            template: $template,
+            plan: $this->record,
+            shop: Tenant::current(),
+            eventDetails: (array) ($event->details ?? []),
+            settings: MerchantMailSettings::current(),
+        );
 
         return view('filament.pages.partials.mail-preview', [
             'subject' => $preview['subject'],
             'html' => $preview['html'],
             'isCustom' => $preview['is_custom'],
+            // Real data, but reconstructed from the template as it stands today —
+            // not an archived copy of the bytes that were sent.
+            'note' => __('mail.preview.note_plan'),
         ]);
     }
 

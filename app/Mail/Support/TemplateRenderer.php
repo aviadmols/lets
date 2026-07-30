@@ -134,7 +134,10 @@ final class TemplateRenderer
     /** Product label for the plan: meta.product_title, else generic fallback. */
     private static function productTitleFor(InstallmentPlan $plan): ?string
     {
-        return ($plan->meta['product_title'] ?? null) ?: null;
+        // Delegated: reading meta['product_title'] alone missed the checkout rail's
+        // meta['item_title'], so customers whose plan knew the product were told
+        // "your order".
+        return $plan->productTitle();
     }
 
     /** Total installment count for the plan (from meta, else derived). */

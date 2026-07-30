@@ -3,6 +3,7 @@
 namespace App\Mail\Concerns;
 
 use App\Models\Shop;
+use App\Support\BusinessName;
 
 /**
  * Resolves the merchant-facing "business name" used in email copy + the From
@@ -17,26 +18,13 @@ use App\Models\Shop;
 trait ResolvesBusinessName
 {
     // === CONSTANTS ===
-    /** Final fallback when a shop has no name yet. */
-    private const FALLBACK_BUSINESS_NAME = 'Our Store';
-
+    /**
+     * Delegates to BusinessName so the admin's email preview can resolve the SAME
+     * name without instantiating a mailable — a preview that signed off as a
+     * different store than the sent mail would be a preview of nothing.
+     */
     protected function resolveBusinessName(?Shop $shop): string
     {
-        if ($shop === null) {
-            return (string) config('app.name', self::FALLBACK_BUSINESS_NAME);
-        }
-
-        $name = trim((string) ($shop->name ?? ''));
-        if ($name !== '') {
-            return $name;
-        }
-
-        $domain = trim((string) ($shop->shopify_domain ?? ''));
-        if ($domain !== '') {
-            // "acme.myshopify.com" → "acme"
-            return ucfirst((string) strtok($domain, '.'));
-        }
-
-        return self::FALLBACK_BUSINESS_NAME;
+        return BusinessName::for($shop);
     }
 }

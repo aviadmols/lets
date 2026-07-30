@@ -7,6 +7,7 @@ return [
         'search_placeholder' => 'חיפוש לקוח',
         'col' => [
             'customer' => 'לקוח',
+            'product' => 'מוצר',
             'kind' => 'סוג',
             'status' => 'סטטוס',
             'next_charge' => 'חיוב הבא',

@@ -71,10 +71,15 @@ final class ViewSubscriptionPageTest extends TestCase
     /** The headline: the merchant's own plan opens (this is what 404'd in production). */
     public function test_a_tenant_bound_plan_renders(): void
     {
+        $this->plan->forceFill(['meta' => ['item_title' => 'מנוי שיבולת']])->save();
+
         $this->get($this->viewUrl($this->plan->id))
             ->assertOk()
-            ->assertSee('PLN-'.$this->plan->id)          // the plan code moved to the subheading
-            ->assertSee('ישראל ישראלי', escape: false);  // the customer is now the title
+            ->assertSee('ישראל ישראלי', escape: false)   // the customer is the title
+            ->assertSee('מנוי שיבולת', escape: false)    // …and the product is the subheading
+            // PLN-{id} named a row in our database. It identified nothing a
+            // merchant thinks in, so it is off the screen entirely.
+            ->assertDontSee('PLN-'.$this->plan->id);
     }
 
     /** A recurring plan with a one-time override renders the override's products + the "customised" badge. */

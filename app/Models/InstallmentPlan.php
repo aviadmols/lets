@@ -116,6 +116,42 @@ class InstallmentPlan extends Model
     }
 
     /**
+     * What the customer subscribed TO, for display and for email copy.
+     *
+     * Two meta keys, because the rails write different ones: the checkout path
+     * stores `item_title`, later paths store `product_title`. Reading only one of
+     * them is why plan emails said "your order" to customers whose plan knew the
+     * product perfectly well.
+     *
+     * Last resort is the synced catalog, matched on the platform product id. That
+     * is a query, so it only runs when the plan itself carries no title — eager
+     * load `product` on list screens to keep it off the row loop.
+     */
+    public function productTitle(): ?string
+    {
+        foreach ([data_get($this->meta, 'product_title'), data_get($this->meta, 'item_title')] as $title) {
+            $title = trim((string) ($title ?? ''));
+            if ($title !== '') {
+                return $title;
+            }
+        }
+
+        $catalog = trim((string) ($this->product?->title ?? ''));
+
+        return $catalog !== '' ? $catalog : null;
+    }
+
+    /**
+     * The synced catalog row for this plan's product, matched on the platform id.
+     * Tenant-scoped by Product's global scope, so it can only ever resolve to this
+     * shop's catalog.
+     */
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class, 'external_product_id', 'external_id');
+    }
+
+    /**
      * The ONE-TIME next-order override (W25), or null when the next cycle uses the plan's normal
      * contents. Only returned when it actually carries line items (a malformed/empty bag is ignored).
      *

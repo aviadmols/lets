@@ -57,6 +57,9 @@ return [
     'preview' => [
         'heading' => 'Preview',
         'note' => 'Preview uses sample data. Placeholders show as plain text.',
+        // The Timeline preview: this customer's real details, filled into the
+        // template as it stands today — not a stored copy of the sent message.
+        'note_plan' => 'Filled with this customer’s details, using the template as it is now. Anything the send recorded and the plan no longer holds appears blank.',
         'using_custom' => 'Showing your custom template.',
         'using_default' => 'Showing the default template.',
         'close' => 'Close',

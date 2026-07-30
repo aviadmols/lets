@@ -10,7 +10,11 @@
         <div class="rc-section">
             <div class="rc-row rc-row--between">
                 <div class="rc-stack rc-stack--tight">
-                    <span class="rc-section__title">PLN-{{ $record->getKey() }}</span>
+                    {{-- The PRODUCT, not the PLN code: the code named the row in our
+                         database, which is not something a merchant recognises. --}}
+                    @if($this->productTitle())
+                        <span class="rc-section__title">{{ $this->productTitle() }}</span>
+                    @endif
                     {{-- Who this plan belongs to — the detail page showed no customer at all. --}}
                     <span class="rc-kv">
                         <span class="rc-kv__k">{{ __('subscriptions.detail.customer') }}</span>

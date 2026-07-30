@@ -3,7 +3,9 @@
 namespace App\Support;
 
 use App\Mail\Support\TemplateRenderer;
+use App\Models\InstallmentPlan;
 use App\Models\MerchantMailSettings;
+use App\Models\Shop;
 
 /**
  * Renders a SAFE preview of an email template for the admin settings page +
@@ -66,6 +68,133 @@ final class EmailPreviewRenderer
             'html' => TemplateRenderer::render($bodyTemplate, $vars),
             'is_custom' => $customBody !== null,
         ];
+    }
+
+    /**
+     * The same preview, but for a REAL subscription: this customer's name, their
+     * product, their amount.
+     *
+     * The settings page previews a template nobody has received yet, so sample
+     * values are right there. On a plan's Timeline they are wrong — a merchant
+     * checking what a customer was told must not be shown a stranger's name.
+     *
+     * Honest about its limits. This is the CURRENT template filled with the plan's
+     * CURRENT details, not an archived copy of the message: a template edited since
+     * the send, or a plan whose next charge date has moved on, previews as it
+     * stands today. The event's own details (the amount charged, the sequence, the
+     * failure reason) are layered on top, because those are the facts of the send
+     * itself and the plan no longer carries them.
+     *
+     * Anything that cannot be recovered renders EMPTY rather than as a sample. A
+     * blank is a gap the merchant can see; a plausible fake is one they cannot.
+     *
+     * @param  array<string, mixed>  $eventDetails  the Timeline event's `details`
+     * @return array{subject: string, html: string, is_custom: bool}
+     */
+    public static function forPlan(
+        string $template,
+        InstallmentPlan $plan,
+        ?Shop $shop = null,
+        array $eventDetails = [],
+        ?MerchantMailSettings $settings = null,
+    ): array {
+        $vars = self::planVarsFor($template, $plan, $shop, $eventDetails, $settings);
+
+        $customSubject = $settings?->customSubject($template);
+        $customBody = $settings?->customBody($template);
+
+        return [
+            'subject' => TemplateRenderer::render($customSubject ?? DefaultEmailTemplates::subject($template), $vars),
+            'html' => TemplateRenderer::render($customBody ?? DefaultEmailTemplates::body($template), $vars),
+            'is_custom' => $customBody !== null,
+        ];
+    }
+
+    /**
+     * The var bag for one plan, scoped to the placeholders this template uses.
+     *
+     * @param  array<string, mixed>  $eventDetails
+     * @return array<string, string>
+     */
+    public static function planVarsFor(
+        string $template,
+        InstallmentPlan $plan,
+        ?Shop $shop = null,
+        array $eventDetails = [],
+        ?MerchantMailSettings $settings = null,
+    ): array {
+        // The production var builder — the preview and the send agree by
+        // construction, not by two lists that drift apart.
+        //
+        // The shop's portal PAGE, deliberately not a freshly signed magic link: a
+        // preview should not mint a live credential into an admin screen, and a
+        // link minted now is not the one the customer received anyway.
+        $vars = TemplateRenderer::planVars(
+            plan: $plan,
+            businessName: BusinessName::for($shop),
+            payment: null,
+            portalUrl: $settings?->portal_store_page_url ?: null,
+            invoiceUrl: null,
+        );
+
+        $vars = array_merge($vars, self::fromEventDetails($eventDetails, $vars));
+
+        $placeholders = DefaultEmailTemplates::placeholders($template);
+        if ($placeholders === []) {
+            return array_map(static fn ($v): string => (string) $v, $vars);
+        }
+
+        $scoped = [];
+        foreach ($placeholders as $key) {
+            // '' — never SAMPLE. An unrecoverable value shows as a gap, not as
+            // someone else's details.
+            $scoped[$key] = (string) ($vars[$key] ?? '');
+        }
+
+        return $scoped;
+    }
+
+    /**
+     * What the send itself recorded, which the plan cannot tell us later: the
+     * amount that was actually charged, which cycle it was, and why it failed or
+     * was cancelled.
+     *
+     * @param  array<string, mixed>  $details
+     * @param  array<string, mixed>  $base
+     * @return array<string, string>
+     */
+    private static function fromEventDetails(array $details, array $base): array
+    {
+        $overlay = [];
+
+        foreach (['amount', 'currency'] as $key) {
+            $value = trim((string) ($details[$key] ?? ''));
+            if ($value !== '') {
+                $overlay[$key] = $value;
+            }
+        }
+
+        $sequence = trim((string) ($details['sequence'] ?? ''));
+        if ($sequence !== '') {
+            $overlay['installment_sequence'] = $sequence;
+        }
+
+        // One recorded `reason`, two templates that name it differently.
+        $reason = trim((string) ($details['reason'] ?? ''));
+        if ($reason !== '') {
+            $overlay['failure_reason'] = $reason;
+            $overlay['cancellation_reason'] = $reason;
+        }
+
+        // A retry and a due date are both "the next time money moves", which is
+        // what the plan still holds.
+        $nextCharge = trim((string) ($base['next_charge_date'] ?? ''));
+        if ($nextCharge !== '') {
+            $overlay['next_retry_date'] = $nextCharge;
+            $overlay['due_date'] = $nextCharge;
+        }
+
+        return $overlay;
     }
 
     /**

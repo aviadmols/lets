@@ -90,10 +90,10 @@ class SubscriptionResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('id')
-                    ->label('#')
-                    ->prefix('PLN-')
-                    ->sortable(),
+                // No PLN-{id} column: it identified nothing a merchant thinks in.
+                // They look for a person and a product, which is what this list now
+                // leads with. The code still exists on the record; it is just not
+                // the thing the screen is about.
 
                 // The customer's NAME — not the raw id. `shopify_customer_id` is NULL for a
                 // WooCommerce plan (the subscribe path sends no external customer id, and a guest
@@ -112,6 +112,15 @@ class SubscriptionResource extends Resource
                             ->orWhere('customer_email', 'like', "%{$search}%")
                             ->orWhere('external_customer_id', 'like', "%{$search}%")
                             ->orWhere('shopify_customer_id', 'like', "%{$search}%"))),
+
+                // WHAT they subscribed to. Resolved through the plan (its own meta
+                // first, the synced catalog as a fallback), so a plan whose meta
+                // predates the title still names its product.
+                Tables\Columns\TextColumn::make('product_title')
+                    ->label(__('subscriptions.list.col.product'))
+                    ->state(fn (InstallmentPlan $record): ?string => $record->productTitle())
+                    ->placeholder('—')
+                    ->wrap(),
 
                 Tables\Columns\TextColumn::make('plan_kind')
                     ->label(__('subscriptions.list.col.kind'))
@@ -180,7 +189,10 @@ class SubscriptionResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         // Tenant scope is applied automatically by BelongsToShop's global scope.
-        return parent::getEloquentQuery();
+        // `product` is eager-loaded because the product column falls back to the
+        // catalog when a plan's meta carries no title — without this that fallback
+        // is one query per row.
+        return parent::getEloquentQuery()->with('product');
     }
 
     public static function getPages(): array

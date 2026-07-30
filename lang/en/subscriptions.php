@@ -7,6 +7,7 @@ return [
         'search_placeholder' => 'Search customer',
         'col' => [
             'customer' => 'Customer',
+            'product' => 'Product',
             'kind' => 'Kind',
             'status' => 'Status',
             'next_charge' => 'Next charge',
