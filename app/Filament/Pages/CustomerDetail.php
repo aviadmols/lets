@@ -6,6 +6,7 @@ use App\Domain\Campaigns\GiftShippingAddress;
 use App\Domain\Customers\CustomerContact;
 use App\Domain\Customers\CustomerContactReader;
 use App\Domain\Customers\CustomerContactWriter;
+use App\Domain\Customers\CustomerOrdersReader;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Models\ActivityEvent;
 use App\Models\InstallmentPlan;
@@ -50,6 +51,9 @@ class CustomerDetail extends Page
 
     /** Per-render memo: the store read costs an API call, and the blade asks twice. */
     private ?CustomerContact $contactMemo = null;
+
+    /** @var array{orders: array<int, array<string, mixed>>, reason: ?string}|null */
+    private ?array $ordersMemo = null;
 
     public function mount(string $customer): void
     {
@@ -181,6 +185,25 @@ class CustomerDetail extends Page
         $value = trim((string) ($this->contactForm[$key] ?? ''));
 
         return $value !== '' ? $value : null;
+    }
+
+    // === Orders ===
+
+    /**
+     * Every order this customer placed in the store, newest first, with the ones
+     * LETS created marked. Read live and memoized for the render — the store is
+     * the authority on its own order history.
+     *
+     * @return array{orders: array<int, array<string, mixed>>, reason: ?string}
+     */
+    public function orders(): array
+    {
+        $shop = Tenant::current();
+        if (! $shop instanceof Shop) {
+            return ['orders' => [], 'reason' => CustomerContact::REASON_UNAVAILABLE];
+        }
+
+        return $this->ordersMemo ??= app(CustomerOrdersReader::class)->read($shop, $this->customer);
     }
 
     /** @return Collection<int, InstallmentPlan> the customer's plans (tenant-scoped) */

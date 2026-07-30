@@ -110,6 +110,48 @@
                 @endif
             </div>
 
+            {{-- Every order this customer placed, with the ones LETS created marked.
+                 All of them — our slice alone would look like the whole history. --}}
+            @php $orderFeed = $this->orders(); @endphp
+            <div class="rc-section">
+                <div class="rc-section__title">{{ __('customers.orders.title') }}</div>
+
+                @if($orderFeed['reason'] !== null)
+                    <p class="rc-muted">{{ __('customers.contact.reason.'.$orderFeed['reason']) }}</p>
+                @elseif($orderFeed['orders'] === [])
+                    <p class="rc-muted">{{ __('customers.orders.empty') }}</p>
+                @else
+                    <table class="rc-table">
+                        <thead>
+                            <tr>
+                                <th>{{ __('customers.orders.col.date') }}</th>
+                                <th>{{ __('customers.orders.col.number') }}</th>
+                                <th>{{ __('customers.orders.col.amount') }}</th>
+                                <th>{{ __('customers.orders.col.source') }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($orderFeed['orders'] as $order)
+                                <tr wire:key="ord-{{ $order['id'] }}">
+                                    <td class="rc-ltr">
+                                        {{ $order['date'] ? \Illuminate\Support\Carbon::parse($order['date'])->format('d M Y') : '—' }}
+                                    </td>
+                                    <td class="rc-ltr">{{ $order['number'] }}</td>
+                                    <td class="rc-ltr">{{ \App\Support\Ui\Money::format($order['total']) }}</td>
+                                    <td>
+                                        @if($order['from_lets'])
+                                            <span class="rc-chip">{{ __('customers.orders.from_lets') }}</span>
+                                        @else
+                                            <span class="rc-muted">{{ __('customers.orders.from_store') }}</span>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                @endif
+            </div>
+
             {{-- Subscriptions --}}
             <div class="rc-section">
                 <div class="rc-section__title">{{ __('customers.detail.subscriptions_title') }}</div>

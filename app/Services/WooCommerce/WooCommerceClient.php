@@ -116,6 +116,30 @@ final class WooCommerceClient
     }
 
     /**
+     * GET /wp-json/wc/v3/orders?customer={id} → this customer's orders, newest first.
+     *
+     * ALL of their orders, not only the ones LETS created — the merchant asked
+     * "what has this person bought", and answering with our slice alone would look
+     * like the customer's whole history.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function fetchCustomerOrders(int $customerId, int $perPage): array
+    {
+        $response = $this->get('orders', [
+            'customer' => $customerId,
+            'per_page' => max(1, min(100, $perPage)),
+            'orderby' => 'date',
+            'order' => 'desc',
+        ]);
+        $response->throw();
+
+        $body = $response->json();
+
+        return is_array($body) ? array_values(array_filter($body, 'is_array')) : [];
+    }
+
+    /**
      * PUT /wp-json/wc/v3/customers/{id} → the updated customer array.
      *
      * The merchant edits a customer in the LETS admin and the STORE is what changes

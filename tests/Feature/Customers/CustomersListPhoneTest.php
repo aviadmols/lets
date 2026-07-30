@@ -92,18 +92,31 @@ final class CustomersListPhoneTest extends TestCase
 
     public function test_the_list_costs_the_same_at_any_size(): void
     {
-        for ($i = 1; $i <= 30; $i++) {
+        for ($i = 1; $i <= 5; $i++) {
             $this->plan('Customer '.$i, (string) $i, phone: '05000000'.$i, email: 'c'.$i.'@example.com');
         }
+        $few = $this->queriesToList();
 
+        for ($i = 6; $i <= 40; $i++) {
+            $this->plan('Customer '.$i, (string) $i, phone: '05000000'.$i, email: 'c'.$i.'@example.com');
+        }
+        $many = $this->queriesToList();
+
+        // Eight times the customers, the same number of queries: the rows are
+        // grouped in PHP and the spend is ONE aggregate. Neither the phone nor the
+        // total may become a lookup per line.
+        $this->assertSame($few, $many, "the list grew from {$few} to {$many} queries");
+    }
+
+    private function queriesToList(): int
+    {
+        DB::flushQueryLog();
         DB::enableQueryLog();
         Livewire::test(Customers::class)->instance()->customers();
-        $queries = count(DB::getQueryLog());
+        $count = count(DB::getQueryLog());
         DB::disableQueryLog();
 
-        // The rows are grouped in PHP from ONE query — adding the phone must not
-        // have introduced a lookup per customer.
-        $this->assertLessThanOrEqual(2, $queries, "the list ran {$queries} queries");
+        return $count;
     }
 
     private function plan(string $name, string $customerRef, ?string $phone, string $email = 'dana@example.com'): void

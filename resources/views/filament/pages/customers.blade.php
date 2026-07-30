@@ -30,6 +30,7 @@
                             <th>{{ __('customers.list.col.customer') }}</th>
                             <th>{{ __('customers.list.col.phone') }}</th>
                             <th>{{ __('customers.list.col.active_subs') }}</th>
+                            <th>{{ __('customers.list.col.spend') }}</th>
                             <th>{{ __('customers.list.col.payment_status') }}</th>
                         </tr>
                     </thead>
@@ -48,6 +49,8 @@
                                 {{-- From the plan captured at checkout, not a per-row store read. --}}
                                 <td class="rc-ltr">{{ $row['phone'] ?? '—' }}</td>
                                 <td class="rc-ltr">{{ $row['active_subs'] }}</td>
+                                {{-- SUCCEEDED charges only — money actually received. --}}
+                                <td class="rc-ltr rc-strong">{{ $row['spend'] }}</td>
                                 <td><span class="rc-dot rc-dot--{{ $row['dot'] }}" aria-hidden="true"></span></td>
                             </tr>
                         @endforeach

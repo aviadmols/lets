@@ -10,6 +10,7 @@ return [
             'email' => 'Email',
             'phone' => 'Phone',
             'active_subs' => 'Active subscriptions',
+            'spend' => 'Total spend',
             'payment_status' => 'Payment',
         ],
         'empty' => [
@@ -71,6 +72,21 @@ return [
             'guest' => 'This customer checked out as a guest, so there is no account in your store to edit.',
             'access_pending' => 'Shopify has not granted this app access to customer details yet. Approve the Address field under Protected customer data in the Partner Dashboard, then reconnect the app.',
             'unavailable' => 'Could not reach your store to read these details.',
+        ],
+    ],
+
+    // The customer's orders, read from the store. All of them — the ones LETS
+    // created are marked rather than being the only ones shown.
+    'orders' => [
+        'title' => 'Orders',
+        'empty' => 'This customer has no orders in your store yet.',
+        'from_lets' => 'LETS',
+        'from_store' => 'Store',
+        'col' => [
+            'date' => 'Date',
+            'number' => 'Order',
+            'amount' => 'Amount',
+            'source' => 'Created by',
         ],
     ],
 ];

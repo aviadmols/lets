@@ -4,7 +4,9 @@ namespace App\Filament\Pages;
 
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Models\InstallmentPlan;
+use App\Models\PaymentLedger;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Support\Ui\Money;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Support\Collection;
@@ -77,10 +79,14 @@ class Customers extends Page
             // would turn this list into a page that never paints.
             ->get(['shopify_customer_id', 'customer_name', 'customer_email', 'customer_phone', 'status']);
 
+        // Lifetime spend for EVERY listed customer in one grouped query. Summing
+        // per row would be a query per line, which is how a list stops loading.
+        $spend = $this->lifetimeSpend($plans->pluck('shopify_customer_id')->filter()->unique()->all());
+
         return $plans
             ->whereNotNull('shopify_customer_id')
             ->groupBy('shopify_customer_id')
-            ->map(function (Collection $group, string $customerId): array {
+            ->map(function (Collection $group, string $customerId) use ($spend): array {
                 $statuses = $group->map(fn ($p) => $p->status instanceof PlanStatus ? $p->status->value : (string) $p->status);
 
                 // A NAME, not the raw external id. Checkout captured it on the plan;
@@ -100,11 +106,38 @@ class Customers extends Page
                     'label' => $named?->customerLabel() ?? $customerId,
                     'email' => trim((string) ($named?->customer_email ?? '')) ?: null,
                     'phone' => trim((string) ($withPhone?->customer_phone ?? '')) ?: null,
+                    'spend' => Money::format((float) ($spend[$customerId] ?? 0)),
                     'active_subs' => $statuses->filter(fn (string $s): bool => $s === 'active')->count(),
                     'dot' => $this->dotTone($statuses->all()),
                 ];
             })
             ->values();
+    }
+
+    /**
+     * Money each customer has actually brought in: the sum of their SUCCEEDED
+     * ledger rows. One query for the whole page, keyed by customer.
+     *
+     * Succeeded only — a failed or pending charge is not money the merchant
+     * received, and counting it would overstate every customer on the screen.
+     *
+     * @param  array<int, string>  $customerIds
+     * @return array<string, float>
+     */
+    private function lifetimeSpend(array $customerIds): array
+    {
+        if ($customerIds === []) {
+            return [];
+        }
+
+        return PaymentLedger::query()
+            ->selectRaw('shopify_customer_id, SUM(amount) as total')
+            ->whereIn('shopify_customer_id', $customerIds)
+            ->where('status', PaymentLedger::STATUS_SUCCEEDED)
+            ->groupBy('shopify_customer_id')
+            ->get()
+            ->mapWithKeys(fn ($row): array => [(string) $row->shopify_customer_id => (float) $row->total])
+            ->all();
     }
 
     /** Worst-status-wins dot: red > amber > green > gray (no active plan). */
