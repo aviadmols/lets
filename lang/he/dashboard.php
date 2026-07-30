@@ -13,7 +13,12 @@ return [
 
     'performance' => [
         'title' => 'ביצועים במבט מהיר',
-        'this_period' => 'תקופה נוכחית',
+        'period' => 'תקופה',
+        'range' => [
+            'daily' => 'יומי',
+            'weekly' => 'שבועי',
+            'monthly' => 'חודשי',
+        ],        'this_period' => 'תקופה נוכחית',
         'prev_period' => 'תקופה קודמת',
         'metric' => [
             'mrr' => 'הכנסה חודשית חוזרת',

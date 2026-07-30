@@ -13,6 +13,12 @@ return [
 
     'performance' => [
         'title' => 'Performance at a glance',
+        'period' => 'Period',
+        'range' => [
+            'daily' => 'Daily',
+            'weekly' => 'Weekly',
+            'monthly' => 'Monthly',
+        ],
         'this_period' => 'This period',
         'prev_period' => 'Previous period',
         'metric' => [

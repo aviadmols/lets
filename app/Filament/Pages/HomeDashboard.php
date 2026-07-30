@@ -38,8 +38,24 @@ class HomeDashboard extends Page
     protected static ?string $slug = '/';
     protected static ?int $navigationSort = -10; // top of the sidebar
 
-    /** Default date range (days) until the picker (Phase 8) lands. */
+    /** Default date range (days). */
     public const DEFAULT_RANGE_DAYS = 30;
+
+    /**
+     * The periods the dashboard can be read over, in days.
+     *
+     * "Previous period" is always the window of the SAME length immediately
+     * before this one (DashboardMetrics::toArray), so switching to weekly compares
+     * this week with last week — not with a month whose totals would dwarf it.
+     */
+    public const RANGES = [
+        'daily' => 1,
+        'weekly' => 7,
+        'monthly' => 30,
+    ];
+
+    /** The chosen period. A value outside RANGES falls back to monthly. */
+    public string $range = 'monthly';
 
     public const ACTIVITY_LIMIT = 12;
 
@@ -84,7 +100,24 @@ class HomeDashboard extends Page
     /** @return array<string, mixed> the rendered metric payload */
     public function metrics(): array
     {
-        return DashboardMetrics::forRange(self::DEFAULT_RANGE_DAYS)->toArray();
+        return DashboardMetrics::forRange($this->rangeDays())->toArray();
+    }
+
+    /**
+     * The chosen period in days. Never trusts the property: it arrives from the
+     * browser, and an unknown value must read as the default rather than as zero
+     * days (which would make every number on the page empty).
+     */
+    public function rangeDays(): int
+    {
+        return self::RANGES[$this->range] ?? self::DEFAULT_RANGE_DAYS;
+    }
+
+    public function selectRange(string $range): void
+    {
+        if (array_key_exists($range, self::RANGES)) {
+            $this->range = $range;
+        }
     }
 
     /** Format a KPI value (currency vs count) for display. */

@@ -54,7 +54,21 @@
 
         {{-- Performance at a glance --}}
         <div class="rc-section">
-            <div class="rc-section__title">{{ __('dashboard.performance.title') }}</div>
+            <div class="rc-row rc-row--between">
+                <div class="rc-section__title">{{ __('dashboard.performance.title') }}</div>
+                {{-- The period every number on this page is read over. "Previous
+                     period" follows it, so weekly compares this week with last. --}}
+                <div class="rc-pp-segment" role="group" aria-label="{{ __('dashboard.performance.period') }}">
+                    @foreach(\App\Filament\Pages\HomeDashboard::RANGES as $key => $days)
+                        <button type="button"
+                                class="rc-pp-segment__item {{ $range === $key ? 'rc-pp-segment__item--active' : '' }}"
+                                aria-pressed="{{ $range === $key ? 'true' : 'false' }}"
+                                wire:click="selectRange('{{ $key }}')">
+                            {{ __('dashboard.performance.range.'.$key) }}
+                        </button>
+                    @endforeach
+                </div>
+            </div>
             @php
                 $perfRows = [
                     'installment_balance' => 'dashboard.performance.metric.installment_balance',
