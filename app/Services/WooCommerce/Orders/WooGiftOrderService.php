@@ -74,6 +74,7 @@ final class WooGiftOrderService
             ]],
             'meta_data' => [
                 ['key' => self::META_ORDER_ROLE, 'value' => self::ROLE_GIFT],
+                ['key' => WooOrderTags::META_TAGS, 'value' => WooOrderTags::line(WooOrderTags::KIND_GIFT)],
                 ['key' => self::META_CAMPAIGN_ID, 'value' => (string) $campaign->getKey()],
                 ['key' => self::META_RECIPIENT_ID, 'value' => (string) $recipient->getKey()],
             ],

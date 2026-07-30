@@ -75,7 +75,7 @@ final class ShopifyGiftOrderService
             'email' => (string) ($recipient->customer_email ?? ''),
             'currency' => (string) ($recipient->currency ?: $campaign->currency),
             'source_name' => (string) config('shopify.order_source_name', 'payplus-subscriptions'),
-            'tags' => (string) (config('shopify.tags.gift_order') ?: self::DEFAULT_TAG),
+            'tags' => ShopifyOrderTags::line('gift_order'),
             // The merchant is giving a present, not announcing a purchase.
             'send_receipt' => false,
             'send_fulfillment_receipt' => false,

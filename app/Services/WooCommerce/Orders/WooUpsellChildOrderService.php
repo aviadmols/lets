@@ -156,6 +156,9 @@ final class WooUpsellChildOrderService
                 'line_items' => [$this->lineItem($offer, $amount)],
                 'meta_data' => [
                     ['key' => self::META_ORDER_ROLE, 'value' => self::ROLE_UPSELL_CHILD],
+                    // Only THIS order is marked. The other path adds a line to the
+                    // customer's own order, which LETS did not create.
+                    ['key' => WooOrderTags::META_TAGS, 'value' => WooOrderTags::line(WooOrderTags::KIND_UPSELL)],
                     ['key' => self::META_PARENT_ORDER_ID, 'value' => $parentOrderId],
                     ['key' => self::META_UPSELL_OFFER_ID, 'value' => (string) $offer->getKey()],
                 ],

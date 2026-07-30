@@ -45,7 +45,6 @@ final class ShopifyOrderCreator
         }
 
         $ns = (string) config('shopify.metafield_namespace');
-        $tags = (array) config('shopify.tags');
 
         $payload = [
             'email' => $plan->customer_email,
@@ -53,10 +52,7 @@ final class ShopifyOrderCreator
             'source_name' => (string) config('shopify.order_source_name'),
             'financial_status' => 'pending',           // NO transactions on parent.
             'inventory_behaviour' => 'decrement_obeying_policy',
-            'tags' => implode(', ', array_values(array_filter([
-                $tags['installments_active'] ?? null,
-                $tags['installments_hold'] ?? null,
-            ]))),
+            'tags' => ShopifyOrderTags::line('installments_active', 'installments_hold'),
             'send_receipt' => false,
             'send_fulfillment_receipt' => false,
             'customer' => array_filter([
@@ -111,16 +107,11 @@ final class ShopifyOrderCreator
             throw new RuntimeException('Recurring payment amount must be positive.');
         }
 
-        $tags = (array) config('shopify.tags');
-
         $payload = [
             'email' => (string) $plan->customer_email,
             'currency' => (string) $plan->currency,
             'source_name' => (string) config('shopify.order_source_name'),
-            'tags' => implode(', ', array_values(array_filter([
-                $tags['recurring_order'] ?? null,
-                $tags['payment_order'] ?? null,
-            ]))),
+            'tags' => ShopifyOrderTags::line('recurring_order', 'payment_order'),
             'send_receipt' => false,
             'send_fulfillment_receipt' => false,
             'customer' => array_filter([

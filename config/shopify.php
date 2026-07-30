@@ -187,6 +187,13 @@ return [
     */
     'metafield_namespace' => env('SHOPIFY_METAFIELD_NAMESPACE', 'payplus_subscriptions'),
     'tags' => [
+        /*
+         * The umbrella mark on EVERY order this app creates, beside whatever
+         * kind-specific tag the order also carries. A merchant looking at their
+         * store needs one filter that answers "which of these did LETS make?" —
+         * the per-kind tags below answer a different, narrower question.
+         */
+        'app' => env('SHOPIFY_APP_ORDER_TAG', 'LETS'),
         'installments_active' => 'installment_plan_active',
         'installments_hold' => 'installments-hold',
         'paid_release' => 'installments-paid',

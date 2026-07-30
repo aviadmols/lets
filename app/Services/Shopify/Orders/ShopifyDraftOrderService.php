@@ -76,7 +76,7 @@ final class ShopifyDraftOrderService
 
         $input = array_filter([
             'email' => $email !== '' ? $email : null,
-            'tags' => [(string) (config('shopify.tags.installments_hold') ?? 'installments-hold')],
+            'tags' => ShopifyOrderTags::all('installments_hold'),
             'lineItems' => [$lineInput],
             'customAttributes' => [
                 ['key' => self::ATTR_ORDER_ROLE, 'value' => self::ROLE_DEPOSIT],
@@ -96,12 +96,10 @@ final class ShopifyDraftOrderService
      */
     public function createUpsellChildOrder(InstallmentPlan $plan, string $parentOrderId, array $lineItem): array
     {
-        $tags = (array) config('shopify.tags');
-
         $draft = $this->client->createDraftOrder([
             'email' => (string) $plan->customer_email,
             'currency' => (string) $plan->currency,
-            'tags' => (string) ($tags['upsell_child'] ?? 'upsell-child'),
+            'tags' => ShopifyOrderTags::line('upsell_child'),
             'note_attributes' => [
                 ['name' => 'pps_main_order_id', 'value' => $parentOrderId],
                 ['name' => 'pps_order_role', 'value' => 'upsell_child'],
@@ -140,12 +138,10 @@ final class ShopifyDraftOrderService
      */
     public function createUpsellChildOrderForCustomer(string $parentOrderId, array $customer, array $lineItem): array
     {
-        $tags = (array) config('shopify.tags');
-
         $draft = $this->client->createDraftOrder([
             'email' => (string) ($customer['email'] ?? ''),
             'currency' => (string) ($customer['currency'] ?? config('payplus.currency', 'ILS')),
-            'tags' => (string) ($tags['upsell_child'] ?? 'upsell-child'),
+            'tags' => ShopifyOrderTags::line('upsell_child'),
             'note_attributes' => [
                 ['name' => 'pps_main_order_id', 'value' => $parentOrderId],
                 ['name' => 'pps_order_role', 'value' => 'upsell_child'],

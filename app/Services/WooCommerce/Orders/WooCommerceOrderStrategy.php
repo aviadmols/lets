@@ -99,6 +99,8 @@ final class WooCommerceOrderStrategy implements PlatformOrderStrategy
             'meta_data' => $this->meta([
                 self::META_PLAN_PUBLIC_ID => (string) $plan->public_id,
                 self::META_ORDER_ROLE => self::ROLE_MAIN,
+                // The mark the orders-list column renders (WC has no native tags).
+                WooOrderTags::META_TAGS => WooOrderTags::line(WooOrderTags::KIND_INSTALLMENTS),
                 self::META_INSTALLMENT_STATUS => 'active',
                 self::META_PAID_AMOUNT => $this->money((float) $plan->total_charged),
                 self::META_REMAINING_BALANCE => $this->money($plan->remainingAmount()),
@@ -177,6 +179,7 @@ final class WooCommerceOrderStrategy implements PlatformOrderStrategy
             'meta_data' => $this->meta([
                 self::META_PLAN_PUBLIC_ID => (string) $plan->public_id,
                 self::META_ORDER_ROLE => self::ROLE_RECURRING,
+                WooOrderTags::META_TAGS => WooOrderTags::line(WooOrderTags::KIND_RECURRING),
                 self::META_MAIN_ORDER_ID => (string) ($plan->externalOrderId() ?? ''),
                 self::META_PAID_AMOUNT => $this->money($amount),
             ]),
