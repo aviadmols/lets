@@ -44,7 +44,7 @@ return [
             'oauth_scopes' => env(
                 'SHOPIFY_OAUTH_SCOPES',
                 'read_orders,write_orders,read_draft_orders,write_draft_orders,'.
-                'read_customers,read_products,read_fulfillments,write_fulfillments,'.
+                'read_customers,write_customers,read_products,read_fulfillments,write_fulfillments,'.
                 'read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders'
             ),
         ],
@@ -71,7 +71,7 @@ return [
             */
             'oauth_scopes' => env(
                 'SHOPIFY_CUSTOM_OAUTH_SCOPES',
-                'read_customers,read_products,write_products,'.
+                'read_customers,write_customers,read_products,write_products,'.
                 'read_purchase_options,write_purchase_options,'.
                 'write_orders,read_all_orders,write_draft_orders,write_fulfillments,'.
                 'write_merchant_managed_fulfillment_orders,'.
@@ -102,7 +102,7 @@ return [
     'oauth_scopes' => env(
         'SHOPIFY_OAUTH_SCOPES',
         'read_orders,write_orders,read_draft_orders,write_draft_orders,'.
-        'read_customers,read_products,read_fulfillments,write_fulfillments,'.
+        'read_customers,write_customers,read_products,read_fulfillments,write_fulfillments,'.
         'read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders'
     ),
 

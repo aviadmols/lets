@@ -13,6 +13,103 @@
                 <x-rc.kpi label="customers.detail.subscriptions_title" :value="(string) $this->activePlansCount()" />
             </div>
 
+            {{-- Contact details, read live from the store and written straight back.
+                 Nothing is kept here, so what you see is what the store holds. --}}
+            @php $contact = $this->contact(); @endphp
+            <div class="rc-section">
+                <div class="rc-row rc-row--between">
+                    <div class="rc-section__title">{{ __('customers.contact.heading') }}</div>
+                    @if($contact->editable && ! $editingContact)
+                        <button type="button" class="rc-link" wire:click="editContact">
+                            {{ __('customers.contact.edit') }}
+                        </button>
+                    @endif
+                </div>
+
+                @if($editingContact)
+                    <div class="rc-form">
+                        <div class="rc-form__group">
+                            <div class="rc-field">
+                                <label class="rc-field__label" for="c-first">{{ __('customers.contact.first_name') }}</label>
+                                <input id="c-first" type="text" class="rc-input" wire:model="contactForm.first_name">
+                            </div>
+                            <div class="rc-field">
+                                <label class="rc-field__label" for="c-last">{{ __('customers.contact.last_name') }}</label>
+                                <input id="c-last" type="text" class="rc-input" wire:model="contactForm.last_name">
+                            </div>
+                            <div class="rc-field">
+                                <label class="rc-field__label" for="c-phone">{{ __('customers.contact.phone') }}</label>
+                                <input id="c-phone" type="text" class="rc-input rc-ltr" wire:model="contactForm.phone">
+                            </div>
+                        </div>
+
+                        <div class="rc-form__group">
+                            <div class="rc-form__group-title">{{ __('customers.contact.address') }}</div>
+                            <div class="rc-field">
+                                <label class="rc-field__label" for="c-addr1">{{ __('gifts.export.col.address1') }}</label>
+                                <input id="c-addr1" type="text" class="rc-input" wire:model="contactForm.address1">
+                            </div>
+                            <div class="rc-field">
+                                <label class="rc-field__label" for="c-addr2">{{ __('gifts.export.col.address2') }}</label>
+                                <input id="c-addr2" type="text" class="rc-input" wire:model="contactForm.address2">
+                            </div>
+                            <div class="rc-field">
+                                <label class="rc-field__label" for="c-city">{{ __('gifts.export.col.city') }}</label>
+                                <input id="c-city" type="text" class="rc-input" wire:model="contactForm.city">
+                            </div>
+                            <div class="rc-field">
+                                <label class="rc-field__label" for="c-zip">{{ __('gifts.export.col.zip') }}</label>
+                                <input id="c-zip" type="text" class="rc-input rc-input--narrow rc-ltr" wire:model="contactForm.zip">
+                            </div>
+                            <div class="rc-field">
+                                <label class="rc-field__label" for="c-country">{{ __('gifts.export.col.country') }}</label>
+                                <input id="c-country" type="text" class="rc-input rc-input--narrow rc-ltr"
+                                       maxlength="2" wire:model="contactForm.country">
+                                <p class="rc-field__hint">{{ __('customers.contact.country_hint') }}</p>
+                            </div>
+                        </div>
+
+                        <div class="rc-form__actions">
+                            <button type="button" class="rc-cta rc-cta--primary" wire:click="saveContact">
+                                {{ __('customers.contact.save') }}
+                            </button>
+                            <button type="button" class="rc-cta rc-cta--ghost" wire:click="cancelContact">
+                                {{ __('customers.contact.cancel') }}
+                            </button>
+                        </div>
+                    </div>
+                @elseif($contact->reason !== null)
+                    {{-- Not an error: a guest has no account to edit, and Shopify
+                         gates addresses behind an approval the merchant can chase. --}}
+                    <p class="rc-muted">{{ __('customers.contact.reason.'.$contact->reason) }}</p>
+                @elseif($contact->isEmpty())
+                    <p class="rc-muted">{{ __('customers.contact.reason.empty') }}</p>
+                @else
+                    <div class="rc-kv">
+                        @if($contact->name() !== '')
+                            <span class="rc-kv__k">{{ __('customers.contact.name') }}</span>
+                            <span class="rc-kv__v">{{ $contact->name() }}</span>
+                        @endif
+                        @if($contact->phone)
+                            <span class="rc-kv__k">{{ __('customers.contact.phone') }}</span>
+                            <span class="rc-kv__v rc-ltr">{{ $contact->phone }}</span>
+                        @endif
+                        @if($contact->address?->address1)
+                            <span class="rc-kv__k">{{ __('customers.contact.address') }}</span>
+                            <span class="rc-kv__v">
+                                {{ collect([
+                                    $contact->address->address1,
+                                    $contact->address->address2,
+                                    $contact->address->city,
+                                    $contact->address->zip,
+                                    $contact->address->countryCode,
+                                ])->filter()->implode(', ') }}
+                            </span>
+                        @endif
+                    </div>
+                @endif
+            </div>
+
             {{-- Subscriptions --}}
             <div class="rc-section">
                 <div class="rc-section__title">{{ __('customers.detail.subscriptions_title') }}</div>

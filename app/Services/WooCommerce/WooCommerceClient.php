@@ -116,6 +116,23 @@ final class WooCommerceClient
     }
 
     /**
+     * PUT /wp-json/wc/v3/customers/{id} → the updated customer array.
+     *
+     * The merchant edits a customer in the LETS admin and the STORE is what changes
+     * — there is no copy here to fall out of step with it.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public function updateCustomer(int $id, array $payload): array
+    {
+        $response = $this->put('customers/'.$id, $payload);
+        $response->throw();
+
+        return (array) $response->json();
+    }
+
+    /**
      * GET /wp-json/wc/v3/orders → the newest orders first, with their meta.
      *
      * Used to answer "did the order we could not confirm actually land?" — a store

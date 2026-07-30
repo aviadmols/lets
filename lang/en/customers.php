@@ -49,4 +49,27 @@ return [
             'view_in_shopify' => 'View in Shopify',
         ],
     ],
+
+    // Contact details read live from the store and written straight back — the
+    // SaaS keeps no copy, so the screen and the store cannot disagree.
+    'contact' => [
+        'heading' => 'Contact details',
+        'edit' => 'Edit',
+        'save' => 'Save to the store',
+        'cancel' => 'Cancel',
+        'saved' => 'Saved to your store.',
+        'save_failed' => 'Your store did not accept the change.',
+        'name' => 'Name',
+        'first_name' => 'First name',
+        'last_name' => 'Last name',
+        'phone' => 'Phone',
+        'address' => 'Shipping address',
+        'country_hint' => 'Two-letter country code, e.g. IL.',
+        'reason' => [
+            'empty' => 'Your store holds no contact details for this customer yet.',
+            'guest' => 'This customer checked out as a guest, so there is no account in your store to edit.',
+            'access_pending' => 'Shopify has not granted this app access to customer details yet. Approve the Address field under Protected customer data in the Partner Dashboard, then reconnect the app.',
+            'unavailable' => 'Could not reach your store to read these details.',
+        ],
+    ],
 ];

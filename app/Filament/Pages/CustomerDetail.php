@@ -2,12 +2,20 @@
 
 namespace App\Filament\Pages;
 
+use App\Domain\Campaigns\GiftShippingAddress;
+use App\Domain\Customers\CustomerContact;
+use App\Domain\Customers\CustomerContactReader;
+use App\Domain\Customers\CustomerContactWriter;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Models\ActivityEvent;
 use App\Models\InstallmentPlan;
 use App\Models\PaymentLedger;
+use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
+use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
+use App\Support\Tenant;
 use App\Support\Ui\Money;
+use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Support\Collection;
@@ -35,6 +43,14 @@ class CustomerDetail extends Page
 
     public string $customer;
 
+    // --- Contact details, read from the store on open and written back on save ---
+    /** @var array<string, string> */
+    public array $contactForm = [];
+    public bool $editingContact = false;
+
+    /** Per-render memo: the store read costs an API call, and the blade asks twice. */
+    private ?CustomerContact $contactMemo = null;
+
     public function mount(string $customer): void
     {
         $this->customer = $customer;
@@ -56,6 +72,115 @@ class CustomerDetail extends Page
             ?? $this->plans()->first(fn (InstallmentPlan $p): bool => trim((string) $p->customer_email) !== '');
 
         return $named?->customerLabel() ?? $this->customer;
+    }
+
+    // === Contact details ===
+
+    /**
+     * What the STORE holds for this person right now.
+     *
+     * Read through on every open, never stored here: the merchant edits the
+     * customer in one place and both screens agree, and the SaaS does not become a
+     * second copy of personal data it would then have to redact.
+     */
+    public function contact(): CustomerContact
+    {
+        $shop = Tenant::current();
+        if (! $shop instanceof Shop) {
+            return CustomerContact::unavailable(CustomerContact::REASON_UNAVAILABLE);
+        }
+
+        return $this->contactMemo ??= app(CustomerContactReader::class)->read($shop, $this->customer);
+    }
+
+    /** Open the form, seeded with what the store currently holds. */
+    public function editContact(): void
+    {
+        $contact = $this->contact();
+        if (! $contact->editable) {
+            return;
+        }
+
+        $address = $contact->address;
+        $this->contactForm = [
+            'first_name' => (string) ($contact->firstName ?? ''),
+            'last_name' => (string) ($contact->lastName ?? ''),
+            'phone' => (string) ($contact->phone ?? ''),
+            'address1' => (string) ($address?->address1 ?? ''),
+            'address2' => (string) ($address?->address2 ?? ''),
+            'city' => (string) ($address?->city ?? ''),
+            'zip' => (string) ($address?->zip ?? ''),
+            'country' => (string) ($address?->countryCode ?? ''),
+        ];
+        $this->editingContact = true;
+    }
+
+    public function cancelContact(): void
+    {
+        $this->reset(['contactForm', 'editingContact']);
+    }
+
+    /**
+     * Write to the store, then re-read and show what the store now holds.
+     *
+     * Deliberately NOT "show the form back and call it saved": a platform can
+     * refuse, normalise, or partially accept an edit, and the merchant needs the
+     * store's answer rather than their own input reflected at them.
+     */
+    public function saveContact(): void
+    {
+        $shop = Tenant::current();
+        if (! $shop instanceof Shop || ! $this->contact()->editable) {
+            return;
+        }
+
+        $submitted = new CustomerContact(
+            firstName: $this->trimmed('first_name'),
+            lastName: $this->trimmed('last_name'),
+            phone: $this->trimmed('phone'),
+            address: new GiftShippingAddress(
+                firstName: $this->trimmed('first_name'),
+                lastName: $this->trimmed('last_name'),
+                address1: $this->trimmed('address1'),
+                address2: $this->trimmed('address2'),
+                city: $this->trimmed('city'),
+                zip: $this->trimmed('zip'),
+                countryCode: $this->trimmed('country'),
+                phone: $this->trimmed('phone'),
+            ),
+        );
+
+        $result = app(CustomerContactWriter::class)->write($shop, $this->customer, $submitted);
+
+        if (! $result['ok']) {
+            Notification::make()
+                ->title(__('customers.contact.save_failed'))
+                ->body((string) $result['error'])
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        // The merchant answers for this data, so the change is on the record.
+        Timeline::record(
+            kind: 'customer_details_updated',
+            details: ['customer' => $this->customer],
+            planId: $this->plans()->first()?->getKey(),
+            shopId: (int) $shop->getKey(),
+        );
+
+        $this->contactMemo = null;   // force a fresh read of what the store took
+        $this->reset(['contactForm', 'editingContact']);
+
+        Notification::make()->title(__('customers.contact.saved'))->success()->send();
+    }
+
+    private function trimmed(string $key): ?string
+    {
+        $value = trim((string) ($this->contactForm[$key] ?? ''));
+
+        return $value !== '' ? $value : null;
     }
 
     /** @return Collection<int, InstallmentPlan> the customer's plans (tenant-scoped) */
