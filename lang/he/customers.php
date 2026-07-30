@@ -8,6 +8,7 @@ return [
         'col' => [
             'customer' => 'לקוח',
             'email' => 'אימייל',
+            'phone' => 'טלפון',
             'active_subs' => 'מנויים פעילים',
             'payment_status' => 'תשלום',
         ],

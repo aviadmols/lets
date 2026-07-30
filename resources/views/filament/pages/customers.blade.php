@@ -28,6 +28,7 @@
                     <thead>
                         <tr>
                             <th>{{ __('customers.list.col.customer') }}</th>
+                            <th>{{ __('customers.list.col.phone') }}</th>
                             <th>{{ __('customers.list.col.active_subs') }}</th>
                             <th>{{ __('customers.list.col.payment_status') }}</th>
                         </tr>
@@ -44,6 +45,8 @@
                                         <div class="rc-muted rc-ltr">{{ $row['email'] }}</div>
                                     @endif
                                 </td>
+                                {{-- From the plan captured at checkout, not a per-row store read. --}}
+                                <td class="rc-ltr">{{ $row['phone'] ?? '—' }}</td>
                                 <td class="rc-ltr">{{ $row['active_subs'] }}</td>
                                 <td><span class="rc-dot rc-dot--{{ $row['dot'] }}" aria-hidden="true"></span></td>
                             </tr>

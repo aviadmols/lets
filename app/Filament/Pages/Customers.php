@@ -72,7 +72,10 @@ class Customers extends Page
                     ->orWhere('customer_email', 'like', $term)
                     ->orWhere('shopify_customer_id', 'like', $term));
             })
-            ->get(['shopify_customer_id', 'customer_name', 'customer_email', 'status']);
+            // customer_phone comes from the plan, captured at checkout — NOT from a
+            // per-row store read. A column that cost one API call per customer
+            // would turn this list into a page that never paints.
+            ->get(['shopify_customer_id', 'customer_name', 'customer_email', 'customer_phone', 'status']);
 
         return $plans
             ->whereNotNull('shopify_customer_id')
@@ -87,10 +90,16 @@ class Customers extends Page
                 $named = $group->first(fn ($p): bool => trim((string) $p->customer_name) !== '')
                     ?? $group->first(fn ($p): bool => trim((string) $p->customer_email) !== '');
 
+                // The most recent plan that actually carries a phone — an older
+                // subscription with a blank one must not blank the column for a
+                // customer whose newer checkout captured it.
+                $withPhone = $group->first(fn ($p): bool => trim((string) $p->customer_phone) !== '');
+
                 return [
                     'id' => $customerId,
                     'label' => $named?->customerLabel() ?? $customerId,
                     'email' => trim((string) ($named?->customer_email ?? '')) ?: null,
+                    'phone' => trim((string) ($withPhone?->customer_phone ?? '')) ?: null,
                     'active_subs' => $statuses->filter(fn (string $s): bool => $s === 'active')->count(),
                     'dot' => $this->dotTone($statuses->all()),
                 ];
