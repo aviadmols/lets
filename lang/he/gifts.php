@@ -7,6 +7,10 @@ return [
 
     'title' => 'הזמנות מתנה',
 
+    'group' => [
+        'who' => 'הכלל',
+        'what' => 'המתנה',
+    ],
     'rule_heading' => 'מי מקבל מתנה',
     'rule_intro' => 'בחרו כמה מחזורים ששולמו מזכים במתנה, ומה לשלוח. שום דבר לא נוצר עד שתראו את הרשימה ותאשרו.',
 
@@ -29,7 +33,7 @@ return [
 
     'preview_heading' => 'מי זכאי',
     'preview_empty' => 'אף אחד עדיין לא הגיע למספר המחזורים הזה.',
-    'preview_summary' => ':qualify זכאים · :ready יקבלו מתנה עכשיו',
+    'preview_summary' => 'יקבלו מתנה עכשיו, מתוך :qualify זכאים',
     'preview_more' => 'מוצגים :shown הראשונים מתוך :total. הספירה למעלה כוללת את כולם.',
     'attention_more' => 'מוצגים :shown מתוך :total שדורשים טיפול.',
     'already_gifted' => 'כבר קיבל',

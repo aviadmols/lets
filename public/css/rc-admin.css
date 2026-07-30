@@ -832,6 +832,115 @@ a.rc-railed:hover { background: var(--rc-blue-bg); }
 /* small inline icon sizing (used by the lock chip) without per-call styles. */
 .rc-icon-sm { inline-size: 14px; block-size: 14px; }
 
+/* =============================================================================
+   form.css — stacked form layout (component §4.x)
+
+   Why this file exists: `.rc-section` is a card with padding and NO vertical
+   rhythm, so a column of `.rc-field`s rendered straight into it had zero space
+   between them. Every hint ended up flush against the NEXT field's label and read
+   as that field's introduction — the gift-orders screen looked like one unbroken
+   wall of text.
+
+   `.rc-field` (configure-drawer.css) still owns the inside of a field: label →
+   control → hint. This file owns the space BETWEEN fields, the hint style itself,
+   and the actions row that closes a form.
+
+   TOKENS: --rc-space-*, --rc-border, --rc-ink-muted, --rc-type-caption.
+   Logical properties only — the admin is RTL for Hebrew merchants.
+   ========================================================================== */
+
+/* The rhythm between fields. One gap, declared once. */
+.rc-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--rc-space-5);
+}
+
+/* A group of fields under a shared heading, tighter than the page rhythm. */
+.rc-form__group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--rc-space-4);
+}
+.rc-form__group-title {
+    font: var(--rc-type-subh);
+    color: var(--rc-ink);
+}
+
+/*
+ * The explanatory line under a control. Belongs to the field ABOVE it, which is
+ * the whole point: caption-sized and pulled tight so it cannot be misread as the
+ * next label's intro.
+ */
+.rc-field__hint {
+    font: var(--rc-type-caption);
+    color: var(--rc-ink-muted);
+    margin-block-start: calc(var(--rc-space-2) * -1);
+}
+
+/* An input that holds a small number has no business spanning the card. */
+.rc-input--narrow { max-inline-size: 140px; }
+
+/* What closes a form: a rule, then the actions. */
+.rc-form__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--rc-space-3);
+    flex-wrap: wrap;
+    padding-block-start: var(--rc-space-4);
+    border-block-start: 1px solid var(--rc-border);
+}
+/* Pushes a trailing link (e.g. "New campaign") to the far edge. */
+.rc-form__actions-end { margin-inline-start: auto; }
+
+/* --- Removable chips (a multi-select's current picks) --------------------- */
+
+.rc-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--rc-space-2);
+}
+.rc-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--rc-space-2);
+    padding-block: var(--rc-space-1);
+    padding-inline: var(--rc-space-3);
+    background: var(--rc-blue-bg);
+    color: var(--rc-blue);
+    border-radius: var(--rc-radius-pill);
+    font: var(--rc-type-caption);
+}
+.rc-chip__remove {
+    background: transparent;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+    line-height: 1;
+    opacity: .7;
+}
+.rc-chip__remove:hover { opacity: 1; }
+.rc-chip__remove:focus-visible { box-shadow: var(--rc-ring); outline: none; border-radius: var(--rc-radius-pill); }
+
+/* --- A summary strip above a result list ---------------------------------- */
+
+.rc-summary {
+    display: flex;
+    align-items: baseline;
+    gap: var(--rc-space-2);
+    flex-wrap: wrap;
+    padding: var(--rc-space-3) var(--rc-space-4);
+    background: var(--rc-bg);
+    border-radius: var(--rc-radius-control);
+}
+.rc-summary__count {
+    font: var(--rc-type-h);
+    color: var(--rc-ink);
+}
+.rc-summary__label { font: var(--rc-type-body); color: var(--rc-ink-muted); }
+
 /* kpi-card.css — KPI card (component §4.1)
    TOKENS: --rc-card --rc-border --rc-radius-card --rc-shadow-card --rc-shadow-hover
            --rc-type-kpi --rc-type-label --rc-ink --rc-ink-muted --rc-green --rc-red

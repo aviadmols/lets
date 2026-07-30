@@ -7,6 +7,10 @@ return [
 
     'title' => 'Gift orders',
 
+    'group' => [
+        'who' => 'The rule',
+        'what' => 'The gift',
+    ],
     'rule_heading' => 'Who gets a gift',
     'rule_intro' => 'Choose how many paid cycles earn a gift, and what to send. Nothing is created until you preview and confirm.',
 
@@ -29,7 +33,7 @@ return [
 
     'preview_heading' => 'Who qualifies',
     'preview_empty' => 'Nobody has reached that many paid cycles yet.',
-    'preview_summary' => ':qualify qualify · :ready will receive a gift now',
+    'preview_summary' => 'will receive a gift now, out of :qualify who qualify',
     'preview_more' => 'Showing the first :shown of :total. The counts above cover everyone.',
     'attention_more' => 'Showing :shown of :total that need attention.',
     'already_gifted' => 'already gifted',
