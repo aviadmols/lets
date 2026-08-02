@@ -121,7 +121,7 @@ final class BillingAttemptJob implements ShouldQueue, ShouldBeUnique
                 'subscriptionContractId' => (string) $contract->shopify_gid,
                 'subscriptionBillingAttemptInput' => [
                     'idempotencyKey' => $key,
-                    'originTime' => $this->billingCycleKey.'T00:00:00Z',
+                    'originTime' => $this->originTime(),
                 ],
             ]);
         } catch (\Throwable $e) {
@@ -159,5 +159,20 @@ final class BillingAttemptJob implements ShouldQueue, ShouldBeUnique
         }
         // Success/failure of the PAYMENT arrives via webhook; the row stays
         // `requested` until SubscriptionWebhookHandler resolves it.
+    }
+
+    /**
+     * The originTime pins the attempt to its billing cycle. Shopify REFUSES a
+     * future origin time — and a merchant's "charge now" bills a cycle whose
+     * scheduled date has not arrived yet — so a future cycle key clamps to now.
+     * The idempotency key still carries the cycle date, so the dedup walls hold.
+     */
+    private function originTime(): string
+    {
+        $cycleStart = $this->billingCycleKey.'T00:00:00Z';
+
+        return strtotime($cycleStart) > time()
+            ? now('UTC')->format('Y-m-d\TH:i:s\Z')
+            : $cycleStart;
     }
 }

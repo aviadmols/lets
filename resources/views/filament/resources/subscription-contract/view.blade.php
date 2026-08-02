@@ -15,9 +15,20 @@
                     <span class="rc-kv">
                         <span class="rc-kv__k">{{ __('subscriptions.list.col.customer') }}</span>
                         <span class="rc-kv__v">
-                            {{ $record->customer_name ?: $record->customer_email ?: __('common.none') }}
+                            @php $customerUrl = $this->customerAdminUrl(); @endphp
+                            @if($customerUrl)
+                                <a href="{{ $customerUrl }}" target="_blank" rel="noopener">{{ $this->customerLabel() ?? __('common.none') }} ↗</a>
+                            @else
+                                {{ $this->customerLabel() ?? __('common.none') }}
+                            @endif
                         </span>
                     </span>
+                    @if($this->customerAwaitsApproval())
+                        {{-- Name/email are PROTECTED CUSTOMER DATA — a separate Shopify
+                             approval from the subscription scopes. Say so, or the blank
+                             reads as a bug instead of a pending approval. --}}
+                        <span class="rc-muted">{{ __('shopify_subscriptions.detail.customer_pending_approval') }}</span>
+                    @endif
                 </div>
                 <x-rc.badge
                     :label="'shopify_subscriptions.status.' . $record->status"

@@ -65,9 +65,56 @@ class ViewSubscriptionContract extends Page
 
     public function getTitle(): string|Htmlable
     {
-        return $this->record->customer_name
-            ?: $this->record->customer_email
-            ?: __('shopify_subscriptions.detail.untitled');
+        return $this->customerLabel() ?? __('shopify_subscriptions.detail.untitled');
+    }
+
+    /**
+     * The best label we HAVE for the shopper. Name and email are PROTECTED
+     * CUSTOMER DATA (a separate Shopify approval from the subscription scopes) —
+     * until it lands the mirror only holds the customer GID, so the label
+     * degrades to "Customer #id" rather than a blank the merchant reads as a bug.
+     */
+    public function customerLabel(): ?string
+    {
+        $label = $this->record->customer_name ?: $this->record->customer_email;
+        if ($label) {
+            return $label;
+        }
+
+        $id = $this->customerNumericId();
+
+        return $id !== null ? __('shopify_subscriptions.detail.customer_ref', ['id' => $id]) : null;
+    }
+
+    /** A deep link to the shopper in the SHOPIFY admin, or null. */
+    public function customerAdminUrl(): ?string
+    {
+        $id = $this->customerNumericId();
+        $domain = trim((string) ($this->record->shop?->shopify_domain ?? ''));
+
+        return $id !== null && $domain !== ''
+            ? 'https://'.$domain.'/admin/customers/'.$id
+            : null;
+    }
+
+    /** Name/email missing but the customer exists ⇒ the protected-data approval is pending. */
+    public function customerAwaitsApproval(): bool
+    {
+        return $this->record->customer_name === null
+            && $this->record->customer_email === null
+            && $this->customerNumericId() !== null;
+    }
+
+    private function customerNumericId(): ?string
+    {
+        $gid = (string) ($this->record->shopify_customer_gid ?? '');
+        if ($gid === '') {
+            return null;
+        }
+        $pos = strrpos($gid, '/');
+        $id = $pos !== false ? substr($gid, $pos + 1) : $gid;
+
+        return ctype_digit($id) ? $id : null;
     }
 
     public function getSubheading(): string|Htmlable|null
@@ -133,6 +180,16 @@ class ViewSubscriptionContract extends Page
     protected function getHeaderActions(): array
     {
         return [
+            // Bill the next payment RIGHT NOW — same job + same dedup walls as the
+            // scheduled scanner; the payment outcome arrives via Shopify's webhook.
+            Actions\Action::make('chargeNow')
+                ->label(__('shopify_subscriptions.action.charge_now'))
+                ->icon('heroicon-m-bolt')
+                ->visible(fn (): bool => $this->record->status === SubscriptionContract::STATUS_ACTIVE)
+                ->requiresConfirmation()
+                ->modalDescription(__('shopify_subscriptions.action.charge_now_body'))
+                ->action(fn () => $this->chargeNow()),
+
             Actions\Action::make('pause')
                 ->label(__('shopify_subscriptions.action.pause'))
                 ->icon('heroicon-m-pause')
@@ -195,6 +252,36 @@ class ViewSubscriptionContract extends Page
                 ->color('gray')
                 ->action(fn () => $this->sync()),
         ];
+    }
+
+    /**
+     * Ask Shopify to bill the next payment immediately. The REQUEST is what we
+     * confirm here — the payment's success/failure lands asynchronously in the
+     * billing-attempts table via webhook, exactly like a scheduled cycle.
+     */
+    private function chargeNow(): void
+    {
+        $shop = Tenant::current();
+        if (! $shop instanceof Shop) {
+            return;
+        }
+
+        $result = app(ContractActionService::class)->billNow($shop, $this->record, ActivityEvent::ACTOR_SYSTEM);
+
+        if ($result['ok'] ?? false) {
+            Notification::make()
+                ->title(__('shopify_subscriptions.action.charge_now_requested'))
+                ->success()
+                ->send();
+
+            return;
+        }
+
+        Notification::make()
+            ->title(__('shopify_subscriptions.action.failed'))
+            ->body(__('shopify_subscriptions.reason.'.($result['reason'] ?? 'transport')))
+            ->danger()
+            ->send();
     }
 
     /** Re-read this one contract from Shopify — the mirror's honesty button. */

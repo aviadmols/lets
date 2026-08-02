@@ -55,6 +55,14 @@ final class EventPresenter
         // regular amount. Info, not warning — it is the schedule the customer agreed to.
         'price_stepped_up' => ['info', 'timeline.kind.price_stepped_up'],
         'checkout_discount_captured' => ['info', 'timeline.kind.checkout_discount_captured'],
+        // The Shopify-Payments rail's contract verbs (ContractActionService) —
+        // without these mappings the contract Timeline reads every row as the
+        // humanized "Activity" fallback.
+        'shopify_subscription_paused' => ['info', 'timeline.kind.plan_paused'],
+        'shopify_subscription_resumed' => ['info', 'timeline.kind.shopify_subscription_resumed'],
+        'shopify_subscription_cancelled' => ['info', 'timeline.kind.plan_cancelled'],
+        'shopify_subscription_rescheduled' => ['info', 'timeline.kind.shopify_subscription_rescheduled'],
+        'shopify_subscription_bill_now' => ['info', 'timeline.kind.shopify_subscription_bill_now'],
     ];
 
     public const FALLBACK = ['info', 'timeline.kind.generic'];

@@ -117,9 +117,14 @@ class SubscriptionContractResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('customer_name')
                     ->label(__('subscriptions.list.col.customer'))
+                    // Name/email are protected customer data (pending a separate
+                    // Shopify approval) — fall back to the customer's number so the
+                    // row still identifies SOMEONE rather than reading as broken.
                     ->state(fn (SubscriptionContract $record): string => (string) ($record->customer_name
                         ?: $record->customer_email
-                        ?: __('common.none')))
+                        ?: ($record->shopify_customer_gid
+                            ? __('shopify_subscriptions.detail.customer_ref', ['id' => basename((string) $record->shopify_customer_gid)])
+                            : __('common.none'))))
                     ->weight('semibold'),
 
                 Tables\Columns\TextColumn::make('status')

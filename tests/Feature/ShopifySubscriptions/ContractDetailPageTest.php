@@ -3,12 +3,15 @@
 namespace Tests\Feature\ShopifySubscriptions;
 
 use App\Domain\ShopifySubscriptions\ContractActionService;
+use App\Domain\ShopifySubscriptions\Jobs\BillingAttemptJob;
 use App\Filament\Resources\SubscriptionContractResource;
 use App\Filament\Resources\SubscriptionContractResource\Pages\ViewSubscriptionContract;
 use App\Models\Shop;
+use App\Models\SubscriptionBillingAttempt;
 use App\Models\SubscriptionContract;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 /**
@@ -126,6 +129,104 @@ final class ContractDetailPageTest extends TestCase
 
         $this->assertFalse($result['ok']);
         $this->assertSame(ContractActionService::ERR_BAD_DATE, $result['reason']);
+    }
+
+    // === Charge now (bill the next payment immediately) ===
+
+    public function test_charge_now_dispatches_the_billing_job_for_the_scheduled_cycle(): void
+    {
+        Queue::fake();
+        $shop = $this->shop();
+        Tenant::set($shop);
+        $contract = $this->contract($shop);
+        $cycleKey = $contract->next_billing_date->toDateString();
+
+        $result = app(ContractActionService::class)->billNow($shop, $contract, 'system');
+
+        $this->assertTrue($result['ok']);
+        // Keyed on the SCHEDULED cycle, so when its date arrives the scanner finds
+        // this attempt and never double-bills.
+        Queue::assertPushed(BillingAttemptJob::class, fn (BillingAttemptJob $job): bool => $job->shopId === (int) $shop->getKey()
+            && $job->contractId === (int) $contract->getKey()
+            && $job->billingCycleKey === $cycleKey);
+    }
+
+    public function test_charge_now_refuses_a_cycle_that_already_has_an_attempt(): void
+    {
+        Queue::fake();
+        $shop = $this->shop();
+        Tenant::set($shop);
+        $contract = $this->contract($shop);
+
+        $attempt = new SubscriptionBillingAttempt();
+        $attempt->forceFill([
+            'shop_id' => $shop->getKey(),
+            'subscription_contract_id' => $contract->getKey(),
+            'billing_cycle_key' => $contract->next_billing_date->toDateString(),
+            'idempotency_key' => 'subattempt:x',
+            'status' => SubscriptionBillingAttempt::STATUS_REQUESTED,
+            'requested_at' => now(),
+        ])->save();
+
+        $result = app(ContractActionService::class)->billNow($shop, $contract, 'system');
+
+        $this->assertFalse($result['ok']);
+        $this->assertSame(ContractActionService::ERR_ALREADY_REQUESTED, $result['reason']);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_charge_now_refuses_a_non_billable_contract(): void
+    {
+        Queue::fake();
+        $shop = $this->shop();
+        Tenant::set($shop);
+        $contract = $this->contract($shop);
+        $contract->forceFill(['status' => SubscriptionContract::STATUS_PAUSED])->save();
+
+        $result = app(ContractActionService::class)->billNow($shop, $contract->fresh(), 'system');
+
+        $this->assertFalse($result['ok']);
+        $this->assertSame(ContractActionService::ERR_NOT_BILLABLE, $result['reason']);
+        Queue::assertNothingPushed();
+    }
+
+    // === Customer label (protected customer data pending) ===
+
+    public function test_a_customer_without_readable_name_shows_a_reference_and_a_link(): void
+    {
+        $shop = $this->shop();
+        Tenant::set($shop);
+
+        $contract = $this->contract($shop);
+        $contract->forceFill(['shopify_customer_gid' => 'gid://shopify/Customer/777'])->save();
+
+        $page = new ViewSubscriptionContract();
+        $page->mount((int) $contract->getKey());
+
+        // Name/email are protected customer data — until Shopify approves the
+        // access, the page identifies the shopper by number + admin deep link
+        // instead of a blank the merchant reads as a bug.
+        $this->assertSame(__('shopify_subscriptions.detail.customer_ref', ['id' => '777']), $page->customerLabel());
+        $this->assertSame('https://detail.myshopify.com/admin/customers/777', $page->customerAdminUrl());
+        $this->assertTrue($page->customerAwaitsApproval());
+    }
+
+    public function test_a_readable_customer_name_wins_over_the_reference(): void
+    {
+        $shop = $this->shop();
+        Tenant::set($shop);
+
+        $contract = $this->contract($shop);
+        $contract->forceFill([
+            'shopify_customer_gid' => 'gid://shopify/Customer/777',
+            'customer_name' => 'Dana Buyer',
+        ])->save();
+
+        $page = new ViewSubscriptionContract();
+        $page->mount((int) $contract->getKey());
+
+        $this->assertSame('Dana Buyer', $page->customerLabel());
+        $this->assertFalse($page->customerAwaitsApproval());
     }
 
     public function test_the_list_takes_the_subscriptions_name_when_it_is_the_only_one(): void

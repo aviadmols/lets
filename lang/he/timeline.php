@@ -24,6 +24,9 @@ return [
         'document_force_issued' => 'החשבונית הופקה לאחר שהסוחר בדק בחשבונית ירוקה',
         'price_stepped_up' => 'הנחת הפתיחה הסתיימה — המחיר עלה למחיר הרגיל',
         'checkout_discount_captured' => 'נקלט קופון מהזמנת הרכישה',
+        'shopify_subscription_resumed' => 'המנוי חודש',
+        'shopify_subscription_rescheduled' => 'תאריך החיוב הבא שונה',
+        'shopify_subscription_bill_now' => 'נשלחה בקשת חיוב מיידי ל-Shopify',
         'generic' => 'פעילות',
     ],
 

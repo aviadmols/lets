@@ -23,6 +23,9 @@ return [
     ],
 
     'action' => [
+        'charge_now' => 'Charge next payment now',
+        'charge_now_body' => 'Shopify is asked to bill the next payment immediately, on the saved card. The result (paid / failed) arrives from Shopify within a few minutes and appears under Billing attempts.',
+        'charge_now_requested' => 'Charge requested — Shopify is processing it. The outcome appears under Billing attempts shortly.',
         'pause' => 'Pause',
         'resume' => 'Resume',
         'cancel' => 'Cancel',
@@ -40,6 +43,8 @@ return [
     'detail' => [
         'title' => 'Subscription',
         'untitled' => 'Subscription',
+        'customer_ref' => 'Customer #:id',
+        'customer_pending_approval' => 'The shopper’s name and email are protected customer data — Shopify shows them to the app only after approving Protected Customer Data access (Partner Dashboard → API access). The link opens the customer in the Shopify admin meanwhile.',
         'subheading' => ':amount :cadence',
         'shopify_owns' => 'Shopify owns this subscription; this page mirrors it. Every change here is sent to Shopify and recorded only once Shopify accepts it.',
         'cadence' => 'Billing cycle',
@@ -80,5 +85,7 @@ return [
         'transport' => 'Could not reach Shopify. Try again in a moment.',
         'not_found' => 'Shopify no longer recognises this contract.',
         'bad_date' => 'Pick a future date.',
+        'not_billable' => 'Only an active subscription can be charged.',
+        'already_requested' => 'This cycle already has a billing attempt — check Billing attempts below.',
     ],
 ];

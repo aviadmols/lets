@@ -24,6 +24,9 @@ return [
         'document_force_issued' => 'Invoice issued after the merchant checked Green Invoice',
         'price_stepped_up' => 'Intro discount ended — price stepped up to the regular price',
         'checkout_discount_captured' => 'Coupon captured from the checkout order',
+        'shopify_subscription_resumed' => 'Subscription resumed',
+        'shopify_subscription_rescheduled' => 'Next charge date changed',
+        'shopify_subscription_bill_now' => 'Immediate charge requested from Shopify',
         'generic' => 'Activity',
     ],
 

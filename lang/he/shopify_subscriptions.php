@@ -23,6 +23,9 @@ return [
     ],
 
     'action' => [
+        'charge_now' => 'חיוב התשלום הבא עכשיו',
+        'charge_now_body' => 'Shopify מתבקשת לחייב את התשלום הבא באופן מיידי, בכרטיס השמור. התוצאה (שולם / נכשל) מגיעה מ-Shopify תוך דקות ותופיע תחת "ניסיונות חיוב".',
+        'charge_now_requested' => 'בקשת החיוב נשלחה — Shopify מעבדת אותה. התוצאה תופיע תחת "ניסיונות חיוב" בקרוב.',
         'pause' => 'השהיה',
         'resume' => 'חידוש',
         'cancel' => 'ביטול',
@@ -40,6 +43,8 @@ return [
     'detail' => [
         'title' => 'מנוי',
         'untitled' => 'מנוי',
+        'customer_ref' => 'לקוח #:id',
+        'customer_pending_approval' => 'שם ואימייל של הלקוח הם "נתוני לקוח מוגנים" — Shopify חושפת אותם לאפליקציה רק לאחר אישור בקשת Protected Customer Data (פרטנר דשבורד ← API access). בינתיים הקישור פותח את הלקוח במנהל של Shopify.',
         'subheading' => ':amount :cadence',
         'shopify_owns' => 'המנוי הזה מנוהל ב-Shopify; הדף הזה משקף אותו. כל שינוי כאן נשלח ל-Shopify ונרשם רק אחרי ש-Shopify מאשרת אותו.',
         'cadence' => 'מחזור חיוב',
@@ -80,5 +85,7 @@ return [
         'transport' => 'לא ניתן להגיע ל-Shopify. נסו שוב בעוד רגע.',
         'not_found' => 'Shopify כבר לא מזהה את החוזה הזה.',
         'bad_date' => 'בחרו תאריך עתידי.',
+        'not_billable' => 'ניתן לחייב רק מנוי פעיל.',
+        'already_requested' => 'כבר קיים ניסיון חיוב למחזור הזה — בדקו תחת "ניסיונות חיוב".',
     ],
 ];

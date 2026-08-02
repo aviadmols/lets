@@ -2,7 +2,9 @@
 
 namespace App\Domain\ShopifySubscriptions;
 
+use App\Domain\ShopifySubscriptions\Jobs\BillingAttemptJob;
 use App\Models\Shop;
+use App\Models\SubscriptionBillingAttempt;
 use App\Models\SubscriptionContract;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Services\Shopify\ShopifyClientFactory;
@@ -32,12 +34,15 @@ final class ContractActionService
     public const KIND_RESUMED = 'shopify_subscription_resumed';
     public const KIND_CANCELLED = 'shopify_subscription_cancelled';
     public const KIND_RESCHEDULED = 'shopify_subscription_rescheduled';
+    public const KIND_BILL_NOW = 'shopify_subscription_bill_now';
 
     /** Machine-readable failure reasons for the caller's message. */
     public const ERR_NOT_FOUND = 'not_found';
     public const ERR_SHOPIFY_REJECTED = 'shopify_rejected';
     public const ERR_TRANSPORT = 'transport';
     public const ERR_BAD_DATE = 'bad_date';
+    public const ERR_NOT_BILLABLE = 'not_billable';
+    public const ERR_ALREADY_REQUESTED = 'already_requested';
 
     private const MUTATIONS = [
         'pause' => 'subscriptionContractPause',
@@ -63,6 +68,50 @@ final class ContractActionService
     public function cancel(Shop $shop, SubscriptionContract $contract, string $actor): array
     {
         return $this->statusMutation($shop, $contract, 'cancel', self::KIND_CANCELLED, $actor);
+    }
+
+    /**
+     * Bill the NEXT payment immediately ("charge now"). Goes through the SAME
+     * BillingAttemptJob the due-cycle scanner uses, keyed on the scheduled cycle
+     * (next_billing_date) — so all three double-billing walls hold: when the
+     * scheduled date later arrives, the scanner finds this cycle's attempt row
+     * and never asks twice. The outcome arrives asynchronously via the
+     * subscription_billing_attempts webhooks, exactly like a scheduled charge.
+     *
+     * @return array{ok: bool, reason: ?string, contract: ?SubscriptionContract}
+     */
+    public function billNow(Shop $shop, SubscriptionContract $contract, string $actor): array
+    {
+        if (! $contract->isBillable() || (string) $contract->shopify_gid === '') {
+            return ['ok' => false, 'reason' => self::ERR_NOT_BILLABLE, 'contract' => null];
+        }
+
+        $cycleKey = $contract->next_billing_date?->toDateString() ?? now()->toDateString();
+
+        // Friendly pre-check (the job + DB unique are the real walls): a cycle
+        // that already has an attempt — succeeded, failed or in flight — is never
+        // asked again from a button.
+        $exists = SubscriptionBillingAttempt::query()
+            ->where('subscription_contract_id', $contract->getKey())
+            ->where('billing_cycle_key', $cycleKey)
+            ->exists();
+        if ($exists) {
+            return ['ok' => false, 'reason' => self::ERR_ALREADY_REQUESTED, 'contract' => null];
+        }
+
+        BillingAttemptJob::dispatch((int) $shop->getKey(), (int) $contract->getKey(), $cycleKey);
+
+        Timeline::record(
+            kind: self::KIND_BILL_NOW,
+            details: [
+                'contract_gid' => (string) $contract->shopify_gid,
+                'cycle' => $cycleKey,
+            ],
+            actor: $actor,
+            shopId: (int) $shop->getKey(),
+        );
+
+        return ['ok' => true, 'reason' => null, 'contract' => $contract];
     }
 
     /**
