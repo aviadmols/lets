@@ -57,6 +57,18 @@ class AppServiceProvider extends ServiceProvider
             DestructiveCommandGuard::assertSafe($event->command, $event->input);
         });
 
+        // STAFF PASSWORD POLICY (docs/security/security-policies.md §4): every
+        // password set through the app — merchant claim-via-reset, platform
+        // admins, profile changes — must be 12+ chars with letters, mixed case
+        // and numbers, and must not appear in known breach corpora (k-anonymity
+        // check; skipped silently offline). Filament's reset/profile forms
+        // validate with Password::default(), so this single default IS the rule.
+        \Illuminate\Validation\Rules\Password::defaults(fn () => \Illuminate\Validation\Rules\Password::min(12)
+            ->letters()
+            ->mixedCase()
+            ->numbers()
+            ->uncompromised());
+
         // Belt-and-suspenders for HTTPS behind Railway's proxy (alongside
         // trustProxies in bootstrap/app.php): force every generated URL to https
         // in production so assets/redirects/OAuth callbacks are never http:// on

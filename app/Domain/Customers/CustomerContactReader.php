@@ -30,6 +30,17 @@ final class CustomerContactReader
 
     public function read(Shop $shop, string $customerRef): CustomerContact
     {
+        // PERSONAL-DATA ACCESS LOG (docs/security/security-policies.md §5): every
+        // read of a customer's contact details is on the record — who (the authed
+        // admin user, or system), which shop, which customer. Structured so the
+        // log can answer "who looked at this person's data and when".
+        Log::info('privacy.personal_data_accessed', [
+            'shop_id' => $shop->getKey(),
+            'customer_ref' => $customerRef,
+            'surface' => 'customer_contact',
+            'user_id' => auth()->id(),
+        ]);
+
         try {
             return $shop->platform === Shop::PLATFORM_WOOCOMMERCE
                 ? $this->fromWoo($shop, $customerRef)

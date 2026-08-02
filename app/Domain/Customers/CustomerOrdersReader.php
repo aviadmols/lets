@@ -46,6 +46,15 @@ final class CustomerOrdersReader
      */
     public function read(Shop $shop, string $customerRef): array
     {
+        // PERSONAL-DATA ACCESS LOG (docs/security/security-policies.md §5) —
+        // mirrors CustomerContactReader: order history is personal data too.
+        Log::info('privacy.personal_data_accessed', [
+            'shop_id' => $shop->getKey(),
+            'customer_ref' => $customerRef,
+            'surface' => 'customer_orders',
+            'user_id' => auth()->id(),
+        ]);
+
         try {
             return $shop->platform === Shop::PLATFORM_WOOCOMMERCE
                 ? $this->fromWoo($shop, $customerRef)
