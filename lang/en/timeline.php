@@ -27,6 +27,8 @@ return [
         'shopify_subscription_resumed' => 'Subscription resumed',
         'shopify_subscription_rescheduled' => 'Next charge date changed',
         'shopify_subscription_bill_now' => 'Immediate charge requested from Shopify',
+        'shopify_subscription_products_edited' => 'Subscription products changed',
+        'shopify_subscription_card_update_email' => 'Card-update email sent to the shopper',
         'generic' => 'Activity',
     ],
 

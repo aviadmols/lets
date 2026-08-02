@@ -91,6 +91,16 @@
                                 : __('subscriptions.detail.intro_window_status', ['used' => $intro['used'], 'total' => $intro['total']]) }}
                         </span>
                     @endif
+                    @php $card = $this->paymentCard(); @endphp
+                    @if($card && ($card['brand'] || $card['last_four']))
+                        <span class="rc-kv__k">{{ __('shopify_subscriptions.payment.title') }}</span>
+                        <span class="rc-kv__v rc-ltr">
+                            {{ strtoupper((string) ($card['brand'] ?? '')) }} •••• {{ $card['last_four'] ?? '' }}
+                            @if($card['exp'])
+                                · {{ __('shopify_subscriptions.payment.expires') }} {{ $card['exp'] }}
+                            @endif
+                        </span>
+                    @endif
                 </div>
             @endif
         </div>

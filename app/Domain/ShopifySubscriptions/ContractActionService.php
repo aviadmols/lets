@@ -35,6 +35,8 @@ final class ContractActionService
     public const KIND_CANCELLED = 'shopify_subscription_cancelled';
     public const KIND_RESCHEDULED = 'shopify_subscription_rescheduled';
     public const KIND_BILL_NOW = 'shopify_subscription_bill_now';
+    public const KIND_PRODUCTS_EDITED = 'shopify_subscription_products_edited';
+    public const KIND_CARD_UPDATE_EMAIL = 'shopify_subscription_card_update_email';
 
     /** Machine-readable failure reasons for the caller's message. */
     public const ERR_NOT_FOUND = 'not_found';
@@ -178,7 +180,206 @@ final class ContractActionService
         return ['ok' => true, 'reason' => null, 'contract' => $fresh];
     }
 
+    // === Product-line edits (Shopify's draft → mutate → commit flow) =========
+
+    /**
+     * Change one line's quantity/price. Shopify's contract-edit protocol: open a
+     * DRAFT of the contract, mutate the draft, COMMIT — the contract itself never
+     * changes until the commit lands, so a failed step leaves it untouched.
+     *
+     * @return array{ok: bool, reason: ?string, contract: ?SubscriptionContract}
+     */
+    public function updateLine(Shop $shop, SubscriptionContract $contract, string $lineGid, int $quantity, float $price, string $actor): array
+    {
+        return $this->draftEdit($shop, $contract, $actor, 'line_updated', function (string $draftId) use ($shop, $lineGid, $quantity, $price): array {
+            return $this->graphqlErrorsOnly($shop, <<<'GQL'
+            mutation draftLineUpdate($draftId: ID!, $lineId: ID!, $input: SubscriptionLineUpdateInput!) {
+              subscriptionDraftLineUpdate(draftId: $draftId, lineId: $lineId, input: $input) {
+                userErrors { field message }
+              }
+            }
+            GQL, [
+                'draftId' => $draftId,
+                'lineId' => $lineGid,
+                'input' => [
+                    'quantity' => max(1, $quantity),
+                    'currentPrice' => round($price, 2),
+                ],
+            ], 'subscriptionDraftLineUpdate');
+        });
+    }
+
+    /** @return array{ok: bool, reason: ?string, contract: ?SubscriptionContract} */
+    public function removeLine(Shop $shop, SubscriptionContract $contract, string $lineGid, string $actor): array
+    {
+        return $this->draftEdit($shop, $contract, $actor, 'line_removed', function (string $draftId) use ($shop, $lineGid): array {
+            return $this->graphqlErrorsOnly($shop, <<<'GQL'
+            mutation draftLineRemove($draftId: ID!, $lineId: ID!) {
+              subscriptionDraftLineRemove(draftId: $draftId, lineId: $lineId) {
+                userErrors { field message }
+              }
+            }
+            GQL, [
+                'draftId' => $draftId,
+                'lineId' => $lineGid,
+            ], 'subscriptionDraftLineRemove');
+        });
+    }
+
+    /** @return array{ok: bool, reason: ?string, contract: ?SubscriptionContract} */
+    public function addLine(Shop $shop, SubscriptionContract $contract, string $variantGid, int $quantity, float $price, string $actor): array
+    {
+        return $this->draftEdit($shop, $contract, $actor, 'line_added', function (string $draftId) use ($shop, $variantGid, $quantity, $price): array {
+            return $this->graphqlErrorsOnly($shop, <<<'GQL'
+            mutation draftLineAdd($draftId: ID!, $input: SubscriptionLineInput!) {
+              subscriptionDraftLineAdd(draftId: $draftId, input: $input) {
+                userErrors { field message }
+              }
+            }
+            GQL, [
+                'draftId' => $draftId,
+                'input' => [
+                    'productVariantId' => $variantGid,
+                    'quantity' => max(1, $quantity),
+                    'currentPrice' => round($price, 2),
+                ],
+            ], 'subscriptionDraftLineAdd');
+        });
+    }
+
+    /**
+     * Ask SHOPIFY to email the shopper its secure card-update page. The card
+     * lives in Shopify's vault — this is the one sanctioned way to change it,
+     * and it works for either rail's admin because Shopify sends the email.
+     *
+     * @return array{ok: bool, reason: ?string, contract: ?SubscriptionContract}
+     */
+    public function sendCardUpdateEmail(Shop $shop, SubscriptionContract $contract, string $actor): array
+    {
+        $methodGid = (string) ($contract->payment_method_gid ?? '');
+        if ($methodGid === '') {
+            return ['ok' => false, 'reason' => self::ERR_NOT_FOUND, 'contract' => null];
+        }
+
+        $result = $this->graphqlErrorsOnly($shop, <<<'GQL'
+        mutation cardUpdateEmail($customerPaymentMethodId: ID!) {
+          customerPaymentMethodSendUpdateEmail(customerPaymentMethodId: $customerPaymentMethodId) {
+            userErrors { field message }
+          }
+        }
+        GQL, [
+            'customerPaymentMethodId' => $methodGid,
+        ], 'customerPaymentMethodSendUpdateEmail');
+
+        if (! $result['ok']) {
+            return ['ok' => false, 'reason' => $result['reason'], 'contract' => null];
+        }
+
+        Timeline::record(
+            kind: self::KIND_CARD_UPDATE_EMAIL,
+            details: ['contract_gid' => (string) $contract->shopify_gid],
+            actor: $actor,
+            shopId: (int) $shop->getKey(),
+        );
+
+        return ['ok' => true, 'reason' => null, 'contract' => $contract];
+    }
+
     // === Internals ===
+
+    /**
+     * The shared draft → mutate → commit wrapper. On commit the mirror is
+     * re-read IN FULL (refresh) — the commit answer alone doesn't carry lines.
+     *
+     * @param  callable(string): array{ok: bool, reason: ?string}  $mutateDraft
+     * @return array{ok: bool, reason: ?string, contract: ?SubscriptionContract}
+     */
+    private function draftEdit(Shop $shop, SubscriptionContract $contract, string $actor, string $change, callable $mutateDraft): array
+    {
+        // 1) Open the draft.
+        $opened = $this->graphql($shop, <<<'GQL'
+        mutation contractDraft($contractId: ID!) {
+          subscriptionContractUpdate(contractId: $contractId) {
+            draft { id }
+            userErrors { field message }
+          }
+        }
+        GQL, ['contractId' => (string) $contract->shopify_gid], 'subscriptionContractUpdate', node: 'draft');
+
+        if (! $opened['ok']) {
+            return ['ok' => false, 'reason' => $opened['reason'], 'contract' => null];
+        }
+        $draftId = (string) ($opened['contract']['id'] ?? '');
+        if ($draftId === '') {
+            return ['ok' => false, 'reason' => self::ERR_NOT_FOUND, 'contract' => null];
+        }
+
+        // 2) Mutate the draft.
+        $mutated = $mutateDraft($draftId);
+        if (! $mutated['ok']) {
+            return ['ok' => false, 'reason' => $mutated['reason'], 'contract' => null];
+        }
+
+        // 3) Commit — only now does the contract actually change.
+        $committed = $this->graphqlErrorsOnly($shop, <<<'GQL'
+        mutation draftCommit($draftId: ID!) {
+          subscriptionDraftCommit(draftId: $draftId) {
+            contract { id }
+            userErrors { field message }
+          }
+        }
+        GQL, ['draftId' => $draftId], 'subscriptionDraftCommit');
+
+        if (! $committed['ok']) {
+            return ['ok' => false, 'reason' => $committed['reason'], 'contract' => null];
+        }
+
+        // 4) Re-mirror in full (lines included) from Shopify's answer.
+        $fresh = app(ContractBackfill::class)->refresh($shop, (string) $contract->shopify_gid);
+
+        Timeline::record(
+            kind: self::KIND_PRODUCTS_EDITED,
+            details: [
+                'contract_gid' => (string) $contract->shopify_gid,
+                'changed' => $change,
+            ],
+            actor: $actor,
+            shopId: (int) $shop->getKey(),
+        );
+
+        return ['ok' => true, 'reason' => null, 'contract' => $fresh ?? $contract];
+    }
+
+    /**
+     * A mutation whose ONLY meaningful answer is its userErrors (draft steps,
+     * card-update email). Normalises transport + refusal like graphql().
+     *
+     * @param  array<string, mixed>  $variables
+     * @return array{ok: bool, reason: ?string}
+     */
+    private function graphqlErrorsOnly(Shop $shop, string $query, array $variables, string $field): array
+    {
+        try {
+            $body = ShopifyClientFactory::for($shop)->graphql($query, $variables);
+        } catch (\Throwable $e) {
+            Log::warning('shopify_subscriptions.mutation_transport_failed', [
+                'shop_id' => $shop->getKey(), 'field' => $field, 'error' => $e->getMessage(),
+            ]);
+
+            return ['ok' => false, 'reason' => self::ERR_TRANSPORT];
+        }
+
+        $userErrors = (array) data_get($body, 'data.'.$field.'.userErrors', []);
+        if ($userErrors !== []) {
+            Log::info('shopify_subscriptions.mutation_rejected', [
+                'shop_id' => $shop->getKey(), 'field' => $field, 'errors' => $userErrors,
+            ]);
+
+            return ['ok' => false, 'reason' => self::ERR_SHOPIFY_REJECTED];
+        }
+
+        return ['ok' => true, 'reason' => null];
+    }
 
     /** @return array{ok: bool, reason: ?string, contract: ?SubscriptionContract} */
     private function statusMutation(
@@ -226,7 +427,7 @@ final class ContractActionService
      * @param  array<string, mixed>  $variables
      * @return array{ok: bool, reason: ?string, contract: array<string, mixed>}
      */
-    private function graphql(Shop $shop, string $query, array $variables, string $field): array
+    private function graphql(Shop $shop, string $query, array $variables, string $field, string $node = 'contract'): array
     {
         try {
             $body = ShopifyClientFactory::for($shop)->graphql($query, $variables);
@@ -249,7 +450,7 @@ final class ContractActionService
             return ['ok' => false, 'reason' => self::ERR_SHOPIFY_REJECTED, 'contract' => []];
         }
 
-        $contract = (array) ($payload['contract'] ?? []);
+        $contract = (array) ($payload[$node] ?? []);
 
         return $contract !== []
             ? ['ok' => true, 'reason' => null, 'contract' => $contract]

@@ -64,6 +64,32 @@ class ViewSubscriptionContract extends Page
         abort_if($found === null, 404);
 
         $this->record = $found;
+
+        // Auto-sync on entry: the merchant opens the page and sees what Shopify
+        // holds NOW — no manual "Sync from Shopify" click. Fail-soft (a Shopify
+        // hiccup shows the mirror we have) and skipped when the copy is under a
+        // minute old, so click-around navigation doesn't hammer the API.
+        $this->autoSync();
+    }
+
+    private function autoSync(): void
+    {
+        $shop = Tenant::current();
+        if (! $shop instanceof Shop || ! $shop->hasShopifyConnection()) {
+            return;
+        }
+        if ($this->record->synced_at !== null && $this->record->synced_at->gt(now()->subMinute())) {
+            return;
+        }
+
+        try {
+            $fresh = app(ContractBackfill::class)->refresh($shop, (string) $this->record->shopify_gid);
+            if ($fresh !== null) {
+                $this->record = $fresh;
+            }
+        } catch (\Throwable) {
+            // The mirror we already hold is still the best available answer.
+        }
     }
 
     public function getTitle(): string|Htmlable
@@ -141,18 +167,205 @@ class ViewSubscriptionContract extends Page
     }
 
     /**
-     * The product lines Shopify reports on the contract. Display only — the money
-     * decisions are Shopify's, and these are whatever the last sync returned.
+     * The product lines Shopify reports on the contract. line_gid is the handle
+     * the edit actions pass back; an older mirror row (pre-line_gid sync) simply
+     * renders without edit buttons until the next auto-sync fills it.
      *
-     * @return array<int, array{title: string, quantity: int, amount: string}>
+     * @return array<int, array{line_gid: ?string, title: string, quantity: int, amount: string}>
      */
     public function lines(): array
     {
         return array_map(static fn (array $l): array => [
+            'line_gid' => ($l['line_gid'] ?? null) !== null && $l['line_gid'] !== '' ? (string) $l['line_gid'] : null,
             'title' => (string) ($l['title'] ?? ''),
             'quantity' => (int) ($l['quantity'] ?? 1),
             'amount' => (string) ($l['amount'] ?? ''),
         ], (array) ($this->record->lines ?? []));
+    }
+
+    /** Line edits are offered only on a live, editable contract. */
+    public function linesEditable(): bool
+    {
+        return $this->record->status === SubscriptionContract::STATUS_ACTIVE
+            || $this->record->status === SubscriptionContract::STATUS_PAUSED;
+    }
+
+    // === Product-line actions (mounted from the Products card) ===============
+
+    public function editLineAction(): Actions\Action
+    {
+        return Actions\Action::make('editLine')
+            ->label(__('shopify_subscriptions.lines.edit'))
+            ->modalHeading(__('shopify_subscriptions.lines.edit'))
+            ->fillForm(function (array $arguments): array {
+                $line = collect($this->lines())->firstWhere('line_gid', (string) ($arguments['lineGid'] ?? ''));
+
+                return [
+                    'quantity' => (int) ($line['quantity'] ?? 1),
+                    'price' => (string) ($line['amount'] ?? ''),
+                ];
+            })
+            ->form([
+                \Filament\Forms\Components\TextInput::make('quantity')
+                    ->label(__('shopify_subscriptions.detail.qty'))
+                    ->numeric()->minValue(1)->required(),
+                \Filament\Forms\Components\TextInput::make('price')
+                    ->label(__('shopify_subscriptions.lines.unit_price'))
+                    ->numeric()->minValue(0.01)->required(),
+            ])
+            ->action(function (array $data, array $arguments): void {
+                $this->runLineVerb(fn (Shop $shop) => app(ContractActionService::class)->updateLine(
+                    $shop,
+                    $this->record,
+                    (string) ($arguments['lineGid'] ?? ''),
+                    (int) $data['quantity'],
+                    (float) $data['price'],
+                    ActivityEvent::ACTOR_SYSTEM,
+                ));
+            });
+    }
+
+    public function removeLineAction(): Actions\Action
+    {
+        return Actions\Action::make('removeLine')
+            ->label(__('shopify_subscriptions.lines.remove'))
+            ->color('danger')
+            ->requiresConfirmation()
+            ->modalDescription(__('shopify_subscriptions.lines.remove_body'))
+            ->action(function (array $arguments): void {
+                $this->runLineVerb(fn (Shop $shop) => app(ContractActionService::class)->removeLine(
+                    $shop,
+                    $this->record,
+                    (string) ($arguments['lineGid'] ?? ''),
+                    ActivityEvent::ACTOR_SYSTEM,
+                ));
+            });
+    }
+
+    public function addProductAction(): Actions\Action
+    {
+        return Actions\Action::make('addProduct')
+            ->label(__('shopify_subscriptions.lines.add'))
+            ->modalHeading(__('shopify_subscriptions.lines.add'))
+            ->form([
+                \Filament\Forms\Components\Select::make('variant')
+                    ->label(__('shopify_subscriptions.lines.product'))
+                    ->options($this->variantOptions())
+                    ->searchable()
+                    ->required()
+                    ->live()
+                    // Prefill the price from the catalog; the merchant can override.
+                    ->afterStateUpdated(function ($state, \Filament\Forms\Set $set): void {
+                        $price = $this->variantPrices()[(string) $state] ?? null;
+                        if ($price !== null) {
+                            $set('price', number_format((float) $price, 2, '.', ''));
+                        }
+                    }),
+                \Filament\Forms\Components\TextInput::make('quantity')
+                    ->label(__('shopify_subscriptions.detail.qty'))
+                    ->numeric()->minValue(1)->default(1)->required(),
+                \Filament\Forms\Components\TextInput::make('price')
+                    ->label(__('shopify_subscriptions.lines.unit_price'))
+                    ->numeric()->minValue(0.01)->required(),
+            ])
+            ->action(function (array $data): void {
+                $this->runLineVerb(fn (Shop $shop) => app(ContractActionService::class)->addLine(
+                    $shop,
+                    $this->record,
+                    'gid://shopify/ProductVariant/'.(string) $data['variant'],
+                    (int) $data['quantity'],
+                    (float) $data['price'],
+                    ActivityEvent::ACTOR_SYSTEM,
+                ));
+            });
+    }
+
+    public function sendCardUpdateEmailAction(): Actions\Action
+    {
+        return Actions\Action::make('sendCardUpdateEmail')
+            ->label(__('shopify_subscriptions.payment.send_update_email'))
+            ->requiresConfirmation()
+            ->modalDescription(__('shopify_subscriptions.payment.send_update_email_body'))
+            ->action(function (): void {
+                $shop = Tenant::current();
+                if (! $shop instanceof Shop) {
+                    return;
+                }
+                $result = app(ContractActionService::class)->sendCardUpdateEmail($shop, $this->record, ActivityEvent::ACTOR_SYSTEM);
+
+                if ($result['ok'] ?? false) {
+                    Notification::make()->title(__('shopify_subscriptions.payment.update_email_sent'))->success()->send();
+
+                    return;
+                }
+                Notification::make()
+                    ->title(__('shopify_subscriptions.action.failed'))
+                    ->body(__('shopify_subscriptions.reason.'.($result['reason'] ?? 'transport')))
+                    ->danger()
+                    ->send();
+            });
+    }
+
+    /** Run one line verb, refresh the record from the result, notify. */
+    private function runLineVerb(callable $verb): void
+    {
+        $shop = Tenant::current();
+        if (! $shop instanceof Shop) {
+            return;
+        }
+
+        $result = $verb($shop);
+
+        if ($result['ok'] ?? false) {
+            if (($result['contract'] ?? null) instanceof SubscriptionContract) {
+                $this->record = $result['contract'];
+            }
+            Notification::make()->title(__('shopify_subscriptions.action.done'))->success()->send();
+
+            return;
+        }
+
+        Notification::make()
+            ->title(__('shopify_subscriptions.action.failed'))
+            ->body(__('shopify_subscriptions.reason.'.($result['reason'] ?? 'transport')))
+            ->danger()
+            ->send();
+    }
+
+    /**
+     * Variant choices from the SYNCED catalog (tenant-scoped), keyed by the
+     * numeric variant id. Bounded — this is a picker, not a product browser.
+     *
+     * @return array<string, string>
+     */
+    private function variantOptions(): array
+    {
+        return \App\Models\ProductVariant::query()
+            ->with('product')
+            ->whereNotNull('external_variant_id')
+            ->limit(100)
+            ->get()
+            ->mapWithKeys(function (\App\Models\ProductVariant $v): array {
+                $product = trim((string) ($v->product?->title ?? ''));
+                $variant = trim((string) ($v->title ?? ''));
+                $label = $product !== '' && $variant !== '' && $variant !== 'Default'
+                    ? $product.' — '.$variant
+                    : ($product !== '' ? $product : $variant);
+
+                return [(string) $v->external_variant_id => $label.' ('.Money::format((float) $v->price).')'];
+            })
+            ->all();
+    }
+
+    /** @return array<string, float> variant id → catalog price (for the prefill). */
+    private function variantPrices(): array
+    {
+        return \App\Models\ProductVariant::query()
+            ->whereNotNull('external_variant_id')
+            ->limit(100)
+            ->pluck('price', 'external_variant_id')
+            ->map(fn ($p): float => (float) $p)
+            ->all();
     }
 
     /** Billing attempts we asked Shopify to make for this contract, newest first. */
@@ -239,6 +452,22 @@ class ViewSubscriptionContract extends Page
     }
 
     protected function getHeaderActions(): array
+    {
+        // ONE ⋯ menu (the Shopify-admin pattern) instead of a row of six buttons.
+        // The actions keep their names, so the schedule-row buttons still mount
+        // them (wire:click="mountAction('chargeNow')" etc.).
+        return [
+            Actions\ActionGroup::make($this->contractActions())
+                ->icon('heroicon-m-ellipsis-horizontal')
+                ->color('gray')
+                ->button()
+                ->hiddenLabel()
+                ->label(__('shopify_subscriptions.action.menu')),
+        ];
+    }
+
+    /** @return array<int, Actions\Action> */
+    private function contractActions(): array
     {
         return [
             // Bill the next payment RIGHT NOW — same job + same dedup walls as the

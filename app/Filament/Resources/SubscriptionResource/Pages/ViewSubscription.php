@@ -490,6 +490,31 @@ class ViewSubscription extends Page
         return $base.'/wp-admin/admin.php?page=wc-orders&action=edit&id='.$orderId;
     }
 
+    /**
+     * The saved PayPlus card, for the Payment-details card — {brand, last_four,
+     * exp} or null when the plan has no vaulted method (manual-payment plans).
+     * Replacing the card needs a PayPlus re-vault page.
+     * TODO(payplus-card-update): mint a zero-amount PayPlus hosted page that
+     * re-vaults a new token onto the plan (same seam as the deposit page).
+     */
+    public function paymentCard(): ?array
+    {
+        $method = $this->record->activePaymentMethod();
+        if ($method === null) {
+            return null;
+        }
+
+        $exp = (int) ($method->exp_month ?? 0) > 0 && (int) ($method->exp_year ?? 0) > 0
+            ? sprintf('%02d/%02d', (int) $method->exp_month, ((int) $method->exp_year) % 100)
+            : null;
+
+        return [
+            'brand' => trim((string) ($method->card_brand ?? '')) ?: null,
+            'last_four' => trim((string) ($method->card_last_four ?? '')) ?: null,
+            'exp' => $exp,
+        ];
+    }
+
     /** The checkout order this subscription came from — {id, url} — or null. */
     public function checkoutOrder(): ?array
     {

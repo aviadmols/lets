@@ -95,7 +95,7 @@ final class ContractDetailPageTest extends TestCase
         $page->mount((int) $contract->getKey());
 
         $this->assertSame(
-            [['title' => 'כובע מצחיה NY', 'quantity' => 2, 'amount' => '49.90']],
+            [['line_gid' => null, 'title' => 'כובע מצחיה NY', 'quantity' => 2, 'amount' => '49.90']],
             $page->lines(),
         );
     }

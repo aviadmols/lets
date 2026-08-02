@@ -67,6 +67,9 @@ final class ContractMirror
         $price = data_get($node, 'deliveryPrice.amount');
         $lines = array_map(
             static fn (array $edge): array => [
+                // The SubscriptionLine gid — the handle the product-edit draft
+                // mutations (lineUpdate/lineRemove) key on.
+                'line_gid' => (string) data_get($edge, 'node.id', '') ?: null,
                 'title' => (string) data_get($edge, 'node.title', ''),
                 'quantity' => (int) data_get($edge, 'node.quantity', 1),
                 'amount' => (string) data_get($edge, 'node.currentPrice.amount', ''),
@@ -78,6 +81,9 @@ final class ContractMirror
             ],
             (array) data_get($node, 'lines.edges', []),
         );
+
+        $expMonth = (int) data_get($node, 'customerPaymentMethod.instrument.expiryMonth', 0);
+        $expYear = (int) data_get($node, 'customerPaymentMethod.instrument.expiryYear', 0);
 
         return $this->upsert($shop, [
             'shopify_gid' => $gid,
@@ -91,6 +97,13 @@ final class ContractMirror
             'customer_email' => (string) data_get($node, 'customer.email', '') ?: null,
             'customer_name' => trim((string) data_get($node, 'customer.firstName', '').' '
                 .(string) data_get($node, 'customer.lastName', '')) ?: null,
+            // Shopify vaults the card; we mirror the reference + presentation only.
+            'payment_method_gid' => (string) data_get($node, 'customerPaymentMethod.id', '') ?: null,
+            'card_brand' => (string) data_get($node, 'customerPaymentMethod.instrument.brand', '') ?: null,
+            'card_last_four' => (string) data_get($node, 'customerPaymentMethod.instrument.lastDigits', '') ?: null,
+            'card_exp' => $expMonth > 0 && $expYear > 0
+                ? sprintf('%02d/%02d', $expMonth, $expYear % 100)
+                : null,
             'lines' => $lines !== [] ? $lines : null,
         ]);
     }

@@ -75,7 +75,22 @@ class CustomerDetail extends Page
         $named = $this->plans()->first(fn (InstallmentPlan $p): bool => trim((string) $p->customer_name) !== '')
             ?? $this->plans()->first(fn (InstallmentPlan $p): bool => trim((string) $p->customer_email) !== '');
 
-        return $named?->customerLabel() ?? $this->customer;
+        if ($named !== null) {
+            return $named->customerLabel();
+        }
+
+        // A Shopify-rail-only customer: the contract may carry the identity — and
+        // when protected-data approval is still pending, "Customer #id" beats a
+        // raw database key as a page title.
+        $contractNamed = $this->contracts()->first(fn ($c): bool => trim((string) $c->customer_name) !== '')
+            ?? $this->contracts()->first(fn ($c): bool => trim((string) $c->customer_email) !== '');
+        if ($contractNamed !== null) {
+            return trim((string) $contractNamed->customer_name) ?: trim((string) $contractNamed->customer_email);
+        }
+
+        return ctype_digit($this->customer)
+            ? __('shopify_subscriptions.detail.customer_ref', ['id' => $this->customer])
+            : $this->customer;
     }
 
     // === Contact details ===
@@ -215,6 +230,25 @@ class CustomerDetail extends Page
             ->get();
     }
 
+    /**
+     * The customer's Shopify-Payments-rail subscriptions (the contract mirror).
+     * A Shopify-rail store has NO plan rows — these ARE its subscriptions, and a
+     * customer page that ignored them showed a subscriber with "no subscriptions".
+     *
+     * @return Collection<int, \App\Models\SubscriptionContract>
+     */
+    public function contracts(): Collection
+    {
+        if (! ctype_digit($this->customer)) {
+            return collect(); // WooCommerce/guest ids never match a Shopify gid
+        }
+
+        return \App\Models\SubscriptionContract::query()
+            ->where('shopify_customer_gid', 'gid://shopify/Customer/'.$this->customer)
+            ->latest('id')
+            ->get();
+    }
+
     /** Lifetime subscription spend = Σ succeeded ledger for this customer (formatted). */
     public function subscriptionSpend(): string
     {
@@ -236,10 +270,14 @@ class CustomerDetail extends Page
 
     public function activePlansCount(): int
     {
+        // Both rails: PayPlus plans + ACTIVE Shopify contracts.
         return InstallmentPlan::query()
             ->where('shopify_customer_id', $this->customer)
             ->where('status', 'active')
-            ->count();
+            ->count()
+            + $this->contracts()
+                ->where('status', \App\Models\SubscriptionContract::STATUS_ACTIVE)
+                ->count();
     }
 
     public function kindLabel(InstallmentPlan $plan): string
@@ -256,19 +294,29 @@ class CustomerDetail extends Page
         return Money::format($plan->total_charged) . ' / ' . Money::format($plan->total_amount);
     }
 
-    /** @return iterable<ActivityEvent> per-customer timeline across all their plans */
+    /** @return iterable<ActivityEvent> per-customer timeline across BOTH rails */
     public function timelineEvents(): iterable
     {
         $planIds = InstallmentPlan::query()
             ->where('shopify_customer_id', $this->customer)
             ->pluck('id');
 
-        if ($planIds->isEmpty()) {
+        // Contract events carry no plan_id — they key on details->contract_gid.
+        $contractGids = $this->contracts()->pluck('shopify_gid')->filter()->values();
+
+        if ($planIds->isEmpty() && $contractGids->isEmpty()) {
             return [];
         }
 
         return ActivityEvent::query()
-            ->whereIn('plan_id', $planIds)
+            ->where(function ($q) use ($planIds, $contractGids): void {
+                if ($planIds->isNotEmpty()) {
+                    $q->whereIn('plan_id', $planIds);
+                }
+                if ($contractGids->isNotEmpty()) {
+                    $q->orWhereIn('details->contract_gid', $contractGids->all());
+                }
+            })
             ->latest('created_at')
             ->limit(self::FEED_LIMIT)
             ->get();

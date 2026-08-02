@@ -14,7 +14,14 @@
 
             {{-- Products --}}
             <div class="rc-section">
-                <div class="rc-section__title">{{ __('shopify_subscriptions.detail.items') }}</div>
+                <div class="rc-row rc-row--between">
+                    <div class="rc-section__title">{{ __('shopify_subscriptions.detail.items') }}</div>
+                    @if($this->linesEditable())
+                        <button type="button" class="rc-ghost-btn" wire:click="mountAction('addProduct')">
+                            {{ __('shopify_subscriptions.lines.add') }}
+                        </button>
+                    @endif
+                </div>
                 @php $lines = $this->lines(); @endphp
                 @if(count($lines) === 0)
                     <x-rc.empty title="shopify_subscriptions.detail.items_empty" icon="heroicon-o-cube" />
@@ -32,6 +39,23 @@
                             <span class="rc-line__amount rc-ltr">
                                 {{ $line['amount'] !== '' ? \App\Support\Ui\Money::format((float) $line['amount'] * $line['quantity'], (string) $record->currency) : '—' }}
                             </span>
+                            @if($this->linesEditable() && $line['line_gid'] !== null)
+                                <span class="rc-row">
+                                    <button type="button" class="rc-ghost-btn"
+                                            aria-label="{{ __('shopify_subscriptions.lines.edit') }}"
+                                            wire:click="mountAction('editLine', { lineGid: @js($line['line_gid']) })">
+                                        <x-heroicon-o-pencil class="rc-icon-sm" />
+                                    </button>
+                                    @if(count($lines) > 1)
+                                        {{-- Shopify refuses a contract with no lines — the last one has no trash. --}}
+                                        <button type="button" class="rc-ghost-btn"
+                                                aria-label="{{ __('shopify_subscriptions.lines.remove') }}"
+                                                wire:click="mountAction('removeLine', { lineGid: @js($line['line_gid']) })">
+                                            <x-heroicon-o-trash class="rc-icon-sm" />
+                                        </button>
+                                    @endif
+                                </span>
+                            @endif
                         </div>
                     @endforeach
                     <div class="rc-line-total">
@@ -185,6 +209,35 @@
                         {{-- Name/email are PROTECTED CUSTOMER DATA — a separate Shopify
                              approval. Say so, or the blank reads as a bug. --}}
                         <span class="rc-muted">{{ __('shopify_subscriptions.detail.customer_pending_approval') }}</span>
+                    @endif
+                </div>
+            </div>
+
+            {{-- Payment details --}}
+            <div class="rc-section">
+                <div class="rc-section__title">{{ __('shopify_subscriptions.payment.title') }}</div>
+                <div class="rc-stack rc-stack--tight">
+                    @if($record->card_brand || $record->card_last_four)
+                        <span class="rc-strong rc-ltr">
+                            {{ strtoupper((string) $record->card_brand) }} •••• {{ $record->card_last_four }}
+                        </span>
+                        @if($record->card_exp)
+                            <span class="rc-muted rc-ltr">{{ __('shopify_subscriptions.payment.expires') }} {{ $record->card_exp }}</span>
+                        @endif
+                    @elseif($record->payment_method_gid)
+                        {{-- The card lives in Shopify's vault; its brand/last4 are protected
+                             customer data — readable only after the approval lands. --}}
+                        <span class="rc-muted">{{ __('shopify_subscriptions.payment.card_pending_approval') }}</span>
+                    @else
+                        <span class="rc-muted">{{ __('shopify_subscriptions.payment.none') }}</span>
+                    @endif
+
+                    @if($record->payment_method_gid)
+                        {{-- Shopify emails the shopper its secure card-update page — the
+                             one sanctioned way to change a card Shopify vaults. --}}
+                        <button type="button" class="rc-ghost-btn" wire:click="mountAction('sendCardUpdateEmail')">
+                            {{ __('shopify_subscriptions.payment.send_update_email') }}
+                        </button>
                     @endif
                 </div>
             </div>

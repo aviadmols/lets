@@ -23,6 +23,7 @@ return [
     ],
 
     'action' => [
+        'menu' => 'Actions',
         'charge_now' => 'Charge next payment now',
         'charge_now_body' => 'Shopify is asked to bill the next payment immediately, on the saved card. The result (paid / failed) arrives from Shopify within a few minutes and appears under Billing attempts.',
         'charge_now_requested' => 'Charge requested — Shopify is processing it. The outcome appears under Billing attempts shortly.',
@@ -69,6 +70,26 @@ return [
         'schedule_empty' => 'No upcoming charge — the subscription has no next billing date.',
         'schedule_projection_note' => 'Dates are projected from the billing cycle; Shopify owns the schedule. Only the next charge can be moved or billed early.',
         'activity' => 'Activity',
+    ],
+
+    // Product-line edits (draft → commit at Shopify).
+    'lines' => [
+        'add' => 'Add product',
+        'edit' => 'Edit product',
+        'remove' => 'Remove product',
+        'remove_body' => 'The product is removed from this subscription at Shopify. Future charges no longer include it.',
+        'product' => 'Product',
+        'unit_price' => 'Unit price',
+    ],
+
+    'payment' => [
+        'title' => 'Payment details',
+        'expires' => 'Expires',
+        'none' => 'No payment method on record.',
+        'card_pending_approval' => 'The card is vaulted at Shopify; its brand and last digits become readable after the Protected Customer Data approval.',
+        'send_update_email' => 'Send card-update email',
+        'send_update_email_body' => 'Shopify emails the shopper a secure page to update their card. The card itself never passes through this app.',
+        'update_email_sent' => 'Shopify is emailing the shopper the card-update page.',
     ],
 
     'attempt' => [

@@ -5,6 +5,7 @@ namespace App\Filament\Pages;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Models\InstallmentPlan;
 use App\Models\PaymentLedger;
+use App\Models\SubscriptionContract;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Support\Ui\Money;
 use Filament\Pages\Page;
@@ -38,6 +39,9 @@ class Customers extends Page
         'active' => 'green',
     ];
 
+    /** Worst-wins ranking when a customer's rows come from BOTH rails. */
+    private const DOT_RANK = ['gray' => 0, 'green' => 1, 'amber' => 2, 'red' => 3];
+
     public string $search = '';
 
     public static function getNavigationGroup(): ?string
@@ -56,12 +60,58 @@ class Customers extends Page
     }
 
     /**
-     * Derived customer rows: one per distinct shopify_customer_id, with an
-     * active-subscription count + a payment-status dot tone.
+     * Derived customer rows from BOTH rails: PayPlus plans (installment_plans)
+     * and Shopify-Payments contracts (subscription_contracts), merged on the
+     * numeric customer id. A store on the Shopify rail has no plan rows at all —
+     * deriving only from plans is why its Customers screen sat empty.
      *
      * @return Collection<int, array{id:string,active_subs:int,dot:string}>
      */
     public function customers(): Collection
+    {
+        $rows = $this->planRows();
+
+        foreach ($this->contractRows() as $id => $contractRow) {
+            if (! isset($rows[$id])) {
+                $rows[$id] = $contractRow;
+
+                continue;
+            }
+
+            // The customer lives on both rails: keep the richer identity (a plan
+            // captured at checkout usually names them; a contract may not until
+            // the protected-data approval lands), sum the subscriptions, and let
+            // the WORST payment status win the dot.
+            $rows[$id]['label'] = $rows[$id]['named'] ? $rows[$id]['label'] : $contractRow['label'];
+            $rows[$id]['email'] = $rows[$id]['email'] ?? $contractRow['email'];
+            $rows[$id]['active_subs'] += $contractRow['active_subs'];
+            $rows[$id]['dot'] = $this->worstDot($rows[$id]['dot'], $contractRow['dot']);
+        }
+
+        // Lifetime spend for EVERY listed customer in one grouped query. Summing
+        // per row would be a query per line, which is how a list stops loading.
+        // (Shopify-rail money moves through Shopify, not our ledger — a contract-
+        // only customer honestly shows the spend we recorded: none.)
+        $spend = $this->lifetimeSpend(array_map('strval', array_keys($rows)));
+
+        return collect($rows)
+            ->map(function (array $row, string|int $id) use ($spend): array {
+                $row['id'] = (string) $id;
+                $row['spend'] = Money::format((float) ($spend[(string) $id] ?? 0));
+                unset($row['named']);
+
+                return $row;
+            })
+            ->values();
+    }
+
+    /**
+     * PayPlus-rail rows, keyed by customer id. `named` marks an identity captured
+     * at checkout so the merge can prefer it over a contract's bare reference.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function planRows(): array
     {
         $plans = InstallmentPlan::query()
             // The box says "name or email" — so search those, not only the id. It
@@ -79,14 +129,10 @@ class Customers extends Page
             // would turn this list into a page that never paints.
             ->get(['shopify_customer_id', 'customer_name', 'customer_email', 'customer_phone', 'status']);
 
-        // Lifetime spend for EVERY listed customer in one grouped query. Summing
-        // per row would be a query per line, which is how a list stops loading.
-        $spend = $this->lifetimeSpend($plans->pluck('shopify_customer_id')->filter()->unique()->all());
-
         return $plans
             ->whereNotNull('shopify_customer_id')
             ->groupBy('shopify_customer_id')
-            ->map(function (Collection $group, string $customerId) use ($spend): array {
+            ->map(function (Collection $group, string $customerId): array {
                 $statuses = $group->map(fn ($p) => $p->status instanceof PlanStatus ? $p->status->value : (string) $p->status);
 
                 // A NAME, not the raw external id. Checkout captured it on the plan;
@@ -102,16 +148,80 @@ class Customers extends Page
                 $withPhone = $group->first(fn ($p): bool => trim((string) $p->customer_phone) !== '');
 
                 return [
-                    'id' => $customerId,
                     'label' => $named?->customerLabel() ?? $customerId,
+                    'named' => $named !== null,
                     'email' => trim((string) ($named?->customer_email ?? '')) ?: null,
                     'phone' => trim((string) ($withPhone?->customer_phone ?? '')) ?: null,
-                    'spend' => Money::format((float) ($spend[$customerId] ?? 0)),
                     'active_subs' => $statuses->filter(fn (string $s): bool => $s === 'active')->count(),
                     'dot' => $this->dotTone($statuses->all()),
                 ];
             })
-            ->values();
+            ->all();
+    }
+
+    /**
+     * Shopify-Payments-rail rows, keyed by the NUMERIC customer id (the gid's
+     * tail — the same number the plan rows key on, so one shopper on both rails
+     * merges into one line).
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function contractRows(): array
+    {
+        $contracts = SubscriptionContract::query()
+            ->whereNotNull('shopify_customer_gid')
+            ->when($this->search !== '', function ($q): void {
+                $term = '%'.$this->search.'%';
+                $q->where(fn ($w) => $w
+                    ->where('customer_name', 'like', $term)
+                    ->orWhere('customer_email', 'like', $term)
+                    ->orWhere('shopify_customer_gid', 'like', $term));
+            })
+            ->get(['shopify_customer_gid', 'customer_name', 'customer_email', 'status']);
+
+        return $contracts
+            ->groupBy(fn (SubscriptionContract $c): string => basename((string) $c->shopify_customer_gid))
+            ->map(function (Collection $group, string $customerId): array {
+                $named = $group->first(fn ($c): bool => trim((string) $c->customer_name) !== '')
+                    ?? $group->first(fn ($c): bool => trim((string) $c->customer_email) !== '');
+
+                // Name/email are protected customer data (a separate Shopify
+                // approval) — until it lands the row says "Customer #id" rather
+                // than sitting blank or, worse, not existing at all.
+                $label = trim((string) ($named?->customer_name ?? '')) !== ''
+                    ? trim((string) $named->customer_name)
+                    : (trim((string) ($named?->customer_email ?? '')) !== ''
+                        ? trim((string) $named->customer_email)
+                        : __('shopify_subscriptions.detail.customer_ref', ['id' => $customerId]));
+
+                $statuses = $group->map(fn ($c): string => (string) $c->status);
+
+                return [
+                    'label' => $label,
+                    'named' => $named !== null,
+                    'email' => trim((string) ($named?->customer_email ?? '')) ?: null,
+                    'phone' => null, // contracts carry no phone (protected data)
+                    'active_subs' => $statuses->filter(fn (string $s): bool => $s === SubscriptionContract::STATUS_ACTIVE)->count(),
+                    'dot' => $this->contractDot($statuses->all()),
+                ];
+            })
+            ->all();
+    }
+
+    /** Contract-status dot: FAILED → red, any ACTIVE → green, else gray. */
+    private function contractDot(array $statuses): string
+    {
+        if (in_array(SubscriptionContract::STATUS_FAILED, $statuses, true)) {
+            return 'red';
+        }
+
+        return in_array(SubscriptionContract::STATUS_ACTIVE, $statuses, true) ? 'green' : 'gray';
+    }
+
+    /** The worse of two dot tones (red > amber > green > gray). */
+    private function worstDot(string $a, string $b): string
+    {
+        return (self::DOT_RANK[$a] ?? 0) >= (self::DOT_RANK[$b] ?? 0) ? $a : $b;
     }
 
     /**

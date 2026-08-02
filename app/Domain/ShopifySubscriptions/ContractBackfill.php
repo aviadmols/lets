@@ -73,7 +73,22 @@ final class ContractBackfill
 
     private const CUSTOMER_FIELDS_MINIMAL = 'customer { id }';
 
-    /** The one node shape, shared by the paged read and the single-contract one. */
+    /**
+     * The payment method: the reference always; the card's presentation fields
+     * (brand/last4/expiry) are protected like the customer's name and downgrade
+     * together with it on refusal.
+     */
+    private const PAYMENT_FIELDS_FULL = <<<'GQL'
+    customerPaymentMethod { id instrument { ... on CustomerCreditCard { brand lastDigits expiryMonth expiryYear } } }
+    GQL;
+
+    private const PAYMENT_FIELDS_MINIMAL = 'customerPaymentMethod { id }';
+
+    /**
+     * The one node shape, shared by the paged read and the single-contract one.
+     * Line `id` is the SubscriptionLine gid — what the product-edit draft
+     * mutations (subscriptionDraftLineUpdate/Remove) key on.
+     */
     private const NODE_FIELDS = <<<'GQL'
     id
     status
@@ -82,8 +97,9 @@ final class ContractBackfill
     billingPolicy { interval intervalCount }
     deliveryPrice { amount }
     %CUSTOMER%
+    %PAYMENT%
     lines(first: $lines) {
-      edges { node { title quantity currentPrice { amount } productId variantId } }
+      edges { node { id title quantity currentPrice { amount } productId variantId } }
     }
     GQL;
 
@@ -238,9 +254,15 @@ final class ContractBackfill
     /** A read, with whichever customer selection this attempt is allowed. */
     private function query(string $template, string $customerFields): string
     {
+        // The card instrument is protected exactly like the customer identity —
+        // the two selections downgrade together on a protected-field refusal.
+        $paymentFields = $customerFields === self::CUSTOMER_FIELDS_FULL
+            ? self::PAYMENT_FIELDS_FULL
+            : self::PAYMENT_FIELDS_MINIMAL;
+
         return str_replace(
             '%NODE%',
-            str_replace('%CUSTOMER%', $customerFields, self::NODE_FIELDS),
+            str_replace(['%CUSTOMER%', '%PAYMENT%'], [$customerFields, $paymentFields], self::NODE_FIELDS),
             $template,
         );
     }

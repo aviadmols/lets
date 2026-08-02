@@ -63,6 +63,8 @@ final class EventPresenter
         'shopify_subscription_cancelled' => ['info', 'timeline.kind.plan_cancelled'],
         'shopify_subscription_rescheduled' => ['info', 'timeline.kind.shopify_subscription_rescheduled'],
         'shopify_subscription_bill_now' => ['info', 'timeline.kind.shopify_subscription_bill_now'],
+        'shopify_subscription_products_edited' => ['info', 'timeline.kind.shopify_subscription_products_edited'],
+        'shopify_subscription_card_update_email' => ['info', 'timeline.kind.shopify_subscription_card_update_email'],
     ];
 
     public const FALLBACK = ['info', 'timeline.kind.generic'];

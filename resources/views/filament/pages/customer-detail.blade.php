@@ -156,9 +156,41 @@
             <div class="rc-section">
                 <div class="rc-section__title">{{ __('customers.detail.subscriptions_title') }}</div>
                 @php $plans = $this->plans(); @endphp
-                @if($plans->isEmpty())
+                @php $contracts = $this->contracts(); @endphp
+
+                {{-- Shopify-Payments-rail contracts: on a Shopify-rail store these
+                     ARE the customer's subscriptions (there are no plan rows). --}}
+                @if($contracts->isNotEmpty())
+                    <div class="rc-stack rc-stack--tight">
+                        @foreach($contracts as $contract)
+                            @php
+                                $contractRail = match ((string) $contract->status) {
+                                    \App\Models\SubscriptionContract::STATUS_FAILED => 'rc-railed--failed',
+                                    \App\Models\SubscriptionContract::STATUS_ACTIVE => 'rc-railed--active',
+                                    default => '',
+                                };
+                            @endphp
+                            <a class="rc-railed {{ $contractRail }}"
+                               href="{{ \App\Filament\Resources\SubscriptionContractResource\Pages\ViewSubscriptionContract::getUrl(['contract' => $contract->getKey()]) }}">
+                                <div class="rc-row rc-row--between">
+                                    <span class="rc-strong">{{ __('shopify_subscriptions.detail.title') }} · #{{ $contract->shopifyNumericId() }}</span>
+                                    <x-rc.badge
+                                        :label="'shopify_subscriptions.status.' . $contract->status"
+                                        :tone="$contract->status === \App\Models\SubscriptionContract::STATUS_ACTIVE ? 'green'
+                                            : ($contract->status === \App\Models\SubscriptionContract::STATUS_FAILED ? 'red' : 'gray')" />
+                                </div>
+                                <span class="rc-muted rc-ltr">
+                                    {{ $contract->amount !== null ? \App\Support\Ui\Money::format((float) $contract->amount, (string) $contract->currency) : '—' }}
+                                    · {{ optional($contract->next_billing_date)->format('d M Y') ?? '—' }}
+                                </span>
+                            </a>
+                        @endforeach
+                    </div>
+                @endif
+
+                @if($plans->isEmpty() && $contracts->isEmpty())
                     <p class="rc-muted">{{ __('customers.detail.no_subscriptions') }}</p>
-                @else
+                @elseif($plans->isNotEmpty())
                     <div class="rc-stack rc-stack--tight">
                         @foreach($plans as $plan)
                             @php
