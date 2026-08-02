@@ -2,6 +2,7 @@
 
 namespace App\Services\WooCommerce\Orders;
 
+use App\Domain\Billing\CycleAmountResolver;
 use App\Models\InstallmentPlan;
 use App\Modules\PayPlusShopifyInstallments\Enums\ChargeContext;
 use App\Services\Orders\PlatformOrderStrategy;
@@ -151,13 +152,12 @@ final class WooCommerceOrderStrategy implements PlatformOrderStrategy
     /** recurring: a NEW PAID WC order per cycle, linked by meta (failed cycle ⇒ no order). */
     private function onRecurring(InstallmentPlan $plan, WooCommerceClient $client): void
     {
-        // A ONE-TIME next-order override (W25) shapes THIS cycle only: its own line items (real
-        // products) + amount. The total of the override lines equals the charged amount (amountFor
-        // reads the same override), so the order still sums to the money that moved.
+        // A ONE-TIME next-order override (W25) shapes THIS cycle's LINE ITEMS; the
+        // AMOUNT comes from the shared resolver (the succeeded slot's frozen amount →
+        // override → the plan ladder) so the order always sums to the money that moved,
+        // including a cycle priced past the intro-discount window.
         $override = $plan->nextOrderOverride();
-        $amount = $override !== null
-            ? round((float) ($override['amount'] ?? 0), 2)
-            : round((float) ($plan->installment_amount ?? 0), 2);
+        $amount = (new CycleAmountResolver)->amountForCycleOrder($plan);
         if ($amount <= 0) {
             return;
         }
@@ -170,6 +170,11 @@ final class WooCommerceOrderStrategy implements PlatformOrderStrategy
                 'total' => $this->money($amount),
             ]];
 
+        // Discount-tag predicate: the cycle charged BELOW the plan's regular
+        // (undiscounted) price — intro window active, or a kept first payment.
+        $discounted = $plan->regular_amount !== null
+            && $amount < round((float) $plan->regular_amount, 2);
+
         $order = $client->createOrder([
             'status' => self::STATUS_COMPLETED,         // a fulfillable, paid cycle order
             'set_paid' => true,                         // the money already moved through PayPlus
@@ -179,7 +184,9 @@ final class WooCommerceOrderStrategy implements PlatformOrderStrategy
             'meta_data' => $this->meta([
                 self::META_PLAN_PUBLIC_ID => (string) $plan->public_id,
                 self::META_ORDER_ROLE => self::ROLE_RECURRING,
-                WooOrderTags::META_TAGS => WooOrderTags::line(WooOrderTags::KIND_RECURRING),
+                WooOrderTags::META_TAGS => $discounted
+                    ? WooOrderTags::line(WooOrderTags::KIND_RECURRING, WooOrderTags::KIND_DISCOUNT)
+                    : WooOrderTags::line(WooOrderTags::KIND_RECURRING),
                 self::META_MAIN_ORDER_ID => (string) ($plan->externalOrderId() ?? ''),
                 self::META_PAID_AMOUNT => $this->money($amount),
             ]),

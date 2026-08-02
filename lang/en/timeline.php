@@ -22,6 +22,8 @@ return [
         'document_failed' => 'Invoice failed',
         'document_retried' => 'Invoice retried by the merchant',
         'document_force_issued' => 'Invoice issued after the merchant checked Green Invoice',
+        'price_stepped_up' => 'Intro discount ended — price stepped up to the regular price',
+        'checkout_discount_captured' => 'Coupon captured from the checkout order',
         'generic' => 'Activity',
     ],
 

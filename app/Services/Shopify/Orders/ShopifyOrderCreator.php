@@ -98,9 +98,12 @@ final class ShopifyOrderCreator
      * inline sale transaction so Shopify shows Paid without us holding card data —
      * the real money already moved through PayPlus.
      *
+     * @param  bool  $discounted  the cycle charged BELOW the plan's regular price
+     *                            (intro window / kept first payment) — adds the
+     *                            subscription-discount tag so the merchant can filter.
      * @return array{shopify_order_id: string, shopify_order_gid: ?string, shopify_order_name: ?string}
      */
-    public function createPaidRecurringOrderForPayment(InstallmentPlan $plan, float $amount): array
+    public function createPaidRecurringOrderForPayment(InstallmentPlan $plan, float $amount, bool $discounted = false): array
     {
         $amount = round($amount, 2);
         if ($amount <= 0) {
@@ -111,7 +114,9 @@ final class ShopifyOrderCreator
             'email' => (string) $plan->customer_email,
             'currency' => (string) $plan->currency,
             'source_name' => (string) config('shopify.order_source_name'),
-            'tags' => ShopifyOrderTags::line('recurring_order', 'payment_order'),
+            'tags' => $discounted
+                ? ShopifyOrderTags::line('recurring_order', 'payment_order', 'subscription_discount')
+                : ShopifyOrderTags::line('recurring_order', 'payment_order'),
             'send_receipt' => false,
             'send_fulfillment_receipt' => false,
             'customer' => array_filter([

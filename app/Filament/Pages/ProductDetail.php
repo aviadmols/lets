@@ -75,6 +75,17 @@ class ProductDetail extends Page
 
     public int $discountPercent = 0;
 
+    /** Pricing mode ∈ ProductSubscriptionPlan::PRICING_MODES. */
+    public string $pricingMode = ProductSubscriptionPlan::PRICING_PLAN_PRICE;
+
+    /** Merchant-entered per-cycle amount (fixed_amount mode only); string for the input. */
+    public string $fixedAmount = '';
+
+    /** Limit the discount to the first N charges (checkout = charge #1). */
+    public bool $limitDiscountCycles = false;
+
+    public int $discountCyclesCount = 3;
+
     /** null = "When customers sign up"; otherwise a 1–28 day-of-month. */
     public ?int $chargeDayOfMonth = null;
 
@@ -242,7 +253,8 @@ class ProductDetail extends Page
                 'discount' => $this->discountLabel($plan),
                 'channels' => $this->channelLabels($plan),
                 'status' => $plan->status instanceof PlanTemplateStatus ? $plan->status->value : (string) $plan->status,
-                'price' => Money::format($plan->discountedPrice($basePrice)),
+                // cycleAmountFor honors pricing_mode (fixed_amount ignores the catalog).
+                'price' => Money::format($plan->cycleAmountFor($basePrice)),
                 // The engine this plan bills on, and — on the Shopify rail — whether
                 // it is actually LIVE at Shopify. A configured-but-unpublished plan
                 // cannot be bought as a subscription, so the row must say so.
@@ -281,6 +293,15 @@ class ProductDetail extends Page
 
     private function discountLabel(ProductSubscriptionPlan $plan): string
     {
+        // An intro window narrows the claim: "X% off" would promise forever.
+        $window = $plan->introWindow();
+        if ($window !== null && $plan->discount_type === ProductSubscriptionPlan::DISCOUNT_PERCENT) {
+            return __('products.detail.intro_pricing', [
+                'value' => (int) round((float) $plan->discount_value),
+                'count' => $window,
+            ]);
+        }
+
         return match ($plan->discount_type) {
             ProductSubscriptionPlan::DISCOUNT_PERCENT => __('products.detail.discount_pct', ['value' => (int) round((float) $plan->discount_value)]),
             ProductSubscriptionPlan::DISCOUNT_FIXED => __('products.detail.discount_fixed', ['value' => Money::format((float) $plan->discount_value)]),
@@ -589,6 +610,14 @@ class ProductDetail extends Page
         $this->offerDiscount = $plan->discount_type === ProductSubscriptionPlan::DISCOUNT_PERCENT
             && (float) $plan->discount_value > 0;
         $this->discountPercent = (int) round((float) $plan->discount_value);
+        $this->pricingMode = in_array((string) $plan->pricing_mode, ProductSubscriptionPlan::PRICING_MODES, true)
+            ? (string) $plan->pricing_mode
+            : ProductSubscriptionPlan::PRICING_PLAN_PRICE;
+        $this->fixedAmount = (float) $plan->fixed_cycle_amount > 0
+            ? number_format((float) $plan->fixed_cycle_amount, 2, '.', '')
+            : '';
+        $this->limitDiscountCycles = (int) ($plan->discount_cycles ?? 0) > 0;
+        $this->discountCyclesCount = max(1, (int) ($plan->discount_cycles ?? 3));
         $this->chargeDayOfMonth = $plan->charge_day_of_month !== null ? (int) $plan->charge_day_of_month : null;
         $this->expireEnabled = $plan->expire_after_charges !== null;
         $this->expireAfterCharges = max(1, (int) ($plan->expire_after_charges ?? 1));
@@ -633,6 +662,34 @@ class ProductDetail extends Page
         $percent = max(0, min(100, (int) $this->discountPercent));
         $discountOn = $this->offerDiscount && $percent > 0;
 
+        // pricing_mode ∈ PRICING_MODES. keep_first_payment has no Shopify-Payments
+        // primitive, so it is forced back to plan_price on that rail (the drawer
+        // disables the option; this is the server-side backstop).
+        $mode = in_array((string) $this->pricingMode, ProductSubscriptionPlan::PRICING_MODES, true)
+            ? (string) $this->pricingMode
+            : ProductSubscriptionPlan::PRICING_PLAN_PRICE;
+        $railForMode = in_array((string) $this->billingRail, ProductSubscriptionPlan::BILLING_RAILS, true)
+            ? (string) $this->billingRail
+            : ($this->shop()?->subscriptionRail() ?? Shop::RAIL_PAYPLUS);
+        if ($mode === ProductSubscriptionPlan::PRICING_KEEP_FIRST && $railForMode === Shop::RAIL_SHOPIFY_PAYMENTS) {
+            $mode = ProductSubscriptionPlan::PRICING_PLAN_PRICE;
+        }
+
+        // fixed_cycle_amount only in fixed mode, positive, 2dp; else cleared.
+        $fixedAmount = null;
+        if ($mode === ProductSubscriptionPlan::PRICING_FIXED) {
+            $fixedAmount = round((float) $this->fixedAmount, 2);
+            if ($fixedAmount <= 0) {
+                $mode = ProductSubscriptionPlan::PRICING_PLAN_PRICE;
+                $fixedAmount = null;
+            }
+        }
+
+        // discount_cycles ∈ {null} ∪ [1..120]; only meaningful with a discount on.
+        $discountCycles = $discountOn && $this->limitDiscountCycles
+            ? max(1, min(120, (int) $this->discountCyclesCount))
+            : null;
+
         // charge_day_of_month ∈ {null} ∪ [1..28]; null = "on signup".
         $chargeDay = null;
         if ($this->chargeDayOfMonth !== null) {
@@ -662,6 +719,9 @@ class ProductDetail extends Page
             'billing_frequency' => $isSub ? $frequency : null,
             'discount_type' => $discountOn ? ProductSubscriptionPlan::DISCOUNT_PERCENT : ProductSubscriptionPlan::DISCOUNT_NONE,
             'discount_value' => $discountOn ? $percent : 0,
+            'pricing_mode' => $isSub ? $mode : ProductSubscriptionPlan::PRICING_PLAN_PRICE,
+            'fixed_cycle_amount' => $isSub ? $fixedAmount : null,
+            'discount_cycles' => $isSub ? $discountCycles : null,
             'charge_day_of_month' => $isSub ? $chargeDay : null,
             'expire_after_charges' => $isSub && $this->expireEnabled ? max(1, (int) $this->expireAfterCharges) : null,
             'channels' => $channels,
@@ -709,11 +769,26 @@ class ProductDetail extends Page
      * The live price-summary label for the drawer ("₪X every N {unit}"), computed
      * server-side via discountedPrice() — never trusting the client.
      */
+    /**
+     * Is keep_first_payment unavailable for the drawer's CURRENT rail selection?
+     * Shopify Payments owns that rail's money — there is nothing for us to "keep".
+     */
+    public function drawerKeepFirstBlocked(): bool
+    {
+        $rail = in_array((string) $this->billingRail, ProductSubscriptionPlan::BILLING_RAILS, true)
+            ? (string) $this->billingRail
+            : ($this->shop()?->subscriptionRail() ?? Shop::RAIL_PAYPLUS);
+
+        return $rail === Shop::RAIL_SHOPIFY_PAYMENTS;
+    }
+
     public function planPriceSummary(): string
     {
         $base = $this->primaryPrice();
         $percent = $this->offerDiscount ? max(0, min(100, (int) $this->discountPercent)) : 0;
-        $price = round($base * (1 - $percent / 100), 2);
+        $price = $this->pricingMode === ProductSubscriptionPlan::PRICING_FIXED && (float) $this->fixedAmount > 0
+            ? round((float) $this->fixedAmount, 2)
+            : round($base * (1 - $percent / 100), 2);
         $count = max(self::MIN_INTERVAL, (int) $this->intervalCount);
         $unit = $this->unitLabel($this->sanitizeFrequency($this->frequencyUnit)->value, $count);
 

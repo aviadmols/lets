@@ -72,6 +72,25 @@
                             @endif
                         </span>
                     @endif
+                    @php $coupon = $this->checkoutDiscount(); @endphp
+                    @if($coupon)
+                        <span class="rc-kv__k">{{ __('subscriptions.detail.coupon_applied') }}</span>
+                        <span class="rc-kv__v">
+                            <span class="rc-ltr">{{ $coupon['codes'] }}</span>
+                            @if($coupon['amount'])
+                                <span class="rc-ltr">(-{{ $coupon['amount'] }})</span>
+                            @endif
+                        </span>
+                    @endif
+                    @php $intro = $this->introWindow(); @endphp
+                    @if($intro)
+                        <span class="rc-kv__k">{{ __('subscriptions.detail.intro_window') }}</span>
+                        <span class="rc-kv__v">
+                            {{ $intro['ended']
+                                ? __('subscriptions.detail.intro_window_ended')
+                                : __('subscriptions.detail.intro_window_status', ['used' => $intro['used'], 'total' => $intro['total']]) }}
+                        </span>
+                    @endif
                 </div>
             @endif
         </div>

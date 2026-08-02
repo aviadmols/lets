@@ -5,12 +5,19 @@ namespace Tests\Feature\Orders;
 use App\Domain\Campaigns\Models\GiftCampaign;
 use App\Domain\Campaigns\Models\GiftRecipient;
 use App\Domain\Campaigns\GiftShippingAddress;
+use App\Models\InstallmentPlan;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Shop;
+use App\Modules\PayPlusShopifyInstallments\Enums\ChargeContext;
+use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
+use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Services\Shopify\Orders\DefaultShopifyOrderStrategy;
 use App\Services\Shopify\Orders\ShopifyGiftOrderService;
 use App\Services\Shopify\Orders\ShopifyOrderTags;
 use App\Services\Shopify\ShopifyClientFactory;
+use App\Services\Shopify\ShopifyToken;
+use App\Services\WooCommerce\Orders\WooCommerceOrderStrategy;
 use App\Services\WooCommerce\Orders\WooGiftOrderService;
 use App\Services\WooCommerce\Orders\WooOrderTags;
 use App\Support\Tenant;
@@ -124,7 +131,120 @@ final class OrderTagsTest extends TestCase
         });
     }
 
+    // === The subscription-discount tag (pricing modes / intro window) ===
+
+    public function test_a_discounted_shopify_cycle_order_carries_the_discount_tag(): void
+    {
+        $recorder = new RecordingShopifyClient();
+        ShopifyClientFactory::fake(fn (): RecordingShopifyClient => $recorder);
+
+        $shop = $this->installedShopifyShop('disc-tag.myshopify.com');
+        // Charged 80 against a regular price of 100 ⇒ a discounted cycle.
+        $plan = $this->recurringPlan($shop, installmentAmount: 80, regularAmount: 100);
+
+        Tenant::run($shop, fn () => (new DefaultShopifyOrderStrategy())->materialize($plan, ChargeContext::RECURRING));
+
+        $tags = $recorder->createdOrders[0]['tags'];
+        $this->assertStringContainsString('subscription-discount', $tags);
+        $this->assertStringContainsString('subscription-recurring', $tags);
+    }
+
+    public function test_a_full_price_shopify_cycle_order_has_no_discount_tag(): void
+    {
+        $recorder = new RecordingShopifyClient();
+        ShopifyClientFactory::fake(fn (): RecordingShopifyClient => $recorder);
+
+        $shop = $this->installedShopifyShop('full-tag.myshopify.com');
+        // Charged exactly the regular price ⇒ nothing to claim.
+        $plan = $this->recurringPlan($shop, installmentAmount: 100, regularAmount: 100);
+
+        Tenant::run($shop, fn () => (new DefaultShopifyOrderStrategy())->materialize($plan, ChargeContext::RECURRING));
+
+        $this->assertStringNotContainsString('subscription-discount', $recorder->createdOrders[0]['tags']);
+    }
+
+    public function test_a_discounted_woo_cycle_order_carries_the_discount_kind(): void
+    {
+        Http::fake(['*/wp-json/wc/v3/*' => Http::response(['id' => 9300], 201)]);
+
+        $shop = $this->connectedWooShop('disc-tag.example.com');
+        $plan = $this->recurringPlan($shop, installmentAmount: 80, regularAmount: 100);
+
+        Tenant::run($shop, fn () => (new WooCommerceOrderStrategy())->materialize($plan, ChargeContext::RECURRING));
+
+        Http::assertSent(function (HttpRequest $request): bool {
+            if (! str_ends_with($request->url(), '/wp-json/wc/v3/orders')) {
+                return false;
+            }
+            $meta = collect($request->data()['meta_data'])->pluck('value', 'key');
+
+            return $meta[WooOrderTags::META_TAGS] === 'LETS, recurring, discount';
+        });
+    }
+
+    public function test_a_legacy_plan_without_a_regular_amount_is_never_tagged_discounted(): void
+    {
+        $recorder = new RecordingShopifyClient();
+        ShopifyClientFactory::fake(fn (): RecordingShopifyClient => $recorder);
+
+        $shop = $this->installedShopifyShop('legacy-tag.myshopify.com');
+        $plan = $this->recurringPlan($shop, installmentAmount: 80, regularAmount: null);
+
+        Tenant::run($shop, fn () => (new DefaultShopifyOrderStrategy())->materialize($plan, ChargeContext::RECURRING));
+
+        $this->assertStringNotContainsString('subscription-discount', $recorder->createdOrders[0]['tags']);
+    }
+
     // === Fixtures ===
+
+    private function installedShopifyShop(string $domain): Shop
+    {
+        $shop = Shop::create([
+            'shopify_domain' => $domain,
+            'name' => $domain,
+            'status' => Shop::STATUS_INSTALLED,
+        ]);
+        $shop->captureShopifyInstall(new ShopifyToken('shpat_token_'.$domain, 'read_orders,write_orders', 86400));
+
+        return $shop->fresh();
+    }
+
+    private function connectedWooShop(string $domain): Shop
+    {
+        $shop = Shop::create([
+            'woocommerce_domain' => $domain,
+            'name' => $domain,
+            'status' => Shop::STATUS_ACTIVE,
+            'platform' => Shop::PLATFORM_WOOCOMMERCE,
+        ]);
+        $shop->woocommerce_credentials = [
+            'base_url' => 'https://'.$domain,
+            'consumer_key' => 'ck', 'consumer_secret' => 'cs',
+        ];
+        $shop->save();
+
+        return $shop->fresh();
+    }
+
+    private function recurringPlan(Shop $shop, float $installmentAmount, ?float $regularAmount): InstallmentPlan
+    {
+        return Tenant::run($shop, function () use ($installmentAmount, $regularAmount): InstallmentPlan {
+            $plan = InstallmentPlan::create([
+                'plan_kind' => PlanKind::RECURRING->value,
+                'charge_context' => 'recurring',
+                'total_amount' => $installmentAmount,
+                'total_charged' => 0,
+                'installment_amount' => $installmentAmount,
+                'regular_amount' => $regularAmount,
+                'currency' => 'ILS',
+                'public_id' => 'PLAN-'.uniqid(),
+                'customer_email' => 'buyer@example.com',
+            ]);
+            $plan->forceFill(['status' => PlanStatus::ACTIVE->value])->save();
+
+            return $plan;
+        });
+    }
 
     private function address(): GiftShippingAddress
     {

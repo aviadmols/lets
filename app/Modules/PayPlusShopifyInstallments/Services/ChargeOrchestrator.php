@@ -4,6 +4,7 @@ namespace App\Modules\PayPlusShopifyInstallments\Services;
 
 use App\Domain\Billing\Contracts\DocumentPolicy;
 use App\Domain\Billing\Contracts\DocumentPolicyInput;
+use App\Domain\Billing\CycleAmountResolver;
 use App\Domain\Billing\IdempotencyKey;
 use App\Domain\Billing\Ledger;
 use App\Domain\Invoicing\DocumentContext;
@@ -72,6 +73,7 @@ final class ChargeOrchestrator
     public function __construct(
         private readonly DocumentPolicy $documentPolicy,
         private readonly ?ShopifyOrderStrategy $shopifyOrders = null,
+        private readonly CycleAmountResolver $cycleAmounts = new CycleAmountResolver,
     ) {}
 
     /**
@@ -517,10 +519,17 @@ final class ChargeOrchestrator
             ],
             [
                 'payment_type' => $type->value,
-                'amount' => $this->amountFor($plan, $type),
+                'amount' => $this->amountFor($plan, $type, $sequence),
                 'currency' => $plan->currency,
             ],
         );
+
+        // Intro-window step-up: the FIRST slot priced past the window records the
+        // price rise once (Timeline + emit-once meta flag). Stamp time, not success
+        // time — the slot amount is frozen here, so this IS when the price changed.
+        if ($payment->wasRecentlyCreated) {
+            $this->noteIntroWindowStepUp($plan, $sequence);
+        }
 
         // status is guarded (the slot state machine owns it). A brand-new slot is
         // BORN `pending`; set it via forceFill so the in-memory instance carries
@@ -548,24 +557,53 @@ final class ChargeOrchestrator
         return max(1, $existing + 1);
     }
 
-    private function amountFor(InstallmentPlan $plan, PaymentType $type): float
+    private function amountFor(InstallmentPlan $plan, PaymentType $type, int $sequence): float
     {
         if ($plan->plan_kind === PlanKind::RECURRING) {
-            // A ONE-TIME next-order override (W25) prices THIS cycle only. The amount is read from
-            // the plan (server-side, stamped at edit time from the catalog) — never client-supplied
-            // at charge time — so the ledger/idempotency invariants hold. Cleared on success.
-            $override = $plan->nextOrderOverride();
-            if ($override !== null && isset($override['amount'])) {
-                return round((float) $override['amount'], 2);
-            }
-
-            return round((float) $plan->installment_amount, 2);
+            // The shared resolver owns the recurring ladder (override → stepped-up
+            // regular_amount past the intro window → installment_amount). The slot
+            // sequence IS the charge ordinal with checkout counted as #1 (the
+            // checkout occupies the succeeded seq-0 slot), so it feeds straight in.
+            return $this->cycleAmounts->amountForCharge($plan, $sequence);
         }
 
         // Installments: per-slot amount, capped at the remaining balance.
         $slot = (float) ($plan->installment_amount ?: $plan->remainingAmount());
 
         return round(min($slot, $plan->remainingAmount()), 2);
+    }
+
+    /**
+     * Record the intro-window price step-up ONCE — when the first slot past the
+     * window is stamped. Guarded by a meta flag so retries/replays never write a
+     * second Timeline row.
+     */
+    private function noteIntroWindowStepUp(InstallmentPlan $plan, int $sequence): void
+    {
+        if ($plan->plan_kind !== PlanKind::RECURRING
+            || $sequence !== ((int) ($plan->discount_cycles ?? 0)) + 1
+            || ! $this->cycleAmounts->windowEndedAt($plan, $sequence)) {
+            return;
+        }
+
+        $meta = (array) ($plan->meta ?? []);
+        if (! empty($meta[InstallmentPlan::META_INTRO_WINDOW_ENDED])) {
+            return;
+        }
+
+        $meta[InstallmentPlan::META_INTRO_WINDOW_ENDED] = now()->toIso8601String();
+        $plan->forceFill(['meta' => $meta])->save();
+
+        Timeline::record(
+            kind: Timeline::KIND_PRICE_STEPPED_UP,
+            details: [
+                'from_amount' => round((float) $plan->installment_amount, 2),
+                'to_amount' => round((float) $plan->regular_amount, 2),
+                'charge_number' => $sequence,
+            ],
+            planId: $plan->getKey(),
+            shopId: $plan->shop_id,
+        );
     }
 
     private function idempotencyKeyFor(InstallmentPlan $plan, PaymentType $type): string

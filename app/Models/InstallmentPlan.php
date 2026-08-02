@@ -48,6 +48,20 @@ class InstallmentPlan extends Model
     public const META_ITEM_TITLE = 'item_title';
 
     /**
+     * meta key holding the coupon/discount captured from the CHECKOUT order.
+     * Shape: {codes: string[], amount: float, type: ?string}. Display + order
+     * tagging ONLY — money never reads it (the price schedule lives in the
+     * snapshot columns; consent law).
+     */
+    public const META_CHECKOUT_DISCOUNT = 'checkout_discount';
+
+    /**
+     * meta flag set once the intro-discount window has ended and the one-time
+     * `price_stepped_up` Timeline event was written (emit-once guard).
+     */
+    public const META_INTRO_WINDOW_ENDED = 'intro_window_ended';
+
+    /**
      * Hardened mass-assignment: shop_id (auto-stamped by BelongsToShop) and
      * status (the state machine is the ONLY legal mutation path) are guarded so a
      * raw Model::create()/update() cannot set them and bypass tenancy or the
@@ -64,6 +78,8 @@ class InstallmentPlan extends Model
             'total_amount' => 'decimal:2',
             'total_charged' => 'decimal:2',
             'installment_amount' => 'decimal:2',
+            'regular_amount' => 'decimal:2',
+            'discount_cycles' => 'integer',
             'interval_count' => 'integer',
             'requires_manual_payment' => 'boolean',
             'next_charge_at' => 'datetime',
@@ -164,6 +180,18 @@ class InstallmentPlan extends Model
         return is_array($override) && ! empty($override['line_items']) ? $override : null;
     }
 
+    /**
+     * The coupon/discount captured from the checkout order, or null when none
+     * was captured (no coupon, legacy plan, or an older WP plugin that does not
+     * transmit coupon lines). @return array{codes: list<string>, amount: float, type: ?string}|null
+     */
+    public function checkoutDiscount(): ?array
+    {
+        $discount = ($this->meta ?? [])[self::META_CHECKOUT_DISCOUNT] ?? null;
+
+        return is_array($discount) && ! empty($discount['codes']) ? $discount : null;
+    }
+
     /** Drop the one-time next-order override (after it has been consumed by a charge). */
     public function clearNextOrderOverride(): void
     {
@@ -218,6 +246,12 @@ class InstallmentPlan extends Model
     public function paymentMethod(): BelongsTo
     {
         return $this->belongsTo(InstallmentPaymentMethod::class, 'payment_method_id');
+    }
+
+    /** The template this plan was born from — provenance/display only, never money. */
+    public function template(): BelongsTo
+    {
+        return $this->belongsTo(ProductSubscriptionPlan::class, 'product_subscription_plan_id');
     }
 
     public function activePaymentMethod(): ?InstallmentPaymentMethod

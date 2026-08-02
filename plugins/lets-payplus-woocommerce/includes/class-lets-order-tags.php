@@ -41,6 +41,7 @@ function lets_payplus_tag_kinds()
         'recurring'    => $he ? 'מנוי' : 'Subscription',
         'upsell'       => $he ? 'אפסייל' : 'Upsell',
         'gift'         => $he ? 'מתנה' : 'Gift',
+        'discount'     => $he ? 'הנחת מנוי' : 'Subscription discount',
     );
 }
 

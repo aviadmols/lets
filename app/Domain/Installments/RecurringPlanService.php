@@ -154,13 +154,26 @@ final class RecurringPlanService
      * createAwaitingExternalPayment()). No page, no charge — money law: the amount is the
      * server-trusted per-cycle price; tenant law: shop_id is forceFilled from $shop.
      *
+     * Pricing snapshot (consent law): when the caller resolved a template, its
+     * pricing_mode / discount_cycles land HERE as the plan's own copy, together
+     * with regular_amount (the undiscounted per-cycle amount, quantity included)
+     * — a later template edit must never retroactively reprice a live plan.
+     *
      * @param  array<string, mixed>  $context
      */
     private function buildPlanRow(Shop $shop, array $context, float $amount, BillingFrequency $frequency, int $intervalCount, string $currency): InstallmentPlan
     {
-        return DB::transaction(function () use ($shop, $context, $amount, $frequency, $intervalCount, $currency): InstallmentPlan {
+        $template = $context['template'] ?? null;
+        $template = $template instanceof \App\Models\ProductSubscriptionPlan ? $template : null;
+        $regular = round((float) ($context['regular_amount'] ?? 0), 2);
+
+        return DB::transaction(function () use ($shop, $context, $amount, $frequency, $intervalCount, $currency, $template, $regular): InstallmentPlan {
             $plan = new InstallmentPlan;
             $plan->fill([
+                'pricing_mode' => $template?->pricing_mode,
+                'discount_cycles' => $template?->introWindow(),
+                'regular_amount' => $regular > 0 ? $regular : null,
+                'product_subscription_plan_id' => $template?->getKey(),
                 'customer_id' => null,
                 'shopify_customer_id' => $context['external_customer_id'] ?? null,
                 'external_customer_id' => $context['external_customer_id'] ?? null,

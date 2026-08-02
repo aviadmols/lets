@@ -98,10 +98,11 @@ final class WooSubscriptionCatalogController extends WooStorefrontController
                 ]);
             }
 
-            // Server-trusted per-cycle price from the synced catalog + the template discount.
+            // Server-trusted per-cycle price from the synced catalog + the template's
+            // pricing mode (fixed_amount ignores the catalog; the rest discount it).
             $resolved = $this->prices->resolve($productId, $variantId);
             $unitPrice = $resolved !== null ? round((float) $resolved['variant']->price, 2) : 0.0;
-            $perCycle = $subscription->discountedPrice($unitPrice);
+            $perCycle = $subscription->cycleAmountFor($unitPrice);
 
             return response()->json([
                 'ok' => true,

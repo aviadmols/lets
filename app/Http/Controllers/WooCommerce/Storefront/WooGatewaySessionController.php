@@ -225,7 +225,9 @@ final class WooGatewaySessionController extends WooStorefrontController
                 }
 
                 $unitPrice = round((float) $resolved['variant']->price, 2);
-                $perCycle = round($template->discountedPrice($unitPrice) * $quantity, 2);
+                // cycleAmountFor honors the template's pricing_mode (fixed_amount
+                // bypasses the catalog; every other mode is catalog × discount).
+                $perCycle = round($template->cycleAmountFor($unitPrice) * $quantity, 2);
                 if ($perCycle <= 0) {
                     continue;
                 }
@@ -235,6 +237,10 @@ final class WooGatewaySessionController extends WooStorefrontController
                     'variant_gid' => $variantId,
                     'item_title' => $resolved['title'],
                     'amount' => $perCycle,
+                    // Pricing snapshot: the plan carries its own copy of the template
+                    // pricing + the undiscounted per-cycle amount it can step up to.
+                    'template' => $template,
+                    'regular_amount' => round($unitPrice * $quantity, 2),
                     'frequency' => $template->billing_frequency ?? BillingFrequency::MONTHLY,
                     'interval_count' => max(1, (int) $template->interval_count),
                     'currency' => $currency,

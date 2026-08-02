@@ -44,6 +44,10 @@ final class Timeline
      * duplicate tax document, and it must be greppable in the Timeline on its own.
      */
     public const KIND_DOCUMENT_FORCE_ISSUED = 'document_force_issued';
+    /** The intro-discount window ended — the cycle price stepped up to regular_amount. */
+    public const KIND_PRICE_STEPPED_UP = 'price_stepped_up';
+    /** A coupon/discount was captured from the checkout order at activation. */
+    public const KIND_CHECKOUT_DISCOUNT_CAPTURED = 'checkout_discount_captured';
 
     /**
      * Record a Timeline event. Never throws.

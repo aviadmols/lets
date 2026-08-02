@@ -499,6 +499,54 @@ class ViewSubscription extends Page
     }
 
     /**
+     * The coupon captured from the checkout order — {codes: string, amount: string}
+     * display-ready — or null when none was captured.
+     */
+    public function checkoutDiscount(): ?array
+    {
+        $discount = $this->record->checkoutDiscount();
+        if ($discount === null) {
+            return null;
+        }
+
+        $amount = (float) ($discount['amount'] ?? 0);
+
+        return [
+            'codes' => implode(', ', (array) $discount['codes']),
+            'amount' => $amount > 0
+                ? Money::format($amount, $this->record->currency ?: Money::DEFAULT_CURRENCY)
+                : null,
+        ];
+    }
+
+    /**
+     * Intro-discount window progress — {used, total, ended} — or null when the
+     * plan has no window. Values from the shared resolver, so this can never
+     * disagree with what the engine will charge.
+     */
+    public function introWindow(): ?array
+    {
+        $status = (new \App\Domain\Billing\CycleAmountResolver)->introWindowStatus($this->record);
+        if ($status === null) {
+            return null;
+        }
+
+        return [
+            'used' => $status['used'],
+            'total' => $status['total'],
+            'ended' => $status['used'] >= $status['total'],
+        ];
+    }
+
+    /** The amount the NEXT charge will bill (override → intro window → steady state). */
+    public function nextCycleAmount(): float
+    {
+        $resolver = new \App\Domain\Billing\CycleAmountResolver;
+
+        return $resolver->amountForCharge($this->record, $resolver->chargeNumberForNext($this->record));
+    }
+
+    /**
      * Past cycle orders (most recent first) from meta['wc_recurring_order_ids'].
      *
      * @return list<array{id: string, url: ?string}>
@@ -540,18 +588,18 @@ class ViewSubscription extends Page
         return [[
             'name' => __('subscriptions.detail.recurring_line'),
             'quantity' => 1,
-            'amount' => Money::format((float) $this->record->installment_amount, $currency),
+            // The resolver's number, not raw installment_amount — past the intro
+            // window the next cycle bills the regular (stepped-up) price.
+            'amount' => Money::format($this->nextCycleAmount(), $currency),
         ]];
     }
 
-    /** The next charge total (override amount when set, else the plan's per-cycle amount), formatted. */
+    /** The next charge total (override → intro window → steady state), formatted. */
     public function nextOrderTotal(): string
     {
         $currency = $this->record->currency ?: Money::DEFAULT_CURRENCY;
-        $override = $this->record->nextOrderOverride();
-        $amount = $override !== null ? (float) ($override['amount'] ?? 0) : (float) $this->record->installment_amount;
 
-        return Money::format(round($amount, 2), $currency);
+        return Money::format($this->nextCycleAmount(), $currency);
     }
 
     /** True when the next order has been customised (a one-time override is in effect). */

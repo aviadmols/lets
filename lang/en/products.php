@@ -120,6 +120,7 @@ return [
         'ship_every' => 'Ship every :count :unit',
         'discount_pct' => ':value% off',
         'discount_fixed' => ':value off',
+        'intro_pricing' => ':value% off first :count charges',
         'no_discount' => 'No discount',
         'channels_label' => 'Channels',
 
@@ -182,8 +183,19 @@ return [
         'ship_label' => 'Ship this product every',
         'frequency_unit' => 'Frequency',
 
+        'pricing_mode_label' => 'Recurring price',
+        'pricing_mode_plan_price' => 'Plan price (catalog price with the plan discount)',
+        'pricing_mode_keep_first' => 'Keep the first payment’s amount',
+        'pricing_mode_keep_first_hint' => 'If the product is bought at a discounted price, every cycle keeps that price.',
+        'pricing_mode_fixed' => 'Fixed amount per cycle',
+        'fixed_amount_label' => 'Amount per cycle',
+        'keep_first_unavailable_shopify_rail' => 'Not available when Shopify Payments bills this plan.',
+
         'offer_discount' => 'Offer a discount on this plan',
         'discount_label' => 'Discount',
+        'intro_limit_toggle' => 'Limit the discount to the first charges',
+        'intro_limit_hint' => 'The first payment at checkout counts as charge #1; after the last discounted charge the price returns to the regular price.',
+        'intro_limit_count' => 'Number of discounted charges',
 
         'plan_name_label' => 'Plan name (shown to customers)',
         'plan_name_placeholder' => 'e.g. Subscribe & save',

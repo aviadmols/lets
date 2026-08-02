@@ -76,9 +76,8 @@ final class PlanActivationService
         }
 
         $orderId = (string) (data_get($orderPayload, 'id') ?? '');
-        $depositAmount = $this->depositAmountFor($plan, $orderPayload);
 
-        return DB::transaction(function () use ($shop, $plan, $orderId, $orderPayload, $depositAmount): InstallmentPlan {
+        $activated = DB::transaction(function () use ($shop, $plan, $orderId, $orderPayload): InstallmentPlan {
             // Re-read under a row lock so two simultaneous deliveries serialise.
             /** @var InstallmentPlan $plan */
             $plan = InstallmentPlan::query()->lockForUpdate()->findOrFail($plan->getKey());
@@ -86,6 +85,13 @@ final class PlanActivationService
             if (! in_array($plan->status, [PlanStatus::DRAFT, PlanStatus::AWAITING_FIRST_PAYMENT], true)) {
                 return $plan; // won the race already
             }
+
+            // 0) Checkout pricing capture (recurring only): the coupon the shopper
+            // used + the keep_first_payment write-back. MUST run before the deposit
+            // amount is derived so a kept first-payment amount is what gets recorded.
+            app(CheckoutPricingCapture::class)->apply($plan, $orderPayload);
+
+            $depositAmount = $this->depositAmountFor($plan, $orderPayload);
 
             // 1) Capture + vault the reusable token (when a resolver is bound).
             $method = $this->capturePaymentMethod($shop, $plan, $orderPayload);
@@ -176,6 +182,51 @@ final class PlanActivationService
 
             return $plan;
         });
+
+        // Retro-tag the SHOPIFY checkout order when a discount was captured — the
+        // checkout order was created by Shopify, not us, so the tag goes on after
+        // the fact. OUTSIDE the transaction (external HTTP) + fail-soft.
+        $this->tagDiscountedCheckoutOrder($shop, $activated, $orderId);
+
+        return $activated;
+    }
+
+    /**
+     * Merge the subscription-discount tag onto the Shopify checkout order of a
+     * plan whose activation captured a coupon. Woo needs no call here — the WP
+     * plugin tags its own checkout order. Never throws.
+     */
+    private function tagDiscountedCheckoutOrder(Shop $shop, InstallmentPlan $plan, string $orderId): void
+    {
+        if ($orderId === ''
+            || $plan->checkoutDiscount() === null
+            || $shop->platform !== Shop::PLATFORM_SHOPIFY
+            || ! $shop->hasShopifyConnection()) {
+            return;
+        }
+
+        try {
+            $client = \App\Services\Shopify\ShopifyClientFactory::for($shop);
+            $order = $client->fetchOrderWithMetafields($orderId);
+            if ($order === []) {
+                return;
+            }
+            // Merge, never replace (the FulfillmentLockService pattern) — the order
+            // may already carry merchant tags we must not clobber.
+            $existing = array_values(array_filter(array_map('trim', explode(',', (string) ($order['tags'] ?? '')))));
+            $merged = array_values(array_unique([
+                ...$existing,
+                ...\App\Services\Shopify\Orders\ShopifyOrderTags::all('subscription_discount'),
+            ]));
+            $client->updateOrderTags($orderId, $merged);
+        } catch (\Throwable $e) {
+            Log::warning('installments.checkout_discount.tag_failed', [
+                'shop_id' => $shop->getKey(),
+                'plan_id' => $plan->getKey(),
+                'order_id' => $orderId,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

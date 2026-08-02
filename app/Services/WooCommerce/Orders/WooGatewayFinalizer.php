@@ -344,6 +344,13 @@ final class WooGatewayFinalizer
             $payload[WooCommercePaidOrderPlanResolver::KEY_PLAN_PUBLIC_ID] = $publicId;
             $payload['id'] = $orderId;
 
+            // Checkout pricing facts from the WC order (CheckoutPricingCapture):
+            // coupon_lines → META_CHECKOUT_DISCOUNT; line_items → the per-plan paid
+            // split keep_first_payment attributes its line from (the order TOTAL is
+            // useless here — a cart can hold several plans plus one-time items).
+            $payload['coupon_lines'] = (array) ($order['coupon_lines'] ?? []);
+            $payload['line_items'] = (array) ($order['line_items'] ?? []);
+
             $activator->activateFromPaidOrder($shop, $payload);
         }
     }

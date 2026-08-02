@@ -118,6 +118,7 @@ return [
         'ship_every' => 'משלוח כל :count :unit',
         'discount_pct' => ':value% הנחה',
         'discount_fixed' => ':value הנחה',
+        'intro_pricing' => ':value% הנחה על :count החיובים הראשונים',
         'no_discount' => 'אין הנחה',
         'channels_label' => 'ערוצים',
 
@@ -179,8 +180,19 @@ return [
         'ship_label' => 'שלח מוצר זה כל',
         'frequency_unit' => 'תדירות',
 
+        'pricing_mode_label' => 'מחיר החיוב החוזר',
+        'pricing_mode_plan_price' => 'מחיר התוכנית (מחיר הקטלוג עם הנחת התוכנית)',
+        'pricing_mode_keep_first' => 'שמירת סכום התשלום הראשון',
+        'pricing_mode_keep_first_hint' => 'אם המוצר נרכש במחיר מבצע, כל מחזור ימשיך להיות מחויב באותו מחיר.',
+        'pricing_mode_fixed' => 'סכום קבוע לכל מחזור',
+        'fixed_amount_label' => 'סכום לכל מחזור',
+        'keep_first_unavailable_shopify_rail' => 'לא זמין כאשר Shopify Payments מחייב את התוכנית הזו.',
+
         'offer_discount' => 'הצע הנחה על תוכנית זו',
         'discount_label' => 'הנחה',
+        'intro_limit_toggle' => 'הגבל את ההנחה לחיובים הראשונים',
+        'intro_limit_hint' => 'התשלום הראשון בקופה נספר כחיוב מספר 1; אחרי החיוב המוזל האחרון המחיר חוזר למחיר הרגיל.',
+        'intro_limit_count' => 'מספר החיובים בהנחה',
 
         'plan_name_label' => 'שם התוכנית (מוצג ללקוחות)',
         'plan_name_placeholder' => 'לדוגמה: הירשם וחסוך',

@@ -204,6 +204,10 @@ return [
         // A loyalty gift: zero-total, given not sold. Tagged so the merchant can
         // filter these out of revenue reporting at a glance.
         'gift_order' => 'lets-gift',
+        // An order whose subscription price is BELOW the regular catalog price —
+        // a checkout coupon, an intro-discount window, or a kept first-payment
+        // price. Lets the merchant see discounted subscription revenue at a glance.
+        'subscription_discount' => 'subscription-discount',
     ],
     'metafields' => [
         'fulfillment_lock' => 'fulfillment_lock',

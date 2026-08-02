@@ -51,6 +51,10 @@ final class EventPresenter
         // real tax document. Rendering it like routine traffic would hide it in the
         // exact scan someone runs when they suspect a duplicate.
         'document_force_issued' => ['warning', 'timeline.kind.document_force_issued'],
+        // The intro-discount window ended: the cycle price stepped up to the plan's
+        // regular amount. Info, not warning — it is the schedule the customer agreed to.
+        'price_stepped_up' => ['info', 'timeline.kind.price_stepped_up'],
+        'checkout_discount_captured' => ['info', 'timeline.kind.checkout_discount_captured'],
     ];
 
     public const FALLBACK = ['info', 'timeline.kind.generic'];
@@ -84,7 +88,7 @@ final class EventPresenter
      * Detail keys that are SAFE to surface in the UI. Anything else (notably
      * invoice_url / document_url / raw token / payplus_* secrets) is dropped.
      */
-    public const SAFE_DETAIL_KEYS = ['amount', 'currency', 'sequence', 'from', 'to', 'context', 'reason', 'changed'];
+    public const SAFE_DETAIL_KEYS = ['amount', 'currency', 'sequence', 'from', 'to', 'context', 'reason', 'changed', 'from_amount', 'to_amount', 'charge_number', 'coupon_codes'];
 
     public static function tone(ActivityEvent $event): string
     {

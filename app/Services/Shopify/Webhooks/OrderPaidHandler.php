@@ -83,6 +83,11 @@ final class OrderPaidHandler implements WebhookHandler
         //   ONLY where checkout intent didn't override (precedence:
         //   checkout > template > engine fallback). The resolver is tenant-safe and
         //   touches no money — it reads templates only.
+        //   PRICING SNAPSHOT: when that listener creates recurring plans it MUST
+        //   pass `template` + `regular_amount` into RecurringPlanService's context
+        //   (see WooGatewaySessionController::createSubscriptionPlans) so the plan
+        //   carries its own pricing_mode/discount_cycles/regular_amount copy — the
+        //   intro-discount window and keep_first_payment depend on that snapshot.
         Event::dispatch('shopify.order.paid', [[
             'shop_id' => $shop->id,
             'topic' => $event->topic,

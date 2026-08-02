@@ -200,6 +200,17 @@ add_action('plugins_loaded', function () {
             // protected `_`-prefixed meta from REST order responses (same rule as lets_plan_public_id).
             if (! empty($result['subscription_plan_ids']) && is_array($result['subscription_plan_ids'])) {
                 $order->update_meta_data('lets_subscription_plan_ids', array_map('strval', $result['subscription_plan_ids']));
+
+                // Tag the CHECKOUT order itself (WooCommerce created it, so the SaaS
+                // cannot): it carries a subscription, and when the shopper used a
+                // coupon it also carries the discount tag — the same vocabulary the
+                // SaaS stamps on the cycle orders it creates (WooOrderTags).
+                $tags = array('LETS', 'recurring');
+                if (count($order->get_coupon_codes()) > 0) {
+                    $tags[] = 'discount';
+                }
+                $order->update_meta_data('lets_tags', implode(', ', $tags));
+
                 $order->save();
             }
 

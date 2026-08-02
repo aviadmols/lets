@@ -38,6 +38,16 @@ class ProductSubscriptionPlan extends Model
     public const DISCOUNT_FIXED = 'fixed';
     public const DISCOUNT_TYPES = [self::DISCOUNT_NONE, self::DISCOUNT_PERCENT, self::DISCOUNT_FIXED];
 
+    /**
+     * Where a customer plan's per-cycle amount comes from. KEEP_FIRST has no
+     * Shopify-Payments primitive (Shopify owns that rail's money) — the drawer
+     * blocks it there and SellingPlanService treats it as PLAN_PRICE.
+     */
+    public const PRICING_KEEP_FIRST = 'keep_first_payment';
+    public const PRICING_PLAN_PRICE = 'plan_price';
+    public const PRICING_FIXED = 'fixed_amount';
+    public const PRICING_MODES = [self::PRICING_KEEP_FIRST, self::PRICING_PLAN_PRICE, self::PRICING_FIXED];
+
     public const STATUS_DRAFT = 'draft';
     public const STATUS_ACTIVE = 'active';
 
@@ -77,6 +87,8 @@ class ProductSubscriptionPlan extends Model
             'status' => PlanTemplateStatus::class,
             'billing_frequency' => BillingFrequency::class,
             'discount_value' => 'decimal:2',
+            'fixed_cycle_amount' => 'decimal:2',
+            'discount_cycles' => 'integer',
             'interval_count' => 'integer',
             'charge_day_of_month' => 'integer',
             'expire_after_charges' => 'integer',
@@ -117,6 +129,36 @@ class ProductSubscriptionPlan extends Model
         };
 
         return round(max($price, 0), 2);
+    }
+
+    /**
+     * The per-cycle amount for ONE unit under this template's pricing mode.
+     * fixed_amount ignores the catalog entirely; every other mode is the
+     * discounted catalog price. keep_first_payment starts from the same number —
+     * the actually-paid amount overwrites it at activation (CheckoutPricingCapture).
+     */
+    public function cycleAmountFor(float $basePrice): float
+    {
+        if ($this->pricing_mode === self::PRICING_FIXED && (float) $this->fixed_cycle_amount > 0) {
+            return round((float) $this->fixed_cycle_amount, 2);
+        }
+
+        return $this->discountedPrice($basePrice);
+    }
+
+    /**
+     * The intro-discount window: the discount applies to the first N charges
+     * (checkout = charge #1), null = forever. Meaningless without a discount.
+     */
+    public function introWindow(): ?int
+    {
+        if ($this->discount_type === self::DISCOUNT_NONE || $this->discount_type === null) {
+            return null;
+        }
+
+        $cycles = (int) ($this->discount_cycles ?? 0);
+
+        return $cycles > 0 ? $cycles : null;
     }
 
     public function isSubscription(): bool

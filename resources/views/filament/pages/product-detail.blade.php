@@ -352,6 +352,44 @@
                             </div>
                         @endif
 
+                        @if($planIsSubscription)
+                            {{-- Pricing mode: where the recurring cycle amount comes from --}}
+                            <div class="rc-field">
+                                <span class="rc-field__label">{{ __('products.plan_drawer.pricing_mode_label') }}</span>
+                                <div class="rc-stack--tight">
+                                    <label class="rc-check">
+                                        <input type="radio" value="{{ \App\Models\ProductSubscriptionPlan::PRICING_PLAN_PRICE }}" wire:model.live="pricingMode">
+                                        <span class="rc-check__body">
+                                            <span class="rc-check__title">{{ __('products.plan_drawer.pricing_mode_plan_price') }}</span>
+                                        </span>
+                                    </label>
+                                    <label class="rc-check">
+                                        <input type="radio" value="{{ \App\Models\ProductSubscriptionPlan::PRICING_KEEP_FIRST }}" wire:model.live="pricingMode" @disabled($this->drawerKeepFirstBlocked())>
+                                        <span class="rc-check__body">
+                                            <span class="rc-check__title">{{ __('products.plan_drawer.pricing_mode_keep_first') }}</span>
+                                            <span class="rc-drawer__subtitle">
+                                                {{ $this->drawerKeepFirstBlocked()
+                                                    ? __('products.plan_drawer.keep_first_unavailable_shopify_rail')
+                                                    : __('products.plan_drawer.pricing_mode_keep_first_hint') }}
+                                            </span>
+                                        </span>
+                                    </label>
+                                    <label class="rc-check">
+                                        <input type="radio" value="{{ \App\Models\ProductSubscriptionPlan::PRICING_FIXED }}" wire:model.live="pricingMode">
+                                        <span class="rc-check__body">
+                                            <span class="rc-check__title">{{ __('products.plan_drawer.pricing_mode_fixed') }}</span>
+                                        </span>
+                                    </label>
+                                </div>
+                            </div>
+                            @if($pricingMode === \App\Models\ProductSubscriptionPlan::PRICING_FIXED)
+                                <div class="rc-field">
+                                    <label class="rc-field__label" for="rc-plan-fixed-amount">{{ __('products.plan_drawer.fixed_amount_label') }}</label>
+                                    <input id="rc-plan-fixed-amount" type="number" min="0" step="0.01" class="rc-input rc-ltr rc-plan-ship__count" wire:model.live="fixedAmount">
+                                </div>
+                            @endif
+                        @endif
+
                         {{-- Offer a discount + Discount % --}}
                         <label class="rc-check">
                             <input type="checkbox" wire:model.live="offerDiscount">
@@ -367,6 +405,22 @@
                                     <span class="rc-input-suffix__unit">%</span>
                                 </div>
                             </div>
+
+                            {{-- Intro window: the discount covers only the first X charges
+                                 (the checkout payment counts as charge #1). --}}
+                            <label class="rc-check">
+                                <input type="checkbox" wire:model.live="limitDiscountCycles">
+                                <span class="rc-check__body">
+                                    <span class="rc-check__title">{{ __('products.plan_drawer.intro_limit_toggle') }}</span>
+                                    <span class="rc-drawer__subtitle">{{ __('products.plan_drawer.intro_limit_hint') }}</span>
+                                </span>
+                            </label>
+                            @if($limitDiscountCycles)
+                                <div class="rc-field">
+                                    <label class="rc-field__label" for="rc-plan-discount-cycles">{{ __('products.plan_drawer.intro_limit_count') }}</label>
+                                    <input id="rc-plan-discount-cycles" type="number" min="1" max="120" class="rc-input rc-ltr rc-plan-ship__count" wire:model.live="discountCyclesCount">
+                                </div>
+                            @endif
                         @endif
 
                         {{-- Plan name (customer-visible) --}}

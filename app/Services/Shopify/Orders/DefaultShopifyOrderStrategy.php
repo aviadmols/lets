@@ -2,6 +2,7 @@
 
 namespace App\Services\Shopify\Orders;
 
+use App\Domain\Billing\CycleAmountResolver;
 use App\Models\InstallmentPlan;
 use App\Modules\PayPlusShopifyInstallments\Enums\ChargeContext;
 use App\Services\Shopify\ShopifyClientFactory;
@@ -76,11 +77,22 @@ final class DefaultShopifyOrderStrategy implements ShopifyOrderStrategy
     /** recurring: a NEW fulfillable order per cycle (failed cycle ⇒ no order). */
     private function onRecurring(InstallmentPlan $plan, ShopifyOrderCreator $creator): void
     {
-        $amount = round((float) ($plan->installment_amount ?? 0), 2);
+        // The shared resolver returns the money that ACTUALLY moved for this cycle
+        // (the succeeded slot's frozen amount → override → the plan ladder), so the
+        // order can never disagree with the ledger. This also honors the W25
+        // next-order override the old installment_amount read silently ignored.
+        $resolver = new CycleAmountResolver;
+        $amount = $resolver->amountForCycleOrder($plan);
         if ($amount <= 0) {
             return;
         }
-        $creator->createPaidRecurringOrderForPayment($plan, $amount);
+
+        // Discount-tag predicate: the cycle charged BELOW the plan's regular
+        // (undiscounted) price — intro window active, or a kept first payment.
+        $discounted = $plan->regular_amount !== null
+            && $amount < round((float) $plan->regular_amount, 2);
+
+        $creator->createPaidRecurringOrderForPayment($plan, $amount, $discounted);
     }
 
     /** retry/manual fall through to the plan's underlying kind. */

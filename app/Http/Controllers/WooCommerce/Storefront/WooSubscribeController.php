@@ -5,6 +5,7 @@ namespace App\Http\Controllers\WooCommerce\Storefront;
 use App\Domain\Installments\DepositPlanService;
 use App\Domain\Installments\ProductPriceResolver;
 use App\Domain\Installments\RecurringPlanService;
+use App\Domain\Products\ProductPlanTemplateResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -28,6 +29,7 @@ final class WooSubscribeController extends WooStorefrontController
     public function __construct(
         private readonly ProductPriceResolver $prices,
         private readonly RecurringPlanService $plans,
+        private readonly ProductPlanTemplateResolver $templates,
     ) {}
 
     public function __invoke(Request $request): JsonResponse
@@ -46,7 +48,12 @@ final class WooSubscribeController extends WooStorefrontController
         }
 
         // Server-trusted per-cycle amount (the recurring price), never a client value.
-        $amount = round((float) $resolved['variant']->price, 2);
+        // The merchant's template (when one exists) shapes it: pricing mode + discount
+        // — previously this path billed the RAW catalog price and silently ignored
+        // the template discount the product page advertised.
+        $unitPrice = round((float) $resolved['variant']->price, 2);
+        $template = $this->templates->resolveDefaultsFor($shop, $productId, $variantId);
+        $amount = $template !== null ? $template->cycleAmountFor($unitPrice) : $unitPrice;
 
         try {
             $result = $this->plans->create($shop, [
@@ -54,6 +61,8 @@ final class WooSubscribeController extends WooStorefrontController
                 'variant_gid' => $variantId,
                 'item_title' => $resolved['title'],
                 'amount' => $amount,
+                'template' => $template,
+                'regular_amount' => $unitPrice,
                 // The cadence is a bounded knob; frequencyFrom clamps to an allowed value.
                 'frequency' => DepositPlanService::frequencyFrom($request->input('frequency')),
                 'interval_count' => max(1, (int) $request->input('interval_count', 1)),

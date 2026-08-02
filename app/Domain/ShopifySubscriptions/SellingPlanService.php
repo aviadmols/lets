@@ -92,9 +92,9 @@ final class SellingPlanService
         // The merchant's subscribe-and-save incentive, applied by Shopify at
         // checkout — the discount must live WHERE the charge happens, so on this
         // rail Shopify owns it (the PayPlus rail applies it in our own math).
-        $pricing = $this->pricingPolicy($template);
-        if ($pricing !== null) {
-            $plan['pricingPolicies'] = [$pricing];
+        $pricing = $this->pricingPolicies($template);
+        if ($pricing !== []) {
+            $plan['pricingPolicies'] = $pricing;
         }
 
         $body = ShopifyClientFactory::for($shop)->graphql(<<<'GQL'
@@ -271,25 +271,67 @@ final class SellingPlanService
         }
     }
 
-    /** @return array<string, mixed>|null the fixed pricing policy, or null for no discount */
-    private function pricingPolicy(ProductSubscriptionPlan $template): ?array
+    /**
+     * The template's Shopify pricing policies, by pricing mode:
+     *   - fixed_amount        → one `fixed` PRICE policy (the explicit per-cycle price);
+     *   - discount, windowed  → the `fixed` discount for the first discount_cycles
+     *                           charges PLUS a `recurring` zero-adjustment policy with
+     *                           afterCycle, so Shopify itself steps the price back to
+     *                           full from cycle N+1 (mirrors the PayPlus-rail window);
+     *   - discount, open      → the single `fixed` discount (historical behavior);
+     *   - keep_first_payment  → treated as plan_price: Shopify owns this rail's money
+     *                           and has no keep-what-was-paid primitive (the drawer
+     *                           blocks the mode on this rail; this is the backstop).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function pricingPolicies(ProductSubscriptionPlan $template): array
     {
-        $value = round((float) $template->discount_value, 2);
-        if ($value <= 0) {
-            return null;
+        if ($template->pricing_mode === ProductSubscriptionPlan::PRICING_FIXED
+            && (float) $template->fixed_cycle_amount > 0) {
+            return [[
+                'fixed' => [
+                    'adjustmentType' => 'PRICE',
+                    'adjustmentValue' => ['fixedValue' => round((float) $template->fixed_cycle_amount, 2)],
+                ],
+            ]];
         }
 
-        return match ($template->discount_type) {
-            ProductSubscriptionPlan::DISCOUNT_PERCENT => ['fixed' => [
+        $value = round((float) $template->discount_value, 2);
+        if ($value <= 0) {
+            return [];
+        }
+
+        $discount = match ($template->discount_type) {
+            ProductSubscriptionPlan::DISCOUNT_PERCENT => [
                 'adjustmentType' => 'PERCENTAGE',
                 'adjustmentValue' => ['percentage' => min($value, 100)],
-            ]],
-            ProductSubscriptionPlan::DISCOUNT_FIXED => ['fixed' => [
+            ],
+            ProductSubscriptionPlan::DISCOUNT_FIXED => [
                 'adjustmentType' => 'FIXED_AMOUNT',
                 'adjustmentValue' => ['fixedValue' => $value],
-            ]],
+            ],
             default => null,
         };
+        if ($discount === null) {
+            return [];
+        }
+
+        $window = $template->introWindow();
+        if ($window === null) {
+            return [['fixed' => $discount]];
+        }
+
+        return [
+            ['fixed' => $discount],
+            // Zero adjustment from cycle window+1 — i.e. full price. Shopify applies
+            // the `recurring` policy afterCycle, the `fixed` one before it.
+            ['recurring' => [
+                'adjustmentType' => 'PERCENTAGE',
+                'adjustmentValue' => ['percentage' => 0],
+                'afterCycle' => $window,
+            ]],
+        ];
     }
 
     /**

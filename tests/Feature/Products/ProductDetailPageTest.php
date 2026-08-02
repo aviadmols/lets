@@ -207,6 +207,85 @@ final class ProductDetailPageTest extends TestCase
         ], $plan->channels);
     }
 
+    public function test_save_plan_config_persists_the_pricing_mode_fields(): void
+    {
+        $plan = $this->makePlan(ProductSubscriptionPlan::TYPE_SUBSCRIPTION, $this->variant->id);
+
+        Livewire::test(ProductDetail::class, ['product' => $this->product->id])
+            ->call('openPlanConfig', $plan->id)
+            ->set('pricingMode', ProductSubscriptionPlan::PRICING_KEEP_FIRST)
+            ->set('offerDiscount', true)
+            ->set('discountPercent', 20)
+            ->set('limitDiscountCycles', true)
+            ->set('discountCyclesCount', 3)
+            ->call('savePlanConfig');
+
+        $plan->refresh();
+        $this->assertSame(ProductSubscriptionPlan::PRICING_KEEP_FIRST, $plan->pricing_mode);
+        $this->assertSame(3, $plan->discount_cycles);
+        $this->assertNull($plan->fixed_cycle_amount);
+    }
+
+    public function test_fixed_mode_requires_a_positive_amount_and_clamps_the_window(): void
+    {
+        $plan = $this->makePlan(ProductSubscriptionPlan::TYPE_SUBSCRIPTION, $this->variant->id);
+
+        // A fixed mode with no amount falls back to plan_price…
+        Livewire::test(ProductDetail::class, ['product' => $this->product->id])
+            ->call('openPlanConfig', $plan->id)
+            ->set('pricingMode', ProductSubscriptionPlan::PRICING_FIXED)
+            ->set('fixedAmount', '')
+            ->call('savePlanConfig');
+
+        $plan->refresh();
+        $this->assertSame(ProductSubscriptionPlan::PRICING_PLAN_PRICE, $plan->pricing_mode);
+        $this->assertNull($plan->fixed_cycle_amount);
+
+        // …a real amount persists, and an absurd window clamps to 120.
+        Livewire::test(ProductDetail::class, ['product' => $this->product->id])
+            ->call('openPlanConfig', $plan->id)
+            ->set('pricingMode', ProductSubscriptionPlan::PRICING_FIXED)
+            ->set('fixedAmount', '49.90')
+            ->set('offerDiscount', true)
+            ->set('discountPercent', 10)
+            ->set('limitDiscountCycles', true)
+            ->set('discountCyclesCount', 999)
+            ->call('savePlanConfig');
+
+        $plan->refresh();
+        $this->assertSame(ProductSubscriptionPlan::PRICING_FIXED, $plan->pricing_mode);
+        $this->assertSame(49.90, (float) $plan->fixed_cycle_amount);
+        $this->assertSame(120, $plan->discount_cycles);
+    }
+
+    public function test_a_window_without_a_discount_is_not_persisted(): void
+    {
+        $plan = $this->makePlan(ProductSubscriptionPlan::TYPE_SUBSCRIPTION, $this->variant->id);
+
+        Livewire::test(ProductDetail::class, ['product' => $this->product->id])
+            ->call('openPlanConfig', $plan->id)
+            ->set('offerDiscount', false)
+            ->set('limitDiscountCycles', true)
+            ->set('discountCyclesCount', 5)
+            ->call('savePlanConfig');
+
+        $this->assertNull($plan->refresh()->discount_cycles);
+    }
+
+    public function test_keep_first_is_forced_back_to_plan_price_on_the_shopify_payments_rail(): void
+    {
+        $plan = $this->makePlan(ProductSubscriptionPlan::TYPE_SUBSCRIPTION, $this->variant->id);
+
+        Livewire::test(ProductDetail::class, ['product' => $this->product->id])
+            ->call('openPlanConfig', $plan->id)
+            ->set('billingRail', ProductSubscriptionPlan::RAIL_SHOPIFY_PAYMENTS)
+            ->set('pricingMode', ProductSubscriptionPlan::PRICING_KEEP_FIRST)
+            ->call('savePlanConfig');
+
+        // Shopify owns that rail's money — there is no "keep what was paid" there.
+        $this->assertSame(ProductSubscriptionPlan::PRICING_PLAN_PRICE, $plan->refresh()->pricing_mode);
+    }
+
     public function test_save_plan_config_clamps_discount_and_interval(): void
     {
         $plan = $this->makePlan(ProductSubscriptionPlan::TYPE_SUBSCRIPTION, $this->variant->id);
