@@ -255,6 +255,36 @@
 .rc-accordion__panel > div { overflow: hidden; }
 .rc-accordion__body { padding: 0 var(--rc-space-5) var(--rc-space-5); border-block-start: 1px solid var(--rc-border); padding-block-start: var(--rc-space-4); }
 
+/* analytics.css — the Analytics page's server-drawn SVG trend chart + legend.
+   TOKENS: --rc-ink --rc-ink-muted --rc-border --rc-border-strong --rc-blue
+           --rc-red --rc-card --rc-type-caption --rc-space-* --rc-radius-pill
+   The SVG carries GEOMETRY only; every colour resolves here, so the chart
+   re-skins with the theme and needs no JS chart library at all. */
+
+.rc-chart { inline-size: 100%; }
+.rc-chart svg { inline-size: 100%; block-size: auto; display: block; }
+
+/* the active-subscriptions line + its day dots */
+.rc-chart__line { fill: none; stroke: var(--rc-ink); stroke-width: 2; }
+.rc-chart__dot { fill: var(--rc-ink); stroke: var(--rc-card); stroke-width: 1.5; }
+
+/* new (brand violet) vs cancelled (red) daily bars */
+.rc-chart__bar--new { fill: var(--rc-blue); opacity: .75; }
+.rc-chart__bar--churn { fill: var(--rc-red); opacity: .8; }
+
+/* scaffolding */
+.rc-chart__grid { stroke: var(--rc-border); stroke-dasharray: 4 4; }
+.rc-chart__zero { stroke: var(--rc-border-strong); }
+.rc-chart__tick { fill: var(--rc-ink-muted); font: var(--rc-type-caption); }
+
+/* legend chips under the chart */
+.rc-chart-legend { display: flex; gap: var(--rc-space-5); margin-block-start: var(--rc-space-3); flex-wrap: wrap; }
+.rc-chart-legend__item { display: inline-flex; align-items: center; gap: var(--rc-space-2); font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+.rc-chart-legend__swatch { inline-size: 10px; block-size: 10px; border-radius: var(--rc-radius-pill); }
+.rc-chart-legend__swatch--line { background: var(--rc-ink); }
+.rc-chart-legend__swatch--new { background: var(--rc-blue); }
+.rc-chart-legend__swatch--churn { background: var(--rc-red); }
+
 /* badge.css — status pill (component §4.2)
    TOKENS: --rc-radius-pill --rc-type-label --rc-{green|gray|teal|red|amber}
            + matching *-bg backgrounds. One class per semantic tone; the PHP
