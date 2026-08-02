@@ -1,0 +1,31 @@
+/* storefront-elements.css — the Storefront page's element cards.
+   TOKENS: --rc-green/-bg --rc-amber/-bg --rc-gray/-bg --rc-border --rc-ink-muted
+           --rc-space-* --rc-radius-pill --rc-type-* */
+
+.rc-sfel { display: flex; flex-direction: column; gap: var(--rc-space-4); }
+
+/* Will-it-render status, in one word. */
+.rc-sfel__status {
+    display: inline-flex; align-items: center;
+    padding-block: 2px; padding-inline: var(--rc-space-3);
+    border-radius: var(--rc-radius-pill);
+    font: var(--rc-type-label); text-transform: uppercase; letter-spacing: .04em;
+    white-space: nowrap;
+}
+[dir="rtl"] .rc-sfel__status { text-transform: none; letter-spacing: normal; }
+.rc-sfel__status--ready { background: var(--rc-green-bg); color: var(--rc-green); }
+.rc-sfel__status--auto { background: var(--rc-blue-bg); color: var(--rc-blue-600); }
+.rc-sfel__status--needs_setup { background: var(--rc-amber-bg); color: var(--rc-amber); }
+
+.rc-sfel__hint { margin: 0; }
+
+/* The numbered path to placing the element. */
+.rc-sfel__steps {
+    display: flex; flex-direction: column; gap: var(--rc-space-2);
+    margin: 0; padding-inline-start: var(--rc-space-5);
+    list-style: decimal;
+    font: var(--rc-type-body); color: var(--rc-ink);
+}
+
+/* Read-only value + copy button (page URL, shortcode, Liquid snippet). */
+.rc-sfel__copy { display: flex; flex-direction: column; gap: var(--rc-space-2); }

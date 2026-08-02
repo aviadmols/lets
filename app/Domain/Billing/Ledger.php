@@ -2,9 +2,11 @@
 
 namespace App\Domain\Billing;
 
+use App\Events\LedgerRowSucceeded;
 use App\Models\PaymentLedger;
 use App\Modules\PayPlusShopifyInstallments\Enums\LedgerStatus;
 use App\Modules\PayPlusShopifyInstallments\Exceptions\IllegalTransitionException;
+use Illuminate\Support\Facades\Log;
 
 /**
  * The money truth, in one place. Every charge opens a `pending` row HERE before
@@ -112,6 +114,21 @@ final class Ledger
         }
 
         $row->forceFill(array_merge($patch, ['status' => $to->value]))->save();
+
+        // The row just ENTERED succeeded (the equal-status branch above already
+        // returned, so this fires once per row). Observers only — the dispatch is
+        // wrapped so a listener can never break the money path it is watching.
+        if ($to === LedgerStatus::SUCCEEDED) {
+            try {
+                LedgerRowSucceeded::dispatch((int) $row->shop_id, $row);
+            } catch (\Throwable $e) {
+                Log::warning('ledger.succeeded_event_failed', [
+                    'shop_id' => $row->shop_id,
+                    'ledger_id' => $row->getKey(),
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
 
         return $row;
     }

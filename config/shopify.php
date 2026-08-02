@@ -236,4 +236,14 @@ return [
     */
     'app_proxy_prefix' => env('SHOPIFY_APP_PROXY_PREFIX', 'apps'),
     'app_proxy_subpath' => env('SHOPIFY_APP_PROXY_SUBPATH', 'payplus'),
+
+    /*
+    | The THEME APP EXTENSION's registration uuid — the only thing that makes a
+    | theme-editor deep link (…/editor?context=apps&activateAppId={uuid}/{block})
+    | resolve to OUR app block. It MUST track `uid` in
+    | extensions/lets-installments/shopify.extension.toml; if the extension is
+    | ever re-registered, this value changes with it and the Storefront page's
+    | "Add to theme" buttons would otherwise open an empty editor.
+    */
+    'theme_extension_uuid' => env('SHOPIFY_THEME_EXTENSION_UUID', '45589920-e4d0-8f01-8480-f6f7aafb8f530dfd0fcc'),
 ];
