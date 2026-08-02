@@ -57,6 +57,18 @@ return [
         'cycle' => 'מחזור',
         'requested' => 'נשלח',
         'outcome' => 'תוצאה',
+        'overview' => 'סקירה',
+        'customer' => 'פרטי הלקוח',
+        'created_on' => 'נוצר בתאריך',
+        'paid_cycles' => 'הזמנות שהושלמו',
+        'per_cycle_total' => 'סה"כ למחזור',
+        'tab_schedule' => 'לוח הזמנות',
+        'tab_history' => 'היסטוריית הזמנות',
+        'scheduled' => 'מתוזמן',
+        'charge_now_row' => 'חיוב עכשיו',
+        'schedule_empty' => 'אין חיוב קרוב — למנוי אין תאריך חיוב הבא.',
+        'schedule_projection_note' => 'התאריכים חושבו לפי מחזור החיוב; Shopify היא בעלת לוח הזמנות. רק את החיוב הבא ניתן להזיז או לחייב מוקדם.',
+        'activity' => 'פעילות',
     ],
 
     'attempt' => [

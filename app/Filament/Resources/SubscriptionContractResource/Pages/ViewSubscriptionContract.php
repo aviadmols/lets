@@ -39,6 +39,9 @@ class ViewSubscriptionContract extends Page
     /** Cap the billing-attempt + timeline feeds on the detail page. */
     public const FEED_LIMIT = 50;
 
+    /** Projected upcoming cycles shown on the schedule tab. */
+    public const UPCOMING_COUNT = 4;
+
     /**
      * #[Locked] — the record may NEVER be re-pointed from the browser. Livewire
      * re-hydrates public properties from the request, so an unlocked record is a
@@ -159,6 +162,64 @@ class ViewSubscriptionContract extends Page
             ->latest('id')
             ->limit(self::FEED_LIMIT)
             ->get();
+    }
+
+    /** Cycles Shopify confirmed as PAID — the honest "completed orders" number. */
+    public function paidCyclesCount(): int
+    {
+        return $this->record->billingAttempts()
+            ->where('status', \App\Models\SubscriptionBillingAttempt::STATUS_SUCCEEDED)
+            ->count();
+    }
+
+    /**
+     * The upcoming order schedule, PROJECTED from next_billing_date + the mirrored
+     * cadence. Display-only arithmetic — Shopify owns the real schedule, and only
+     * the FIRST row is actionable (Shopify's API moves/bills the next cycle only).
+     * Ordinals continue from the paid count, checkout included (#2 after 1 paid).
+     *
+     * @return list<array{ordinal: int, date: \Illuminate\Support\Carbon, actionable: bool}>
+     */
+    public function upcomingCycles(int $count = self::UPCOMING_COUNT): array
+    {
+        $next = $this->record->next_billing_date;
+        if ($next === null) {
+            return [];
+        }
+
+        $rows = [];
+        $date = Carbon::parse($next);
+        $ordinal = $this->paidCyclesCount() + 1;
+
+        for ($i = 0; $i < $count; $i++) {
+            $rows[] = [
+                'ordinal' => $ordinal + $i,
+                'date' => $date->copy(),
+                'actionable' => $i === 0 && $this->record->status === SubscriptionContract::STATUS_ACTIVE,
+            ];
+            $date = $this->addInterval($date);
+        }
+
+        return $rows;
+    }
+
+    /** One billing interval forward (mirrors ContractActionService::addInterval). */
+    private function addInterval(Carbon $from): Carbon
+    {
+        $count = max(1, (int) $this->record->interval_count);
+
+        return match (strtoupper((string) $this->record->interval)) {
+            'DAY' => $from->copy()->addDays($count),
+            'WEEK' => $from->copy()->addWeeks($count),
+            'YEAR' => $from->copy()->addYearsNoOverflow($count),
+            default => $from->copy()->addMonthsNoOverflow($count),
+        };
+    }
+
+    /** The per-cycle total, formatted — the Products card's footer number. */
+    public function perCycleTotal(): string
+    {
+        return Money::format((float) ($this->record->amount ?? 0), (string) $this->record->currency);
     }
 
     /** This contract's Timeline — the same audit trail the PayPlus rail keeps. */

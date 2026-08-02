@@ -678,6 +678,94 @@
 }
 .rc-cta--ghost[disabled] { opacity: .5; cursor: not-allowed; }
 
+/* contract-detail.css — the Shopify-subscription detail page (Loop-style):
+   product line rows, schedule/history tabs, numbered upcoming-order rows,
+   activity feed and sidebar overview cards.
+   TOKENS: --rc-blue --rc-blue-bg --rc-blue-600 --rc-border --rc-border-strong
+           --rc-card --rc-ink --rc-ink-muted --rc-green --rc-green-bg --rc-amber
+           --rc-amber-bg --rc-gray-bg --rc-radius-* --rc-space-* --rc-type-* */
+
+/* === Underline tabs (Order schedule / Order history) ====================== */
+.rc-tabs { display: flex; gap: var(--rc-space-6); border-block-end: 1px solid var(--rc-border); margin-block-end: var(--rc-space-4); }
+.rc-tabs__tab {
+    appearance: none; background: none; border: none; cursor: pointer;
+    padding-block: var(--rc-space-3); padding-inline: var(--rc-space-1);
+    font: var(--rc-type-subh); color: var(--rc-ink-muted);
+    border-block-end: 3px solid transparent;
+    margin-block-end: -1px; /* sit on the rule */
+}
+.rc-tabs__tab:hover { color: var(--rc-ink); }
+.rc-tabs__tab[data-active="true"] { color: var(--rc-ink); border-block-end-color: var(--rc-blue); }
+
+/* === Product line rows (the Products card) ================================ */
+.rc-line { display: flex; align-items: center; gap: var(--rc-space-4); padding-block: var(--rc-space-4); }
+.rc-line + .rc-line { border-block-start: 1px solid var(--rc-border); }
+.rc-line__thumb {
+    inline-size: 48px; block-size: 48px; flex: 0 0 auto;
+    display: grid; place-items: center;
+    background: var(--rc-blue-bg); color: var(--rc-blue-600);
+    border-radius: var(--rc-radius-control);
+    font: var(--rc-type-h);
+}
+.rc-line__body { display: flex; flex-direction: column; gap: 2px; min-inline-size: 0; flex: 1 1 auto; }
+.rc-line__title { font: var(--rc-type-body-strong); color: var(--rc-ink); }
+.rc-line__meta { font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+.rc-line__amount { font: var(--rc-type-body-strong); color: var(--rc-ink); white-space: nowrap; }
+
+/* Card footer strip: per-cycle total. */
+.rc-line-total {
+    display: flex; justify-content: space-between; align-items: center;
+    border-block-start: 1px solid var(--rc-border-strong);
+    padding-block-start: var(--rc-space-4); margin-block-start: var(--rc-space-2);
+}
+
+/* === Numbered upcoming-order rows (the schedule tab) ====================== */
+.rc-sched { display: flex; flex-direction: column; }
+.rc-sched__row { display: flex; flex-direction: column; gap: var(--rc-space-3); padding-block: var(--rc-space-4); }
+.rc-sched__row + .rc-sched__row { border-block-start: 1px solid var(--rc-border); }
+.rc-sched__head { display: flex; align-items: center; gap: var(--rc-space-4); }
+.rc-sched__num { font: var(--rc-type-body-strong); color: var(--rc-ink-muted); min-inline-size: 28px; }
+.rc-sched__date { font: var(--rc-type-body-strong); color: var(--rc-ink); flex: 1 1 auto; }
+.rc-sched__actions { display: flex; gap: var(--rc-space-3); padding-inline-start: calc(28px + var(--rc-space-4)); flex-wrap: wrap; }
+
+/* Ghost action button for in-row verbs (Charge now / Skip / Reschedule). */
+.rc-ghost-btn {
+    appearance: none; cursor: pointer;
+    background: var(--rc-card); color: var(--rc-ink);
+    border: 1px solid var(--rc-border-strong);
+    border-radius: var(--rc-radius-control);
+    padding-block: var(--rc-space-2); padding-inline: var(--rc-space-4);
+    font: var(--rc-type-body-strong);
+}
+.rc-ghost-btn:hover { background: var(--rc-gray-bg); }
+.rc-ghost-btn--primary { background: var(--rc-blue); border-color: var(--rc-blue); color: var(--rc-ink-on-primary); }
+.rc-ghost-btn--primary:hover { background: var(--rc-blue-600); }
+
+/* "SCHEDULED"-style soft badge for projected cycles. */
+.rc-chip {
+    display: inline-flex; align-items: center;
+    padding-block: 2px; padding-inline: var(--rc-space-3);
+    border-radius: var(--rc-radius-pill);
+    font: var(--rc-type-label); text-transform: uppercase; letter-spacing: .04em;
+}
+[dir="rtl"] .rc-chip { text-transform: none; letter-spacing: normal; }
+.rc-chip--scheduled { background: var(--rc-amber-bg); color: var(--rc-amber); }
+.rc-chip--paid { background: var(--rc-green-bg); color: var(--rc-green); }
+
+/* === Sidebar cards ======================================================== */
+/* Sidebar stacks a touch tighter than the main column. */
+.rc-side { display: flex; flex-direction: column; gap: var(--rc-space-4); }
+.rc-side .rc-kv { grid-template-columns: 1fr auto; }
+.rc-side .rc-kv__v { text-align: end; }
+/* Sidebar key cells read as words, not shouted labels. */
+.rc-side .rc-kv__k { text-transform: none; letter-spacing: normal; font: var(--rc-type-body); }
+
+/* Status dot-row at the top of the Overview card. */
+.rc-ov-status { display: flex; align-items: center; justify-content: space-between; margin-block-end: var(--rc-space-3); }
+
+/* === Activity feed rows (Timeline restyled as "Activity logs") ============ */
+.rc-activity .rc-section__title { margin-block-end: var(--rc-space-2); }
+
 /* data-table.css — list-view density + section layout helpers
    TOKENS: --rc-card --rc-border --rc-radius-card --rc-shadow-card --rc-type-*
    Skins Filament's native table via stable .fi-* hooks (no re-templating). */

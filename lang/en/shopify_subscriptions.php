@@ -57,6 +57,18 @@ return [
         'cycle' => 'Cycle',
         'requested' => 'Requested',
         'outcome' => 'Outcome',
+        'overview' => 'Overview',
+        'customer' => 'Customer details',
+        'created_on' => 'Created on',
+        'paid_cycles' => 'Completed orders',
+        'per_cycle_total' => 'Total per cycle',
+        'tab_schedule' => 'Order schedule',
+        'tab_history' => 'Order history',
+        'scheduled' => 'Scheduled',
+        'charge_now_row' => 'Charge now',
+        'schedule_empty' => 'No upcoming charge — the subscription has no next billing date.',
+        'schedule_projection_note' => 'Dates are projected from the billing cycle; Shopify owns the schedule. Only the next charge can be moved or billed early.',
+        'activity' => 'Activity',
     ],
 
     'attempt' => [

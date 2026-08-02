@@ -229,6 +229,57 @@ final class ContractDetailPageTest extends TestCase
         $this->assertFalse($page->customerAwaitsApproval());
     }
 
+    // === The projected order schedule ===
+
+    public function test_the_schedule_projects_from_the_cadence_and_numbers_past_the_paid_count(): void
+    {
+        $shop = $this->shop();
+        Tenant::set($shop);
+
+        $contract = $this->contract($shop);
+        $contract->forceFill(['next_billing_date' => '2026-09-28', 'interval' => 'MONTH', 'interval_count' => 1])->save();
+
+        // One PAID cycle (the checkout) ⇒ the next projected row is #2.
+        $attempt = new SubscriptionBillingAttempt();
+        $attempt->forceFill([
+            'shop_id' => $shop->getKey(),
+            'subscription_contract_id' => $contract->getKey(),
+            'billing_cycle_key' => '2026-08-28',
+            'idempotency_key' => 'subattempt:paid',
+            'status' => SubscriptionBillingAttempt::STATUS_SUCCEEDED,
+            'requested_at' => now(),
+        ])->save();
+
+        $page = new ViewSubscriptionContract();
+        $page->mount((int) $contract->getKey());
+
+        $rows = $page->upcomingCycles();
+
+        $this->assertCount(ViewSubscriptionContract::UPCOMING_COUNT, $rows);
+        $this->assertSame(2, $rows[0]['ordinal']);
+        $this->assertSame('2026-09-28', $rows[0]['date']->toDateString());
+        $this->assertTrue($rows[0]['actionable']);
+        // Later rows are projections only — Shopify moves/bills the NEXT cycle only.
+        $this->assertSame('2026-10-28', $rows[1]['date']->toDateString());
+        $this->assertFalse($rows[1]['actionable']);
+    }
+
+    public function test_a_paused_contract_projects_dates_but_offers_no_actions(): void
+    {
+        $shop = $this->shop();
+        Tenant::set($shop);
+
+        $contract = $this->contract($shop);
+        $contract->forceFill(['status' => SubscriptionContract::STATUS_PAUSED])->save();
+
+        $page = new ViewSubscriptionContract();
+        $page->mount((int) $contract->getKey());
+
+        $rows = $page->upcomingCycles();
+        $this->assertNotEmpty($rows);
+        $this->assertFalse($rows[0]['actionable']);
+    }
+
     public function test_the_list_takes_the_subscriptions_name_when_it_is_the_only_one(): void
     {
         Tenant::set($this->shop());
