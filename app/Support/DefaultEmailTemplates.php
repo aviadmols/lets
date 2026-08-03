@@ -74,6 +74,9 @@ final class DefaultEmailTemplates
         MerchantMailSettings::TEMPLATE_LOGIN_CODE => [
             'code', 'expires_minutes', 'business_name',
         ],
+        MerchantMailSettings::TEMPLATE_ORDER_UPDATED => [
+            'customer_name', 'business_name', 'order_number', 'items_table', 'added_total', 'currency',
+        ],
     ];
 
     /** Default subject for a template ({tokens} still get strtr-substituted). */
@@ -96,6 +99,7 @@ final class DefaultEmailTemplates
             MerchantMailSettings::TEMPLATE_CHARGE_FAILED => self::chargeFailed(),
             MerchantMailSettings::TEMPLATE_PLAN_CANCELLED => self::planCancelled(),
             MerchantMailSettings::TEMPLATE_LOGIN_CODE => self::loginCode(),
+            MerchantMailSettings::TEMPLATE_ORDER_UPDATED => self::orderUpdated(),
             default => self::card('<p '.self::P.'>{business_name}</p>'),
         };
     }
@@ -243,6 +247,25 @@ final class DefaultEmailTemplates
             .'<p '.self::CODE.'>{code}</p>'
             .self::line('mail_default.login_code.valid', self::P)
             .self::line('mail_default.login_code.footer', self::MUTED)
+        );
+    }
+
+    /**
+     * "Your order was updated."
+     *
+     * {items_table} is a PRE-RENDERED scalar, not a loop — strtr substitutes
+     * scalars and nothing else, which is the wall that keeps merchant HTML away
+     * from a compiler. OrderUpdatedNotifier builds the rows.
+     */
+    private static function orderUpdated(): string
+    {
+        return self::card(
+            '<h1 '.self::H1.'>'.__('mail_default.order_updated.heading').'</h1>'
+            .self::line('mail_default.order_updated.lead', self::P)
+            .'{items_table}'
+            .self::line('mail_default.order_updated.total', self::AMOUNT)
+            .self::line('mail_default.order_updated.closing', self::P)
+            .self::line('mail_default.order_updated.footer', self::MUTED)
         );
     }
 }

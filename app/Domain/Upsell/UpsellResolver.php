@@ -4,11 +4,15 @@ namespace App\Domain\Upsell;
 
 use App\Domain\Upsell\Enums\OfferEventType;
 use App\Domain\Upsell\Enums\UpsellFlowStatus;
+use App\Domain\Upsell\Holds\OrderHoldService;
 use App\Domain\Upsell\Models\UpsellFlow;
 use App\Domain\Upsell\Models\UpsellFlowOffer;
 use App\Domain\Upsell\Models\UpsellFlowTrigger;
 use App\Domain\Upsell\Models\UpsellOfferEvent;
+use App\Domain\Upsell\Models\UpsellSetting;
+use App\Models\Shop;
 use App\Support\Tenant;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Given a source purchase, pick the first ACTIVE flow (lowest priority) whose
@@ -51,6 +55,12 @@ final class UpsellResolver
             }
 
             $this->recordImpression($flow, $offer, $context);
+
+            // The offer is about to be SHOWN, so this is the moment the shopper's
+            // window opens — and the only orders that are ever held are the ones
+            // that reached here. A blanket delay on the whole store would be a
+            // fulfillment regression dressed up as a feature.
+            $this->openHoldWindow($context);
 
             return new UpsellResolution($flow, $offer);
         }
@@ -112,6 +122,36 @@ final class UpsellResolver
 
             default => false,
         };
+    }
+
+    /**
+     * Start the add-on window for this order, when the merchant runs one.
+     *
+     * Never allowed to break the offer. A hold is a convenience for the merchant;
+     * a shopper looking at a thank-you page must still see their offer if the
+     * platform refuses the hold, and the order simply ships on its normal
+     * schedule. Failures are logged inside the service.
+     */
+    private function openHoldWindow(PurchaseContext $context): void
+    {
+        $shop = Tenant::current();
+        if (! $shop instanceof Shop || $context->parentOrderId === '') {
+            return;
+        }
+
+        $settings = UpsellSetting::current();
+        if (! $settings->holdEnabled()) {
+            return;
+        }
+
+        try {
+            app(OrderHoldService::class)->hold($shop, $context->parentOrderId, $settings);
+        } catch (\Throwable $e) {
+            Log::warning('upsell.hold.open_failed', [
+                'shop_id' => $shop->getKey(),
+                'message' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function recordImpression(UpsellFlow $flow, UpsellFlowOffer $offer, PurchaseContext $context): void

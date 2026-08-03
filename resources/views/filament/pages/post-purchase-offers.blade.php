@@ -262,6 +262,42 @@
                 </div>
             @endif
 
+            {{-- The add-on window. Its own block, below the partial-paid rules,
+                 because it changes when goods LEAVE — a different kind of
+                 decision from what to do with an unpaid line. --}}
+            <div class="rc-section__title rc-pp-settings__heading">{{ __('upsell.admin.settings.hold.title') }}</div>
+            <p class="rc-muted rc-pp-settings__intro">{{ __('upsell.admin.settings.hold.intro') }}</p>
+
+            <div class="rc-pp-settings__window">
+                <label class="rc-label" for="hold-window">{{ __('upsell.admin.settings.hold.window') }}</label>
+                <select id="hold-window" wire:model.live="holdWindowMinutes" class="rc-pp-select">
+                    @foreach(\App\Domain\Upsell\Models\UpsellSetting::HOLD_WINDOWS as $minutes)
+                        <option value="{{ $minutes }}">
+                            {{ $minutes === 0
+                                ? __('upsell.admin.settings.hold.off')
+                                : trans_choice('upsell.admin.settings.hold.window_minutes', $minutes, ['count' => $minutes]) }}
+                        </option>
+                    @endforeach
+                </select>
+            </div>
+
+            @if((int) $holdWindowMinutes > 0)
+                {{-- The dependency a merchant will otherwise discover the hard way:
+                     without a vaulted card there is no one-click upsell, so the
+                     window is pure delay and zero extra revenue. --}}
+                @if(! $this->holdNeedsVaultedCard())
+                    <p class="rc-muted rc-pp-settings__intro">{{ __('upsell.admin.settings.hold.needs_token') }}</p>
+                @endif
+
+                <label class="rc-pp-radio">
+                    <input type="checkbox" wire:model="holdNotify">
+                    <span class="rc-pp-radio__body">
+                        <span class="rc-strong">{{ __('upsell.admin.settings.hold.notify') }}</span>
+                        <span class="rc-muted">{{ __('upsell.admin.settings.hold.notify_hint') }}</span>
+                    </span>
+                </label>
+            @endif
+
             <div class="rc-pp-settings__actions">
                 <x-rc.cta variant="primary" wire:click="saveSettings">{{ __('upsell.admin.settings.save') }}</x-rc.cta>
             </div>

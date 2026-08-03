@@ -10,6 +10,7 @@ use App\Domain\Upsell\Enums\OfferEventType;
 use App\Domain\Upsell\Models\UpsellFlowBranch;
 use App\Domain\Upsell\Models\UpsellFlowOffer;
 use App\Domain\Upsell\Models\UpsellOfferEvent;
+use App\Domain\Upsell\Models\UpsellOrderHold;
 use App\Models\CustomerConsent;
 use App\Models\InstallmentPaymentMethod;
 use App\Models\MerchantBillingSettings;
@@ -204,6 +205,50 @@ final class UpsellChargeService
         return UpsellChargeResult::already($key, $next); // "already" == terminal, no charge
     }
 
+    /**
+     * Append what was just added to this order's open hold.
+     *
+     * The hold row is the only place that knows the shopper's window is still
+     * running, and appending here — rather than deriving the additions later —
+     * means the release does not have to re-interrogate the store to find out
+     * whether anything changed.
+     *
+     * Never allowed to disturb the charge. The money has already moved and is
+     * recorded; a failure to annotate a hold is a missing email, not a lost sale.
+     */
+    private function recordAddition(
+        int $shopId,
+        AcceptUpsellRequest $req,
+        UpsellFlowOffer $offer,
+        float $amount,
+        string $currency,
+    ): void {
+        try {
+            $hold = UpsellOrderHold::query()
+                ->where('external_order_id', $req->parentOrderId)
+                ->where('status', UpsellOrderHold::STATUS_HELD)
+                ->first();
+
+            if ($hold === null) {
+                return;
+            }
+
+            $items = (array) ($hold->added_items ?? []);
+            $items[] = [
+                'name' => (string) ($offer->resolveProduct()?->title ?: $offer->offer_title ?: ''),
+                'quantity' => 1,
+                'price' => round($amount, 2),
+                'currency' => $currency,
+                'customer_email' => $req->customerEmail ?? '',
+                'customer_name' => '',
+            ];
+
+            $hold->forceFill(['added_items' => $items])->save();
+        } catch (\Throwable $e) {
+            Log::warning('upsell.hold.addition_failed', ['shop_id' => $shopId, 'message' => $e->getMessage()]);
+        }
+    }
+
     // === Success / failure ===
 
     private function onSuccess(
@@ -245,6 +290,11 @@ final class UpsellChargeService
         // A failure here never unwinds the money (it already moved + is recorded);
         // instead we flag a compensating reconcile so the paid order is recoverable.
         $this->materializeChildOrder($shop, $req, $offer, $ledger, $amount, $currency);
+
+        // Tell the open hold what the shopper added, so the release can email them
+        // about a confirmation that is now out of date. Only orders that actually
+        // gained something are ever emailed.
+        $this->recordAddition($shopId, $req, $offer, $amount, $currency);
 
         Timeline::record(
             kind: 'upsell_charge_succeeded',

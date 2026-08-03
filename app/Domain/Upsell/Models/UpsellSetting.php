@@ -27,6 +27,21 @@ class UpsellSetting extends Model
     /** Removal-window options (hours) offered when handling = remove_item. */
     public const REMOVAL_WINDOWS = [12, 24, 48, 72];
 
+    /**
+     * How long an order may wait while the shopper decides whether to add
+     * something. 0 = no hold, and that is the default: holding a paid order
+     * costs the merchant a later dispatch and a support question, so it is
+     * opt-in and never a side effect of installing the app.
+     */
+    public const HOLD_WINDOWS = [0, 10, 20, 30, 60, 120];
+
+    /**
+     * The ceiling, whatever is stored. A hold is a delay on goods somebody has
+     * already paid for; past a couple of hours it stops being an upsell window
+     * and starts being a fulfillment problem.
+     */
+    public const MAX_HOLD_MINUTES = 120;
+
     protected $guarded = ['shop_id'];
 
     protected function casts(): array
@@ -35,7 +50,27 @@ class UpsellSetting extends Model
             'removal_window' => 'integer',
             'enabled' => 'boolean',
             'offer_display_cap' => 'integer',
+            'hold_window_minutes' => 'integer',
+            'hold_notify' => 'boolean',
         ];
+    }
+
+    /** Clamped: a merchant typo must not park a paid order for a week. */
+    public function holdWindowMinutes(): int
+    {
+        return max(0, min(self::MAX_HOLD_MINUTES, (int) $this->hold_window_minutes));
+    }
+
+    /** Does this shop hold orders at all? */
+    public function holdEnabled(): bool
+    {
+        return (bool) $this->enabled && $this->holdWindowMinutes() > 0;
+    }
+
+    /** Email the shopper when the window closes on an order they added to? */
+    public function holdNotify(): bool
+    {
+        return (bool) $this->hold_notify;
     }
 
     /**

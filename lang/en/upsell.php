@@ -4,6 +4,19 @@
 // admin (Post-Purchase Offers hub + Flow Builder). Mirror EVERY key 1:1 in
 // lang/he/upsell.php.
 return [
+    /*
+     * The note Shopify shows the merchant beside the hold, and the column
+     * headers of the pre-rendered items table in the order-updated email.
+     */
+    'hold' => [
+        'note' => 'Waiting for the customer to finish adding items',
+        'mail' => [
+            'item' => 'Item',
+            'quantity' => 'Qty',
+            'price' => 'Price',
+        ],
+    ],
+
     // Widget headline + default copy (used when an offer leaves a field blank).
     'widget_eyebrow' => 'One-time offer',
     'default_headline' => 'Add this to your order',
@@ -234,6 +247,23 @@ return [
         'settings' => [
             'saved' => 'Settings saved.',
             'save' => 'Save',
+            /*
+             * The add-on window. Its own block because it changes when goods
+             * LEAVE the warehouse, which is a different decision from what to do
+             * with an unpaid line.
+             */
+            'hold' => [
+                'title' => 'Give shoppers a moment to add more',
+                'intro' => 'Hold an order briefly after checkout so a shopper who was shown an offer can still add to it. Only orders that were actually offered something are held — never your whole store.',
+                'window' => 'Hold for',
+                'off' => 'Do not hold orders',
+                'window_minutes' => '{1}:count minute|[2,*]:count minutes',
+                'needs_token' => 'Saving the card at checkout is off, so the one-click upsell cannot charge. Right now this window would only delay your orders. Turn on "Save the customer’s card" in your payment page settings first.',
+                'notify' => 'Email the shopper when the window closes',
+                'notify_hint' => 'Only when they actually added something — your store still sends its own order confirmation.',
+                'excluded' => 'Never held: orders awaiting full payment, gifts, subscription cycles, and the orders an upsell itself creates.',
+            ],
+
             'partial_paid' => [
                 'title' => 'Partial-paid order handling',
                 'intro' => 'Choose what happens to a post-purchase upsell when the parent order is not yet fully paid (for example, an installment order that is still collecting payments).',

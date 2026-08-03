@@ -214,6 +214,16 @@ return [
         'ready_to_fulfill' => 'installments-ready',
         'recurring_order' => 'subscription-recurring',
         'upsell_child' => 'upsell-child',
+        /*
+         * An order waiting out its post-purchase add-on window.
+         *
+         * Deliberately NOT installments-hold. The two holds are released by
+         * different code on different conditions, and updateOrderTags() replaces
+         * the tag list wholesale — sharing one tag would have each release path
+         * strip the other's mark and, worse, make an installments order look
+         * releasable to the upsell scanner.
+         */
+        'upsell_hold' => 'upsell-hold',
         'payment_order' => 'installments-payment',
         // A loyalty gift: zero-total, given not sold. Tagged so the merchant can
         // filter these out of revenue reporting at a glance.

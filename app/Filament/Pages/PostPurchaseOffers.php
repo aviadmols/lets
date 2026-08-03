@@ -12,6 +12,7 @@ use App\Domain\Upsell\Models\UpsellFlowTrigger;
 use App\Domain\Upsell\Models\UpsellOfferEvent;
 use App\Domain\Upsell\Models\UpsellSetting;
 use App\Domain\Upsell\UpsellMetrics;
+use App\Models\MerchantCheckoutSettings;
 use App\Support\Tenant;
 use App\Support\Ui\Money;
 use Filament\Notifications\Notification;
@@ -71,6 +72,16 @@ class PostPurchaseOffers extends Page
 
     public int $removalWindow = 24;
 
+    /**
+     * How long an order waits while the shopper decides whether to add
+     * something. 0 = no hold, and that stays the default: holding a paid order
+     * costs the merchant a later dispatch, so it is never a side effect of
+     * installing the app.
+     */
+    public int $holdWindowMinutes = 0;
+
+    public bool $holdNotify = true;
+
     public static function getNavigationGroup(): ?string
     {
         return __('nav.group.upsell');
@@ -97,6 +108,8 @@ class PostPurchaseOffers extends Page
         $settings = UpsellSetting::current();
         $this->partialPaidHandling = $settings->partial_paid_handling ?? UpsellSetting::PARTIAL_REMOVE_ITEM;
         $this->removalWindow = $settings->removal_window ?? 24;
+        $this->holdWindowMinutes = $settings->holdWindowMinutes();
+        $this->holdNotify = $settings->holdNotify();
     }
 
     public function setTab(string $tab): void
@@ -318,9 +331,28 @@ class PostPurchaseOffers extends Page
         $settings = UpsellSetting::current();
         $settings->partial_paid_handling = $handling;
         $settings->removal_window = $window;
+        // Clamped again in the model: the ceiling is where a hold stops being
+        // an upsell window and starts being a fulfillment problem.
+        $settings->hold_window_minutes = in_array((int) $this->holdWindowMinutes, UpsellSetting::HOLD_WINDOWS, true)
+            ? (int) $this->holdWindowMinutes
+            : 0;
+        $settings->hold_notify = (bool) $this->holdNotify;
         $settings->save();
 
         Notification::make()->title(__('upsell.admin.settings.saved'))->success()->send();
+    }
+
+    /**
+     * Does this shop actually save cards at checkout?
+     *
+     * The one-click upsell charges a VAULTED token. Without one, every offer
+     * fails at the charge and the hold window is pure delay with zero extra
+     * revenue — a merchant would otherwise discover that only from their
+     * customers, so the settings screen says it up front.
+     */
+    public function holdNeedsVaultedCard(): bool
+    {
+        return MerchantCheckoutSettings::current()->createToken();
     }
 
     // === Display helpers (formatting only — no aggregation) ===

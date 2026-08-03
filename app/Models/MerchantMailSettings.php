@@ -42,6 +42,13 @@ class MerchantMailSettings extends Model
      */
     public const TEMPLATE_LOGIN_CODE = 'login_code';
 
+    /**
+     * Sent when a post-purchase add-on window closes on an order the shopper
+     * ACTUALLY added to. Its {items_table} arrives pre-rendered as one scalar —
+     * see OrderUpdatedNotifier for why a collection cannot be passed.
+     */
+    public const TEMPLATE_ORDER_UPDATED = 'order_updated';
+
     /** Canonical template keys (drive the migration columns + the settings UI). */
     public const TEMPLATES = [
         self::TEMPLATE_FIRST_PAYMENT_WELCOME,
@@ -51,6 +58,7 @@ class MerchantMailSettings extends Model
         self::TEMPLATE_CHARGE_FAILED,
         self::TEMPLATE_PLAN_CANCELLED,
         self::TEMPLATE_LOGIN_CODE,
+        self::TEMPLATE_ORDER_UPDATED,
     ];
 
     /** Spec defaults applied when a shop's row is first materialised. */
