@@ -1,0 +1,173 @@
+<?php
+
+/**
+ * The loyalty club — merchant admin (`admin.*`) and the customer-facing members
+ * page (`page.*`). Mirror every key in lang/he/loyalty.php.
+ */
+return [
+    'admin' => [
+        'title' => 'Loyalty club',
+        'subtitle' => 'Reward the customers who keep coming back — points for what they spend and do.',
+        'saved' => 'Loyalty program saved.',
+        'save_cta' => 'Save',
+        'embed_cta' => 'Where to put it in my store',
+
+        'tab' => [
+            'program' => 'Program',
+            'tiers' => 'Tiers',
+            'appearance' => 'Appearance',
+        ],
+
+        'program' => [
+            'heading' => 'The program',
+            'intro' => 'Turn the club on and set how quickly customers earn.',
+            'enabled' => 'Club is live',
+            'enabled_help' => 'While this is off, nothing accrues and the members page is not offered.',
+            'name' => 'Club name',
+            'name_placeholder' => 'e.g. Members club',
+            'points_per_currency' => 'Points per 1 spent',
+            'points_per_currency_help' => 'Before the tier multiplier. Customers only earn after they join.',
+            'rounding' => 'Rounding',
+        ],
+
+        'redeem' => [
+            'heading' => 'Turning points into credit',
+            'intro' => 'What a customer gets when they cash points in. On Shopify this becomes real store credit; on WooCommerce a personal one-time coupon.',
+            'rate_points' => 'Points',
+            'rate_amount' => 'are worth',
+            'rate_help' => 'Set the amount to 0 to keep points display-only for now.',
+            'minimum' => 'Minimum to redeem',
+            'minimum_help' => 'Points a customer must hold before they can cash in. 0 = no minimum.',
+            'example' => 'Right now :points points are worth :amount.',
+        ],
+
+        'bonus' => [
+            'heading' => 'Bonuses',
+            'intro' => 'One-off point grants, beyond what purchases earn.',
+            'join' => 'For joining the club',
+            'birthday' => 'Birthday gift',
+            'birthday_help' => 'Granted once a year, on the date the customer entered on the members page.',
+        ],
+
+        'social' => [
+            'heading' => 'Ways to earn beyond buying',
+            'intro' => 'A customer claims these with one click. We cannot verify a like or a follow — treat these as goodwill, and keep the points modest.',
+            'add' => 'Add an action',
+            'network' => 'Action',
+            'label' => 'What the customer sees',
+            'points' => 'Points',
+            'url' => 'Link',
+            'url_help' => 'Opens in a new tab when they claim it. https only.',
+        ],
+
+        'tiers' => [
+            'heading' => 'Tiers',
+            'intro' => 'Each tier is a threshold on what the customer has spent with you, and what passing it is worth.',
+            'add' => 'Add a tier',
+            'name' => 'Name',
+            'min_spend' => 'From (lifetime spend)',
+            'min_spend_help' => 'Set the entry tier to 0 so every member has a status.',
+            'multiplier' => 'Points multiplier',
+            'multiplier_help' => '1 = the base rate, 1.5 = half as much again.',
+            'entry_bonus' => 'Bonus on reaching it',
+            'entry_bonus_help' => 'Paid once, the first time they reach this tier.',
+            'icon' => 'Icon',
+            'color' => 'Colour',
+            'perks' => 'Perks shown to customers',
+            'perks_help' => 'One line per perk. They form the comparison table on the members page.',
+        ],
+
+        'appearance' => [
+            'heading' => 'Members page',
+            'intro' => 'How the club looks to your customers.',
+            'accent' => 'Accent colour',
+            'accent_text' => 'Text on the accent',
+            'theme' => 'Theme',
+            'corners' => 'Corners',
+            'locale' => 'Language',
+            'locale_help' => 'The language your customers read the club in.',
+        ],
+
+        'option' => [
+            'rounding' => ['floor' => 'Round down', 'nearest' => 'Round to nearest'],
+            'theme' => ['light' => 'Light', 'dark' => 'Dark'],
+            'radius' => ['sharp' => 'Sharp', 'soft' => 'Soft', 'pill' => 'Pill'],
+            'locale' => ['he' => 'Hebrew', 'en' => 'English'],
+            'social' => [
+                'facebook_like' => 'Facebook like',
+                'instagram_follow' => 'Instagram follow',
+                'tiktok_follow' => 'TikTok follow',
+                'custom' => 'Something else',
+            ],
+            'icon' => [
+                'spark' => 'Spark',
+                'glow' => 'Glow',
+                'shine' => 'Shine',
+                'star' => 'Star',
+                'crown' => 'Crown',
+                'gem' => 'Gem',
+                'heart' => 'Heart',
+            ],
+        ],
+
+        'members' => [
+            'title' => 'Club members',
+            'empty' => 'No one has joined the club yet.',
+            'col' => [
+                'member' => 'Member',
+                'tier' => 'Tier',
+                'balance' => 'Points',
+                'lifetime_spend' => 'Lifetime spend',
+                'joined' => 'Joined',
+            ],
+            'adjust' => 'Adjust points',
+            'adjust_points' => 'Points (negative to remove)',
+            'adjust_reason' => 'Reason',
+            'adjust_done' => 'Points adjusted.',
+            'adjust_failed' => 'Nothing changed — check the amount.',
+        ],
+    ],
+
+    // === The customer-facing members page ===
+    'page' => [
+        'title' => 'Members club',
+        'balance' => 'Your points',
+        'tier_current' => 'Your status',
+        'tier_none' => 'Not yet ranked',
+        'progress' => ':amount more to reach :tier',
+        'progress_top' => 'You are at the top tier — thank you.',
+        'range_open' => ':from and up',
+        'range_closed' => ':from–:to',
+        'tiers_heading' => 'The tiers',
+        'perks_heading' => 'What each status gets',
+        'perk_yes' => 'Included',
+        'perk_no' => 'Not included',
+        'earn_heading' => 'Ways to earn points',
+        'earn_purchase' => ':points per 1 spent',
+        'earn_join' => 'Join the club',
+        'earn_birthday' => 'Birthday gift',
+        'earn_done' => 'Done',
+        'claim' => 'Claim',
+        'join_cta' => 'Join the club',
+        'join_intro' => 'Join and start earning on everything you buy.',
+        'joined' => 'Welcome to the club.',
+        'login_required' => 'Sign in to your account to see your points.',
+        'birthday_heading' => 'Your birthday',
+        'birthday_intro' => 'Tell us the date and we will send a gift each year.',
+        'birthday_save' => 'Save',
+        'birthday_saved' => 'Saved — see you on the day.',
+        'birthday_locked' => 'Your birthday is on file.',
+        'birthday_invalid' => 'Pick a real date in the past.',
+        'claimed' => 'Points added — thank you.',
+        'already_claimed' => 'You have already claimed this one.',
+        'claim_unavailable' => 'That way to earn is not offered right now.',
+        'redeem_heading' => 'Turn points into credit',
+        'redeem_cta' => 'Redeem :amount',
+        'redeem_min' => 'You need :points points to redeem.',
+        'redeem_none' => 'Keep earning — there is nothing to redeem yet.',
+        'redeem_done' => 'Done — your credit is ready.',
+        'redeem_coupon' => 'Your coupon code:',
+        'redeem_failed' => 'We could not complete that just now. Your points are untouched.',
+        'points_short' => 'pts',
+    ],
+];

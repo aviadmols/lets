@@ -52,6 +52,12 @@ return Application::configure(basePath: dirname(__DIR__))
             // session-token bearer is the auth (shopify.session), CORS for the
             // sandboxed customer-account extension worker. No web group / no CSRF.
             \Illuminate\Support\Facades\Route::group([], base_path('routes/subscriptions.php'));
+
+            // Loyalty club, WooCommerce rail: a temporary SIGNED URL the plugin
+            // renders in an iframe (Woo has no App Proxy to sign for us). The
+            // signature carries the shop + customer reference and is the whole
+            // credential, so no web group / no CSRF — same shape as proxy.php.
+            \Illuminate\Support\Facades\Route::group([], base_path('routes/loyalty.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware) {

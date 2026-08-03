@@ -45,7 +45,8 @@ return [
                 'SHOPIFY_OAUTH_SCOPES',
                 'read_orders,write_orders,read_draft_orders,write_draft_orders,'.
                 'read_customers,write_customers,read_products,read_fulfillments,write_fulfillments,'.
-                'read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders'
+                'read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,'.
+                'write_store_credit_accounts'
             ),
         ],
         'custom' => [
@@ -76,7 +77,7 @@ return [
                 'write_orders,read_all_orders,write_draft_orders,write_fulfillments,'.
                 'write_merchant_managed_fulfillment_orders,'.
                 'read_own_subscription_contracts,write_own_subscription_contracts,'.
-                'read_customer_payment_methods'
+                'read_customer_payment_methods,write_store_credit_accounts'
             ),
         ],
     ],
@@ -98,12 +99,20 @@ return [
     | OAuth scopes requested at install. App Store reviewers check that every
     | scope maps to a real call. Keep minimal; add a scope only when a feature
     | actually needs it. Mirrors SHOPIFY_OAUTH_SCOPES in .env.example.
+    |
+    | write_store_credit_accounts joined the list for the loyalty club's
+    | redemption (ShopifyStoreCreditIssuer): points become real store credit on
+    | the shopper's account. A shop installed BEFORE it was added holds a
+    | narrower grant — EmbeddedAuthenticate re-exchanges on the next embedded
+    | load (ShopifyApps::missingScopes), and until then RedeemService reports
+    | "not right now" and keeps the customer's points.
     */
     'oauth_scopes' => env(
         'SHOPIFY_OAUTH_SCOPES',
         'read_orders,write_orders,read_draft_orders,write_draft_orders,'.
         'read_customers,write_customers,read_products,read_fulfillments,write_fulfillments,'.
-        'read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders'
+        'read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,'.
+        'write_store_credit_accounts'
     ),
 
     /*

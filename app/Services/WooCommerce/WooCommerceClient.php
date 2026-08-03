@@ -209,6 +209,25 @@ final class WooCommerceClient
     }
 
     /**
+     * POST /wp-json/wc/v3/coupons → the created coupon array.
+     *
+     * WooCommerce has no store-credit primitive, so a loyalty redemption becomes
+     * a personal coupon instead: fixed amount, single use, locked to the member's
+     * email. That email restriction is what stops a code the shopper posts online
+     * from spending someone else's points.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public function createCoupon(array $payload): array
+    {
+        $response = $this->post('coupons', $payload);
+        $response->throw();
+
+        return (array) $response->json();
+    }
+
+    /**
      * POST /wp-json/wc/v3/orders/{id}/notes → add an order note (W18). A private note (default) is
      * visible to the merchant in the WC admin "Order notes" panel; a customer note also emails/shows
      * to the shopper. Used to record the PayPlus confirmation (transaction id / approval / amount) on

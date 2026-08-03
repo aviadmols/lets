@@ -84,6 +84,7 @@ final class RedactCustomerData implements ShouldQueue
 
             $counts = [
                 'installment_plans' => $this->redactPlans($shopifyCustomerId, $email),
+                'loyalty_accounts' => $this->redactLoyaltyAccounts($shopifyCustomerId, $email),
                 'customer_consents' => $this->redactConsents($shopifyCustomerId, $email),
                 'installment_payment_methods' => $this->redactPaymentMethods($shopifyCustomerId),
                 'issued_documents' => $this->neutraliseIssuedDocuments($shopifyCustomerId, $email),
@@ -112,6 +113,41 @@ final class RedactCustomerData implements ShouldQueue
                 }
 
                 $plan->save(); // status is guarded → untouched; money columns preserved.
+                $count++;
+            });
+
+        return $count;
+    }
+
+    /**
+     * The loyalty membership: name, email and BIRTHDAY are personal data and go.
+     *
+     * The points and their event history stay: a balance is the merchant's
+     * liability and its causes are an accounting record, neither of which
+     * identifies anyone once the name and email are sentinels. The birthday is
+     * cleared but `birthday_set_at` is kept, so the once-only rule still holds
+     * and a redacted member cannot re-enter a birthday to farm the annual bonus.
+     */
+    private function redactLoyaltyAccounts(?string $shopifyCustomerId, ?string $email): int
+    {
+        $count = 0;
+
+        \App\Models\LoyaltyAccount::query()
+            ->where(function (Builder $query) use ($shopifyCustomerId, $email): void {
+                // The membership keys on `customer_ref`, not `shopify_customer_id`.
+                if ($shopifyCustomerId !== null) {
+                    $query->where('customer_ref', $shopifyCustomerId);
+                }
+                if ($email !== null) {
+                    $query->orWhereRaw('LOWER(customer_email) = ?', [mb_strtolower($email)]);
+                }
+            })
+            ->each(function (\App\Models\LoyaltyAccount $account) use (&$count): void {
+                $account->forceFill([
+                    'customer_name' => RedactionPolicy::SENTINEL,
+                    'customer_email' => RedactionPolicy::SENTINEL,
+                    'birthday' => null,
+                ])->save();
                 $count++;
             });
 

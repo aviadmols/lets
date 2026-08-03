@@ -3,6 +3,9 @@
 use App\Domain\Installments\Http\Controllers\Storefront\InstallmentModalController;
 use App\Domain\Installments\Http\Controllers\Storefront\InstallmentQuoteController;
 use App\Domain\Installments\Http\Controllers\Storefront\StartInstallmentPlanController;
+use App\Domain\Loyalty\Http\Controllers\LoyaltyActionController;
+use App\Domain\Loyalty\Http\Controllers\LoyaltyPageController;
+use App\Domain\Loyalty\Http\Controllers\LoyaltyRedeemController;
 use App\Domain\Upsell\Http\Controllers\ProxyOfferController;
 use App\Http\Middleware\VerifyShopifyAppProxy;
 use Illuminate\Support\Facades\Route;
@@ -59,4 +62,20 @@ Route::prefix('proxy')
         // Create the plan + UNPAID deposit invoice; returns the invoice URL to redirect.
         Route::post('/installments/start', StartInstallmentPlanController::class)
             ->name('proxy.installments.start');
+
+        /*
+        |----------------------------------------------------------------------
+        | Loyalty club — the members page + its actions
+        |----------------------------------------------------------------------
+        | The merchant links to https://{shop}/apps/payplus/loyalty from their
+        | menu. Identity comes from `logged_in_customer_id`, which Shopify puts
+        | INSIDE the signed query — so the shopper is as verified as the request.
+        | A logged-out visitor still gets the page (tiers + how to earn), never a
+        | balance, and every POST below refuses them outright.
+        */
+        Route::get('/loyalty', LoyaltyPageController::class)->name('proxy.loyalty.page');
+        Route::post('/loyalty/join', [LoyaltyActionController::class, 'join'])->name('proxy.loyalty.join');
+        Route::post('/loyalty/birthday', [LoyaltyActionController::class, 'birthday'])->name('proxy.loyalty.birthday');
+        Route::post('/loyalty/social', [LoyaltyActionController::class, 'social'])->name('proxy.loyalty.social');
+        Route::post('/loyalty/redeem', [LoyaltyRedeemController::class, 'redeem'])->name('proxy.loyalty.redeem');
     });

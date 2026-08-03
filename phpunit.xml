@@ -18,6 +18,11 @@
         </include>
     </source>
     <php>
+        <!-- The suite peaks around 130 MB, past PHP's 128 MB default — which
+             surfaced as "Allowed memory size exhausted" in the `artisan test`
+             worker processes rather than as a failing test. Set here so every
+             runner (phpunit, artisan test, CI) inherits the same headroom. -->
+        <ini name="memory_limit" value="512M"/>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>

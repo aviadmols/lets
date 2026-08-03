@@ -13,6 +13,7 @@ use App\Http\Controllers\WooCommerce\Storefront\WooStartInstallmentPlanControlle
 use App\Http\Controllers\WooCommerce\Storefront\WooSubscribeController;
 use App\Http\Controllers\WooCommerce\Storefront\WooSubscriptionCatalogController;
 use App\Http\Controllers\WooCommerce\Storefront\WooGatewayVerifyController;
+use App\Http\Controllers\WooCommerce\Storefront\WooLoyaltyPageUrlController;
 use App\Http\Controllers\WooCommerce\Storefront\WooUpsellAcceptController;
 use App\Http\Controllers\WooCommerce\Storefront\WooUpsellDeclineController;
 use App\Http\Controllers\WooCommerce\Storefront\WooUpsellOfferController;
@@ -154,6 +155,13 @@ Route::middleware(VerifyWooCommerceSignature::class)
         // PayPlus didn't push the callback (orders stuck "pending"). Same HMAC group.
         Route::post('/gateway/verify', WooGatewayVerifyController::class)
             ->name('woocommerce.gateway.verify');
+
+        // Loyalty club: the plugin's SERVER tells us who is logged in (over this
+        // HMAC group) and we hand back a short-lived signed URL for exactly that
+        // shopper, which the plugin renders in an iframe. WooCommerce has no App
+        // Proxy, so this is how identity is established without trusting a browser.
+        Route::post('/loyalty/page-url', WooLoyaltyPageUrlController::class)
+            ->name('woocommerce.loyalty.page_url');
     });
 
 /*

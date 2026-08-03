@@ -416,3 +416,7 @@ require_once __DIR__ . '/includes/class-lets-notify.php';
 // PayPlus payment-page options on Settings → LETS (edited here, stored in LETS). Loads AFTER
 // diagnostics: reuses its guard/redirect/notice helpers, and the signer for the settings API.
 require_once __DIR__ . '/includes/class-lets-page-settings.php';
+
+// The [lets_loyalty] members-club shortcode. Loads AFTER the product widget (whose
+// lets_payplus_signed_post() it uses to mint the signed page URL server-side).
+require_once __DIR__ . '/includes/class-lets-loyalty.php';

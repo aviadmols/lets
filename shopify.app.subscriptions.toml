@@ -93,7 +93,7 @@ extension_directories = [
 # NOTE: this list is now WIDER than the installed store granted, so the merchant
 # is asked to re-authorise on the next embedded load. That prompt is the point —
 # it is what re-mints the token with the subscription scopes.
-scopes = "read_customers,write_customers,read_products,write_products,read_purchase_options,write_purchase_options,write_orders,read_all_orders,write_draft_orders,write_fulfillments,write_merchant_managed_fulfillment_orders,read_own_subscription_contracts,write_own_subscription_contracts,read_customer_payment_methods"
+scopes = "read_customers,write_customers,read_products,write_products,read_purchase_options,write_purchase_options,write_orders,read_all_orders,write_draft_orders,write_fulfillments,write_merchant_managed_fulfillment_orders,read_own_subscription_contracts,write_own_subscription_contracts,read_customer_payment_methods,write_store_credit_accounts"
 use_legacy_install_flow = false
 
 [auth]

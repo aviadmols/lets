@@ -21,7 +21,7 @@ embedded = true
 
 [access_scopes]
 # Keep in sync with SHOPIFY_OAUTH_SCOPES in .env / config/shopify.php.
-scopes = "read_products,read_orders,write_orders,read_draft_orders,write_draft_orders,read_customers,write_customers,read_fulfillments,write_fulfillments,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders"
+scopes = "read_products,read_orders,write_orders,read_draft_orders,write_draft_orders,read_customers,write_customers,read_fulfillments,write_fulfillments,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,write_store_credit_accounts"
 use_legacy_install_flow = false
 
 [auth]
