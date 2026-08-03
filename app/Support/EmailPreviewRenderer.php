@@ -25,31 +25,48 @@ use App\Models\Shop;
  */
 final class EmailPreviewRenderer
 {
-    // === CONSTANTS — sample values for every placeholder (preview only) ===
+    // === CONSTANTS — sample values that do not depend on language ===
     private const SAMPLE = [
-        'customer_name' => 'דנה כהן',
         'customer_email' => 'dana@example.com',
-        'business_name' => 'החנות שלי',
-        'product_title' => 'מנוי חודשי',
         'amount' => '149.00',
         'currency' => 'ILS',
         'plan_id' => '1042',
         'installment_count' => '6',
         'installment_sequence' => '2',
-        // The two ready-made sentences. They are vars and not template
-        // conditionals because an open-ended subscription must show neither —
-        // see TemplateRenderer::PROGRESS_FORMAT.
-        'installment_progress' => ' (תשלום 2 מתוך 6)',
-        'installment_total_note' => 'סך הכל 6 תשלומים בתוכנית. ',
         'next_charge_date' => '15/07/2026',
         'next_charge_date_he' => '15/07/2026',
         'next_retry_date' => '18/06/2026',
         'due_date' => '20/06/2026',
         'portal_url' => 'https://app.lets.co.il/portal/sample',
         'invoice_url' => 'https://app.lets.co.il/invoice/sample',
-        'failure_reason' => 'הכרטיס נדחה (אין כיסוי)',
-        'cancellation_reason' => 'התוכנית בוטלה לבקשתך.',
+        'code' => '482013',
+        'expires_minutes' => '10',
     ];
+
+    /**
+     * Sample values that DO depend on language.
+     *
+     * A merchant previewing their English template should not be shown a Hebrew
+     * customer name and a Hebrew decline reason inside otherwise-English copy —
+     * that is precisely the mismatch the language switch exists to reveal.
+     *
+     * @return array<string, string>
+     */
+    private static function localisedSample(): array
+    {
+        return [
+            'customer_name' => __('mail.sample.customer_name'),
+            'business_name' => __('mail.sample.business_name'),
+            'product_title' => __('mail.sample.product_title'),
+            'failure_reason' => __('mail.sample.failure_reason'),
+            'cancellation_reason' => __('mail.sample.cancellation_reason'),
+            // The two ready-made sentences, built the same way production builds
+            // them, so the preview shows the real string and not a hand-typed
+            // approximation that can drift.
+            'installment_progress' => TemplateRenderer::progress('2', '6'),
+            'installment_total_note' => sprintf((string) __('mail_default.total_note'), '6'),
+        ];
+    }
 
     /**
      * Render the preview HTML (subject + body) for a template, using either the
@@ -57,22 +74,63 @@ final class EmailPreviewRenderer
      *
      * @return array{subject: string, html: string, is_custom: bool}
      */
-    public static function preview(string $template, ?MerchantMailSettings $settings = null): array
+    public static function preview(string $template, ?MerchantMailSettings $settings = null, ?string $locale = null): array
     {
-        $vars = self::sampleVarsFor($template);
+        // The locale is bound around the WHOLE render, not passed down: the
+        // default copy, the reading direction and the "(payment X of Y)" aside
+        // all resolve from it, exactly as they do on the real send.
+        return self::inLocale($locale ?? self::localeFor($settings), static function () use ($template, $settings): array {
+            $vars = self::sampleVarsFor($template);
 
-        $customSubject = $settings?->customSubject($template);
-        $customBody = $settings?->customBody($template);
+            $customSubject = $settings?->customSubject($template);
+            $customBody = $settings?->customBody($template);
 
-        $subjectTemplate = $customSubject ?? DefaultEmailTemplates::subject($template);
-        $bodyTemplate = $customBody ?? DefaultEmailTemplates::body($template);
+            $subjectTemplate = $customSubject ?? DefaultEmailTemplates::subject($template);
+            $bodyTemplate = $customBody ?? DefaultEmailTemplates::body($template);
 
-        return [
-            // strtr — identical to the production substitution path. No Blade.
-            'subject' => TemplateRenderer::render($subjectTemplate, $vars),
-            'html' => TemplateRenderer::render($bodyTemplate, $vars),
-            'is_custom' => $customBody !== null,
-        ];
+            return [
+                // strtr — identical to the production substitution path. No Blade.
+                'subject' => TemplateRenderer::render($subjectTemplate, $vars),
+                'html' => TemplateRenderer::render($bodyTemplate, $vars),
+                'is_custom' => $customBody !== null,
+            ];
+        });
+    }
+
+    /**
+     * The language THIS SHOP'S customers read.
+     *
+     * Callers usually hand over a plan and a shop rather than the settings row —
+     * the Timeline preview does — so falling back to the bound tenant's own
+     * setting is what keeps a preview in the same language as the real send.
+     * Null means "leave the current locale alone", which is right for a caller
+     * with no shop context at all.
+     */
+    private static function localeFor(?MerchantMailSettings $settings): ?string
+    {
+        if ($settings !== null) {
+            return $settings->emailLocale();
+        }
+
+        return Tenant::check() ? MerchantMailSettings::current()->emailLocale() : null;
+    }
+
+    /** Run a render with a locale bound, restoring whatever was in force. */
+    private static function inLocale(?string $locale, callable $callback): mixed
+    {
+        if ($locale === null) {
+            return $callback();
+        }
+
+        $previous = app()->getLocale();
+
+        try {
+            app()->setLocale($locale);
+
+            return $callback();
+        } finally {
+            app()->setLocale($previous);
+        }
     }
 
     /**
@@ -103,16 +161,20 @@ final class EmailPreviewRenderer
         array $eventDetails = [],
         ?MerchantMailSettings $settings = null,
     ): array {
-        $vars = self::planVarsFor($template, $plan, $shop, $eventDetails, $settings);
+        // Same locale binding as preview(): a merchant checking what a customer
+        // was told must see it in the language the customer received it in.
+        return self::inLocale(self::localeFor($settings), static function () use ($template, $plan, $shop, $eventDetails, $settings): array {
+            $vars = self::planVarsFor($template, $plan, $shop, $eventDetails, $settings);
 
-        $customSubject = $settings?->customSubject($template);
-        $customBody = $settings?->customBody($template);
+            $customSubject = $settings?->customSubject($template);
+            $customBody = $settings?->customBody($template);
 
-        return [
-            'subject' => TemplateRenderer::render($customSubject ?? DefaultEmailTemplates::subject($template), $vars),
-            'html' => TemplateRenderer::render($customBody ?? DefaultEmailTemplates::body($template), $vars),
-            'is_custom' => $customBody !== null,
-        ];
+            return [
+                'subject' => TemplateRenderer::render($customSubject ?? DefaultEmailTemplates::subject($template), $vars),
+                'html' => TemplateRenderer::render($customBody ?? DefaultEmailTemplates::body($template), $vars),
+                'is_custom' => $customBody !== null,
+            ];
+        });
     }
 
     /**
@@ -218,15 +280,16 @@ final class EmailPreviewRenderer
      */
     public static function sampleVarsFor(string $template): array
     {
+        $sample = array_merge(self::SAMPLE, self::localisedSample());
         $placeholders = DefaultEmailTemplates::placeholders($template);
 
         if ($placeholders === []) {
-            return self::SAMPLE;
+            return $sample;
         }
 
         $vars = [];
         foreach ($placeholders as $key) {
-            $vars[$key] = self::SAMPLE[$key] ?? '';
+            $vars[$key] = $sample[$key] ?? '';
         }
 
         return $vars;

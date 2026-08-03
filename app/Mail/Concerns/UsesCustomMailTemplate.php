@@ -9,6 +9,7 @@ use App\Models\Shop;
 use App\Support\DefaultEmailTemplates;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
+use Illuminate\Support\Facades\App;
 
 /**
  * Shared mailable behaviour: pick the merchant's custom subject/body when set,
@@ -67,28 +68,46 @@ trait UsesCustomMailTemplate
     protected function buildContent(string $templateKey, Shop $shop, array $vars): Content
     {
         $settings = $this->mailSettings($shop);
-        $customBody = $settings?->customBody($templateKey);
 
-        if ($customBody !== null) {
-            // Merchant HTML: strtr-substituted, then handed to a wrapper view that
-            // ONLY echoes the already-rendered string ({!! $renderedHtml !!}). No
-            // Blade compilation of merchant input happens anywhere on this path.
-            return new Content(
-                view: 'emails.user-template-wrapper',
-                with: [
-                    'renderedHtml' => TemplateRenderer::render($customBody, $vars),
-                    'businessName' => $this->resolveBusinessName($shop),
-                ],
-            );
-        }
+        // ONE representation of the default, not two. There used to be a Blade view
+        // per template alongside DefaultEmailTemplates::body(), and only the latter
+        // fed the admin preview — so the merchant previewed one email and their
+        // customer received a slightly different one. They had already drifted.
+        // Both paths now render the same string through the same substitution.
+        $body = $settings?->customBody($templateKey) ?? DefaultEmailTemplates::body($templateKey);
 
-        // Platform default: a trusted Blade view receives the SAME var bag.
+        // strtr-substituted, then handed to a wrapper view that ONLY echoes the
+        // already-rendered string ({!! $renderedHtml !!}). No Blade compilation of
+        // merchant input happens anywhere on this path.
         return new Content(
-            view: DefaultEmailTemplates::defaultView($templateKey),
-            with: array_merge($vars, [
+            view: 'emails.user-template-wrapper',
+            with: [
+                'renderedHtml' => TemplateRenderer::render($body, $vars),
                 'businessName' => $this->resolveBusinessName($shop),
-            ]),
+            ],
         );
+    }
+
+    /**
+     * Bind the shop's CUSTOMER-facing language around a render.
+     *
+     * The merchant's admin language is not the language their shoppers read, and
+     * Laravel carries neither across a queue boundary. Every default string —
+     * subject, body, the "(payment X of Y)" aside — resolves from the locale in
+     * force at render time, so this has to wrap both halves of the mailable.
+     * Same shape as IssueDocumentJob::withDocumentLocale().
+     */
+    protected function inMailLocale(Shop $shop, callable $callback): mixed
+    {
+        $previous = App::getLocale();
+
+        try {
+            App::setLocale($this->mailSettings($shop)?->emailLocale() ?? $previous);
+
+            return $callback();
+        } finally {
+            App::setLocale($previous);
+        }
     }
 
     /**

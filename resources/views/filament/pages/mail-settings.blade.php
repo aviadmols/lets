@@ -7,10 +7,12 @@
     All copy via lang/*/mail.php (EN/HE mirrored).
 --}}
 <x-filament-panels::page>
-    <form wire:submit="save" class="rc-stack">
-        <p class="rc-muted">{{ __('mail.intro') }}</p>
+    <form wire:submit="save" class="rc-stack rc-mail">
+        <p class="rc-muted rc-mail__lead">{{ __('mail.intro') }}</p>
 
-        {{ $this->form }}
+        <div class="rc-mail__templates">
+            {{ $this->form }}
+        </div>
 
         <div class="rc-row">
             <x-rc.cta type="submit" variant="primary">{{ __('mail.actions.save') }}</x-rc.cta>

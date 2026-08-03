@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToShop;
+use App\Support\DefaultEmailTemplates;
 use App\Support\Tenant;
 use Illuminate\Database\Eloquent\Model;
 
@@ -115,5 +116,19 @@ class MerchantMailSettings extends Model
     public function hasCustomTemplate(string $template): bool
     {
         return $this->customBody($template) !== null;
+    }
+
+    /**
+     * The language the shop's CUSTOMERS read their email in — not the merchant's
+     * admin language. Guarded against an unknown value because it selects a
+     * translation file: an unrecognised locale would ship raw dotted keys.
+     */
+    public function emailLocale(): string
+    {
+        $value = is_string($this->email_locale) ? trim($this->email_locale) : '';
+
+        return in_array($value, DefaultEmailTemplates::LOCALES, true)
+            ? $value
+            : DefaultEmailTemplates::LOCALE_HE;
     }
 }

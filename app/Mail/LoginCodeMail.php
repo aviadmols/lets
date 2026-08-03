@@ -40,12 +40,12 @@ final class LoginCodeMail extends Mailable
 
     public function envelope(): Envelope
     {
-        return $this->buildEnvelope(MerchantMailSettings::TEMPLATE_LOGIN_CODE, $this->shop, $this->vars());
+        return $this->inMailLocale($this->shop, fn (): Envelope => $this->buildEnvelope(MerchantMailSettings::TEMPLATE_LOGIN_CODE, $this->shop, $this->vars()));
     }
 
     public function content(): Content
     {
-        return $this->buildContent(MerchantMailSettings::TEMPLATE_LOGIN_CODE, $this->shop, $this->vars());
+        return $this->inMailLocale($this->shop, fn (): Content => $this->buildContent(MerchantMailSettings::TEMPLATE_LOGIN_CODE, $this->shop, $this->vars()));
     }
 
     /** @return array<string, scalar|null> */

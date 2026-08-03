@@ -1422,6 +1422,23 @@ a.rc-railed:hover { background: var(--rc-blue-bg); }
     border-radius: var(--rc-radius-control);
 }
 
+/* The template list.
+   It used to be six identical collapsed accordions with a code editor inside,
+   and a merchant could not tell at a glance which emails were theirs, which were
+   still the platform's, or what each one was for. Tightening the rhythm makes
+   the six read as ONE list — a map of the customer's journey — rather than six
+   unrelated panels, which is what lets the per-row trigger line and state badge
+   be scanned in a single pass. */
+.rc-mail__templates > * + * {
+    margin-block-start: var(--rc-space-2);
+}
+
+/* The intro line above the list. */
+.rc-mail__lead {
+    color: var(--rc-ink-muted);
+    max-inline-size: 68ch;
+}
+
 /* observability.css — Observability dashboard (docs/ux/10 §observability, ARCHITECTURE.md §6.6)
    TOKENS: --rc-card --rc-border --rc-radius-card --rc-radius-control --rc-shadow-card
            --rc-space-* --rc-type-label --rc-type-body-strong --rc-ink --rc-ink-muted

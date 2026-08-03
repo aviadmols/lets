@@ -1,7 +1,12 @@
 @extends('emails.layout')
 
 {{--
-  Wrapper for MERCHANT-EDITED email HTML.
+  Wrapper for the rendered email body — merchant-edited OR the platform default.
+
+  It carries BOTH because there used to be a second representation of every
+  default (one Blade view per template) and only the string form fed the admin
+  preview, so a merchant previewed one email and their customer received another.
+  They had already drifted. One string, one substitution, one output.
 
   SECURITY: $renderedHtml has ALREADY been substituted by TemplateRenderer via
   strtr() (NEVER Blade). This view does NOTHING but echo that pre-rendered string

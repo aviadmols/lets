@@ -14,6 +14,7 @@ return [
         'charge_succeeded' => 'Payment received',
         'charge_failed' => 'Payment failed',
         'plan_cancelled' => 'Plan cancelled',
+        'login_code' => 'Sign-in code',
     ],
 
     'field' => [
@@ -77,6 +78,48 @@ return [
         'failed' => 'Could not send the test email (:reason).',
     ],
 
+    /*
+     * WHEN each email goes out. A merchant scanning this list needs to know what
+     * triggers a template before they decide whether to reword it — the list is a
+     * map of the customer's journey, not six identical boxes.
+     */
+    'trigger' => [
+        'first_payment_welcome' => 'Right after the first payment succeeds',
+        'recurring_payment_reminder' => 'A set number of hours before each charge',
+        'manual_recurring_payment' => 'When a cycle needs the customer to pay by hand',
+        'charge_succeeded' => 'After every successful charge',
+        'charge_failed' => 'When a charge is declined',
+        'plan_cancelled' => 'When a plan is cancelled, by you or by the customer',
+        'login_code' => 'When a customer asks to sign in with a code',
+    ],
+
+    'state' => [
+        'default' => 'Using the default',
+        'custom' => 'Customised',
+    ],
+
+    'locale' => [
+        'heading' => 'Language',
+        'label' => 'Your customers read email in',
+        'help' => 'Changes the default wording and the reading direction. Templates you have customised keep your own text.',
+        'he' => 'Hebrew',
+        'en' => 'English',
+    ],
+
+    'sample' => [
+        'customer_name' => 'Dana Cohen',
+        'business_name' => 'My Store',
+        'product_title' => 'Monthly subscription',
+        'failure_reason' => 'Card declined (insufficient funds)',
+        'cancellation_reason' => 'Cancelled at your request.',
+    ],
+
+    'edit' => [
+        'heading' => 'The emails your customers receive',
+        'intro' => 'Each one shows the wording that goes out today. Edit it to make it yours, or restore the default at any time.',
+        'advanced' => 'Advanced',
+        'advanced_intro' => 'Reminder timing and your own mail server. Most shops never need to open this.',
+    ],
     'actions' => [
         'save' => 'Save email settings',
         'reset' => 'Restore default',

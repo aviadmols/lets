@@ -47,11 +47,15 @@ final class TemplateRenderer
      * sees the literal `{installment_sequence}` and is always true. The decision
      * therefore belongs to the var bag — and an open-ended subscription gets an
      * empty string, not a fabricated total.
+     *
+     * The format string is a TRANSLATION, resolved from the locale the mailable
+     * bound before rendering: a shop that sends in English must not have a Hebrew
+     * clause spliced into the middle of its sentence.
      */
-    private const PROGRESS_FORMAT = ' (תשלום %s מתוך %s)';
+    private const PROGRESS_KEY = 'mail_default.progress';
 
     /** The welcome email's "N payments in the plan" sentence — same rule. */
-    private const TOTAL_NOTE_FORMAT = 'סך הכל %s תשלומים בתוכנית. ';
+    private const TOTAL_NOTE_KEY = 'mail_default.total_note';
 
     /**
      * Substitute {token} placeholders using strtr() ONLY.
@@ -109,7 +113,7 @@ final class TemplateRenderer
             'installment_count' => $count,
             'installment_sequence' => $sequence,
             'installment_progress' => self::progress($sequence, $count),
-            'installment_total_note' => $count !== '' ? sprintf(self::TOTAL_NOTE_FORMAT, $count) : '',
+            'installment_total_note' => $count !== '' ? sprintf((string) __(self::TOTAL_NOTE_KEY), $count) : '',
             'next_charge_date' => self::date($plan->next_charge_at),
             'portal_url' => (string) ($portalUrl ?? ''),
             'invoice_url' => (string) ($invoiceUrl ?? ''),
@@ -170,7 +174,7 @@ final class TemplateRenderer
     public static function progress(string $sequence, string $count): string
     {
         return ($sequence !== '' && $count !== '')
-            ? sprintf(self::PROGRESS_FORMAT, $sequence, $count)
+            ? sprintf((string) __(self::PROGRESS_KEY), $sequence, $count)
             : '';
     }
 

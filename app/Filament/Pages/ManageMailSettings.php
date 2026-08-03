@@ -17,6 +17,7 @@ use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Forms\Components\ToggleButtons;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
@@ -104,6 +105,7 @@ class ManageMailSettings extends Page implements HasForms
         $settings = MerchantMailSettings::current();
 
         $state = [
+            'email_locale' => $settings->emailLocale(),
             'reminder_enabled' => (bool) $settings->reminder_enabled,
             'reminder_offset_hours' => (int) ($settings->reminder_offset_hours ?: MerchantMailSettings::DEFAULT_REMINDER_OFFSET_HOURS),
             'override_env_smtp' => (bool) $settings->override_env_smtp,
@@ -117,10 +119,23 @@ class ManageMailSettings extends Page implements HasForms
             'portal_store_page_url' => $settings->portal_store_page_url,
         ];
 
-        // Per-template subject/body overrides (null => default, shown as blank).
+        // Pre-fill with the copy that actually goes out, custom or default.
+        //
+        // A blank editor over a grey placeholder was the single biggest complaint
+        // about this screen: a merchant who wanted to change one sentence had to
+        // find the default HTML somewhere else and retype the whole thing.
+        //
+        // The trap this creates is real and is handled in save(): the screen runs
+        // on "blank = inherit the default", so pre-filling naively would make the
+        // first save store the default AS a custom override for every shop —
+        // "Restore default" would stop meaning anything and nobody would ever
+        // receive an improved default again. save() compares against the default
+        // and stores null when they match.
         foreach (self::TEMPLATES as $template) {
-            $state[$template.'_subject'] = $settings->customSubject($template);
-            $state[$template.'_body'] = $settings->customBody($template);
+            $state[$template.'_subject'] = $settings->customSubject($template)
+                ?? $this->defaultSubject($template, $settings->emailLocale());
+            $state[$template.'_body'] = $settings->customBody($template)
+                ?? $this->defaultBody($template, $settings->emailLocale());
         }
 
         $this->form->fill($state);
@@ -131,23 +146,77 @@ class ManageMailSettings extends Page implements HasForms
         return $form
             ->statePath('data')
             ->schema([
-                ...array_map(fn (string $t): Section => $this->templateSection($t), self::TEMPLATES),
+                $this->localeSection(),
+                Section::make(__('mail.edit.heading'))
+                    ->description(__('mail.edit.intro'))
+                    ->schema(array_map(fn (string $t): Section => $this->templateSection($t), self::TEMPLATES)),
                 $this->remindersSection(),
                 $this->advancedSection(),
             ]);
     }
 
-    /** One collapsible Section per template (subject + body + placeholders + actions). */
+    /**
+     * The language the shop's CUSTOMERS read.
+     *
+     * It sits at the top, above the templates, because it changes what every one
+     * of them says: switching it re-fills the editors with the default copy in
+     * the new language for the templates the merchant has not customised.
+     */
+    private function localeSection(): Section
+    {
+        return Section::make(__('mail.locale.heading'))
+            ->schema([
+                ToggleButtons::make('email_locale')
+                    ->label(__('mail.locale.label'))
+                    ->helperText(__('mail.locale.help'))
+                    ->options($this->localeOptions())
+                    ->inline()
+                    ->live()
+                    ->afterStateUpdated(fn (?string $state) => $this->relocaliseDefaults((string) $state)),
+            ]);
+    }
+
+    /**
+     * One collapsible Section per template.
+     *
+     * The header does the work: what triggers this email, whether it is still the
+     * default, and Preview — all reachable WITHOUT expanding, because the previous
+     * version buried the preview action inside a collapsed section and merchants
+     * reported the button as missing.
+     */
     private function templateSection(string $template): Section
     {
         return Section::make(__('mail.template.'.$template))
+            ->description(__('mail.trigger.'.$template))
             ->collapsible()
             ->collapsed()
+            ->compact()
+            ->headerActions([
+                Action::make($template.'_state')
+                    ->label(fn (): string => $this->isCustomised($template)
+                        ? __('mail.state.custom')
+                        : __('mail.state.default'))
+                    ->badge()
+                    ->color(fn (): string => $this->isCustomised($template) ? 'warning' : 'gray')
+                    ->disabled(),
+
+                Action::make($template.'_preview')
+                    ->label(__('mail.actions.preview'))
+                    ->icon('heroicon-m-eye')
+                    ->color('gray')
+                    ->link()
+                    ->modalHeading(__('mail.preview.heading'))
+                    ->modalSubmitAction(false)
+                    ->modalCancelActionLabel(__('mail.preview.close'))
+                    ->modalContent(fn (): View => $this->previewModal($template))
+                    // Modal width so the iframe preview has room.
+                    ->modalWidth('3xl'),
+            ])
             ->schema([
                 TextInput::make($template.'_subject')
                     ->label(__('mail.field.subject'))
                     ->helperText(__('mail.field.subject_hint'))
-                    ->placeholder(DefaultEmailTemplates::subject($template))
+                    ->placeholder(fn (): string => $this->defaultSubject($template, $this->currentLocale()))
                     ->maxLength(255),
 
                 // Placeholder helper line: the exact tokens this template supports.
@@ -160,17 +229,6 @@ class ManageMailSettings extends Page implements HasForms
                     ->helperText(__('mail.field.body_hint')),
 
                 Actions::make([
-                    Action::make($template.'_preview')
-                        ->label(__('mail.actions.preview'))
-                        ->icon('heroicon-m-eye')
-                        ->color('gray')
-                        ->modalHeading(__('mail.preview.heading'))
-                        ->modalSubmitAction(false)
-                        ->modalCancelActionLabel(__('mail.preview.close'))
-                        ->modalContent(fn (): View => $this->previewModal($template))
-                        // Modal width so the iframe preview has room.
-                        ->modalWidth('3xl'),
-
                     Action::make($template.'_restore')
                         ->label(__('mail.actions.reset'))
                         ->icon('heroicon-m-arrow-uturn-left')
@@ -200,13 +258,23 @@ class ManageMailSettings extends Page implements HasForms
             ->columns(2);
     }
 
-    /** Advanced — per-shop SMTP override + the portal landing URL (collapsed). */
+    /**
+     * Advanced — per-shop SMTP override + the portal landing URL.
+     *
+     * Behind its own boundary and collapsed, so the screen opens on the thing
+     * merchants actually came for. Almost nobody needs their own mail server, and
+     * an SMTP form at the top of the page reads as a prerequisite.
+     */
     private function advancedSection(): Section
     {
-        return Section::make(__('mail.smtp.heading'))
-            ->description(__('mail.smtp.intro'))
+        return Section::make(__('mail.edit.advanced'))
+            ->description(__('mail.edit.advanced_intro'))
             ->collapsed()
             ->schema([
+                Placeholder::make('smtp_intro')
+                    ->label(__('mail.smtp.heading'))
+                    ->content(__('mail.smtp.intro'))
+                    ->columnSpanFull(),
                 Toggle::make('override_env_smtp')
                     ->label(__('mail.smtp.override'))
                     ->live()
@@ -283,10 +351,25 @@ class ManageMailSettings extends Page implements HasForms
         $input = $this->form->getState();
         $settings = MerchantMailSettings::current();
 
-        // Per-template subject/body: an empty string normalises to null (= default).
+        $locale = $this->oneOfLocale($input['email_locale'] ?? null);
+        $settings->email_locale = $locale;
+
+        // Per-template subject/body: blank OR byte-identical to the default both
+        // normalise to null.
+        //
+        // The comparison is what makes pre-filling the editors safe. Without it,
+        // the first save on this screen would turn every shop into a "customised"
+        // one — freezing today's wording forever, making "Restore default" a
+        // no-op, and cutting them off from any improvement we ship later.
         foreach (self::TEMPLATES as $template) {
-            $settings->{$template.'_subject'} = $this->blankToNull($input[$template.'_subject'] ?? null);
-            $settings->{$template.'_body'} = $this->blankToNull($input[$template.'_body'] ?? null);
+            $settings->{$template.'_subject'} = $this->customOrNull(
+                $input[$template.'_subject'] ?? null,
+                $this->defaultSubject($template, $locale),
+            );
+            $settings->{$template.'_body'} = $this->customOrNull(
+                $input[$template.'_body'] ?? null,
+                $this->defaultBody($template, $locale),
+            );
         }
 
         $settings->reminder_enabled = (bool) ($input['reminder_enabled'] ?? false);
@@ -326,11 +409,36 @@ class ManageMailSettings extends Page implements HasForms
         $settings->{$template.'_body'} = null;
         $settings->save();
 
-        // Reflect the cleared values in the live form state.
-        $this->data[$template.'_subject'] = null;
-        $this->data[$template.'_body'] = null;
+        // Put the DEFAULT back in the editors, not a blank. The merchant asked to
+        // see the default copy again; an empty box would read as "we deleted it".
+        $locale = $settings->emailLocale();
+        $this->data[$template.'_subject'] = $this->defaultSubject($template, $locale);
+        $this->data[$template.'_body'] = $this->defaultBody($template, $locale);
 
         Notification::make()->title(__('mail.reset_done'))->success()->send();
+    }
+
+    /**
+     * Switching the customer language re-fills the editors that are still showing
+     * the default — in the new language.
+     *
+     * A template the merchant has actually customised keeps their words: they
+     * wrote them, and silently replacing them because a language toggle moved
+     * would be the worst thing this screen could do.
+     */
+    public function relocaliseDefaults(string $locale): void
+    {
+        $locale = $this->oneOfLocale($locale);
+        $settings = MerchantMailSettings::current();
+
+        foreach (self::TEMPLATES as $template) {
+            if ($settings->customBody($template) === null) {
+                $this->data[$template.'_body'] = $this->defaultBody($template, $locale);
+            }
+            if ($settings->customSubject($template) === null) {
+                $this->data[$template.'_subject'] = $this->defaultSubject($template, $locale);
+            }
+        }
     }
 
     /**
@@ -458,6 +566,91 @@ class ManageMailSettings extends Page implements HasForms
     }
 
     /**
+     * A custom value, or null when the merchant is still on the default.
+     *
+     * Blank means default (the original contract). Identical-to-the-default also
+     * means default — that is what keeps "Restore default" meaningful and keeps
+     * every unedited shop inheriting improvements. Whitespace is normalised
+     * before comparing so a stray trailing newline from the editor does not
+     * silently promote a shop to "customised".
+     */
+    private function customOrNull(mixed $value, string $default): ?string
+    {
+        $value = $this->blankToNull($value);
+
+        if ($value === null) {
+            return null;
+        }
+
+        return $this->normalise($value) === $this->normalise($default) ? null : $value;
+    }
+
+    private function normalise(string $value): string
+    {
+        return trim((string) preg_replace('/\s+/u', ' ', $value));
+    }
+
+    /** Has this merchant actually written their own copy for this template? */
+    public function isCustomised(string $template): bool
+    {
+        $locale = $this->currentLocale();
+
+        return $this->customOrNull($this->data[$template.'_body'] ?? null, $this->defaultBody($template, $locale)) !== null
+            || $this->customOrNull($this->data[$template.'_subject'] ?? null, $this->defaultSubject($template, $locale)) !== null;
+    }
+
+    /** The locale the form is currently set to (not the admin's own language). */
+    public function currentLocale(): string
+    {
+        return $this->oneOfLocale($this->data['email_locale'] ?? null);
+    }
+
+    private function oneOfLocale(mixed $value): string
+    {
+        $value = is_string($value) ? trim($value) : '';
+
+        return in_array($value, DefaultEmailTemplates::LOCALES, true)
+            ? $value
+            : DefaultEmailTemplates::LOCALE_HE;
+    }
+
+    /** @return array<string, string> */
+    private function localeOptions(): array
+    {
+        $options = [];
+        foreach (DefaultEmailTemplates::LOCALES as $locale) {
+            $options[$locale] = __('mail.locale.'.$locale);
+        }
+
+        return $options;
+    }
+
+    /** The platform default subject, resolved in the CUSTOMER's language. */
+    private function defaultSubject(string $template, string $locale): string
+    {
+        return $this->inLocale($locale, static fn (): string => DefaultEmailTemplates::subject($template));
+    }
+
+    /** The platform default body, resolved in the CUSTOMER's language. */
+    private function defaultBody(string $template, string $locale): string
+    {
+        return $this->inLocale($locale, static fn (): string => DefaultEmailTemplates::body($template));
+    }
+
+    private function inLocale(string $locale, callable $callback): string
+    {
+        $previous = app()->getLocale();
+
+        try {
+            app()->setLocale($locale);
+
+            return (string) $callback();
+        } finally {
+            app()->setLocale($previous);
+        }
+    }
+
+    /**
      * A settings model carrying the merchant's LIVE (unsaved) subject/body for the
      * template being previewed/tested, so Preview + Send-test reflect the in-form
      * edits — not only what is persisted. Falls back to the saved values. This is
@@ -465,9 +658,23 @@ class ManageMailSettings extends Page implements HasForms
      */
     private function liveSettingsFor(string $template, MerchantMailSettings $saved): MerchantMailSettings
     {
+        $locale = $this->currentLocale();
+
         $clone = clone $saved;
-        $clone->{$template.'_subject'} = $this->blankToNull($this->data[$template.'_subject'] ?? $saved->{$template.'_subject'});
-        $clone->{$template.'_body'} = $this->blankToNull($this->data[$template.'_body'] ?? $saved->{$template.'_body'});
+        // The form's language, not the saved one: a merchant who has just flipped
+        // the switch is previewing what that switch does.
+        $clone->email_locale = $locale;
+        // customOrNull, not blankToNull: an editor still showing the default must
+        // preview as the DEFAULT, so the "showing your custom template" note in
+        // the modal stays truthful.
+        $clone->{$template.'_subject'} = $this->customOrNull(
+            $this->data[$template.'_subject'] ?? $saved->{$template.'_subject'},
+            $this->defaultSubject($template, $locale),
+        );
+        $clone->{$template.'_body'} = $this->customOrNull(
+            $this->data[$template.'_body'] ?? $saved->{$template.'_body'},
+            $this->defaultBody($template, $locale),
+        );
 
         return $clone;
     }

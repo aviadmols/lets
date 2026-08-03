@@ -11,23 +11,28 @@ use App\Models\MerchantMailSettings;
  *
  * These defaults are the FALLBACK: a merchant who has not overridden a template
  * gets this copy. The HTML here is the ONE allowed exception to the no-inline-CSS
- * rule — email clients strip <style>, so every visual rule is inlined. The bodies
- * are RTL-first (dir="rtl"), matching the reference engine's Hebrew-merchant look.
+ * rule — email clients strip <style>, so every visual rule is inlined.
+ *
+ * THE COPY LIVES IN lang/{en,he}/mail_default.php, not in this file. Two reasons:
+ * the merchant chooses which language their CUSTOMERS read (Settings → Email), and
+ * the same words have to serve both the send and the admin preview. This class
+ * assembles them into HTML; it does not author them. Direction and alignment come
+ * from the locale at render time, so an English shop does not send RTL mail.
  *
  * Placeholders are written as {snake_case} tokens and substituted by
  * App\Mail\Support\TemplateRenderer via strtr() — NEVER Blade. The token set per
  * template is exactly the keys TemplateRenderer puts in the var bag for that mail.
- *
- * Ported from the reference engine's Support/DefaultEmailTemplates (single-tenant
- * → per-shop: the copy is identical; the values are filled from the sending
- * shop's plan/payment/business name at send time).
  */
 final class DefaultEmailTemplates
 {
     // === CONSTANTS ===
-    /** Shared inline-CSS card shell wrapped around each template's body. */
-    private const CARD_OPEN = '<div dir="rtl" style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1f2937;background:#ffffff;border-radius:12px;border:1px solid #e5e7eb;">';
-    private const CARD_CLOSE = '</div>';
+    /** Locales the platform ships default copy in. */
+    public const LOCALE_HE = 'he';
+    public const LOCALE_EN = 'en';
+    public const LOCALES = [self::LOCALE_HE, self::LOCALE_EN];
+
+    private const RTL_LOCALES = ['he', 'ar'];
+
     private const H1 = 'style="font-size:20px;font-weight:700;margin:0 0 16px;color:#111827;"';
     private const P = 'style="font-size:15px;line-height:1.6;margin:0 0 14px;"';
     private const AMOUNT = 'style="font-size:15px;line-height:1.6;margin:0 0 14px;font-weight:700;"';
@@ -71,29 +76,16 @@ final class DefaultEmailTemplates
         ],
     ];
 
-    /**
-     * Default subject line per template. Plain text; {tokens} allowed and
-     * strtr-substituted exactly like the body.
-     *
-     * @var array<string, string>
-     */
-    private const SUBJECTS = [
-        MerchantMailSettings::TEMPLATE_FIRST_PAYMENT_WELCOME => 'ברוכים הבאים — התשלום הראשון התקבל ({business_name})',
-        MerchantMailSettings::TEMPLATE_RECURRING_PAYMENT_REMINDER => 'תזכורת: חיוב קרוב בתאריך {next_charge_date} ({business_name})',
-        MerchantMailSettings::TEMPLATE_MANUAL_RECURRING_PAYMENT => 'בקשת תשלום — {business_name}',
-        MerchantMailSettings::TEMPLATE_CHARGE_SUCCEEDED => 'התשלום בסך {amount} {currency} התקבל ({business_name})',
-        MerchantMailSettings::TEMPLATE_CHARGE_FAILED => 'החיוב נכשל — נדרשת פעולה ({business_name})',
-        MerchantMailSettings::TEMPLATE_PLAN_CANCELLED => 'התוכנית בוטלה — {business_name}',
-        MerchantMailSettings::TEMPLATE_LOGIN_CODE => 'קוד הכניסה שלך: {code}',
-    ];
-
     /** Default subject for a template ({tokens} still get strtr-substituted). */
     public static function subject(string $template): string
     {
-        return self::SUBJECTS[$template] ?? '{business_name}';
+        $key = 'mail_default.subject.'.$template;
+        $subject = __($key);
+
+        return is_string($subject) && $subject !== $key ? $subject : '{business_name}';
     }
 
-    /** Default HTML body for a template (inline CSS, RTL, {token} placeholders). */
+    /** Default HTML body for a template (inline CSS, {token} placeholders). */
     public static function body(string $template): string
     {
         return match ($template) {
@@ -104,7 +96,7 @@ final class DefaultEmailTemplates
             MerchantMailSettings::TEMPLATE_CHARGE_FAILED => self::chargeFailed(),
             MerchantMailSettings::TEMPLATE_PLAN_CANCELLED => self::planCancelled(),
             MerchantMailSettings::TEMPLATE_LOGIN_CODE => self::loginCode(),
-            default => self::CARD_OPEN.'<p '.self::P.'>{business_name}</p>'.self::CARD_CLOSE,
+            default => self::card('<p '.self::P.'>{business_name}</p>'),
         };
     }
 
@@ -114,86 +106,126 @@ final class DefaultEmailTemplates
         return self::PLACEHOLDERS[$template] ?? [];
     }
 
-    /** The Blade view used to render this template's DEFAULT (non-custom) body. */
-    public static function defaultView(string $template): string
+    /** Reading direction for the CURRENT locale — drives the card and the layout. */
+    public static function direction(): string
     {
-        return 'emails.'.str_replace('_', '-', $template);
+        return in_array(self::locale(), self::RTL_LOCALES, true) ? 'rtl' : 'ltr';
     }
 
-    // === Default bodies (inline CSS — the allowed email exception) ===
+    public static function locale(): string
+    {
+        return (string) app()->getLocale();
+    }
+
+    // === Assembly (inline CSS — the allowed email exception) ===
+
+    /**
+     * The shared card shell. Direction is resolved per render rather than baked in,
+     * so a shop that sends in English does not ship right-aligned mail.
+     */
+    private static function card(string $inner): string
+    {
+        $dir = self::direction();
+
+        return '<div dir="'.$dir.'" style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1f2937;background:#ffffff;border-radius:12px;border:1px solid #e5e7eb;">'
+            .$inner
+            .'</div>';
+    }
+
+    private static function line(string $key, string $style): string
+    {
+        return '<p '.$style.'>'.__($key).'</p>';
+    }
+
+    private static function cta(string $key, string $url): string
+    {
+        return '<a href="'.$url.'" '.self::CTA.'>'.__($key).'</a>';
+    }
+
+    private static function greeting(): string
+    {
+        return '<h1 '.self::H1.'>'.__('mail_default.greeting').'</h1>';
+    }
+
+    private static function footer(): string
+    {
+        return self::line('mail_default.footer', self::MUTED);
+    }
+
+    // === Default bodies ===
 
     private static function firstPaymentWelcome(): string
     {
-        return self::CARD_OPEN
-            .'<h1 '.self::H1.'>שלום {customer_name},</h1>'
-            .'<p '.self::P.'>תודה! התשלום הראשון עבור <strong>{product_title}</strong> התקבל בהצלחה.</p>'
-            .'<p '.self::AMOUNT.'>סכום: {amount} {currency}</p>'
+        return self::card(
+            self::greeting()
+            .self::line('mail_default.first_payment_welcome.lead', self::P)
+            .self::line('mail_default.amount', self::AMOUNT)
             // Same reason as {installment_progress}: an open-ended subscription has
             // no "N payments in the plan" to state, so the sentence disappears
             // rather than announcing a total nobody agreed to.
-            .'<p '.self::P.'>{installment_total_note}החיוב הבא צפוי בתאריך {next_charge_date}.</p>'
-            .'<a href="{portal_url}" '.self::CTA.'>צפייה בתוכנית שלי</a>'
-            .'<p '.self::MUTED.'>מספר תוכנית #{plan_id} · {business_name}</p>'
-            .self::CARD_CLOSE;
+            .self::line('mail_default.first_payment_welcome.next', self::P)
+            .self::cta('mail_default.first_payment_welcome.cta', '{portal_url}')
+            .self::footer()
+        );
     }
 
     private static function recurringReminder(): string
     {
-        return self::CARD_OPEN
-            .'<h1 '.self::H1.'>שלום {customer_name},</h1>'
-            .'<p '.self::P.'>זוהי תזכורת שהחיוב הבא עבור <strong>{product_title}</strong> צפוי בתאריך <strong>{next_charge_date}</strong>.</p>'
-            .'<p '.self::AMOUNT.'>סכום: {amount} {currency}</p>'
-            .'<a href="{portal_url}" '.self::CTA.'>ניהול המנוי שלי</a>'
-            .'<p '.self::MUTED.'>מספר תוכנית #{plan_id} · {business_name}</p>'
-            .self::CARD_CLOSE;
+        return self::card(
+            self::greeting()
+            .self::line('mail_default.recurring_payment_reminder.lead', self::P)
+            .self::line('mail_default.amount', self::AMOUNT)
+            .self::cta('mail_default.recurring_payment_reminder.cta', '{portal_url}')
+            .self::footer()
+        );
     }
 
     private static function manualRecurring(): string
     {
-        return self::CARD_OPEN
-            .'<h1 '.self::H1.'>שלום {customer_name},</h1>'
-            .'<p '.self::P.'>הגיע מועד התשלום עבור <strong>{product_title}</strong>. נא להשלים את התשלום עד {due_date}.</p>'
-            .'<p '.self::AMOUNT.'>סכום לתשלום: {amount} {currency}</p>'
-            .'<a href="{invoice_url}" '.self::CTA.'>תשלום עכשיו</a>'
-            .'<p '.self::MUTED.'>מספר תוכנית #{plan_id} · {business_name}</p>'
-            .self::CARD_CLOSE;
+        return self::card(
+            self::greeting()
+            .self::line('mail_default.manual_recurring_payment.lead', self::P)
+            .self::line('mail_default.manual_recurring_payment.amount', self::AMOUNT)
+            .self::cta('mail_default.manual_recurring_payment.cta', '{invoice_url}')
+            .self::footer()
+        );
     }
 
     private static function chargeSucceeded(): string
     {
-        return self::CARD_OPEN
-            .'<h1 '.self::H1.'>שלום {customer_name},</h1>'
+        return self::card(
+            self::greeting()
             // {installment_progress} carries the whole "(payment X of Y)" aside, and
             // is EMPTY for an open-ended subscription — which has no Y, and was
             // being told "payment 3 of 1".
-            .'<p '.self::P.'>התשלום עבור <strong>{product_title}</strong> התקבל בהצלחה{installment_progress}.</p>'
-            .'<p '.self::AMOUNT.'>סכום: {amount} {currency}</p>'
-            .'<a href="{invoice_url}" '.self::CTA.'>צפייה בחשבונית</a>'
-            .'<p '.self::P.'><a href="{portal_url}" style="color:#2563eb;">ניהול התוכנית שלי</a></p>'
-            .'<p '.self::MUTED.'>מספר תוכנית #{plan_id} · {business_name}</p>'
-            .self::CARD_CLOSE;
+            .self::line('mail_default.charge_succeeded.lead', self::P)
+            .self::line('mail_default.amount', self::AMOUNT)
+            .self::cta('mail_default.charge_succeeded.cta', '{invoice_url}')
+            .'<p '.self::P.'><a href="{portal_url}" style="color:#2563eb;">'.__('mail_default.charge_succeeded.secondary').'</a></p>'
+            .self::footer()
+        );
     }
 
     private static function chargeFailed(): string
     {
-        return self::CARD_OPEN
-            .'<h1 '.self::H1.'>שלום {customer_name},</h1>'
-            .'<p '.self::P.'>לא הצלחנו לחייב את אמצעי התשלום עבור <strong>{product_title}</strong>.</p>'
-            .'<p '.self::AMOUNT.'>סכום: {amount} {currency}</p>'
-            .'<p '.self::P.'>סיבה: {failure_reason}. ננסה שוב בתאריך {next_retry_date}. ניתן לעדכן את אמצעי התשלום מראש:</p>'
-            .'<a href="{portal_url}" '.self::CTA.'>עדכון אמצעי תשלום</a>'
-            .'<p '.self::MUTED.'>מספר תוכנית #{plan_id} · {business_name}</p>'
-            .self::CARD_CLOSE;
+        return self::card(
+            self::greeting()
+            .self::line('mail_default.charge_failed.lead', self::P)
+            .self::line('mail_default.amount', self::AMOUNT)
+            .self::line('mail_default.charge_failed.reason', self::P)
+            .self::cta('mail_default.charge_failed.cta', '{portal_url}')
+            .self::footer()
+        );
     }
 
     private static function planCancelled(): string
     {
-        return self::CARD_OPEN
-            .'<h1 '.self::H1.'>שלום {customer_name},</h1>'
-            .'<p '.self::P.'>התוכנית עבור <strong>{product_title}</strong> בוטלה. {cancellation_reason}</p>'
-            .'<a href="{portal_url}" '.self::CTA.'>צפייה בהיסטוריה</a>'
-            .'<p '.self::MUTED.'>מספר תוכנית #{plan_id} · {business_name}</p>'
-            .self::CARD_CLOSE;
+        return self::card(
+            self::greeting()
+            .self::line('mail_default.plan_cancelled.lead', self::P)
+            .self::cta('mail_default.plan_cancelled.cta', '{portal_url}')
+            .self::footer()
+        );
     }
 
     /**
@@ -203,12 +235,14 @@ final class DefaultEmailTemplates
      */
     private static function loginCode(): string
     {
-        return self::CARD_OPEN
-            .'<h1 '.self::H1.'>קוד הכניסה שלך</h1>'
-            .'<p '.self::P.'>הזינו את הקוד הבא באזור האישי של {business_name}:</p>'
+        return self::card(
+            '<h1 '.self::H1.'>'.__('mail_default.login_code.heading').'</h1>'
+            .self::line('mail_default.login_code.lead', self::P)
+            // The digits get their own treatment: LTR and monospaced even inside
+            // an RTL card, because a bidi-reordered code is unreadable.
             .'<p '.self::CODE.'>{code}</p>'
-            .'<p '.self::P.'>הקוד תקף ל-{expires_minutes} דקות.</p>'
-            .'<p '.self::MUTED.'>לא ביקשתם קוד? אפשר להתעלם מההודעה — בלי הקוד אי אפשר להיכנס. · {business_name}</p>'
-            .self::CARD_CLOSE;
+            .self::line('mail_default.login_code.valid', self::P)
+            .self::line('mail_default.login_code.footer', self::MUTED)
+        );
     }
 }

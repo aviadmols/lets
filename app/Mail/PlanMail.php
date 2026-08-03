@@ -71,11 +71,13 @@ abstract class PlanMail extends Mailable
 
     public function envelope(): Envelope
     {
-        return $this->buildEnvelope($this->templateKey(), $this->shop, $this->vars());
+        // The shopper's language, not the admin's — and vars() itself builds
+        // locale-dependent sentences, so it has to run inside the binding too.
+        return $this->inMailLocale($this->shop, fn (): Envelope => $this->buildEnvelope($this->templateKey(), $this->shop, $this->vars()));
     }
 
     public function content(): Content
     {
-        return $this->buildContent($this->templateKey(), $this->shop, $this->vars());
+        return $this->inMailLocale($this->shop, fn (): Content => $this->buildContent($this->templateKey(), $this->shop, $this->vars()));
     }
 }

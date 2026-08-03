@@ -7,8 +7,11 @@
   through this layout — it goes through user-template-wrapper.blade.php, which
   only echoes an already-strtr-substituted string.
 --}}
+{{-- Direction follows the shop's CUSTOMER language, bound by the mailable before
+     it renders. Hard-coding rtl/he shipped right-aligned Hebrew chrome around an
+     English body for any shop that chose English. --}}
 <!DOCTYPE html>
-<html dir="rtl" lang="he">
+<html dir="{{ \App\Support\DefaultEmailTemplates::direction() }}" lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
