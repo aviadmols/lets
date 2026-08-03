@@ -56,6 +56,12 @@ class MerchantLoyaltySettings extends Model
     /** A referral discount past this is almost certainly a typo, not an offer. */
     public const MAX_REFERRAL_PERCENT = 50;
 
+    /**
+     * The most of an order's value a merchant can hand back to the person who
+     * referred it. Past this the program costs more than the sale brings in.
+     */
+    public const MAX_REFERRER_PERCENT = 50;
+
     /** Bounds. A merchant typo must not mint a million points or a free store. */
     public const MAX_POINTS_PER_CURRENCY = 1000;
     public const MAX_BONUS_POINTS = 100000;
@@ -83,6 +89,7 @@ class MerchantLoyaltySettings extends Model
             'referral_discount_value' => 'decimal:2',
             'referral_points_per_order' => 'integer',
             'referral_points_per_currency' => 'integer',
+            'referral_referrer_percent' => 'decimal:2',
         ];
     }
 
@@ -106,6 +113,7 @@ class MerchantLoyaltySettings extends Model
                 'referral_discount_value' => 0,
                 'referral_points_per_order' => 0,
                 'referral_points_per_currency' => 0,
+                'referral_referrer_percent' => 0,
                 'accent_color' => self::DEFAULT_ACCENT,
                 'accent_text_color' => self::DEFAULT_ACCENT_TEXT,
                 'theme_mode' => self::THEME_LIGHT,
@@ -251,7 +259,8 @@ class MerchantLoyaltySettings extends Model
         return (bool) $this->referral_enabled
             && ($this->referralDiscountValue() > 0
                 || $this->referralPointsPerOrder() > 0
-                || $this->referralPointsPerCurrency() > 0);
+                || $this->referralPointsPerCurrency() > 0
+                || $this->referralReferrerPercent() > 0);
     }
 
     public function referralDiscountType(): string
@@ -281,11 +290,51 @@ class MerchantLoyaltySettings extends Model
         return max(0, min(self::MAX_POINTS_PER_CURRENCY, (int) $this->referral_points_per_currency));
     }
 
-    /** What one referred order is worth to the referrer, in points. */
+    /** The share of a referred order's value the MEMBER gets back, as points. */
+    public function referralReferrerPercent(): float
+    {
+        return min(self::MAX_REFERRER_PERCENT, max(0, round((float) $this->referral_referrer_percent, 2)));
+    }
+
+    /**
+     * How many points one currency unit is worth to a member.
+     *
+     * The honest answer is the merchant's OWN redemption rate — the number of
+     * points that buys one unit of credit — because that is the rate at which a
+     * point becomes money for this shopper. Converting a percentage through it
+     * means "5%" really is 5% of the order, and stays 5% when the merchant
+     * changes their rate.
+     *
+     * When redemption is display-only (points buy nothing) a point has no money
+     * value at all, so there is nothing to convert through. Rather than refuse,
+     * fall back to the EARN rate: the member gets the percentage expressed in
+     * the same points they would have earned by spending it themselves. The
+     * admin helper text says so, because the two are not the same promise.
+     */
+    public function pointsPerMoneyUnit(): float
+    {
+        if ($this->redemptionAvailable()) {
+            return $this->redeemRatePoints() / $this->redeemRateAmount();
+        }
+
+        return (float) $this->pointsPerCurrency();
+    }
+
+    /**
+     * What one referred order is worth to the referrer, in points.
+     *
+     * All three rewards COMBINE — a merchant may want a flat thank-you plus a
+     * share of the value, and silently letting one override another would be a
+     * setting that lies.
+     */
     public function referralRewardFor(float $orderAmount): int
     {
-        $points = $this->referralPointsPerOrder()
-            + ($orderAmount > 0 ? $orderAmount * $this->referralPointsPerCurrency() : 0);
+        $points = $this->referralPointsPerOrder();
+
+        if ($orderAmount > 0) {
+            $points += $orderAmount * $this->referralPointsPerCurrency();
+            $points += ($orderAmount * $this->referralReferrerPercent() / 100) * $this->pointsPerMoneyUnit();
+        }
 
         return $this->roundPoints($points);
     }

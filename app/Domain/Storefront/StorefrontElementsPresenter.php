@@ -27,6 +27,11 @@ final class StorefrontElementsPresenter
     public const ELEMENT_SUBSCRIPTIONS = 'subscriptions';
     public const ELEMENT_DEPOSIT = 'deposit';
     public const ELEMENT_LOYALTY = 'loyalty';
+    public const ELEMENT_ACCOUNT = 'account';
+
+    /** Which admin button a deep link opens — they go to different places. */
+    public const LINK_THEME = 'theme';   // the theme editor, with our block ready
+    public const LINK_MENUS = 'menus';   // Online Store → Navigation
 
     /**
      * Theme app-block handles — the block FILENAME without extension, which is
@@ -46,8 +51,8 @@ final class StorefrontElementsPresenter
 
     /**
      * @return list<array{
-     *   key: string, status: string, deep_link: ?string, block: ?string,
-     *   steps: int, snippet: ?string, shortcode: ?string, page_url: ?string
+     *   key: string, status: string, deep_link: ?string, deep_link_kind: ?string,
+     *   block: ?string, steps: int, snippet: ?string, shortcode: ?string, page_url: ?string
      * }>
      */
     public function elements(?Shop $shop): array
@@ -74,6 +79,7 @@ final class StorefrontElementsPresenter
                 // merchant reasonably reads that as the widget being broken.
                 'status' => $this->hasPublishedPlan() ? self::STATUS_READY : self::STATUS_NEEDS_SETUP,
                 'deep_link' => $this->themeEditorLink($shop, self::BLOCK_SUBSCRIPTIONS),
+                'deep_link_kind' => self::LINK_THEME,
                 'block' => self::BLOCK_SUBSCRIPTIONS,
                 'steps' => 3,
                 'snippet' => null,
@@ -84,6 +90,7 @@ final class StorefrontElementsPresenter
                 'key' => self::ELEMENT_DEPOSIT,
                 'status' => self::STATUS_READY,
                 'deep_link' => $this->themeEditorLink($shop, self::BLOCK_DEPOSIT),
+                'deep_link_kind' => self::LINK_THEME,
                 'block' => self::BLOCK_DEPOSIT,
                 'steps' => 3,
                 // The pasteable alternative for themes without app-block support.
@@ -97,15 +104,23 @@ final class StorefrontElementsPresenter
             $elements[] = [
                 'key' => self::ELEMENT_LOYALTY,
                 'status' => self::STATUS_READY,
-                'deep_link' => null,
+                // Straight to Online Store → Navigation. The App Proxy already
+                // serves the page on the merchant's OWN domain, so there is no
+                // theme edit and nothing to install — the only missing piece is
+                // a link, and finding the menu editor is the actual friction.
+                'deep_link' => $this->adminLink($shop, 'menus'),
+                'deep_link_kind' => self::LINK_MENUS,
                 'block' => null,
-                'steps' => 2,
+                'steps' => 5,
                 'snippet' => null,
                 'shortcode' => null,
-                // The App-Proxy page the merchant links to from their menu.
-                'page_url' => $this->loyaltyPageUrl($shop),
+                'page_url' => $this->proxyPageUrl($shop, 'loyalty'),
             ];
         }
+
+        // The personal area's Shopify storefront surface is not built yet; the
+        // merchant's own account extension covers subscriptions there. Listing it
+        // as "coming" would be a promise, so it appears only where it works.
 
         return $elements;
     }
@@ -133,14 +148,29 @@ final class StorefrontElementsPresenter
         );
     }
 
-    /** The customer-facing loyalty page, served through the Shopify App Proxy. */
-    private function loyaltyPageUrl(Shop $shop): ?string
+    /**
+     * A customer-facing page served through the Shopify App Proxy.
+     *
+     * The URL is on the MERCHANT'S OWN domain — that is the whole point of the
+     * proxy, and the thing merchants most often miss. There is no theme edit, no
+     * app block and nothing to install: the page is already live, and all that is
+     * missing is something linking to it.
+     */
+    private function proxyPageUrl(Shop $shop, string $path): ?string
     {
         $domain = trim((string) ($shop->shopify_domain ?? ''));
         $prefix = trim((string) config('shopify.app_proxy_prefix', 'apps'));
         $subpath = trim((string) config('shopify.app_proxy_subpath', 'payplus'));
 
-        return $domain !== '' ? sprintf('https://%s/%s/%s/loyalty', $domain, $prefix, $subpath) : null;
+        return $domain !== '' ? sprintf('https://%s/%s/%s/%s', $domain, $prefix, $subpath, $path) : null;
+    }
+
+    /** A deep link into a section of the merchant's own Shopify admin. */
+    private function adminLink(Shop $shop, string $section): ?string
+    {
+        $domain = trim((string) ($shop->shopify_domain ?? ''));
+
+        return $domain !== '' ? sprintf('https://%s/admin/%s', $domain, $section) : null;
     }
 
     // === WooCommerce ===
@@ -155,6 +185,7 @@ final class StorefrontElementsPresenter
                 // what flips the widget on. Say so rather than "auto".
                 'status' => $this->hasPublishedPlan() ? self::STATUS_AUTO : self::STATUS_NEEDS_SETUP,
                 'deep_link' => null,
+                'deep_link_kind' => null,
                 'block' => null,
                 'steps' => 2,
                 'snippet' => null,
@@ -165,8 +196,23 @@ final class StorefrontElementsPresenter
                 'key' => self::ELEMENT_DEPOSIT,
                 'status' => self::STATUS_AUTO,
                 'deep_link' => null,
+                'deep_link_kind' => null,
                 'block' => null,
                 'steps' => 2,
+                'snippet' => null,
+                'shortcode' => null,
+                'page_url' => null,
+            ],
+            [
+                // The personal area needs no placement at all: the plugin adds
+                // its own My Account tab. What the merchant DOES need to know is
+                // where to configure it, so the steps point at that screen.
+                'key' => self::ELEMENT_ACCOUNT,
+                'status' => self::STATUS_AUTO,
+                'deep_link' => null,
+                'deep_link_kind' => null,
+                'block' => null,
+                'steps' => 3,
                 'snippet' => null,
                 'shortcode' => null,
                 'page_url' => null,
@@ -178,6 +224,7 @@ final class StorefrontElementsPresenter
                 'key' => self::ELEMENT_LOYALTY,
                 'status' => self::STATUS_READY,
                 'deep_link' => null,
+                'deep_link_kind' => null,
                 'block' => null,
                 'steps' => 2,
                 'snippet' => null,

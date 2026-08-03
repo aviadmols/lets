@@ -90,6 +90,49 @@ final class StorefrontElementsPageTest extends TestCase
         $this->assertStringContainsString('/apps/payplus/loyalty', $elements['loyalty']['page_url']);
     }
 
+    public function test_the_loyalty_card_links_to_the_menu_editor_not_the_theme_editor(): void
+    {
+        $shop = $this->shopifyShop();
+        Tenant::set($shop);
+        MerchantLoyaltySettings::current()->forceFill(['enabled' => true])->save();
+
+        $loyalty = collect(app(StorefrontElementsPresenter::class)->elements($shop))->keyBy('key')['loyalty'];
+
+        // The App Proxy already serves the page on the merchant's own domain, so
+        // there is no block to add. Sending them to the theme editor would have
+        // them hunting for something that does not exist.
+        $this->assertStringEndsWith('/admin/menus', (string) $loyalty['deep_link']);
+        $this->assertSame(StorefrontElementsPresenter::LINK_MENUS, $loyalty['deep_link_kind']);
+        $this->assertSame(5, $loyalty['steps']);
+    }
+
+    public function test_the_woo_customer_area_card_needs_no_placement(): void
+    {
+        $shop = $this->wooShop();
+        Tenant::set($shop);
+
+        $elements = collect(app(StorefrontElementsPresenter::class)->elements($shop))->keyBy('key');
+
+        // The plugin adds its own My Account tab; the merchant's job is to
+        // configure it, not to place it.
+        $this->assertArrayHasKey(StorefrontElementsPresenter::ELEMENT_ACCOUNT, $elements->all());
+        $this->assertSame(StorefrontElementsPresenter::STATUS_AUTO, $elements['account']['status']);
+        $this->assertNull($elements['account']['shortcode']);
+        $this->assertNull($elements['account']['deep_link']);
+    }
+
+    public function test_the_customer_area_card_is_not_offered_on_shopify_yet(): void
+    {
+        $shop = $this->shopifyShop();
+        Tenant::set($shop);
+
+        $keys = collect(app(StorefrontElementsPresenter::class)->elements($shop))->pluck('key');
+
+        // The Shopify storefront surface is not built. Listing it as "coming"
+        // would be a promise this screen has no business making.
+        $this->assertNotContains(StorefrontElementsPresenter::ELEMENT_ACCOUNT, $keys);
+    }
+
     public function test_the_woo_loyalty_card_offers_a_shortcode(): void
     {
         $shop = $this->wooShop();

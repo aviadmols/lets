@@ -61,6 +61,10 @@ return [
             'points_per_order_help' => 'A flat number of points for every order made through their link.',
             'points_per_currency' => 'Member earns per 1 of the order',
             'points_per_currency_help' => 'Points proportional to what the friend spent. Can be combined with the flat amount above.',
+            'referrer_percent' => 'Member earns a share of the order',
+            'referrer_percent_help' => 'Give the member a percentage of what they referred, paid as points. Combines with the two settings above.',
+            'referrer_percent_example' => ':percent% of a :amount order = :points points, converted at your redemption rate — so it stays :percent% of the money if you change that rate.',
+            'referrer_percent_example_earn' => ':percent% of a :amount order = :points points. Your points cannot be redeemed for credit, so this uses your earn rate: the member gets the points they would have earned spending that much themselves.',
         ],
 
         'social' => [
@@ -195,6 +199,7 @@ return [
         'referral_code_is' => 'Or share the code:',
         'referral_friend_percent' => 'Your friend gets :value% off',
         'referral_friend_amount' => 'Your friend gets :value off',
+        'referral_you_percent' => 'you get :value% of every purchase, in points',
         'referral_you_flat' => 'you get :points points per purchase',
         'referral_you_rate' => 'you get :points points per 1 they spend',
         'referral_stats' => 'You have brought :count friends and earned :points points.',

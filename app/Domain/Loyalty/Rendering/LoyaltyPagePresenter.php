@@ -248,18 +248,34 @@ final class LoyaltyPagePresenter
         ];
     }
 
-    /** "You get N points per purchase" — however the merchant configured it. */
+    /**
+     * "You get …" — however the merchant configured it, and all three rewards
+     * combine, so the label lists every one that is actually switched on rather
+     * than announcing the first and hiding the rest.
+     *
+     * The percentage leads: "5% of every purchase, in points" is the sentence a
+     * member will repeat when they share the link, while a raw points figure is
+     * one they would have to convert themselves.
+     */
     private function referralRewardLabel(MerchantLoyaltySettings $settings): ?string
     {
+        $parts = [];
+
+        if ($settings->referralReferrerPercent() > 0) {
+            $parts[] = __('loyalty.page.referral_you_percent', [
+                'value' => rtrim(rtrim(number_format($settings->referralReferrerPercent(), 2), '0'), '.'),
+            ]);
+        }
+
         if ($settings->referralPointsPerOrder() > 0) {
-            return __('loyalty.page.referral_you_flat', ['points' => $settings->referralPointsPerOrder()]);
+            $parts[] = __('loyalty.page.referral_you_flat', ['points' => $settings->referralPointsPerOrder()]);
         }
 
         if ($settings->referralPointsPerCurrency() > 0) {
-            return __('loyalty.page.referral_you_rate', ['points' => $settings->referralPointsPerCurrency()]);
+            $parts[] = __('loyalty.page.referral_you_rate', ['points' => $settings->referralPointsPerCurrency()]);
         }
 
-        return null;
+        return $parts === [] ? null : implode(' · ', $parts);
     }
 
     // === Blocks ===

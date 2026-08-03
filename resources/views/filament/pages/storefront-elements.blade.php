@@ -40,9 +40,12 @@
                 @if($element['deep_link'])
                     {{-- target="_blank" is not decoration: inside the embedded admin
                          App Bridge intercepts top-level navigation, so a same-tab
-                         link to the theme editor simply does nothing. --}}
+                         link out to the Shopify admin simply does nothing.
+                         The label follows the DESTINATION — a menu link that said
+                         "add to my theme" would send merchants looking for a block
+                         that does not exist for this element. --}}
                     <a href="{{ $element['deep_link'] }}" target="_blank" rel="noopener" class="rc-cta rc-cta--primary">
-                        {{ __('storefront_admin.action.add_to_theme') }}
+                        {{ __('storefront_admin.action.open_'.($element['deep_link_kind'] ?? 'theme')) }}
                     </a>
                 @endif
 
@@ -74,6 +77,15 @@
                             </button>
                         </div>
                     </div>
+                @endif
+
+                {{-- The "what else you should know" line, where an element has one.
+                     Lang::has, not a blank fallback: an element without a note must
+                     render nothing rather than an empty paragraph. --}}
+                @if(Lang::has('storefront_admin.element.'.$key.'.note_'.$platform))
+                    <p class="rc-muted rc-sfel__hint">
+                        {{ __('storefront_admin.element.'.$key.'.note_'.$platform) }}
+                    </p>
                 @endif
 
                 @if($element['snippet'])

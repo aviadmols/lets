@@ -17,6 +17,10 @@ return [
     ],
 
     'action' => [
+        // The label follows the destination: `theme` opens the theme editor with
+        // our block ready, `menus` opens Online Store → Navigation.
+        'open_theme' => 'Add to my theme',
+        'open_menus' => 'Open my store menus',
         'add_to_theme' => 'Add to my theme',
         'copy' => 'Copy',
         'copied' => 'Copied',
@@ -61,13 +65,30 @@ return [
             'title' => 'Loyalty club page',
             'description' => 'The members page: tiers, points balance and the ways your customers earn.',
 
-            'hint_shopify_ready' => 'The page is live on your store. Link to it so members can find it.',
-            'step_shopify_1' => 'Copy the address below.',
-            'step_shopify_2' => 'In Shopify go to Online Store → Navigation and add it as a menu item.',
+            // The thing merchants miss: the page is ALREADY live, on their own
+            // domain, through the App Proxy. Nothing is installed, no theme is
+            // edited — the only missing piece is something linking to it.
+            'hint_shopify_ready' => 'This page is already live on your own domain — nothing to install and no theme changes. All that is missing is a link to it.',
+            'step_shopify_1' => 'Copy the address below. It is on your own domain, so it looks and behaves like any other page of your store.',
+            'step_shopify_2' => 'Open Online Store → Navigation (the button below takes you straight there).',
+            'step_shopify_3' => 'Choose the menu you want it in — usually Main menu, or Footer menu for a quieter placement.',
+            'step_shopify_4' => 'Add menu item → paste the address → name it (for example "Rewards") → Add.',
+            'step_shopify_5' => 'Save the menu. The link is live immediately.',
+            'note_shopify' => 'Signed-in customers see their own balance and status automatically — Shopify tells us who they are. A signed-out visitor sees the join invitation, so the link is safe to show to everyone. You can also link to it from a button in your theme or from the customer-account page later.',
 
             'hint_woo_ready' => 'Put the shortcode on any page — the club renders inside it.',
             'step_woo_1' => 'Create a page in WordPress (for example "Members club").',
             'step_woo_2' => 'Paste the shortcode below into it and publish.',
+        ],
+
+        'account' => [
+            'title' => 'Customer area',
+            'description' => 'Subscriptions, what is coming and when, rewards and order history — inside My Account.',
+
+            'hint_woo_auto' => 'The plugin adds this to My Account by itself. There is nothing to place — but you choose what appears in it.',
+            'step_woo_1' => 'Make sure the plugin shows "connected" in WooCommerce → Settings → LETS.',
+            'step_woo_2' => 'Open Settings → Customer area here to choose which sections show, reorder them, add side banners and set your colours.',
+            'step_woo_3' => 'Visit My Account on your store — the new tab sits right under Dashboard.',
         ],
     ],
 ];

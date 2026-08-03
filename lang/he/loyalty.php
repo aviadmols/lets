@@ -61,6 +61,10 @@ return [
             'points_per_order_help' => 'מספר נקודות קבוע על כל הזמנה שבוצעה דרך הקישור שלו.',
             'points_per_currency' => 'המפנה מקבל על כל ₪1 בהזמנה',
             'points_per_currency_help' => 'נקודות ביחס לסכום שהחבר הוציא. אפשר לשלב עם הסכום הקבוע שלמעלה.',
+            'referrer_percent' => 'המפנה מקבל אחוז משווי העסקה',
+            'referrer_percent_help' => 'תנו למפנה אחוז מסך הרכישה שהוא הפנה, בנקודות. משתלב עם שתי ההגדרות שלמעלה.',
+            'referrer_percent_example' => ':percent% מהזמנה של :amount = :points נקודות, לפי יחס המימוש שלכם — כך שזה נשאר :percent% מהכסף גם אם תשנו את היחס.',
+            'referrer_percent_example_earn' => ':percent% מהזמנה של :amount = :points נקודות. אצלכם אי אפשר להמיר נקודות לקרדיט, ולכן החישוב לפי יחס הצבירה: המפנה מקבל את הנקודות שהיה מקבל אילו הוציא את הסכום בעצמו.',
         ],
 
         'social' => [
@@ -195,6 +199,7 @@ return [
         'referral_code_is' => 'או שתפו את הקוד:',
         'referral_friend_percent' => 'החבר שלך מקבל :value% הנחה',
         'referral_friend_amount' => 'החבר שלך מקבל :value הנחה',
+        'referral_you_percent' => 'ואתם מקבלים :value% מכל רכישה, בנקודות',
         'referral_you_flat' => 'ואתם מקבלים :points נקודות על כל רכישה',
         'referral_you_rate' => 'ואתם מקבלים :points נקודות על כל ₪1 שהוא מוציא',
         'referral_stats' => 'הבאתם :count חברים וצברתם :points נקודות.',

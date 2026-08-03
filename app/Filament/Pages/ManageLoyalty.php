@@ -175,6 +175,16 @@ class ManageLoyalty extends Page implements HasForms
                         ->label(__('loyalty.admin.referral.points_per_currency'))
                         ->helperText(__('loyalty.admin.referral.points_per_currency_help'))
                         ->numeric()->minValue(0)->maxValue(MerchantLoyaltySettings::MAX_POINTS_PER_CURRENCY),
+                    // The one merchants actually ask for: "the sharer gets 5% of
+                    // what they referred". The helper text names the conversion
+                    // rate in force right now, because 5% of the money is only
+                    // meaningful once you know what a point is worth here.
+                    TextInput::make('referral_referrer_percent')
+                        ->label(__('loyalty.admin.referral.referrer_percent'))
+                        ->helperText(fn (): string => $this->referrerPercentHelp())
+                        ->numeric()->minValue(0)->maxValue(MerchantLoyaltySettings::MAX_REFERRER_PERCENT)
+                        ->suffix('%')
+                        ->live(onBlur: true),
                 ])
                 ->columns(2),
 
@@ -395,6 +405,7 @@ class ManageLoyalty extends Page implements HasForms
             'referral_discount_value' => round(max(0, (float) ($state['referral_discount_value'] ?? 0)), 2),
             'referral_points_per_order' => $this->clampBonus($state['referral_points_per_order'] ?? 0),
             'referral_points_per_currency' => max(0, min(MerchantLoyaltySettings::MAX_POINTS_PER_CURRENCY, (int) ($state['referral_points_per_currency'] ?? 0))),
+            'referral_referrer_percent' => min(MerchantLoyaltySettings::MAX_REFERRER_PERCENT, max(0, round((float) ($state['referral_referrer_percent'] ?? 0), 2))),
             'accent_color' => $state['accent_color'] ?? MerchantLoyaltySettings::DEFAULT_ACCENT,
             'accent_text_color' => $state['accent_text_color'] ?? MerchantLoyaltySettings::DEFAULT_ACCENT_TEXT,
             'theme_mode' => $this->oneOf($state['theme_mode'] ?? null, MerchantLoyaltySettings::THEME_MODES, MerchantLoyaltySettings::THEME_LIGHT),
@@ -473,6 +484,7 @@ class ManageLoyalty extends Page implements HasForms
             'referral_discount_value' => $settings->referralDiscountValue(),
             'referral_points_per_order' => $settings->referralPointsPerOrder(),
             'referral_points_per_currency' => $settings->referralPointsPerCurrency(),
+            'referral_referrer_percent' => $settings->referralReferrerPercent(),
             'accent_color' => $settings->accentColor(),
             'accent_text_color' => $settings->accentTextColor(),
             'theme_mode' => $settings->themeMode(),
@@ -500,6 +512,51 @@ class ManageLoyalty extends Page implements HasForms
             'points' => $settings->redeemRatePoints(),
             'amount' => Money::format($settings->redeemRateAmount()),
         ]);
+    }
+
+    /**
+     * What "5%" will actually award, spelled out from the CURRENT form state.
+     *
+     * A percentage of money only becomes points through a rate, and which rate
+     * depends on whether the merchant lets points be redeemed at all:
+     *
+     *   redemption on  → the redemption rate. 5% of the money is 5% of the money,
+     *                    and stays so if they change the rate later.
+     *   redemption off → the earn rate, because a point has no money value here.
+     *                    That is a DIFFERENT promise, so the text says which one
+     *                    is in force rather than quietly picking one.
+     */
+    public function referrerPercentHelp(): string
+    {
+        // A transient, GUARDED model built from the live form state — the same
+        // sanitisation seam save() uses, so the example can never quote a number
+        // the merchant could not actually store.
+        $draft = new MerchantLoyaltySettings;
+        $draft->forceFill([
+            'points_per_currency' => $this->data['points_per_currency'] ?? 1,
+            'rounding' => $this->data['rounding'] ?? null,
+            'redeem_rate_points' => $this->data['redeem_rate_points'] ?? 100,
+            'redeem_rate_amount' => $this->data['redeem_rate_amount'] ?? 0,
+            'referral_referrer_percent' => $this->data['referral_referrer_percent'] ?? 0,
+        ]);
+
+        $percent = $draft->referralReferrerPercent();
+        if ($percent <= 0) {
+            return __('loyalty.admin.referral.referrer_percent_help');
+        }
+
+        $sample = 100.0;
+
+        return __(
+            $draft->redemptionAvailable()
+                ? 'loyalty.admin.referral.referrer_percent_example'
+                : 'loyalty.admin.referral.referrer_percent_example_earn',
+            [
+                'percent' => rtrim(rtrim(number_format($percent, 2), '0'), '.'),
+                'amount' => Money::format($sample),
+                'points' => $draft->roundPoints(($sample * $percent / 100) * $draft->pointsPerMoneyUnit()),
+            ],
+        );
     }
 
     // === Private helpers ===
