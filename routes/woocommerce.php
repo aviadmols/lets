@@ -1,5 +1,9 @@
 <?php
 
+use App\Domain\Account\CustomerSubscriptionActions;
+use App\Http\Controllers\WooCommerce\Account\AccountActionController;
+use App\Http\Controllers\WooCommerce\Account\AccountBootstrapController;
+use App\Http\Controllers\WooCommerce\Account\AccountOtpController;
 use App\Http\Controllers\WooCommerce\CheckoutSettingsController;
 use App\Http\Controllers\WooCommerce\DiagnosticsController;
 use App\Http\Controllers\WooCommerce\InstallController;
@@ -162,6 +166,36 @@ Route::middleware(VerifyWooCommerceSignature::class)
         // Proxy, so this is how identity is established without trusting a browser.
         Route::post('/loyalty/page-url', WooLoyaltyPageUrlController::class)
             ->name('woocommerce.loyalty.page_url');
+
+        /*
+        |----------------------------------------------------------------------
+        | The shopper's personal area (My Account)
+        |----------------------------------------------------------------------
+        | /bootstrap returns the WHOLE area as one JSON view-model — sections,
+        | appearance, banners, subscriptions, the benefit timeline, loyalty and
+        | every already-translated string. The plugin renders it natively into the
+        | page (not an iframe) so it inherits the theme's font.
+        |
+        | Identity is asserted by the plugin's SERVER over this HMAC group, the
+        | same way the loyalty rail does it; the shopper's browser never holds the
+        | secret. Every endpoint is a POST because the plugin's GET signer excludes
+        | the query string — identity in a GET would travel unsigned.
+        |
+        | The OTP pair deliberately does NOT log anyone in: /verify answers "did
+        | this code match this destination" and the plugin performs the WordPress
+        | login itself, so WP stays the authority on identity.
+        */
+        Route::post('/account/bootstrap', AccountBootstrapController::class)
+            ->name('woocommerce.account.bootstrap');
+
+        Route::post('/account/otp/request', [AccountOtpController::class, 'request'])
+            ->name('woocommerce.account.otp.request');
+        Route::post('/account/otp/verify', [AccountOtpController::class, 'verify'])
+            ->name('woocommerce.account.otp.verify');
+
+        Route::post('/account/subscriptions/{action}', AccountActionController::class)
+            ->whereIn('action', CustomerSubscriptionActions::ACTIONS)
+            ->name('woocommerce.account.subscriptions.act');
     });
 
 /*

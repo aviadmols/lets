@@ -1,0 +1,271 @@
+<?php
+
+namespace Tests\Feature\Account;
+
+use App\Domain\Account\AccountPresenter;
+use App\Filament\Pages\ManageCustomerArea;
+use App\Models\MerchantPortalAppearance;
+use App\Models\MerchantSmsSettings;
+use App\Models\Shop;
+use App\Models\User;
+use App\Support\Tenant;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Livewire\Livewire;
+use Tests\TestCase;
+
+/**
+ * The merchant's control over the personal area — and the guards that stop a
+ * merchant (or a tampered payload) from producing a page that cannot work.
+ *
+ * The form wall and the model guard are tested separately on purpose: the form
+ * rejects bad input before it is stored, and the model refuses to believe stored
+ * garbage. Only testing the first would leave the second free to rot.
+ */
+final class CustomerAreaSettingsTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private Shop $shop;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->shop = Shop::create([
+            'shopify_domain' => 'area.myshopify.com',
+            'name' => 'Area',
+            'status' => Shop::STATUS_ACTIVE,
+            'platform' => Shop::PLATFORM_WOOCOMMERCE,
+        ]);
+        Tenant::set($this->shop);
+
+        $user = User::factory()->create();
+        $user->shop_id = $this->shop->getKey();
+        $user->save();
+        $this->actingAs($user);
+    }
+
+    protected function tearDown(): void
+    {
+        Tenant::clear();
+        parent::tearDown();
+    }
+
+    // === Model guards ===
+
+    public function test_subscriptions_can_never_be_hidden(): void
+    {
+        $settings = MerchantPortalAppearance::current();
+        // Stored garbage: someone turned the one section that must exist off.
+        $settings->sections = [
+            ['key' => MerchantPortalAppearance::SECTION_SUBSCRIPTIONS, 'enabled' => false],
+            ['key' => MerchantPortalAppearance::SECTION_ORDERS, 'enabled' => true],
+        ];
+        $settings->save();
+
+        $this->assertTrue($settings->refresh()->sectionEnabled(MerchantPortalAppearance::SECTION_SUBSCRIPTIONS));
+    }
+
+    public function test_a_locked_section_missing_entirely_is_appended(): void
+    {
+        $settings = MerchantPortalAppearance::current();
+        $settings->sections = [['key' => MerchantPortalAppearance::SECTION_ORDERS, 'enabled' => true]];
+        $settings->save();
+
+        $keys = array_column($settings->refresh()->sections(), 'key');
+
+        // A release that adds a locked section must not leave existing shops
+        // silently without it.
+        $this->assertContains(MerchantPortalAppearance::SECTION_SUBSCRIPTIONS, $keys);
+    }
+
+    public function test_unknown_and_duplicate_section_keys_are_dropped(): void
+    {
+        $settings = MerchantPortalAppearance::current();
+        $settings->sections = [
+            ['key' => 'not_a_section', 'enabled' => true],
+            ['key' => MerchantPortalAppearance::SECTION_ORDERS, 'enabled' => true],
+            ['key' => MerchantPortalAppearance::SECTION_ORDERS, 'enabled' => false],
+        ];
+        $settings->save();
+
+        $keys = array_column($settings->refresh()->sections(), 'key');
+
+        $this->assertNotContains('not_a_section', $keys);
+        $this->assertSame(1, count(array_filter($keys, static fn ($k) => $k === MerchantPortalAppearance::SECTION_ORDERS)));
+    }
+
+    public function test_an_empty_section_list_falls_back_to_the_defaults(): void
+    {
+        $settings = MerchantPortalAppearance::current();
+        $settings->sections = [];
+        $settings->save();
+
+        // An empty personal area is never what anyone meant.
+        $this->assertNotEmpty($settings->refresh()->sections());
+    }
+
+    public function test_only_https_survives_on_a_banner(): void
+    {
+        $settings = MerchantPortalAppearance::current();
+        $settings->banners = [
+            ['heading' => 'Sale', 'image_url' => 'javascript:alert(1)', 'link_url' => 'http://insecure.example'],
+        ];
+        $settings->save();
+
+        $banner = $settings->refresh()->banners()[0];
+
+        // A merchant-typed hostile scheme must never reach a customer page.
+        $this->assertNull($banner['image_url']);
+        $this->assertNull($banner['link_url']);
+    }
+
+    public function test_a_banner_with_neither_heading_nor_image_is_not_a_banner(): void
+    {
+        $settings = MerchantPortalAppearance::current();
+        $settings->banners = [
+            ['subtext' => 'orphan text only'],
+            ['heading' => 'Real one'],
+        ];
+        $settings->save();
+
+        $this->assertCount(1, $settings->refresh()->banners());
+    }
+
+    public function test_a_garbage_colour_falls_back_rather_than_reaching_the_page(): void
+    {
+        $settings = MerchantPortalAppearance::current();
+        $settings->accent_color = 'red; background:url(x)';
+        $settings->save();
+
+        $this->assertSame(MerchantPortalAppearance::DEFAULT_ACCENT, $settings->refresh()->accentColor());
+    }
+
+    public function test_an_sms_sender_longer_than_the_provider_allows_is_refused(): void
+    {
+        $sms = MerchantSmsSettings::current();
+        $sms->forceFill([
+            'enabled' => true,
+            'username' => 'shop',
+            'api_token' => 'token',
+            // 019 caps `source` at 11 characters; discovering that as a failed
+            // send would cost the merchant a code that never arrived.
+            'sender' => 'WayTooLongSenderName',
+        ])->save();
+
+        $this->assertNull($sms->refresh()->senderName());
+        $this->assertFalse($sms->usable());
+    }
+
+    // === The screen ===
+
+    public function test_the_screen_saves_appearance_and_sections(): void
+    {
+        Livewire::test(ManageCustomerArea::class)
+            ->set('data.accent_color', '#7746ec')
+            ->set('data.theme_mode', MerchantPortalAppearance::THEME_DARK)
+            ->set('data.density', MerchantPortalAppearance::DENSITY_COMPACT)
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $settings = MerchantPortalAppearance::current()->refresh();
+
+        $this->assertSame('#7746ec', $settings->accentColor());
+        $this->assertSame(MerchantPortalAppearance::THEME_DARK, $settings->themeMode());
+        $this->assertSame(MerchantPortalAppearance::DENSITY_COMPACT, $settings->density());
+    }
+
+    public function test_a_blank_sms_token_leaves_the_stored_one_alone(): void
+    {
+        $sms = MerchantSmsSettings::current();
+        $sms->forceFill(['enabled' => true, 'username' => 'shop', 'api_token' => 'secret', 'sender' => 'LETS'])->save();
+
+        Livewire::test(ManageCustomerArea::class)
+            ->set('data.login_code_enabled', true)
+            ->set('data.sms_enabled', true)
+            ->set('data.sms_username', 'shop')
+            ->set('data.sms_sender', 'LETS')
+            ->set('data.sms_token', '')
+            ->call('save');
+
+        // A password field renders empty on every load; saving an unrelated
+        // setting must not wipe a working credential.
+        $this->assertSame('secret', MerchantSmsSettings::current()->refresh()->apiToken());
+    }
+
+    public function test_the_form_rejects_a_non_https_banner_before_it_is_stored(): void
+    {
+        Livewire::test(ManageCustomerArea::class)
+            ->set('data.banners', [
+                ['enabled' => true, 'heading' => 'Sale', 'subtext' => null, 'image_url' => 'http://insecure.example/a.png', 'link_url' => null],
+            ])
+            ->call('save')
+            ->assertHasFormErrors(['banners.0.image_url']);
+    }
+
+    // === The payload ===
+
+    public function test_a_hidden_section_never_reaches_the_shopper(): void
+    {
+        $settings = MerchantPortalAppearance::current();
+        $settings->sections = array_map(
+            static fn (array $row): array => $row['key'] === MerchantPortalAppearance::SECTION_ORDERS
+                ? ['key' => $row['key'], 'enabled' => false]
+                : $row,
+            MerchantPortalAppearance::defaultSections(),
+        );
+        $settings->save();
+
+        $model = app(AccountPresenter::class)->sample($settings->refresh());
+
+        $this->assertNotContains(MerchantPortalAppearance::SECTION_ORDERS, $model['sections']);
+        $this->assertContains(MerchantPortalAppearance::SECTION_SUBSCRIPTIONS, $model['sections']);
+    }
+
+    public function test_the_loyalty_section_is_dropped_when_the_club_is_off(): void
+    {
+        $model = app(AccountPresenter::class)->sample();
+
+        // A rewards tab on a shop with no club is an empty promise.
+        $this->assertNotContains(MerchantPortalAppearance::SECTION_LOYALTY, $model['sections']);
+        $this->assertNull($model['loyalty']);
+    }
+
+    public function test_the_sample_payload_has_the_same_shape_as_a_live_one(): void
+    {
+        $model = app(AccountPresenter::class)->sample();
+
+        // The preview is only trustworthy while it is the same object the live
+        // page renders; a missing key here is a preview that silently omits a
+        // section the merchant is trying to tune.
+        foreach (['sections', 'appearance', 'banners', 'login', 'support', 'copy',
+            'identified', 'greeting', 'subscriptions', 'upcoming', 'benefits',
+            'loyalty', 'payment_methods'] as $key) {
+            $this->assertArrayHasKey($key, $model);
+        }
+    }
+
+    public function test_the_preview_is_not_reachable_without_an_admin_session(): void
+    {
+        // Clearing Tenant is not enough — BindTenantFromUser re-binds it from the
+        // authenticated merchant, which is exactly right. The thing that must not
+        // work is reaching the preview with no admin session at all.
+        auth()->logout();
+        Tenant::clear();
+
+        $response = $this->get('/admin/account/preview');
+
+        $this->assertContains($response->getStatusCode(), [302, 403, 404]);
+    }
+
+    public function test_the_preview_renders_the_real_stylesheet_and_renderer(): void
+    {
+        $this->get('/admin/account/preview')
+            ->assertOk()
+            // Not a mock-up: the preview must load the SAME files the plugin
+            // ships, or tuning colours here proves nothing about the live page.
+            ->assertSee('account/lets-account.css', escape: false)
+            ->assertSee('account/lets-account.js', escape: false)
+            ->assertSee('LetsAccount.render', escape: false);
+    }
+}

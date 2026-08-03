@@ -3,7 +3,12 @@
  * page's dir). No inline styles in the markup; classes only. The plugin owns these
  * styles (this is the plugin's own storefront asset, not the SaaS admin UI).
  */
-:root {
+/* Tokens are scoped to the widget's OWN elements, never :root. This stylesheet
+   loads inside the merchant's theme, and a --lets-pp-* on :root is a global the
+   theme did not ask for; more to the point, a theme that happens to use the same
+   name would silently restyle our widget. Every selector in this file is
+   .lets-pp*, so matching on the class prefix covers all of them and leaks none. */
+[class*="lets-pp"] {
   --lets-pp-fg: #1a1a1a;
   --lets-pp-muted: #6b7280;
   --lets-pp-border: #d1d5db;

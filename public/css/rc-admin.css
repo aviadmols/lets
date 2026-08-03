@@ -796,6 +796,50 @@
 /* === Activity feed rows (Timeline restyled as "Activity logs") ============ */
 .rc-activity .rc-section__title { margin-block-end: var(--rc-space-2); }
 
+/* customer-area.css — Settings → Customer area: the section/appearance builder
+   beside a live preview of the real personal area.
+   TOKENS: --rc-card --rc-border --rc-radius-card --rc-radius-control
+           --rc-shadow-card --rc-space-* --rc-bg */
+
+/* Form on the left, preview on the right; one column on narrow screens, where a
+   side-by-side would shrink both past usefulness. */
+.rc-customer-area {
+    display: grid;
+    grid-template-columns: minmax(0, 6fr) minmax(0, 4fr);
+    gap: var(--rc-space-5);
+    align-items: start;
+}
+@media (max-width: 1100px) {
+    .rc-customer-area { grid-template-columns: 1fr; }
+}
+
+.rc-customer-area__preview {
+    display: flex; flex-direction: column; gap: var(--rc-space-3);
+    background: var(--rc-card);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-card);
+    box-shadow: var(--rc-shadow-card);
+    padding: var(--rc-space-4);
+    /* Follows the form down a long page — the point of a live preview is seeing
+       the change, which is no use once it has scrolled away. */
+    position: sticky;
+    top: var(--rc-space-5);
+}
+
+/* Taller than the loyalty preview on purpose: the personal area stacks several
+   sections, and a short frame would show only the welcome card. */
+.rc-customer-area__frame {
+    inline-size: 100%;
+    block-size: 760px;
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    background: var(--rc-bg);
+}
+@media (max-width: 1100px) {
+    .rc-customer-area__preview { position: static; }
+    .rc-customer-area__frame { block-size: 560px; }
+}
+
 /* data-table.css — list-view density + section layout helpers
    TOKENS: --rc-card --rc-border --rc-radius-card --rc-shadow-card --rc-type-*
    Skins Filament's native table via stable .fi-* hooks (no re-templating). */

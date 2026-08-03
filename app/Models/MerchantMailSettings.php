@@ -35,6 +35,12 @@ class MerchantMailSettings extends Model
     public const TEMPLATE_CHARGE_FAILED = 'charge_failed';
     public const TEMPLATE_PLAN_CANCELLED = 'plan_cancelled';
 
+    /**
+     * The personal area's sign-in code. Unlike the six above it is not driven by
+     * a plan — it is sent to whoever asked to sign in, so its var bag is its own.
+     */
+    public const TEMPLATE_LOGIN_CODE = 'login_code';
+
     /** Canonical template keys (drive the migration columns + the settings UI). */
     public const TEMPLATES = [
         self::TEMPLATE_FIRST_PAYMENT_WELCOME,
@@ -43,6 +49,7 @@ class MerchantMailSettings extends Model
         self::TEMPLATE_CHARGE_SUCCEEDED,
         self::TEMPLATE_CHARGE_FAILED,
         self::TEMPLATE_PLAN_CANCELLED,
+        self::TEMPLATE_LOGIN_CODE,
     ];
 
     /** Spec defaults applied when a shop's row is first materialised. */

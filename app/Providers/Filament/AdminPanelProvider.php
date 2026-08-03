@@ -3,6 +3,7 @@
 namespace App\Providers\Filament;
 
 use App\Domain\Loyalty\Http\Controllers\AdminLoyaltyPreviewController;
+use App\Http\Controllers\Admin\AdminAccountPreviewController;
 use App\Domain\Upsell\Http\Controllers\AdminUpsellPreviewController;
 use App\Domain\Upsell\Http\Controllers\PostPurchaseController;
 use App\Domain\Upsell\Rendering\UpsellCardPresenter;
@@ -206,6 +207,15 @@ class AdminPanelProvider extends PanelProvider
                 Route::get('loyalty/preview', AdminLoyaltyPreviewController::class)
                     ->middleware(Authenticate::class)
                     ->name('loyalty.preview');
+
+                // The shopper's personal area, drawn by the SAME stylesheet and the
+                // SAME renderer the storefront ships (public/account/lets-account.*)
+                // with a sample subscriber behind it. Not a mock-up of the page —
+                // the page, so preview and production cannot diverge.
+                //   → GET /admin/account/preview  (name filament.admin.account.preview)
+                Route::get('account/preview', AdminAccountPreviewController::class)
+                    ->middleware(Authenticate::class)
+                    ->name('account.preview');
             })
             ->navigationGroups($this->navigationGroups())
             // Platform-admin link to the Horizon dashboard (queues, throughput, FAILED

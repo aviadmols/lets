@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.20.0
+Stable tag: 0.21.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,19 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.21.0 =
+* A full personal area inside My Account: the shopper sees their subscriptions,
+  what is coming and when (next delivery, the date an intro price ends, the final
+  installment, birthday points), their rewards balance, and can pause, resume,
+  cancel, skip a delivery, move its date or change what arrives next time.
+  Rendered into the theme rather than an iframe, so it inherits your fonts.
+* Sign in with a one-time code by email or SMS, without a password. The code is
+  issued and checked by LETS; WordPress still performs the login itself.
+* WooCommerce's own account tabs (orders, addresses, account details) are restyled
+  with the same tokens, so the whole area reads as one screen.
+* The merchant chooses which sections appear, in what order, adds up to three side
+  banners, and tunes colours from Settings → Customer area in the LETS dashboard.
 
 = 0.20.0 =
 * FIX (critical): reading the invoicing settings crashed the site on PHP 8. Two callers

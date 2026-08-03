@@ -33,6 +33,8 @@ final class DefaultEmailTemplates
     private const AMOUNT = 'style="font-size:15px;line-height:1.6;margin:0 0 14px;font-weight:700;"';
     private const CTA = 'style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:8px;font-size:15px;font-weight:600;margin:8px 0 16px;"';
     private const MUTED = 'style="font-size:12px;line-height:1.5;color:#6b7280;margin:18px 0 0;border-top:1px solid #e5e7eb;padding-top:14px;"';
+    /** The sign-in digits: big, monospaced, and LTR even inside an RTL card. */
+    private const CODE = 'style="direction:ltr;unicode-bidi:isolate;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:34px;font-weight:700;letter-spacing:8px;margin:8px 0 18px;color:#111827;"';
 
     /**
      * Placeholders available per template (for UI helper text + sample vars).
@@ -64,6 +66,9 @@ final class DefaultEmailTemplates
             'customer_name', 'business_name', 'product_title', 'plan_id',
             'cancellation_reason', 'portal_url',
         ],
+        MerchantMailSettings::TEMPLATE_LOGIN_CODE => [
+            'code', 'expires_minutes', 'business_name',
+        ],
     ];
 
     /**
@@ -79,6 +84,7 @@ final class DefaultEmailTemplates
         MerchantMailSettings::TEMPLATE_CHARGE_SUCCEEDED => 'התשלום בסך {amount} {currency} התקבל ({business_name})',
         MerchantMailSettings::TEMPLATE_CHARGE_FAILED => 'החיוב נכשל — נדרשת פעולה ({business_name})',
         MerchantMailSettings::TEMPLATE_PLAN_CANCELLED => 'התוכנית בוטלה — {business_name}',
+        MerchantMailSettings::TEMPLATE_LOGIN_CODE => 'קוד הכניסה שלך: {code}',
     ];
 
     /** Default subject for a template ({tokens} still get strtr-substituted). */
@@ -97,6 +103,7 @@ final class DefaultEmailTemplates
             MerchantMailSettings::TEMPLATE_CHARGE_SUCCEEDED => self::chargeSucceeded(),
             MerchantMailSettings::TEMPLATE_CHARGE_FAILED => self::chargeFailed(),
             MerchantMailSettings::TEMPLATE_PLAN_CANCELLED => self::planCancelled(),
+            MerchantMailSettings::TEMPLATE_LOGIN_CODE => self::loginCode(),
             default => self::CARD_OPEN.'<p '.self::P.'>{business_name}</p>'.self::CARD_CLOSE,
         };
     }
@@ -186,6 +193,22 @@ final class DefaultEmailTemplates
             .'<p '.self::P.'>התוכנית עבור <strong>{product_title}</strong> בוטלה. {cancellation_reason}</p>'
             .'<a href="{portal_url}" '.self::CTA.'>צפייה בהיסטוריה</a>'
             .'<p '.self::MUTED.'>מספר תוכנית #{plan_id} · {business_name}</p>'
+            .self::CARD_CLOSE;
+    }
+
+    /**
+     * The sign-in code. No CTA link on purpose: a one-time code that also arrives
+     * as a clickable link is a phishing template, and the shopper is already
+     * looking at the page that asked for it.
+     */
+    private static function loginCode(): string
+    {
+        return self::CARD_OPEN
+            .'<h1 '.self::H1.'>קוד הכניסה שלך</h1>'
+            .'<p '.self::P.'>הזינו את הקוד הבא באזור האישי של {business_name}:</p>'
+            .'<p '.self::CODE.'>{code}</p>'
+            .'<p '.self::P.'>הקוד תקף ל-{expires_minutes} דקות.</p>'
+            .'<p '.self::MUTED.'>לא ביקשתם קוד? אפשר להתעלם מההודעה — בלי הקוד אי אפשר להיכנס. · {business_name}</p>'
             .self::CARD_CLOSE;
     }
 }

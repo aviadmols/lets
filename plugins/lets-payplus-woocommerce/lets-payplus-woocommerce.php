@@ -420,3 +420,10 @@ require_once __DIR__ . '/includes/class-lets-page-settings.php';
 // The [lets_loyalty] members-club shortcode. Loads AFTER the product widget (whose
 // lets_payplus_signed_post() it uses to mint the signed page URL server-side).
 require_once __DIR__ . '/includes/class-lets-loyalty.php';
+
+// The shopper's personal area inside My Account: subscriptions, the benefit
+// timeline, rewards, and passwordless sign-in. Loads LAST — it uses the signer
+// (class-lets-product-widget), the REST nonce guard, and the Hebrew helper that
+// class-lets-subscriptions defines. Unlike the club it is NOT an iframe: the
+// markup lands in the theme's own DOM so it inherits the theme's typography.
+require_once __DIR__ . '/includes/class-lets-account.php';
