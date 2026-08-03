@@ -3,14 +3,18 @@
 namespace App\Filament\Pages;
 
 use App\Domain\Upsell\Enums\UpsellFlowStatus;
+use App\Domain\Upsell\Http\Controllers\PostPurchaseController;
 use App\Domain\Upsell\Models\UpsellFlow;
 use App\Domain\Upsell\Models\UpsellFlowBranch;
 use App\Domain\Upsell\Models\UpsellFlowOffer;
 use App\Domain\Upsell\Models\UpsellFlowTrigger;
+use App\Domain\Upsell\PostPurchaseDiagnostic;
 use App\Domain\Upsell\Rendering\UpsellCardPresenter;
 use App\Filament\Concerns\PicksProducts;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Models\Product;
+use App\Models\Shop;
+use App\Support\Tenant;
 use App\Support\Ui\Money;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
@@ -300,6 +304,49 @@ class FlowBuilder extends Page
         $allOffersValid = collect($this->offers)->every(fn (array $o): bool => $o['valid']);
 
         return $hasTrigger && $hasOffer && $allOffersValid;
+    }
+
+    /**
+     * "Why don't I see this in my store?" — the full chain, not just the parts
+     * the builder validates.
+     *
+     * validationIssues() below only answers "can this flow go live". A flow can
+     * be perfectly live and still show nothing, because the rail has conditions
+     * the builder never mentions (an unresolvable variant, a trigger type the
+     * post-purchase context cannot evaluate) and Shopify has two merchant steps
+     * we cannot perform. This surfaces all of it in one list.
+     *
+     * @return list<array{key: string, status: string, detail: ?string}>
+     */
+    public function diagnostic(): array
+    {
+        $shop = Tenant::current();
+        if (! $shop instanceof Shop) {
+            return [];
+        }
+
+        return app(PostPurchaseDiagnostic::class)->run($shop, $this->flow());
+    }
+
+    /** Is the diagnostic worth opening — i.e. is something actually wrong? */
+    public function diagnosticHasProblem(): bool
+    {
+        foreach ($this->diagnostic() as $check) {
+            if ($check['status'] === PostPurchaseDiagnostic::PROBLEM) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Deep link to the store setting only the merchant can flip. */
+    public function checkoutSettingsUrl(): ?string
+    {
+        $shop = Tenant::current();
+        $domain = $shop instanceof Shop ? trim((string) ($shop->shopify_domain ?? '')) : '';
+
+        return $domain !== '' ? 'https://'.$domain.'/admin/settings/checkout' : null;
     }
 
     /** @return list<string> human-readable reasons the flow can't go live. */
@@ -921,8 +968,16 @@ class FlowBuilder extends Page
             return null; // no product picked yet → keep the button disabled
         }
 
+        // Preview the surface THIS shop actually ships. Hardcoding the
+        // WooCommerce card sent Shopify merchants to a page they will never
+        // see — the same bug already fixed on the Appearance screen.
+        $shop = Tenant::current();
+        $platform = ($shop instanceof Shop && $shop->platform === Shop::PLATFORM_SHOPIFY)
+            ? PostPurchaseController::PLATFORM
+            : UpsellCardPresenter::PLATFORM_WOOCOMMERCE;
+
         return route('filament.admin.upsell.preview', [
-            'platform' => UpsellCardPresenter::PLATFORM_WOOCOMMERCE,
+            'platform' => $platform,
             'offer' => $offer->getKey(),
         ]);
     }

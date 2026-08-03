@@ -54,6 +54,8 @@ return [
     // Settings → Upsell card design (Phase 3) — the element/style builder.
     // ===================================================================
     'appearance' => [
+        // Shown on a control that cannot express itself on THIS shop's surface.
+        'inert_here' => 'Not available on Shopify’s post-purchase page — it uses your Shopify checkout branding. Saved for other surfaces.',
         'title' => 'Upsell card design',
         'intro' => 'Design the one-click post-purchase card your customers see. Changes preview live on the right; the price, the add button and the charge disclosure are always shown and cannot be removed.',
         'save' => 'Save design',
@@ -335,6 +337,51 @@ return [
             'min_order_value_hint' => 'Only show the offer when the order subtotal is over this amount.',
             'amount_label' => 'Minimum order value',
             'currency_symbol' => '₪',
+        ],
+
+        // "Why don't I see this in my store?" — the full chain to a live offer.
+        'diagnostic' => [
+            'heading' => 'Why is this offer not showing?',
+            'intro' => 'Everything that has to be true before a shopper sees this offer. The last two are steps in your Shopify admin that we cannot check from here.',
+            'open_checkout_settings' => 'Open Shopify checkout settings',
+            'check' => [
+                'flow_active' => [
+                    'title' => 'The flow is live',
+                    'ok' => 'Active — it is being served.',
+                    'problem' => 'Still a draft. Press Activate above; it stays hidden until you do.',
+                    'unknown' => '',
+                ],
+                'offer_complete' => [
+                    'title' => 'The offer is complete',
+                    'ok' => 'Product, price, headline and button label are all set.',
+                    'problem' => 'Something is missing, so the flow cannot go live:',
+                    'unknown' => '',
+                ],
+                'variant' => [
+                    'title' => 'The product variant resolves',
+                    'ok' => 'We can identify the exact variant to add.',
+                    'problem' => 'We cannot resolve a variant for this product. Sync your products, or pick a specific variant on the offer.',
+                    'unknown' => 'Waiting on a product being picked.',
+                ],
+                'trigger' => [
+                    'title' => 'The trigger works on this surface',
+                    'ok' => 'This rule can be evaluated after checkout.',
+                    'problem' => 'Collection and tag rules cannot be evaluated on Shopify’s post-purchase page — it only knows the purchased products and the order total. Use “any product”, a specific product, or a minimum order value.',
+                    'unknown' => '',
+                ],
+                'deployed' => [
+                    'title' => 'The app version is deployed and released',
+                    'ok' => '',
+                    'problem' => '',
+                    'unknown' => 'We cannot see this from here. Run `shopify app deploy --config subscriptions` and confirm the version shows as active.',
+                ],
+                'selected' => [
+                    'title' => 'LETS is selected as your post-purchase page',
+                    'ok' => '',
+                    'problem' => '',
+                    'unknown' => 'Shopify shows only ONE post-purchase app per store. In Shopify admin go to Settings → Checkout → “Post-purchase page” and choose LETS — until then nothing appears, however complete the flow is.',
+                ],
+            ],
         ],
 
         'builder' => [

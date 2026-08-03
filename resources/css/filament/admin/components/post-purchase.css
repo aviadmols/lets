@@ -826,3 +826,18 @@ button.rc-fb-node:focus-visible {
 }
 .rc-picker__empty-icon { inline-size: 28px; block-size: 28px; color: var(--rc-ink-muted); }
 .rc-picker__empty-title { font: var(--rc-type-body-strong); color: var(--rc-ink); }
+
+/* === Post-purchase diagnostic ("why is this not showing?") ================ */
+.rc-diag { display: flex; flex-direction: column; gap: var(--rc-space-3); margin: var(--rc-space-3) 0 0; padding: 0; list-style: none; }
+.rc-diag__row { display: flex; align-items: flex-start; gap: var(--rc-space-3); }
+.rc-diag__mark {
+    flex: 0 0 auto; inline-size: 22px; block-size: 22px;
+    display: grid; place-items: center; border-radius: var(--rc-radius-pill);
+    font: var(--rc-type-label);
+}
+.rc-diag__row--ok .rc-diag__mark { background: var(--rc-green-bg); color: var(--rc-green); }
+.rc-diag__row--problem .rc-diag__mark { background: var(--rc-red-bg); color: var(--rc-red); }
+.rc-diag__row--unknown .rc-diag__mark { background: var(--rc-gray-bg); color: var(--rc-ink-muted); }
+.rc-diag__body { display: flex; flex-direction: column; gap: 2px; }
+.rc-diag__title { font: var(--rc-type-body-strong); color: var(--rc-ink); }
+.rc-diag__hint { font: var(--rc-type-caption); color: var(--rc-ink-muted); }

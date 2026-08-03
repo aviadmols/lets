@@ -72,6 +72,49 @@
         </div>
     @endif
 
+    {{-- "Why don't I see this in my store?" — the full chain, not just the parts
+         the builder validates. Open by default when something is actually wrong,
+         so a merchant staring at an empty checkout is not left guessing. --}}
+    {{-- Block form on purpose. Blade lifts raw PHP blocks with a non-greedy
+         regex BEFORE it compiles directives, so the parenthesised one-line form
+         in a file that also uses the block form binds to the next block's
+         terminator and swallows everything in between. --}}
+    @php
+        $checks = $this->diagnostic();
+    @endphp
+    @if(count($checks) > 0)
+        <x-rc.accordion title="upsell.admin.diagnostic.heading" :open="$this->diagnosticHasProblem()">
+            <p class="rc-muted">{{ __('upsell.admin.diagnostic.intro') }}</p>
+            <ul class="rc-diag">
+                @foreach($checks as $check)
+                    <li class="rc-diag__row rc-diag__row--{{ $check['status'] }}">
+                        <span class="rc-diag__mark" aria-hidden="true">
+                            {{ $check['status'] === 'ok' ? '✓' : ($check['status'] === 'problem' ? '✕' : '?') }}
+                        </span>
+                        <span class="rc-diag__body">
+                            <span class="rc-diag__title">{{ __('upsell.admin.diagnostic.check.'.$check['key'].'.title') }}</span>
+                            <span class="rc-diag__hint">
+                                {{ __('upsell.admin.diagnostic.check.'.$check['key'].'.'.$check['status']) }}
+                                @if($check['detail'])
+                                    <span class="rc-ltr">({{ $check['detail'] }})</span>
+                                @endif
+                            </span>
+                        </span>
+                    </li>
+                @endforeach
+            </ul>
+            @php
+                $checkoutUrl = $this->checkoutSettingsUrl();
+            @endphp
+            @if($checkoutUrl)
+                {{-- target=_blank: App Bridge swallows same-tab navigation out of the iframe. --}}
+                <a class="rc-cta rc-cta--ghost" href="{{ $checkoutUrl }}" target="_blank" rel="noopener">
+                    {{ __('upsell.admin.diagnostic.open_checkout_settings') }}
+                </a>
+            @endif
+        </x-rc.accordion>
+    @endif
+
     {{-- Canvas (Alpine pan + zoom + node drag). Seeded with the saved node layout. --}}
     <div
         class="rc-fb-canvas"

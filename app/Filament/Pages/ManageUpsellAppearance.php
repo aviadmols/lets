@@ -11,6 +11,7 @@ use App\Models\MerchantUpsellAppearance;
 use App\Models\Shop;
 use App\Support\Tenant;
 use Filament\Forms\Components\ColorPicker;
+use Filament\Forms\Components\Field;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Repeater;
@@ -91,34 +92,34 @@ class ManageUpsellAppearance extends Page implements HasForms
         return Section::make(__('upsell.appearance.brand.heading'))
             ->description(__('upsell.appearance.brand.intro'))
             ->schema([
-                ColorPicker::make('accent_color')
+                $this->markInert(ColorPicker::make('accent_color')
                     ->label(__('upsell.appearance.brand.accent'))
                     ->helperText(__('upsell.appearance.brand.accent_help'))
-                    ->live(onBlur: true),
-                ColorPicker::make('accent_text_color')
+                    ->live(onBlur: true), 'accent_color'),
+                $this->markInert(ColorPicker::make('accent_text_color')
                     ->label(__('upsell.appearance.brand.accent_text'))
                     ->helperText(__('upsell.appearance.brand.accent_text_help'))
-                    ->live(onBlur: true),
-                ToggleButtons::make('theme_mode')
+                    ->live(onBlur: true), 'accent_text_color'),
+                $this->markInert(ToggleButtons::make('theme_mode')
                     ->label(__('upsell.appearance.brand.theme'))
                     ->options($this->options(MerchantUpsellAppearance::THEME_MODES, 'theme'))
-                    ->inline()->live(),
-                ToggleButtons::make('button_style')
+                    ->inline()->live(), 'theme_mode'),
+                $this->markInert(ToggleButtons::make('button_style')
                     ->label(__('upsell.appearance.brand.button'))
                     ->options($this->options(MerchantUpsellAppearance::BUTTON_STYLES, 'button'))
-                    ->inline()->live(),
-                ToggleButtons::make('corner_radius')
+                    ->inline()->live(), 'button_style'),
+                $this->markInert(ToggleButtons::make('corner_radius')
                     ->label(__('upsell.appearance.brand.corners'))
                     ->options($this->options(MerchantUpsellAppearance::CORNER_RADII, 'radius'))
-                    ->inline()->live(),
-                ToggleButtons::make('card_shadow')
+                    ->inline()->live(), 'corner_radius'),
+                $this->markInert(ToggleButtons::make('card_shadow')
                     ->label(__('upsell.appearance.brand.shadow'))
                     ->options($this->options(MerchantUpsellAppearance::CARD_SHADOWS, 'shadow'))
-                    ->inline()->live(),
-                ToggleButtons::make('theme_font')
+                    ->inline()->live(), 'card_shadow'),
+                $this->markInert(ToggleButtons::make('theme_font')
                     ->label(__('upsell.appearance.brand.font'))
                     ->options($this->options(MerchantUpsellAppearance::FONTS, 'font'))
-                    ->inline()->live(),
+                    ->inline()->live(), 'theme_font'),
             ])
             ->columns(2);
     }
@@ -133,10 +134,10 @@ class ManageUpsellAppearance extends Page implements HasForms
                     ->label(__('upsell.appearance.layout.arrangement'))
                     ->options($this->options(MerchantUpsellAppearance::LAYOUTS, 'layout'))
                     ->inline()->live(),
-                ToggleButtons::make('image_ratio')
+                $this->markInert(ToggleButtons::make('image_ratio')
                     ->label(__('upsell.appearance.layout.image_ratio'))
                     ->options($this->options(MerchantUpsellAppearance::IMAGE_RATIOS, 'ratio'))
-                    ->inline()->live(),
+                    ->inline()->live(), 'image_ratio'),
                 ToggleButtons::make('decline_style')
                     ->label(__('upsell.appearance.layout.decline'))
                     ->options($this->options(MerchantUpsellAppearance::DECLINE_STYLES, 'decline'))
@@ -292,6 +293,30 @@ class ManageUpsellAppearance extends Page implements HasForms
     public function inertSettings(): array
     {
         return $this->previewIsShopifyOwned() ? PostPurchasePresenter::UNSUPPORTED_SETTINGS : [];
+    }
+
+    /**
+     * Mark a control that cannot express itself on THIS shop's surface.
+     *
+     * Shopify's post-purchase page is built from Shopify's own components and
+     * takes its colours, fonts, corners and shadows from the merchant's checkout
+     * branding — not from us. Leaving those controls live invites a merchant to
+     * spend an afternoon tuning a page that will never change.
+     *
+     * `dehydrated()` is not optional: a plain `disabled()` field submits no value
+     * and would blank a setting that DOES apply on the WooCommerce card, so the
+     * value must keep round-tripping even while the control is inert.
+     */
+    private function markInert(Field $field, string $name): Field
+    {
+        if (! in_array($name, $this->inertSettings(), true)) {
+            return $field;
+        }
+
+        return $field
+            ->disabled()
+            ->dehydrated()
+            ->helperText(__('upsell.appearance.inert_here'));
     }
 
     /** Re-push the draft to the preview on every form change (fields are ->live()). */

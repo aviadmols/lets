@@ -51,6 +51,10 @@ final class PostPurchasePresenter
     public const UNSUPPORTED_SETTINGS = [
         'accent_color', 'accent_text_color', 'button_style',
         'corner_radius', 'card_shadow', 'theme_font', 'theme_mode',
+        // Dropped silently until now: present() never emits a ratio and the
+        // extension renders a bare <Image>, so the control did nothing while
+        // still looking live in the admin.
+        'image_ratio',
     ];
 
     /** Shopify's own spacing scale, which is all the density control we have. */
