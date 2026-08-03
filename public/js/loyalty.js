@@ -13,6 +13,38 @@
 
     var actions = JSON.parse(root.getAttribute('data-actions') || '{}');
     var strings = JSON.parse(root.getAttribute('data-strings') || '{}');
+    var isPreview = root.hasAttribute('data-lets-preview');
+
+    /* --- Preview mode (the admin's appearance tab) ------------------------
+     * The page renders identically, but nothing may ACT: there is no member
+     * behind the sample data. Buttons are disabled rather than hidden, so the
+     * merchant still sees the layout they are designing. The admin then pushes
+     * draft colours in as they edit, which land on the same custom properties
+     * the server writes — so the preview and the live page can never diverge.
+     */
+    if (isPreview) {
+        root.querySelectorAll('button').forEach(function (button) { button.disabled = true; });
+
+        window.addEventListener('message', function (event) {
+            if (event.origin !== window.location.origin) { return; }
+            if (!event.data || event.data.type !== 'lets-loyalty-appearance') { return; }
+
+            var draft = event.data.appearance || {};
+            var style = document.documentElement.style;
+            if (draft.accent) { style.setProperty('--lets-accent', draft.accent); }
+            if (draft.accent_text) { style.setProperty('--lets-accent-fg', draft.accent_text); }
+            if (draft.radius) { style.setProperty('--lets-radius', draft.radius); }
+            if (draft.theme) { document.documentElement.setAttribute('data-theme', draft.theme); }
+            if (draft.dir) { document.documentElement.setAttribute('dir', draft.dir); }
+        });
+
+        // Tell the admin shell we are ready for the first push.
+        if (window.parent !== window) {
+            window.parent.postMessage({ type: 'lets-loyalty-preview-ready' }, window.location.origin);
+        }
+
+        return; // no action wiring at all in a preview
+    }
 
     /** POST with no body of consequence — the identity travels in the URL. */
     function post(url, payload) {

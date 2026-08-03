@@ -102,6 +102,12 @@ return [
             'locale_help' => 'The language your customers read the club in.',
         ],
 
+        'preview' => [
+            'heading' => 'What your customers see',
+            'intro' => 'The real members page with a sample member. Colours update as you pick them; the rest follows once you save.',
+            'open' => 'Open in a new tab',
+        ],
+
         'option' => [
             'rounding' => ['floor' => 'Round down', 'nearest' => 'Round to nearest'],
             'referral_discount' => ['percent' => 'A percentage off', 'fixed' => 'A fixed amount off'],
@@ -176,6 +182,12 @@ return [
         'claimed' => 'Points added — thank you.',
         'already_claimed' => 'You have already claimed this one.',
         'claim_unavailable' => 'That way to earn is not offered right now.',
+        // Demo perk lines — shown only in the admin preview of a club that has
+        // no tiers yet, so the merchant can see the shape before building one.
+        'demo_perk_points' => 'Points on every purchase',
+        'demo_perk_birthday' => 'Birthday gift',
+        'demo_perk_early' => 'Early access to new products',
+
         'referral_heading' => 'Bring a friend',
         'referral_link' => 'Your link',
         'referral_copy' => 'Share',

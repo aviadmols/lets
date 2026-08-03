@@ -275,24 +275,86 @@ class ManageLoyalty extends Page implements HasForms
             Section::make(__('loyalty.admin.appearance.heading'))
                 ->description(__('loyalty.admin.appearance.intro'))
                 ->schema([
-                    ColorPicker::make('accent_color')->label(__('loyalty.admin.appearance.accent')),
-                    ColorPicker::make('accent_text_color')->label(__('loyalty.admin.appearance.accent_text')),
+                    // ->live() so every edit pushes straight into the preview
+                    // iframe: the merchant sees the real page restyle as they
+                    // pick, with no save and no reload.
+                    ColorPicker::make('accent_color')
+                        ->label(__('loyalty.admin.appearance.accent'))
+                        ->live(onBlur: true),
+                    ColorPicker::make('accent_text_color')
+                        ->label(__('loyalty.admin.appearance.accent_text'))
+                        ->live(onBlur: true),
                     ToggleButtons::make('theme_mode')
                         ->label(__('loyalty.admin.appearance.theme'))
                         ->options($this->options(MerchantLoyaltySettings::THEME_MODES, 'theme'))
-                        ->inline(),
+                        ->inline()->live(),
                     ToggleButtons::make('corner_radius')
                         ->label(__('loyalty.admin.appearance.corners'))
                         ->options($this->options(MerchantLoyaltySettings::CORNER_RADII, 'radius'))
-                        ->inline(),
+                        ->inline()->live(),
                     ToggleButtons::make('page_locale')
                         ->label(__('loyalty.admin.appearance.locale'))
                         ->helperText(__('loyalty.admin.appearance.locale_help'))
                         ->options($this->options(MerchantLoyaltySettings::PAGE_LOCALES, 'locale'))
-                        ->inline(),
+                        ->inline()->live(),
                 ])
                 ->columns(2),
         ];
+    }
+
+    // === Live preview ===
+
+    /**
+     * Where the preview iframe points: the REAL members page, rendered with a
+     * sample member. Cache-busted per page load so a save is reflected without
+     * the browser serving a stale frame.
+     */
+    public function previewUrl(): string
+    {
+        return route('filament.admin.loyalty.preview', ['v' => now()->timestamp]);
+    }
+
+    /**
+     * The appearance tokens as the form holds them RIGHT NOW, resolved through
+     * the model's guards so the preview shows exactly what a save would produce
+     * (a half-typed colour renders as the house default, not as a broken page).
+     *
+     * @return array<string, string>
+     */
+    public function draftAppearance(): array
+    {
+        $draft = new MerchantLoyaltySettings;
+        $draft->forceFill([
+            'accent_color' => $this->data['accent_color'] ?? null,
+            'accent_text_color' => $this->data['accent_text_color'] ?? null,
+            'theme_mode' => $this->data['theme_mode'] ?? null,
+            'corner_radius' => $this->data['corner_radius'] ?? null,
+            'page_locale' => $this->data['page_locale'] ?? null,
+        ]);
+
+        return [
+            'accent' => $draft->accentColor(),
+            'accent_text' => $draft->accentTextColor(),
+            'theme' => $draft->themeMode(),
+            'radius' => match ($draft->cornerRadius()) {
+                MerchantLoyaltySettings::RADIUS_SHARP => '0px',
+                MerchantLoyaltySettings::RADIUS_PILL => '999px',
+                default => '16px',
+            },
+            'dir' => $draft->pageLocale() === MerchantLoyaltySettings::LOCALE_HE ? 'rtl' : 'ltr',
+        ];
+    }
+
+    /**
+     * Re-push the draft appearance to the preview on every form change (the
+     * appearance fields are ->live()). Cheap: the payload is five tokens, and
+     * the iframe restyles from custom properties without reloading.
+     */
+    public function updated(string $property): void
+    {
+        if (str_starts_with($property, 'data')) {
+            $this->dispatch('lets-loyalty-appearance', appearance: $this->draftAppearance());
+        }
     }
 
     // === Save ===

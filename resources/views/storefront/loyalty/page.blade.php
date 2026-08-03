@@ -9,8 +9,13 @@
   visitor the platform did not identify sees the public shape only — tiers, perks
   and how to earn — never a balance.
 
-  Server-injected: $model (presenter output), $actions (URL map).
+  In PREVIEW mode (the admin's appearance tab) the same page renders with a
+  sample member and an EMPTY action map, so every button is inert — a preview
+  must not be able to act on anyone's account.
+
+  Server-injected: $model (presenter output), $actions (URL map, empty in preview).
 --}}
+@php($preview = $preview ?? false)
 @php($a = $model['appearance'])
 @php($status = $model['status'])
 @php($balance = $model['balance'])
@@ -41,6 +46,7 @@
 <body>
 <div class="lc"
      data-lets-loyalty
+     @if($preview) data-lets-preview @endif
      data-actions='@json($actions)'
      data-strings='@json([
          'network' => __('loyalty.page.redeem_failed'),

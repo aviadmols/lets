@@ -2,6 +2,7 @@
 
 namespace App\Providers\Filament;
 
+use App\Domain\Loyalty\Http\Controllers\AdminLoyaltyPreviewController;
 use App\Domain\Upsell\Http\Controllers\AdminUpsellPreviewController;
 use App\Domain\Upsell\Http\Controllers\PostPurchaseController;
 use App\Domain\Upsell\Rendering\UpsellCardPresenter;
@@ -197,6 +198,14 @@ class AdminPanelProvider extends PanelProvider
                     ])
                     ->whereNumber('offer')
                     ->name('upsell.preview');
+
+                // The loyalty club's members page as the merchant's own shoppers
+                // will see it — the REAL page + stylesheet with a sample member,
+                // so tuning colours here cannot drift from the live surface.
+                //   → GET /admin/loyalty/preview  (name filament.admin.loyalty.preview)
+                Route::get('loyalty/preview', AdminLoyaltyPreviewController::class)
+                    ->middleware(Authenticate::class)
+                    ->name('loyalty.preview');
             })
             ->navigationGroups($this->navigationGroups())
             // Platform-admin link to the Horizon dashboard (queues, throughput, FAILED

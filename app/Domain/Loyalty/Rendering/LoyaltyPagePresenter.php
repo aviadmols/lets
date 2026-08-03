@@ -54,6 +54,164 @@ final class LoyaltyPagePresenter
     }
 
     /**
+     * The SAME page shape, filled with a demonstration member — what the admin's
+     * appearance preview renders.
+     *
+     * It borrows the merchant's REAL settings and tiers so the preview shows
+     * their own club, and only invents the things a preview cannot have: a
+     * member, a balance, a spend. Nothing here touches the database, and no
+     * referral code is minted — a preview must not publish a discount code to
+     * the merchant's store as a side effect of opening a tab.
+     *
+     * @param  array<string, mixed>|null  $overrides  draft appearance from the live form
+     * @return array<string, mixed>
+     */
+    public function sample(?MerchantLoyaltySettings $settings = null): array
+    {
+        $settings ??= MerchantLoyaltySettings::current();
+        $ladder = $this->tiers->ladder();
+
+        // A merchant who has not built a ladder yet still deserves to see what
+        // the page looks like, so the preview stands in three demo rungs.
+        $tierCards = $ladder->isNotEmpty()
+            ? $this->tierCards(null)
+            : $this->demoTierCards();
+
+        $perks = $ladder->isNotEmpty() ? $this->perkTable() : $this->demoPerkTable();
+
+        // A believable balance: enough to show the redeem CTA when the merchant
+        // has set a rate, without pretending to be anyone's real number.
+        $samplePoints = max(250, $settings->redeemRatePoints() * 3);
+        $credit = $settings->creditFor($samplePoints);
+
+        return [
+            'program_name' => $settings->programName() ?? __('loyalty.page.title'),
+            'identified' => true,
+            'is_member' => true,
+            'preview' => true,
+            'appearance' => $this->appearance($settings),
+            'balance' => [
+                'points' => $samplePoints,
+                'formatted' => Money::number($samplePoints),
+                'credit' => $credit['amount'] > 0 ? Money::format($credit['amount']) : null,
+                'redeemable' => $settings->redemptionAvailable() && $credit['points'] > 0,
+                'min_points' => $settings->minRedeemPoints(),
+            ],
+            'status' => $this->sampleStatus($tierCards),
+            'tiers' => $this->flagFirstAsCurrent($tierCards),
+            'perks' => $perks,
+            'earn' => $this->sampleWaysToEarn($settings),
+            'referral' => $this->sampleReferral($settings),
+        ];
+    }
+
+    /** @param list<array<string, mixed>> $tierCards @return array<string, mixed> */
+    private function sampleStatus(array $tierCards): array
+    {
+        $current = $tierCards[0] ?? null;
+        $next = $tierCards[1] ?? null;
+
+        return [
+            'tier' => $current['name'] ?? __('loyalty.page.tier_none'),
+            'color' => $current['color'] ?? null,
+            'icon' => $current['icon'] ?? null,
+            'next' => $next['name'] ?? null,
+            'remaining' => $next !== null ? Money::format(420) : null,
+            'progress' => 62,
+        ];
+    }
+
+    /** @param list<array<string, mixed>> $cards @return list<array<string, mixed>> */
+    private function flagFirstAsCurrent(array $cards): array
+    {
+        foreach ($cards as $index => $card) {
+            $cards[$index]['is_current'] = $index === 0;
+        }
+
+        return $cards;
+    }
+
+    /** @return list<array<string, mixed>> three rungs, for a shop with no ladder yet */
+    private function demoTierCards(): array
+    {
+        $names = [
+            [__('loyalty.admin.option.icon.spark'), LoyaltyTier::ICON_SPARK, '#7746ec'],
+            [__('loyalty.admin.option.icon.glow'), LoyaltyTier::ICON_GLOW, '#10b981'],
+            [__('loyalty.admin.option.icon.shine'), LoyaltyTier::ICON_SHINE, '#f59e0b'],
+        ];
+        $bands = [[0, 999], [1000, 1999], [2000, null]];
+
+        $cards = [];
+        foreach ($names as $index => [$name, $icon, $color]) {
+            [$from, $to] = $bands[$index];
+            $cards[] = [
+                'name' => $name,
+                'icon' => $icon,
+                'color' => $color,
+                'range' => $to === null
+                    ? __('loyalty.page.range_open', ['from' => Money::format($from)])
+                    : __('loyalty.page.range_closed', ['from' => Money::format($from), 'to' => Money::format($to)]),
+                'is_current' => false,
+            ];
+        }
+
+        return $cards;
+    }
+
+    /** @return array{tiers: list<string>, rows: list<array{label: string, has: list<bool>}>} */
+    private function demoPerkTable(): array
+    {
+        $tiers = array_column($this->demoTierCards(), 'name');
+
+        return [
+            'tiers' => $tiers,
+            'rows' => [
+                ['label' => __('loyalty.page.demo_perk_points'), 'has' => [true, true, true]],
+                ['label' => __('loyalty.page.demo_perk_birthday'), 'has' => [false, true, true]],
+                ['label' => __('loyalty.page.demo_perk_early'), 'has' => [false, false, true]],
+            ],
+        ];
+    }
+
+    /** @return list<array<string, mixed>> the merchant's real ways to earn, none claimed */
+    private function sampleWaysToEarn(MerchantLoyaltySettings $settings): array
+    {
+        $ways = $this->waysToEarn($settings, null);
+
+        foreach ($ways as $index => $way) {
+            // In a preview nothing is claimable and nothing is done — the
+            // buttons would have no member to credit.
+            $ways[$index]['done'] = false;
+            $ways[$index]['action'] = null;
+        }
+
+        return $ways;
+    }
+
+    /** @return array<string, mixed>|null a demo share card — never mints a real code */
+    private function sampleReferral(MerchantLoyaltySettings $settings): ?array
+    {
+        if (! $settings->referralActive()) {
+            return null;
+        }
+
+        $value = $settings->referralDiscountValue();
+
+        return [
+            'code' => 'REFSAMPLE',
+            'link' => null,
+            'friend_gets' => $value > 0
+                ? ($settings->referralDiscountType() === MerchantLoyaltySettings::REFERRAL_PERCENT
+                    ? __('loyalty.page.referral_friend_percent', ['value' => rtrim(rtrim(number_format($value, 2), '0'), '.')])
+                    : __('loyalty.page.referral_friend_amount', ['value' => Money::format($value)]))
+                : null,
+            'you_get' => $this->referralRewardLabel($settings),
+            'count' => 3,
+            'points' => $settings->referralRewardFor(200) * 3,
+        ];
+    }
+
+    /**
      * The member's share card: their code, the link, what the friend gets and
      * what they have earned so far. Null when the program is off, the visitor is
      * not a member, or the platform would not take the code — in that last case

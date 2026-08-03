@@ -1297,6 +1297,48 @@ a.rc-railed:hover { background: var(--rc-blue-bg); }
     font-size: 1.35rem;
 }
 
+/* loyalty.css — the loyalty admin: the settings form beside a live preview of
+   the real members page.
+   TOKENS: --rc-card --rc-border --rc-radius-card --rc-shadow-card --rc-space-*
+           --rc-type-* --rc-bg */
+
+/* Form on the left, preview on the right; one column on narrow screens, where a
+   side-by-side would shrink both past usefulness. */
+.rc-loyalty {
+    display: grid;
+    grid-template-columns: minmax(0, 6fr) minmax(0, 4fr);
+    gap: var(--rc-space-5);
+    align-items: start;
+}
+@media (max-width: 1100px) {
+    .rc-loyalty { grid-template-columns: 1fr; }
+}
+
+.rc-loyalty-preview {
+    display: flex; flex-direction: column; gap: var(--rc-space-3);
+    background: var(--rc-card);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-card);
+    box-shadow: var(--rc-shadow-card);
+    padding: var(--rc-space-4);
+    /* Follows the form down a long page — the point of a live preview is seeing
+       the change, which is no use if it has scrolled away. */
+    position: sticky;
+    top: var(--rc-space-5);
+}
+
+.rc-loyalty-preview__frame {
+    inline-size: 100%;
+    block-size: 640px;
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    background: var(--rc-bg);
+}
+@media (max-width: 1100px) {
+    .rc-loyalty-preview { position: static; }
+    .rc-loyalty-preview__frame { block-size: 520px; }
+}
+
 /* mail-settings.css — Settings → Email notifications (W9 Part A)
    TOKENS: --rc-card --rc-bg --rc-border --rc-border-strong --rc-radius-control
            --rc-ink --rc-ink-muted --rc-blue-bg --rc-space-1 --rc-space-2 --rc-space-3
