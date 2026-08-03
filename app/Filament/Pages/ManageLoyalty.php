@@ -152,6 +152,32 @@ class ManageLoyalty extends Page implements HasForms
                 ])
                 ->columns(2),
 
+            Section::make(__('loyalty.admin.referral.heading'))
+                ->description(__('loyalty.admin.referral.intro'))
+                ->schema([
+                    Toggle::make('referral_enabled')
+                        ->label(__('loyalty.admin.referral.enabled'))
+                        ->helperText(__('loyalty.admin.referral.enabled_help'))
+                        ->columnSpanFull(),
+                    ToggleButtons::make('referral_discount_type')
+                        ->label(__('loyalty.admin.referral.discount_type'))
+                        ->options($this->options(MerchantLoyaltySettings::REFERRAL_DISCOUNT_TYPES, 'referral_discount'))
+                        ->inline(),
+                    TextInput::make('referral_discount_value')
+                        ->label(__('loyalty.admin.referral.discount_value'))
+                        ->helperText(__('loyalty.admin.referral.discount_value_help'))
+                        ->numeric()->minValue(0),
+                    TextInput::make('referral_points_per_order')
+                        ->label(__('loyalty.admin.referral.points_per_order'))
+                        ->helperText(__('loyalty.admin.referral.points_per_order_help'))
+                        ->numeric()->minValue(0)->maxValue(MerchantLoyaltySettings::MAX_BONUS_POINTS),
+                    TextInput::make('referral_points_per_currency')
+                        ->label(__('loyalty.admin.referral.points_per_currency'))
+                        ->helperText(__('loyalty.admin.referral.points_per_currency_help'))
+                        ->numeric()->minValue(0)->maxValue(MerchantLoyaltySettings::MAX_POINTS_PER_CURRENCY),
+                ])
+                ->columns(2),
+
             Section::make(__('loyalty.admin.social.heading'))
                 // Honesty in the admin: we cannot verify a follow, and the
                 // merchant should decide knowing that.
@@ -302,6 +328,11 @@ class ManageLoyalty extends Page implements HasForms
             'join_bonus_points' => $this->clampBonus($state['join_bonus_points'] ?? 0),
             'birthday_points' => $this->clampBonus($state['birthday_points'] ?? 0),
             'social_actions' => $this->cleanSocialActions($state['social_actions'] ?? []),
+            'referral_enabled' => (bool) ($state['referral_enabled'] ?? false),
+            'referral_discount_type' => $this->oneOf($state['referral_discount_type'] ?? null, MerchantLoyaltySettings::REFERRAL_DISCOUNT_TYPES, MerchantLoyaltySettings::REFERRAL_PERCENT),
+            'referral_discount_value' => round(max(0, (float) ($state['referral_discount_value'] ?? 0)), 2),
+            'referral_points_per_order' => $this->clampBonus($state['referral_points_per_order'] ?? 0),
+            'referral_points_per_currency' => max(0, min(MerchantLoyaltySettings::MAX_POINTS_PER_CURRENCY, (int) ($state['referral_points_per_currency'] ?? 0))),
             'accent_color' => $state['accent_color'] ?? MerchantLoyaltySettings::DEFAULT_ACCENT,
             'accent_text_color' => $state['accent_text_color'] ?? MerchantLoyaltySettings::DEFAULT_ACCENT_TEXT,
             'theme_mode' => $this->oneOf($state['theme_mode'] ?? null, MerchantLoyaltySettings::THEME_MODES, MerchantLoyaltySettings::THEME_LIGHT),
@@ -375,6 +406,11 @@ class ManageLoyalty extends Page implements HasForms
             'join_bonus_points' => $settings->joinBonusPoints(),
             'birthday_points' => $settings->birthdayPoints(),
             'social_actions' => $settings->socialActions(),
+            'referral_enabled' => (bool) $settings->referral_enabled,
+            'referral_discount_type' => $settings->referralDiscountType(),
+            'referral_discount_value' => $settings->referralDiscountValue(),
+            'referral_points_per_order' => $settings->referralPointsPerOrder(),
+            'referral_points_per_currency' => $settings->referralPointsPerCurrency(),
             'accent_color' => $settings->accentColor(),
             'accent_text_color' => $settings->accentTextColor(),
             'theme_mode' => $settings->themeMode(),

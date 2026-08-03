@@ -159,6 +159,19 @@ html, body {
 .lc-prompt__title { font-size: 18px; font-weight: 800; margin: 0 0 6px; }
 .lc-prompt__body { color: var(--lets-muted); margin: 0 0 16px; }
 
+/* === Share card ("friend brings a friend") =============================== */
+.lc-share {
+    background: var(--lets-soft);
+    border-radius: var(--lets-radius);
+    padding: 24px;
+    display: flex; flex-direction: column; gap: 12px;
+}
+.lc-share__pitch { margin: 0; font-size: 16px; font-weight: 700; }
+.lc-share__row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.lc-share__link { flex: 1 1 260px; direction: ltr; }
+.lc-share__code { margin: 0; font-size: 13px; color: var(--lets-muted); }
+.lc-share__stats { margin: 0; font-size: 13px; color: var(--lets-muted); }
+
 /* Inline outcome message (claim / redeem / birthday). */
 .lc-note { margin-block-start: 12px; font-size: 14px; }
 .lc-note--ok { color: var(--lets-good); }

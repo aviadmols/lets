@@ -48,6 +48,14 @@ class MerchantLoyaltySettings extends Model
     public const SOCIAL_CUSTOM = 'custom';
     public const SOCIAL_KEYS = [self::SOCIAL_FACEBOOK, self::SOCIAL_INSTAGRAM, self::SOCIAL_TIKTOK, self::SOCIAL_CUSTOM];
 
+    /** What the FRIEND gets for arriving through a member's referral link. */
+    public const REFERRAL_PERCENT = 'percent';
+    public const REFERRAL_FIXED = 'fixed';
+    public const REFERRAL_DISCOUNT_TYPES = [self::REFERRAL_PERCENT, self::REFERRAL_FIXED];
+
+    /** A referral discount past this is almost certainly a typo, not an offer. */
+    public const MAX_REFERRAL_PERCENT = 50;
+
     /** Bounds. A merchant typo must not mint a million points or a free store. */
     public const MAX_POINTS_PER_CURRENCY = 1000;
     public const MAX_BONUS_POINTS = 100000;
@@ -71,6 +79,10 @@ class MerchantLoyaltySettings extends Model
             'join_bonus_points' => 'integer',
             'birthday_points' => 'integer',
             'social_actions' => 'array',
+            'referral_enabled' => 'boolean',
+            'referral_discount_value' => 'decimal:2',
+            'referral_points_per_order' => 'integer',
+            'referral_points_per_currency' => 'integer',
         ];
     }
 
@@ -89,6 +101,11 @@ class MerchantLoyaltySettings extends Model
                 'join_bonus_points' => 0,
                 'birthday_points' => 0,
                 'social_actions' => [],
+                'referral_enabled' => false,
+                'referral_discount_type' => self::REFERRAL_PERCENT,
+                'referral_discount_value' => 0,
+                'referral_points_per_order' => 0,
+                'referral_points_per_currency' => 0,
                 'accent_color' => self::DEFAULT_ACCENT,
                 'accent_text_color' => self::DEFAULT_ACCENT_TEXT,
                 'theme_mode' => self::THEME_LIGHT,
@@ -220,6 +237,57 @@ class MerchantLoyaltySettings extends Model
         }
 
         return null;
+    }
+
+    // === Referrals ("friend brings a friend") ===
+
+    /**
+     * Is the referral program actually offerable? It needs BOTH halves to make
+     * sense: something for the friend (the discount) or something for the member
+     * (the points). A program that rewards nobody is a share button that lies.
+     */
+    public function referralActive(): bool
+    {
+        return (bool) $this->referral_enabled
+            && ($this->referralDiscountValue() > 0
+                || $this->referralPointsPerOrder() > 0
+                || $this->referralPointsPerCurrency() > 0);
+    }
+
+    public function referralDiscountType(): string
+    {
+        return $this->oneOf($this->referral_discount_type, self::REFERRAL_DISCOUNT_TYPES, self::REFERRAL_PERCENT);
+    }
+
+    /** Clamped: a percentage never past MAX_REFERRAL_PERCENT, an amount never negative. */
+    public function referralDiscountValue(): float
+    {
+        $value = max(0, round((float) $this->referral_discount_value, 2));
+
+        return $this->referralDiscountType() === self::REFERRAL_PERCENT
+            ? min($value, self::MAX_REFERRAL_PERCENT)
+            : $value;
+    }
+
+    /** Flat points the MEMBER earns per purchase made through their link. */
+    public function referralPointsPerOrder(): int
+    {
+        return $this->clampBonus($this->referral_points_per_order);
+    }
+
+    /** Points the MEMBER earns per currency unit of the friend's order. */
+    public function referralPointsPerCurrency(): int
+    {
+        return max(0, min(self::MAX_POINTS_PER_CURRENCY, (int) $this->referral_points_per_currency));
+    }
+
+    /** What one referred order is worth to the referrer, in points. */
+    public function referralRewardFor(float $orderAmount): int
+    {
+        $points = $this->referralPointsPerOrder()
+            + ($orderAmount > 0 ? $orderAmount * $this->referralPointsPerCurrency() : 0);
+
+        return $this->roundPoints($points);
     }
 
     // === Appearance ===

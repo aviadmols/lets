@@ -29,7 +29,55 @@ define('LETS_PAYPLUS_LOYALTY_CACHE_TTL', 15 * MINUTE_IN_SECONDS);
 /** Default iframe height before the page reports its own (px). */
 define('LETS_PAYPLUS_LOYALTY_MIN_HEIGHT', 900);
 
+/** The query parameter a shared referral link carries. */
+define('LETS_PAYPLUS_REFERRAL_PARAM', 'lets_ref');
+
 add_shortcode(LETS_PAYPLUS_LOYALTY_SHORTCODE, 'lets_payplus_loyalty_shortcode');
+
+/**
+ * A visitor arriving on a member's referral link.
+ *
+ * WooCommerce has no "apply this coupon and redirect" URL of its own, so the
+ * link carries ?lets_ref=CODE and we apply it to the session cart the moment WC
+ * is ready. From there it behaves like any coupon the shopper typed: it shows in
+ * the cart, discounts the order, and lands in the order's coupon_lines — which
+ * is exactly what LETS reads to credit the member who sent them.
+ *
+ * Applying to an EMPTY cart is not possible in WooCommerce, so the code is held
+ * in the session and applied as soon as there is something to discount.
+ */
+add_action('wp_loaded', 'lets_payplus_referral_capture', 20);
+
+function lets_payplus_referral_capture()
+{
+    if (! function_exists('WC') || null === WC()->session) {
+        return;
+    }
+
+    // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- a public share link, not a form.
+    if (isset($_GET[LETS_PAYPLUS_REFERRAL_PARAM])) {
+        $code = sanitize_text_field(wp_unslash($_GET[LETS_PAYPLUS_REFERRAL_PARAM]));
+        if ('' !== $code) {
+            WC()->session->set('lets_referral_code', $code);
+        }
+    }
+
+    $pending = WC()->session->get('lets_referral_code');
+    if (! is_string($pending) || '' === $pending) {
+        return;
+    }
+
+    // Nothing to discount yet — keep it for when the cart has contents.
+    if (null === WC()->cart || WC()->cart->is_empty()) {
+        return;
+    }
+
+    if (! WC()->cart->has_discount($pending)) {
+        WC()->cart->apply_coupon($pending);
+    }
+
+    WC()->session->set('lets_referral_code', '');
+}
 
 /**
  * Render the club for whoever is looking.

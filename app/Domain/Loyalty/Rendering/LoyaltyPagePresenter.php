@@ -3,6 +3,7 @@
 namespace App\Domain\Loyalty\Rendering;
 
 use App\Domain\Loyalty\Http\LoyaltyVisitor;
+use App\Domain\Loyalty\Referral\ReferralService;
 use App\Domain\Loyalty\TierResolver;
 use App\Models\LoyaltyAccount;
 use App\Models\LoyaltyPointEvent;
@@ -48,7 +49,59 @@ final class LoyaltyPagePresenter
             'tiers' => $this->tierCards($account),
             'perks' => $this->perkTable(),
             'earn' => $this->waysToEarn($settings, $account),
+            'referral' => $this->referral($visitor, $account, $settings),
         ];
+    }
+
+    /**
+     * The member's share card: their code, the link, what the friend gets and
+     * what they have earned so far. Null when the program is off, the visitor is
+     * not a member, or the platform would not take the code — in that last case
+     * we offer nothing rather than a link that fails at checkout.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function referral(LoyaltyVisitor $visitor, ?LoyaltyAccount $account, MerchantLoyaltySettings $settings): ?array
+    {
+        if ($account === null || ! $settings->referralActive()) {
+            return null;
+        }
+
+        $referrals = app(ReferralService::class);
+        $code = $referrals->codeFor($visitor->shop, $account);
+        if ($code === null) {
+            return null;
+        }
+
+        $stats = $referrals->statsFor($account);
+        $value = $settings->referralDiscountValue();
+
+        return [
+            'code' => $code,
+            'link' => $referrals->linkFor($visitor->shop, $code),
+            'friend_gets' => $value > 0
+                ? ($settings->referralDiscountType() === MerchantLoyaltySettings::REFERRAL_PERCENT
+                    ? __('loyalty.page.referral_friend_percent', ['value' => rtrim(rtrim(number_format($value, 2), '0'), '.')])
+                    : __('loyalty.page.referral_friend_amount', ['value' => Money::format($value)]))
+                : null,
+            'you_get' => $this->referralRewardLabel($settings),
+            'count' => $stats['count'],
+            'points' => $stats['points'],
+        ];
+    }
+
+    /** "You get N points per purchase" — however the merchant configured it. */
+    private function referralRewardLabel(MerchantLoyaltySettings $settings): ?string
+    {
+        if ($settings->referralPointsPerOrder() > 0) {
+            return __('loyalty.page.referral_you_flat', ['points' => $settings->referralPointsPerOrder()]);
+        }
+
+        if ($settings->referralPointsPerCurrency() > 0) {
+            return __('loyalty.page.referral_you_rate', ['points' => $settings->referralPointsPerCurrency()]);
+        }
+
+        return null;
     }
 
     // === Blocks ===

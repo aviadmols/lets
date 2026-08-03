@@ -3,6 +3,7 @@
 namespace App\Listeners\Loyalty;
 
 use App\Domain\Loyalty\PointsEngine;
+use App\Domain\Loyalty\Referral\ReferralService;
 use App\Models\LoyaltyPointEvent;
 use App\Models\PaymentLedger;
 use App\Models\Shop;
@@ -73,18 +74,52 @@ final class AccruePointsFromShopifyOrder
             return;
         }
 
-        Tenant::run($shop, function () use ($customerRef, $amount, $orderId, $order): void {
+        Tenant::run($shop, function () use ($shop, $customerRef, $amount, $orderId, $order): void {
+            $email = data_get($order, 'customer.email') ?? data_get($order, 'email');
+
             app(PointsEngine::class)->accrue(
                 customerRef: $customerRef,
                 amount: $amount,
                 idempotencyKey: LoyaltyPointEvent::keyForShopifyOrder($orderId),
                 meta: [
-                    'email' => data_get($order, 'customer.email') ?? data_get($order, 'email'),
+                    'email' => $email,
                     'context' => 'shopify_order',
                     'order_id' => $orderId,
                 ],
             );
+
+            // The friend's purchase also pays the member who referred them —
+            // the referral code rode in on the order as a discount code.
+            app(ReferralService::class)->attribute(
+                shop: $shop,
+                codes: $this->discountCodes($order),
+                externalOrderId: $orderId,
+                amount: $amount,
+                buyerRef: $customerRef,
+                buyerEmail: is_string($email) ? $email : null,
+            );
         });
+    }
+
+    /**
+     * The discount codes Shopify reports on the order — where a referral code
+     * arrives, because the shared link IS the platform's apply-discount URL.
+     *
+     * @param  array<string, mixed>  $order
+     * @return list<string>
+     */
+    private function discountCodes(array $order): array
+    {
+        $codes = [];
+
+        foreach ((array) ($order['discount_codes'] ?? []) as $row) {
+            $code = trim((string) ($row['code'] ?? ''));
+            if ($code !== '') {
+                $codes[] = $code;
+            }
+        }
+
+        return $codes;
     }
 
     /**

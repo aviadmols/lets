@@ -42,7 +42,10 @@
 <div class="lc"
      data-lets-loyalty
      data-actions='@json($actions)'
-     data-strings='@json(['network' => __('loyalty.page.redeem_failed')])'>
+     data-strings='@json([
+         'network' => __('loyalty.page.redeem_failed'),
+         'copied' => __('loyalty.page.referral_copied'),
+     ])'>
 
     {{-- ============================ HERO ============================ --}}
     @if($model['is_member'])
@@ -175,6 +178,40 @@
                         <p class="lc-note" data-lets-note="{{ $way['key'] }}"></p>
                     </div>
                 @endforeach
+            </div>
+        </section>
+    @endif
+
+    {{-- =========================== REFERRALS =========================== --}}
+    @if($model['referral'])
+        @php($ref = $model['referral'])
+        <section class="lc-section">
+            <h2 class="lc-section__title">{{ __('loyalty.page.referral_heading') }}</h2>
+            <div class="lc-share">
+                <p class="lc-share__pitch">
+                    {{ collect([$ref['friend_gets'], $ref['you_get']])->filter()->implode(' · ') }}
+                </p>
+
+                <div class="lc-share__row">
+                    <input type="text" class="lc-input lc-share__link" readonly
+                           value="{{ $ref['link'] ?? $ref['code'] }}"
+                           data-lets-share-value
+                           aria-label="{{ __('loyalty.page.referral_link') }}">
+                    <button type="button" class="lc-btn" data-lets-share-copy>
+                        {{ __('loyalty.page.referral_copy') }}
+                    </button>
+                </div>
+
+                <p class="lc-share__code">
+                    {{ __('loyalty.page.referral_code_is') }} <span class="lc-code">{{ $ref['code'] }}</span>
+                </p>
+
+                @if($ref['count'] > 0)
+                    <p class="lc-share__stats">
+                        {{ __('loyalty.page.referral_stats', ['count' => $ref['count'], 'points' => $ref['points']]) }}
+                    </p>
+                @endif
+                <p class="lc-note" data-lets-note="share"></p>
             </div>
         </section>
     @endif

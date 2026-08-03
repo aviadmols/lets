@@ -117,6 +117,29 @@
         });
     }
 
+    // --- Share the referral link ------------------------------------------
+    var shareCopy = root.querySelector('[data-lets-share-copy]');
+    if (shareCopy) {
+        shareCopy.addEventListener('click', function () {
+            var field = root.querySelector('[data-lets-share-value]');
+            if (!field) { return; }
+
+            // The native share sheet where it exists (this is a phone-first
+            // action), the clipboard everywhere else.
+            if (navigator.share) {
+                navigator.share({ url: field.value }).catch(function () {});
+
+                return;
+            }
+
+            navigator.clipboard.writeText(field.value).then(function () {
+                note(root.querySelector('[data-lets-note="share"]'), { ok: true, message: strings.copied || '' });
+            }).catch(function () {
+                field.select();
+            });
+        });
+    }
+
     // --- Iframe height (the WooCommerce rail renders us in one) -----------
     if (window.parent !== window) {
         var report = function () {

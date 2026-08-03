@@ -46,7 +46,7 @@ return [
                 'read_orders,write_orders,read_draft_orders,write_draft_orders,'.
                 'read_customers,write_customers,read_products,read_fulfillments,write_fulfillments,'.
                 'read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,'.
-                'write_store_credit_accounts'
+                'write_store_credit_accounts,write_discounts'
             ),
         ],
         'custom' => [
@@ -77,7 +77,7 @@ return [
                 'write_orders,read_all_orders,write_draft_orders,write_fulfillments,'.
                 'write_merchant_managed_fulfillment_orders,'.
                 'read_own_subscription_contracts,write_own_subscription_contracts,'.
-                'read_customer_payment_methods,write_store_credit_accounts'
+                'read_customer_payment_methods,write_store_credit_accounts,write_discounts'
             ),
         ],
     ],
@@ -100,19 +100,24 @@ return [
     | scope maps to a real call. Keep minimal; add a scope only when a feature
     | actually needs it. Mirrors SHOPIFY_OAUTH_SCOPES in .env.example.
     |
-    | write_store_credit_accounts joined the list for the loyalty club's
-    | redemption (ShopifyStoreCreditIssuer): points become real store credit on
-    | the shopper's account. A shop installed BEFORE it was added holds a
-    | narrower grant — EmbeddedAuthenticate re-exchanges on the next embedded
-    | load (ShopifyApps::missingScopes), and until then RedeemService reports
-    | "not right now" and keeps the customer's points.
+    | Two scopes serve the loyalty club:
+    |   write_store_credit_accounts — redemption (ShopifyStoreCreditIssuer) turns
+    |     points into real store credit on the shopper's account;
+    |   write_discounts — a member's referral code is published as a real
+    |     discount code (ReferralDiscountPublisher), which is what makes the
+    |     shared link work and the friend's order carry the attribution.
+    | A shop installed BEFORE they were added holds a narrower grant —
+    | EmbeddedAuthenticate re-exchanges on the next embedded load
+    | (ShopifyApps::missingScopes). Until then both features degrade quietly:
+    | redemption says "not right now" and keeps the points, and the share card
+    | is simply not offered rather than handing out a code checkout would reject.
     */
     'oauth_scopes' => env(
         'SHOPIFY_OAUTH_SCOPES',
         'read_orders,write_orders,read_draft_orders,write_draft_orders,'.
         'read_customers,write_customers,read_products,read_fulfillments,write_fulfillments,'.
         'read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,'.
-        'write_store_credit_accounts'
+        'write_store_credit_accounts,write_discounts'
     ),
 
     /*

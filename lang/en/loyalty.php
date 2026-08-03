@@ -49,6 +49,20 @@ return [
             'birthday_help' => 'Granted once a year, on the date the customer entered on the members page.',
         ],
 
+        'referral' => [
+            'heading' => 'Friend brings a friend',
+            'intro' => 'Each member gets their own link. Whoever buys through it gets your discount, and the member who sent them earns points. The link works by applying a real discount code in your store, so the order carries the credit — nothing depends on cookies.',
+            'enabled' => 'Referral links are live',
+            'enabled_help' => 'Members see a share link on their club page as soon as this is on.',
+            'discount_type' => 'The friend gets',
+            'discount_value' => 'Discount',
+            'discount_value_help' => 'A percentage (up to 50) or a fixed amount off their order. Set 0 to give the friend nothing and only reward the member.',
+            'points_per_order' => 'Member earns per purchase',
+            'points_per_order_help' => 'A flat number of points for every order made through their link.',
+            'points_per_currency' => 'Member earns per 1 of the order',
+            'points_per_currency_help' => 'Points proportional to what the friend spent. Can be combined with the flat amount above.',
+        ],
+
         'social' => [
             'heading' => 'Ways to earn beyond buying',
             'intro' => 'A customer claims these with one click. We cannot verify a like or a follow — treat these as goodwill, and keep the points modest.',
@@ -90,6 +104,7 @@ return [
 
         'option' => [
             'rounding' => ['floor' => 'Round down', 'nearest' => 'Round to nearest'],
+            'referral_discount' => ['percent' => 'A percentage off', 'fixed' => 'A fixed amount off'],
             'theme' => ['light' => 'Light', 'dark' => 'Dark'],
             'radius' => ['sharp' => 'Sharp', 'soft' => 'Soft', 'pill' => 'Pill'],
             'locale' => ['he' => 'Hebrew', 'en' => 'English'],
@@ -161,6 +176,17 @@ return [
         'claimed' => 'Points added — thank you.',
         'already_claimed' => 'You have already claimed this one.',
         'claim_unavailable' => 'That way to earn is not offered right now.',
+        'referral_heading' => 'Bring a friend',
+        'referral_link' => 'Your link',
+        'referral_copy' => 'Share',
+        'referral_copied' => 'Link copied.',
+        'referral_code_is' => 'Or share the code:',
+        'referral_friend_percent' => 'Your friend gets :value% off',
+        'referral_friend_amount' => 'Your friend gets :value off',
+        'referral_you_flat' => 'you get :points points per purchase',
+        'referral_you_rate' => 'you get :points points per 1 they spend',
+        'referral_stats' => 'You have brought :count friends and earned :points points.',
+
         'redeem_heading' => 'Turn points into credit',
         'redeem_cta' => 'Redeem :amount',
         'redeem_min' => 'You need :points points to redeem.',

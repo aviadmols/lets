@@ -5,6 +5,7 @@ namespace App\Services\WooCommerce\Orders;
 use App\Domain\Billing\IdempotencyKey;
 use App\Domain\Billing\Ledger;
 use App\Domain\Installments\PlanActivationService;
+use App\Domain\Loyalty\Referral\ReferralService;
 use App\Models\InstallmentPaymentMethod;
 use App\Models\PaymentLedger;
 use App\Models\Shop;
@@ -96,6 +97,17 @@ final class WooGatewayFinalizer
                     $this->recordLedgerRow($shop, $orderId, $order, $payplusBody);
                 } catch (\Throwable $e) {
                     Log::warning('woocommerce.gateway.ledger_failed', [
+                        'shop_id' => $shop->getKey(), 'order_id' => $orderId, 'error' => $e->getMessage(),
+                    ]);
+                }
+
+                // A purchase made through a member's referral link pays that
+                // member. The link applied their code as a coupon, so the order
+                // itself carries the attribution. Fail-soft: loyalty never un-pays.
+                try {
+                    $this->creditReferrer($shop, $orderId, $order);
+                } catch (\Throwable $e) {
+                    Log::warning('woocommerce.gateway.referral_failed', [
                         'shop_id' => $shop->getKey(), 'order_id' => $orderId, 'error' => $e->getMessage(),
                     ]);
                 }
@@ -280,6 +292,39 @@ final class WooGatewayFinalizer
         Ledger::transition($row, LedgerStatus::SUCCEEDED, [
             'raw_response_masked' => ResponseMasker::mask($payplusBody),
         ]);
+    }
+
+    /**
+     * Pay the member whose referral link brought this buyer.
+     *
+     * The coupon lines on the order ARE the attribution: the shared link applied
+     * the member's code, so nothing here depends on a cookie surviving the trip
+     * from the link to the checkout.
+     *
+     * @param  array<string, mixed>  $order  the paid WC order (REST shape)
+     */
+    private function creditReferrer(Shop $shop, string $orderId, array $order): void
+    {
+        $codes = [];
+        foreach ((array) ($order['coupon_lines'] ?? []) as $line) {
+            $code = trim((string) ($line['code'] ?? ''));
+            if ($code !== '') {
+                $codes[] = $code;
+            }
+        }
+
+        if ($codes === []) {
+            return;
+        }
+
+        app(ReferralService::class)->attribute(
+            shop: $shop,
+            codes: $codes,
+            externalOrderId: $orderId,
+            amount: round((float) ($order['total'] ?? 0), 2),
+            buyerRef: $this->customerRef($order) ?: null,
+            buyerEmail: ((string) data_get($order, 'billing.email', '')) ?: null,
+        );
     }
 
     /**

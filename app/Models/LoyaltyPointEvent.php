@@ -31,9 +31,12 @@ class LoyaltyPointEvent extends Model
     public const KIND_TIER_ENTRY = 'tier_entry';
     public const KIND_REDEEM = 'redeem_credit';
     public const KIND_ADJUST = 'admin_adjust';
+    /** A friend bought through this member's referral link. */
+    public const KIND_REFERRAL = 'referral';
     public const KINDS = [
         self::KIND_EARN_PURCHASE, self::KIND_JOIN, self::KIND_BIRTHDAY,
-        self::KIND_SOCIAL, self::KIND_TIER_ENTRY, self::KIND_REDEEM, self::KIND_ADJUST,
+        self::KIND_SOCIAL, self::KIND_TIER_ENTRY, self::KIND_REDEEM,
+        self::KIND_ADJUST, self::KIND_REFERRAL,
     ];
 
     protected $guarded = ['id', 'shop_id'];
@@ -87,5 +90,11 @@ class LoyaltyPointEvent extends Model
     public static function keyForTierEntry(int $accountId, int $tierId): string
     {
         return 'tier_entry:'.$accountId.':'.$tierId;
+    }
+
+    /** One reward per referred ORDER — the order id is the natural wall. */
+    public static function keyForReferral(string $externalOrderId): string
+    {
+        return 'referral:order:'.$externalOrderId;
     }
 }
