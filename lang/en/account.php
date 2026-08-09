@@ -162,6 +162,13 @@ return [
         ],
 
         'appearance' => [
+            'locale' => 'Language',
+            'locale_help' => 'The language your customers read the area in — including the sign-in codes you send them.',
+            'locale_option' => [
+                'auto' => 'Follow the store',
+                'he' => 'Hebrew',
+                'en' => 'English',
+            ],
             'accent' => 'Accent colour',
             'accent_text' => 'Text on accent',
             'theme' => 'Theme',

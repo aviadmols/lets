@@ -252,6 +252,12 @@ final class AccountPresenter
                 'radius' => $settings->cornerRadiusPx(),
                 'density' => $settings->density(),
                 'card' => $settings->cardStyle(),
+                // The language this payload was RESOLVED in, not the merchant's
+                // setting: the plugin has chrome of its own (the nav label, the
+                // sign-in panel) and it has to speak whatever the copy below
+                // ended up speaking, including when the choice was "follow the
+                // store" and the store answered.
+                'locale' => app()->getLocale(),
                 'dir' => in_array(app()->getLocale(), ['he', 'ar'], true) ? 'rtl' : 'ltr',
             ],
             'banners' => $settings->banners(),

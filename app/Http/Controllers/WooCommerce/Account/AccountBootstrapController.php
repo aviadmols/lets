@@ -34,6 +34,7 @@ final class AccountBootstrapController extends WooAccountController
 
             $model = $this->inShopperLocale(
                 static fn (): array => $presenter->present($visitor),
+                $request,
             );
 
             return response()->json(['ok' => true, 'account' => $model]);

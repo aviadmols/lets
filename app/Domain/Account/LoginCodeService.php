@@ -260,9 +260,22 @@ class LoginCodeService
         }
     }
 
-    /** The shopper's language, not the admin's — the club's page locale is the shop's answer. */
+    /**
+     * The shopper's language, not the admin's.
+     *
+     * A sign-in code is part of the personal area, so it follows the personal
+     * area's language. "Follow the store" has no store to read from here — this
+     * runs on a queue, with no plugin request in hand — so it falls back to the
+     * club's page locale, which is where this used to read from unconditionally.
+     */
     private function localeFor(Shop $shop): string
     {
-        return Tenant::run($shop, static fn (): string => \App\Models\MerchantLoyaltySettings::current()->pageLocale());
+        return Tenant::run($shop, static function (): string {
+            $choice = \App\Models\MerchantPortalAppearance::current()->pageLocale();
+
+            return $choice === \App\Models\MerchantPortalAppearance::LOCALE_AUTO
+                ? \App\Models\MerchantLoyaltySettings::current()->pageLocale()
+                : $choice;
+        });
     }
 }

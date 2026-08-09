@@ -5,6 +5,7 @@ namespace App\Http\Controllers\WooCommerce\Account;
 use App\Domain\Account\AccountVisitor;
 use App\Http\Controllers\WooCommerce\Storefront\WooStorefrontController;
 use App\Models\MerchantLoyaltySettings;
+use App\Models\MerchantPortalAppearance;
 use App\Models\Shop;
 use Illuminate\Http\Request;
 
@@ -45,16 +46,43 @@ abstract class WooAccountController extends WooStorefrontController
      * merchant's admin language is not the language their customers read — the
      * same reason IssueDocumentJob wraps its provider call.
      */
-    protected function inShopperLocale(callable $callback): mixed
+    protected function inShopperLocale(callable $callback, ?Request $request = null): mixed
     {
         $previous = app()->getLocale();
 
         try {
-            app()->setLocale(MerchantLoyaltySettings::current()->pageLocale());
+            app()->setLocale($this->shopperLocale($request));
 
             return $callback();
         } finally {
             app()->setLocale($previous);
         }
+    }
+
+    /**
+     * The language the personal area is written in.
+     *
+     * The merchant's own choice wins. "Follow the store" resolves against the
+     * WordPress site language the plugin sends — the shop's own language is a
+     * better guess than ours, and it keeps following them if they re-translate.
+     * A plugin too old to send one leaves us where this used to read from: the
+     * members-club page language, so no shop changes language on upgrade alone.
+     */
+    protected function shopperLocale(?Request $request): string
+    {
+        $choice = MerchantPortalAppearance::current()->pageLocale();
+
+        if ($choice !== MerchantPortalAppearance::LOCALE_AUTO) {
+            return $choice;
+        }
+
+        $site = strtolower($this->cleanString($request?->input('locale')) ?? '');
+        if ($site !== '') {
+            return str_starts_with($site, 'he') || str_starts_with($site, 'iw')
+                ? MerchantPortalAppearance::LOCALE_HE
+                : MerchantPortalAppearance::LOCALE_EN;
+        }
+
+        return MerchantLoyaltySettings::current()->pageLocale();
     }
 }

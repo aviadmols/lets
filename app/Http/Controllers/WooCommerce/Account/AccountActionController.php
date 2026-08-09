@@ -61,6 +61,7 @@ final class AccountActionController extends WooAccountController
             // move a next-charge date, which moves the benefit timeline with it.
             $model = $this->inShopperLocale(
                 static fn (): array => $presenter->present($visitor),
+                $request,
             );
 
             return response()->json([

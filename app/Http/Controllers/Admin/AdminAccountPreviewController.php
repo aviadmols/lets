@@ -32,8 +32,17 @@ final class AdminAccountPreviewController
             throw new NotFoundHttpException;
         }
 
+        $settings = MerchantPortalAppearance::current();
+
+        // Preview the LANGUAGE too, not only the colours — it is the setting that
+        // changes every word on the page. "Follow the store" has no store here, so
+        // it stays in the admin's own language, which is the honest stand-in.
+        if ($settings->pageLocale() !== MerchantPortalAppearance::LOCALE_AUTO) {
+            app()->setLocale($settings->pageLocale());
+        }
+
         return view('account.preview', [
-            'model' => $presenter->sample(MerchantPortalAppearance::current()),
+            'model' => $presenter->sample($settings),
         ]);
     }
 }

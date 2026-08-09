@@ -131,6 +131,14 @@ class ManageCustomerArea extends Page implements HasForms
         return Section::make(__('account.admin.tab.appearance'))
             ->description(__('account.admin.appearance.font_note'))
             ->schema([
+                // Language first: it changes every word on the page, so it is not
+                // a detail to find under the colours.
+                ToggleButtons::make('page_locale')
+                    ->label(__('account.admin.appearance.locale'))
+                    ->helperText(__('account.admin.appearance.locale_help'))
+                    ->options($this->options(MerchantPortalAppearance::PAGE_LOCALES, 'locale_option'))
+                    ->inline()
+                    ->columnSpanFull(),
                 ColorPicker::make('accent_color')
                     ->label(__('account.admin.appearance.accent'))
                     ->live(onBlur: true),
@@ -358,6 +366,7 @@ class ManageCustomerArea extends Page implements HasForms
             'corner_radius' => $s->cornerRadius(),
             'density' => $s->density(),
             'card_style' => $s->cardStyle(),
+            'page_locale' => $s->pageLocale(),
             'sections' => $s->sections(),
             'banners' => $this->bannerRows($s),
             'login_code_enabled' => $s->loginCodeEnabled(),
@@ -404,6 +413,7 @@ class ManageCustomerArea extends Page implements HasForms
             'corner_radius' => $input['corner_radius'] ?? null,
             'density' => $input['density'] ?? null,
             'card_style' => $input['card_style'] ?? null,
+            'page_locale' => $input['page_locale'] ?? null,
             'sections' => $this->normalizeSections($input['sections'] ?? []),
             'banners' => $this->normalizeBanners($input['banners'] ?? []),
             'login_code_enabled' => (bool) ($input['login_code_enabled'] ?? false),

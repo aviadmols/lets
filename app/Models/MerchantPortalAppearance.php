@@ -78,6 +78,17 @@ class MerchantPortalAppearance extends Model
     public const CARD_RAISED = 'raised';
     public const CARD_STYLES = [self::CARD_FLAT, self::CARD_OUTLINED, self::CARD_RAISED];
 
+    /**
+     * The language the area is written in. AUTO follows the store — the
+     * WordPress site language the plugin sends with every call — which is the
+     * right default for a merchant who never opens this setting, and the only
+     * one that stays right when they translate their shop.
+     */
+    public const LOCALE_AUTO = 'auto';
+    public const LOCALE_HE = 'he';
+    public const LOCALE_EN = 'en';
+    public const PAGE_LOCALES = [self::LOCALE_AUTO, self::LOCALE_HE, self::LOCALE_EN];
+
     public const CHANNEL_EMAIL = 'email';
     public const CHANNEL_SMS = 'sms';
     public const CHANNEL_BOTH = 'both';
@@ -283,6 +294,16 @@ class MerchantPortalAppearance extends Model
     public function cardStyle(): string
     {
         return $this->oneOf($this->card_style, self::CARD_STYLES, self::CARD_OUTLINED);
+    }
+
+    /**
+     * The merchant's language choice — one of PAGE_LOCALES, never a resolved
+     * locale. AUTO is an answer, not a missing one, so the caller that knows the
+     * store's own language is the one that turns it into 'he' or 'en'.
+     */
+    public function pageLocale(): string
+    {
+        return $this->oneOf($this->page_locale, self::PAGE_LOCALES, self::LOCALE_AUTO);
     }
 
     // === Sign-in ===

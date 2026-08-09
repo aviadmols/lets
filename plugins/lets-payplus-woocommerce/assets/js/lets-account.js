@@ -44,6 +44,15 @@
        screens — we restyle those, we do not reimplement them. */
     var PLATFORM_SECTIONS = ['orders', 'documents', 'profile', 'addresses'];
 
+    /* The greeting is not a section in the column flow — it is the page's
+       header, above both columns. */
+    var HERO_SECTION = 'welcome';
+
+    /* Sections that belong in the narrow rail rather than the main column.
+       They are short, glanceable and secondary to the subscriptions; stacking
+       them under the cards is what made the old single column feel endless. */
+    var RAIL_SECTIONS = ['loyalty', 'upcoming', 'support'];
+
     var CADENCE = {
         daily: 'day', weekly: 'week', biweekly: '2 weeks',
         monthly: 'month', quarterly: '3 months', yearly: 'year'
@@ -125,21 +134,34 @@
         }
 
         var banners = Array.isArray(model.banners) ? model.banners : [];
-        var grid = el('div', 'lets-acct__grid' + (banners.length ? ' has-rail' : ''));
-        var main = el('div', 'lets-acct__main');
-        append(grid, main);
+        var sections = model.sections || [];
 
-        (model.sections || []).forEach(function (key) {
+        // The header first, then two columns. The merchant's own section ORDER
+        // is preserved inside each column — the split only decides which column
+        // a section lands in, never whether it appears.
+        if (sections.indexOf(HERO_SECTION) !== -1) {
+            append(mount, renderWelcome(state));
+        }
+
+        var grid = el('div', 'lets-acct__grid');
+        var main = el('div', 'lets-acct__main');
+        var rail = el('aside', 'lets-acct__rail');
+
+        sections.forEach(function (key) {
+            if (key === HERO_SECTION) { return; }
             if (PLATFORM_SECTIONS.indexOf(key) !== -1) { return; }
             var draw = SECTIONS[key];
             if (!draw) { return; }
             var node = draw(state);
-            if (node) { main.appendChild(node); }
+            if (!node) { return; }
+            (RAIL_SECTIONS.indexOf(key) !== -1 ? rail : main).appendChild(node);
         });
 
-        if (banners.length) {
-            var rail = el('aside', 'lets-acct__rail');
-            banners.forEach(function (banner) { rail.appendChild(renderBanner(banner)); });
+        banners.forEach(function (banner) { rail.appendChild(renderBanner(banner)); });
+
+        append(grid, main);
+        if (rail.childNodes.length) {
+            grid.className += ' has-rail';
             append(grid, rail);
         }
 
@@ -170,37 +192,85 @@
 
     function renderWelcome(state) {
         var m = state.model;
-        var card = el('section', 'la-card la-welcome');
+        var hero = el('section', 'la-hero la-welcome');
         var heading = m.greeting
             ? m.copy.welcome_heading + ', ' + m.greeting
             : m.copy.welcome_heading;
 
-        append(card,
-            el('h2', 'la-welcome__title', heading),
+        var text = el('div', 'la-hero__text');
+        append(text,
+            el('h1', 'la-welcome__title', heading),
             el('p', 'la-muted', m.copy.welcome_subtext)
         );
-        return card;
+        append(hero, text);
+
+        var stats = renderStats(state);
+        if (stats) { append(hero, stats); }
+
+        return hero;
+    }
+
+    /**
+     * The three numbers a shopper opens this page to check.
+     *
+     * Every one of them is a value the SERVER already sent for something else —
+     * the subscription list, the first dated row of the benefit timeline, the
+     * loyalty balance. Nothing is derived here, so the strip cannot disagree
+     * with the cards underneath it.
+     */
+    function renderStats(state) {
+        var m = state.model;
+        var strip = el('div', 'la-stats');
+
+        var subs = m.subscriptions || [];
+        if (subs.length) {
+            append(strip, stat(m.copy.subscriptions_heading, String(subs.length)));
+        }
+
+        var next = (m.upcoming || []).filter(function (row) { return !!row.at; })[0];
+        if (next) {
+            append(strip, stat(m.copy.next_charge, dateLong(next.at) + ' ' + dateYear(next.at)));
+        }
+
+        var balance = m.loyalty && m.loyalty.balance;
+        if (balance) {
+            append(strip, stat(m.copy.points_balance, balance.formatted || String(balance.points || 0)));
+        }
+
+        return strip.childNodes.length ? strip : null;
+    }
+
+    function stat(label, value) {
+        var box = el('div', 'la-stat');
+        append(box, el('span', 'la-stat__label', label), el('span', 'la-stat__value', value));
+        return box;
     }
 
     function renderSubscriptions(state) {
         var m = state.model;
-        var wrap = el('section', 'la-card');
+        var subs = m.subscriptions || [];
+
+        // Each plan is its own card rather than a row inside one big card: a
+        // shopper with three subscriptions is reading three separate decisions.
+        var wrap = el('section', 'la-block');
         append(wrap, sectionHead(m.copy.subscriptions_heading));
 
-        var subs = m.subscriptions || [];
         if (!subs.length) {
-            append(wrap, el('p', 'la-empty', m.copy.empty_subscriptions));
-            return wrap;
+            var empty = el('div', 'la-card');
+            append(empty, el('p', 'la-empty', m.copy.empty_subscriptions));
+            return append(wrap, empty);
         }
 
-        subs.forEach(function (sub) { wrap.appendChild(renderSubscription(state, sub)); });
-        return wrap;
+        var list = el('div', 'la-subs');
+        subs.forEach(function (sub) { list.appendChild(renderSubscription(state, sub)); });
+        return append(wrap, list);
     }
 
     function renderSubscription(state, sub) {
         var m = state.model;
-        var card = el('article', 'la-sub');
+        var card = el('article', 'la-card la-sub');
         attr(card, 'data-subscription', sub.id);
+        attr(card, 'data-tone', sub.tone);
 
         // --- head: title + status
         var head = el('div', 'la-sub__head');
@@ -588,19 +658,20 @@
         var card = el('section', 'la-card');
         append(card, sectionHead(m.copy.support_heading));
 
+        var links = el('div', 'la-support__links');
         if (support.email) {
             var mail = el('a', 'la-btn', support.email);
             attr(mail, 'href', 'mailto:' + support.email);
-            append(card, mail);
+            append(links, mail);
         }
         if (support.url) {
             var link = el('a', 'la-btn', m.copy.support_heading);
             attr(link, 'href', support.url);
             attr(link, 'rel', 'noopener');
-            append(card, link);
+            append(links, link);
         }
 
-        return card;
+        return append(card, links);
     }
 
     // === Banners ===

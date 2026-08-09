@@ -48,6 +48,14 @@ define('LETS_ACCOUNT_PHONE_META', 'billing_phone');
 /** Codes a single browser may request before we stop asking LETS at all. */
 define('LETS_ACCOUNT_LOCAL_CODE_LIMIT', 8);
 
+/** Our WooCommerce template overrides — the page shell and the bare dashboard. */
+define('LETS_ACCOUNT_TEMPLATE_DIR', plugin_dir_path(LETS_PAYPLUS_FILE) . 'templates/');
+define('LETS_ACCOUNT_TEMPLATES', 'myaccount/my-account.php|myaccount/dashboard.php');
+
+/** Shop-wide shell config (appearance + sign-in), cached apart from any shopper. */
+define('LETS_ACCOUNT_SHELL_CACHE', 'lets_account_shell_cfg');
+define('LETS_ACCOUNT_SHELL_TTL', 300);
+
 /* -------------------------------------------------------------------------
  * 1. The My Account endpoint
  * ---------------------------------------------------------------------- */
@@ -242,29 +250,405 @@ function lets_payplus_account_fallback($model)
     return (string) ob_get_clean();
 }
 
-/**
- * Wrap the whole My Account screen so WooCommerce's OWN tabs — orders,
- * addresses, account details — pick up the same tokens. We restyle those; we do
- * not reimplement them. WooCommerce already handles address validation and
- * password changes correctly, and rebuilding that would be risk for no gain.
- */
+/* -------------------------------------------------------------------------
+ * 2.5 The page takeover
+ *
+ * My Account is not a widget dropped into a theme column. The plugin renders
+ * the whole screen: its own shell, its own navigation, its own width. What it
+ * does NOT do is reimplement WooCommerce's own tabs — orders, addresses and
+ * account details keep WooCommerce's markup and behaviour (address validation
+ * and password changes are solved, and rebuilding them would be risk for no
+ * gain) and are re-skinned with the same tokens so nothing on the page looks
+ * like a different product.
+ * ---------------------------------------------------------------------- */
+
 add_filter('body_class', 'lets_payplus_account_body_class');
 
 function lets_payplus_account_body_class($classes)
 {
-    if (function_exists('is_account_page') && is_account_page() && null !== lets_payplus_connection()) {
+    if (lets_payplus_account_is_ours()) {
         $classes[] = 'lets-acct-shell';
-        // The shell styles WooCommerce's markup, so the stylesheet has to be
-        // present on every account tab, not only the ones we render.
-        wp_enqueue_style(
-            'lets-payplus-account',
-            LETS_PAYPLUS_URL . 'assets/css/lets-account.css',
-            array(),
-            LETS_PAYPLUS_VERSION
-        );
     }
 
     return $classes;
+}
+
+/** True on a My Account screen of a connected store. */
+function lets_payplus_account_is_ours()
+{
+    return function_exists('is_account_page') && is_account_page() && null !== lets_payplus_connection();
+}
+
+/**
+ * The shell's assets, on EVERY account tab — the stylesheet re-skins
+ * WooCommerce's own screens, so it cannot be enqueued only where we render.
+ */
+add_action('wp_enqueue_scripts', 'lets_payplus_account_shell_assets');
+
+function lets_payplus_account_shell_assets()
+{
+    if (! lets_payplus_account_is_ours()) {
+        return;
+    }
+
+    wp_enqueue_style(
+        'lets-payplus-account',
+        LETS_PAYPLUS_URL . 'assets/css/lets-account.css',
+        array(),
+        LETS_PAYPLUS_VERSION
+    );
+
+    // The merchant's brand, as tokens on the shell. A stylesheet rule rather
+    // than a style="" attribute: the markup stays free of inline CSS, and
+    // WordPress does the escaping on the way out.
+    $tokens = lets_payplus_account_shell_tokens();
+    if ('' !== $tokens) {
+        wp_add_inline_style('lets-payplus-account', $tokens);
+    }
+
+    // Measures how much room the theme actually gave the page. Never required:
+    // without it the shell simply keeps the width the theme handed it.
+    wp_enqueue_script(
+        'lets-payplus-account-shell',
+        LETS_PAYPLUS_URL . 'assets/js/lets-account-shell.js',
+        array(),
+        LETS_PAYPLUS_VERSION,
+        true
+    );
+}
+
+/**
+ * `.lets-shell` + `.la-nav` token overrides from the merchant's appearance.
+ *
+ * Only two shapes are ever emitted — a #hex colour and an integer px radius —
+ * and anything that is not exactly that is dropped rather than escaped, so a
+ * poisoned value cannot become a CSS declaration.
+ *
+ * @return string
+ */
+function lets_payplus_account_shell_tokens()
+{
+    $appearance = lets_payplus_account_shell_config();
+    $appearance = isset($appearance['appearance']) ? (array) $appearance['appearance'] : array();
+
+    $rules = array();
+
+    $accent = lets_payplus_account_hex(isset($appearance['accent']) ? $appearance['accent'] : '');
+    if ('' !== $accent) {
+        $rules[] = '--la-accent:' . $accent;
+        $rules[] = '--la-accent-soft:color-mix(in srgb, ' . $accent . ' 12%, transparent)';
+    }
+
+    $accentText = lets_payplus_account_hex(isset($appearance['accent_text']) ? $appearance['accent_text'] : '');
+    if ('' !== $accentText) {
+        $rules[] = '--la-accent-fg:' . $accentText;
+    }
+
+    $radius = isset($appearance['radius']) ? (string) $appearance['radius'] : '';
+    if (preg_match('/^\d{1,2}px$/', $radius)) {
+        $rules[] = '--la-radius:' . $radius;
+    }
+
+    return $rules ? '.lets-shell,.la-nav{' . implode(';', $rules) . '}' : '';
+}
+
+/** A #rrggbb / #rgb colour, or '' for anything else. */
+function lets_payplus_account_hex($value)
+{
+    $value = trim((string) $value);
+
+    return preg_match('/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/', $value) ? $value : '';
+}
+
+/**
+ * The enum half of the appearance, as attributes for the shell and the nav.
+ * Read by our my-account.php template and by the navigation below.
+ *
+ * @return string
+ */
+function lets_payplus_account_shell_attributes()
+{
+    $config = lets_payplus_account_shell_config();
+    $appearance = isset($config['appearance']) ? (array) $config['appearance'] : array();
+
+    $enums = array(
+        'data-theme' => array('light', 'dark', 'auto'),
+        'data-density' => array('comfortable', 'compact'),
+        'data-card' => array('outlined', 'flat', 'raised'),
+    );
+    $keys = array('data-theme' => 'theme', 'data-density' => 'density', 'data-card' => 'card');
+
+    $out = '';
+    foreach ($enums as $attribute => $allowed) {
+        $value = isset($appearance[$keys[$attribute]]) ? (string) $appearance[$keys[$attribute]] : '';
+        if (in_array($value, $allowed, true)) {
+            $out .= ' ' . $attribute . '="' . esc_attr($value) . '"';
+        }
+    }
+
+    return $out;
+}
+
+/**
+ * The area's own reading direction, for OUR chrome only.
+ *
+ * A merchant can run a Hebrew personal area on an English store; the navigation
+ * then has to mirror even though the theme does not. WooCommerce's own screens
+ * are deliberately left in the site's direction — half a page in the shop's
+ * language laid out the other way round reads worse than either alone.
+ *
+ * @return string
+ */
+function lets_payplus_account_dir_attribute()
+{
+    $config = lets_payplus_account_shell_config();
+    $dir = isset($config['appearance']['dir']) ? (string) $config['appearance']['dir'] : '';
+
+    return in_array($dir, array('rtl', 'ltr'), true) ? ' dir="' . esc_attr($dir) . '"' : '';
+}
+
+/**
+ * Appearance + sign-in settings for the shop, with no shopper in the request.
+ *
+ * Shop-wide and cached apart from any customer, so painting the nav on the
+ * orders tab does not cost a per-user round trip — and so a signed-out visitor
+ * on the login form is served from the same place.
+ *
+ * @return array{appearance: array, login: array{enabled: bool, channel: string}}
+ */
+function lets_payplus_account_shell_config()
+{
+    $cached = get_transient(LETS_ACCOUNT_SHELL_CACHE);
+    if (is_array($cached)) {
+        return $cached;
+    }
+
+    $config = array(
+        'appearance' => array(),
+        'login' => array('enabled' => false, 'channel' => 'email'),
+    );
+
+    $result = lets_payplus_signed_post('/api/woocommerce/account/bootstrap', array(
+        'customer_ref' => '',
+        'locale' => lets_payplus_account_site_locale(),
+    ));
+
+    if (! is_wp_error($result) && ! empty($result['account'])) {
+        $account = (array) $result['account'];
+
+        if (! empty($account['appearance'])) {
+            $config['appearance'] = (array) $account['appearance'];
+        }
+        if (! empty($account['login'])) {
+            $login = (array) $account['login'];
+            $config['login'] = array(
+                'enabled' => ! empty($login['enabled']),
+                'channel' => isset($login['channel']) ? (string) $login['channel'] : 'email',
+            );
+        }
+    }
+
+    set_transient(LETS_ACCOUNT_SHELL_CACHE, $config, LETS_ACCOUNT_SHELL_TTL);
+
+    return $config;
+}
+
+/**
+ * Serve our own my-account.php (the shell) and dashboard.php (which drops
+ * WooCommerce's three sentences of prose, since the area below replaces them).
+ *
+ * OURS WINS, INCLUDING OVER A THEME OVERRIDE. The personal area is the product
+ * the merchant installed this plugin for; a theme's `my-account.php` — which on
+ * most Israeli themes is WooCommerce's own file with the header swapped — is
+ * not a decision to keep it out. Themes lose the SHELL only: their hooks all
+ * still fire from our template, and WooCommerce's own tabs keep their markup.
+ *
+ * The escape hatch is a filter, not a file, so opting out is deliberate:
+ *
+ *     add_filter('lets_payplus_account_own_template', '__return_false');
+ *
+ * @param string $template
+ * @param string $template_name
+ * @return string
+ */
+add_filter('woocommerce_locate_template', 'lets_payplus_account_locate_template', 99, 2);
+
+function lets_payplus_account_locate_template($template, $template_name)
+{
+    if (null === lets_payplus_connection()) {
+        return $template;
+    }
+
+    if (! in_array($template_name, explode('|', LETS_ACCOUNT_TEMPLATES), true)) {
+        return $template;
+    }
+
+    /**
+     * Filters whether the plugin serves its own My Account templates.
+     *
+     * @param bool   $use           Whether to override the theme.
+     * @param string $template_name The template being located.
+     */
+    if (! apply_filters('lets_payplus_account_own_template', true, $template_name)) {
+        return $template;
+    }
+
+    $ours = LETS_ACCOUNT_TEMPLATE_DIR . $template_name;
+
+    return file_exists($ours) ? $ours : $template;
+}
+
+/**
+ * Our navigation replaces WooCommerce's, on account pages only.
+ *
+ * The action is kept (rather than the template overridden) so a theme that
+ * calls `woocommerce_account_navigation` itself still gets our nav, and so the
+ * before/after hooks other plugins use to add links keep firing.
+ */
+add_action('template_redirect', 'lets_payplus_account_take_over_navigation', 99);
+
+function lets_payplus_account_take_over_navigation()
+{
+    if (! lets_payplus_account_is_ours()) {
+        return;
+    }
+
+    /**
+     * EVERY callback goes, not just WooCommerce's own: a theme that printed its
+     * navigation on this hook would otherwise render a second, unstyled menu
+     * beside ours. The two extension points plugins actually use —
+     * `woocommerce_before_account_navigation` and `..._after_...` — are fired
+     * from inside our navigation, so links other plugins add keep appearing.
+     */
+    remove_all_actions('woocommerce_account_navigation');
+    add_action('woocommerce_account_navigation', 'lets_payplus_account_navigation');
+}
+
+function lets_payplus_account_navigation()
+{
+    $he = lets_payplus_account_is_he();
+    $items = wc_get_account_menu_items();
+    $logout = null;
+
+    if (isset($items['customer-logout'])) {
+        $logout = $items['customer-logout'];
+        unset($items['customer-logout']);
+    }
+
+    ?>
+    <nav class="woocommerce-MyAccount-navigation la-nav"<?php echo lets_payplus_account_shell_attributes(); // phpcs:ignore WordPress.Security.EscapeOutput -- fixed enum attributes, escaped at source. ?><?php echo lets_payplus_account_dir_attribute(); // phpcs:ignore WordPress.Security.EscapeOutput -- fixed enum attribute. ?>
+         aria-label="<?php echo esc_attr($he ? 'ניווט באזור האישי' : 'Account navigation'); ?>">
+        <div class="la-nav__inner">
+            <?php
+            do_action('woocommerce_before_account_navigation');
+            lets_payplus_account_identity();
+            ?>
+            <ul>
+                <?php foreach ($items as $endpoint => $label) : ?>
+                    <li class="<?php echo esc_attr(wc_get_account_menu_item_classes($endpoint)); ?>">
+                        <a href="<?php echo esc_url(wc_get_account_endpoint_url($endpoint)); ?>">
+                            <?php lets_payplus_account_icon($endpoint); ?>
+                            <span class="la-nav__label"><?php echo esc_html($label); ?></span>
+                        </a>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+
+            <?php if (null !== $logout) : ?>
+                <div class="la-nav__foot">
+                    <ul>
+                        <li class="<?php echo esc_attr(wc_get_account_menu_item_classes('customer-logout')); ?>">
+                            <a href="<?php echo esc_url(wc_get_account_endpoint_url('customer-logout')); ?>">
+                                <?php lets_payplus_account_icon('customer-logout'); ?>
+                                <span class="la-nav__label"><?php echo esc_html($logout); ?></span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            <?php endif; ?>
+
+            <?php do_action('woocommerce_after_account_navigation'); ?>
+        </div>
+    </nav>
+    <?php
+}
+
+/**
+ * Who is signed in. On a shared machine this is the first thing worth being
+ * sure of, and it is the line a theme's header almost never shows.
+ */
+function lets_payplus_account_identity()
+{
+    $user = wp_get_current_user();
+    if (! $user || ! $user->ID) {
+        return;
+    }
+
+    $name = (string) ($user->display_name ?: $user->user_login);
+    $initial = function_exists('mb_substr') ? mb_substr($name, 0, 1) : substr($name, 0, 1);
+
+    ?>
+    <div class="la-nav__me">
+        <span class="la-nav__avatar" aria-hidden="true"><?php echo esc_html($initial); ?></span>
+        <span class="la-nav__who">
+            <span class="la-nav__name"><?php echo esc_html($name); ?></span>
+            <span class="la-nav__email"><?php echo esc_html($user->user_email); ?></span>
+        </span>
+    </div>
+    <?php
+}
+
+/**
+ * One line-art icon per endpoint, from a fixed table. Echoed unescaped because
+ * every string here is a literal in this file — no value from the database, the
+ * request or the merchant ever reaches it.
+ *
+ * @param string $endpoint
+ */
+function lets_payplus_account_icon($endpoint)
+{
+    $paths = array(
+        'dashboard' => '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+        LETS_ACCOUNT_ENDPOINT => '<path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v4h-4"/>',
+        'orders' => '<path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4"/><path d="M9 12h7M9 16h5"/>',
+        'downloads' => '<path d="M12 4v10"/><path d="m8 11 4 4 4-4"/><path d="M5 19h14"/>',
+        'edit-address' => '<path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11Z"/><circle cx="12" cy="10" r="2.5"/>',
+        'payment-methods' => '<rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19"/>',
+        'edit-account' => '<circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>',
+        'subscriptions' => '<path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v4h-4"/>',
+        'customer-logout' => '<path d="M15 4h3.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H15"/><path d="M10 8 6 12l4 4"/><path d="M6 12h9"/>',
+    );
+
+    $path = isset($paths[$endpoint]) ? $paths[$endpoint] : '<circle cx="12" cy="12" r="8"/>';
+
+    echo '<span class="la-nav__icon" aria-hidden="true">'
+        . '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">'
+        . $path // phpcs:ignore WordPress.Security.EscapeOutput -- literal markup from the table above.
+        . '</svg></span>';
+}
+
+/**
+ * A title above WooCommerce's own screens, so a tab never opens on a bare
+ * table. The dashboard and our own tab draw their own heading and are skipped.
+ */
+add_action('woocommerce_account_content', 'lets_payplus_account_tab_heading', 1);
+
+function lets_payplus_account_tab_heading()
+{
+    if (null === lets_payplus_connection()) {
+        return;
+    }
+
+    foreach (wc_get_account_menu_items() as $endpoint => $label) {
+        if ('dashboard' === $endpoint || LETS_ACCOUNT_ENDPOINT === $endpoint || 'customer-logout' === $endpoint) {
+            continue;
+        }
+        if (is_wc_endpoint_url($endpoint)) {
+            echo '<h2 class="la-shell__title">' . esc_html($label) . '</h2>';
+
+            return;
+        }
+    }
 }
 
 /* -------------------------------------------------------------------------
@@ -317,6 +701,7 @@ function lets_payplus_account_fetch($user_id)
         'email'        => (string) $user->user_email,
         'name'         => (string) $user->display_name,
         'phone'        => (string) get_user_meta($user_id, LETS_ACCOUNT_PHONE_META, true),
+        'locale'       => lets_payplus_account_site_locale(),
     ));
 
     if (is_wp_error($result) || empty($result['account'])) {
@@ -385,6 +770,7 @@ function lets_payplus_account_rest_act(WP_REST_Request $request)
         'subscription' => sanitize_text_field((string) $request->get_param('subscription')),
         'date'         => sanitize_text_field((string) $request->get_param('date')),
         'line_items'   => lets_payplus_account_clean_items($request->get_param('line_items')),
+        'locale'       => lets_payplus_account_site_locale(),
     ));
 
     // The card the shopper just changed must not be served from the cache.
@@ -733,29 +1119,35 @@ function lets_payplus_account_login_script($he)
  */
 function lets_payplus_account_login_settings()
 {
-    $cached = get_transient('lets_account_login_cfg');
-    if (is_array($cached)) {
-        return $cached;
-    }
+    $config = lets_payplus_account_shell_config();
 
-    $result = lets_payplus_signed_post('/api/woocommerce/account/bootstrap', array('customer_ref' => ''));
-
-    $settings = array('enabled' => false, 'channel' => 'email');
-    if (! is_wp_error($result) && ! empty($result['account']['login'])) {
-        $login = $result['account']['login'];
-        $settings = array(
-            'enabled' => ! empty($login['enabled']),
-            'channel' => isset($login['channel']) ? (string) $login['channel'] : 'email',
-        );
-    }
-
-    set_transient('lets_account_login_cfg', $settings, 5 * MINUTE_IN_SECONDS);
-
-    return $settings;
+    return isset($config['login']) ? (array) $config['login'] : array('enabled' => false, 'channel' => 'email');
 }
 
-/** Hebrew UI? Mirrors the helper the other files use. */
+/**
+ * Hebrew UI?
+ *
+ * The merchant picks the personal area's language in the LETS dashboard, and the
+ * payload reports back which language it was actually RESOLVED in — so the two
+ * strings this plugin owns (the tab label and the sign-in panel) speak whatever
+ * the rest of the page speaks. A shop on an older SaaS, or one that answered
+ * "follow the store", falls back to WordPress's own language, which is what the
+ * whole plugin used before.
+ */
 function lets_payplus_account_is_he()
 {
+    $config = lets_payplus_account_shell_config();
+    $locale = isset($config['appearance']['locale']) ? (string) $config['appearance']['locale'] : '';
+
+    if ('he' === $locale || 'en' === $locale) {
+        return 'he' === $locale;
+    }
+
     return function_exists('lets_payplus_is_he') ? lets_payplus_is_he() : false;
+}
+
+/** The WordPress site language, for the merchant's "follow the store" choice. */
+function lets_payplus_account_site_locale()
+{
+    return function_exists('get_locale') ? (string) get_locale() : '';
 }
