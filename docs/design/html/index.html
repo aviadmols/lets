@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LETS — כל אלמנט בקובץ נפרד</title>
+<style>
+body {
+    margin: 0;
+    padding: 48px clamp(16px, 4vw, 48px) 96px;
+    background: #eceff3;
+    color: #14161a;
+    font-family: "Segoe UI", "Noto Sans Hebrew", Arial, system-ui, sans-serif;
+    line-height: 1.6;
+}
+h1 { margin: 0 0 8px; font-size: 1.75rem; font-weight: 800; letter-spacing: -0.03em; }
+p { margin: 0 0 32px; max-inline-size: 70ch; color: #565e6b; }
+p code, li code { font-family: ui-monospace, Consolas, monospace; direction: ltr; }
+ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; max-inline-size: 900px; }
+a {
+    display: grid;
+    grid-template-columns: 74px minmax(0, 1fr) auto;
+    gap: 16px;
+    align-items: baseline;
+    padding: 12px 16px;
+    background: #fff;
+    box-shadow: 0 0 0 1px #e6e9ed;
+    color: inherit;
+    text-decoration: none;
+}
+a:hover { box-shadow: 0 0 0 1px #2e4a63; color: #2e4a63; }
+a:focus-visible { outline: 2px solid #2e4a63; outline-offset: -2px; }
+li code { font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.1em; color: #2e4a63; }
+em { font-family: ui-monospace, Consolas, monospace; font-size: 0.6875rem; font-style: normal; color: #8b929c; direction: ltr; }
+</style>
+</head>
+<body>
+<h1>כל אלמנט — בקובץ נפרד</h1>
+<p>כל קובץ כאן עומד בפני עצמו: ה‑CSS האמיתי של החנות משובץ בתוכו, וה‑markup ב‑<code>&lt;body&gt;</code> הוא בדיוק מה שהלקוח מקבל. אפשר לפתוח כל אחד בדפדפן, לערוך, ולהעתיק החוצה. הקבצים נוצרים אוטומטית מ‑<code>docs/design/kit.template.html</code> — לא לערוך אותם ידנית, השינוי יימחק בבנייה הבאה. הגיליון המלא עם ההסברים: <code>../storefront-kit.html</code>.</p>
+<ul>
+<li><a href="LA-01-full-page.html"><code>LA-01</code><span>העמוד המלא — כך זה מגיע ללקוח</span><em>LA-01-full-page.html</em></a></li>
+<li><a href="LA-02-navigation.html"><code>LA-02</code><span>ניווט — דסקטופ ומובייל</span><em>LA-02-navigation.html</em></a></li>
+<li><a href="LA-03-hero-and-stats.html"><code>LA-03</code><span>כותרת הדף + שלושת המספרים</span><em>LA-03-hero-and-stats.html</em></a></li>
+<li><a href="LA-04-subscription-card.html"><code>LA-04</code><span>כרטיס מנוי — כל האנטומיה</span><em>LA-04-subscription-card.html</em></a></li>
+<li><a href="LA-05-subscription-states.html"><code>LA-05</code><span>ארבעת מצבי הכרטיס + התגים</span><em>LA-05-subscription-states.html</em></a></li>
+<li><a href="LA-06-timeline.html"><code>LA-06</code><span>ציר הזמן — &quot;מה מחכה לך&quot;</span><em>LA-06-timeline.html</em></a></li>
+<li><a href="LA-07-loyalty-card.html"><code>LA-07</code><span>כרטיס המועדון — האלמנט הצבעוני היחיד</span><em>LA-07-loyalty-card.html</em></a></li>
+<li><a href="LA-08-support-and-banners.html"><code>LA-08</code><span>תמיכה ובאנרים שיווקיים</span><em>LA-08-support-and-banners.html</em></a></li>
+<li><a href="LA-09-primitives.html"><code>LA-09</code><span>פרימיטיבים — כפתורים, תגים, שדות, צ&#039;יפ כרטיס</span><em>LA-09-primitives.html</em></a></li>
+<li><a href="LA-10-system-states.html"><code>LA-10</code><span>מצבי מערכת — ריק, לא מחובר, טוען, הודעה</span><em>LA-10-system-states.html</em></a></li>
+<li><a href="LA-11-woocommerce-screens.html"><code>LA-11</code><span>המסכים של WooCommerce אחרי ה‑re‑skin</span><em>LA-11-woocommerce-screens.html</em></a></li>
+<li><a href="LA-12-hebrew-rtl-dark.html"><code>LA-12</code><span>עברית, RTL ומצב כהה</span><em>LA-12-hebrew-rtl-dark.html</em></a></li>
+<li><a href="LA-13-hebrew-account-page.html"><code>LA-13</code><span>האזור האישי בעברית — העמוד המלא כפי שהלקוח מקבל אותו</span><em>LA-13-hebrew-account-page.html</em></a></li>
+<li><a href="PPU-01-upsell-card.html"><code>PPU-01</code><span>הכרטיס המלא — כל 13 האלמנטים דלוקים</span><em>PPU-01-upsell-card.html</em></a></li>
+<li><a href="PPU-02-upsell-media-side.html"><code>PPU-02</code><span>תמונה בצד (media_side)</span><em>PPU-02-upsell-media-side.html</em></a></li>
+<li><a href="PPU-03-upsell-dark-outline.html"><code>PPU-03</code><span>כהה · מתאר · &quot;לא תודה&quot; ככפתור · עברית</span><em>PPU-03-upsell-dark-outline.html</em></a></li>
+<li><a href="PPU-04-upsell-states.html"><code>PPU-04</code><span>מכונת המצבים — טעינה, חיוב, שגיאה, הצלחה</span><em>PPU-04-upsell-states.html</em></a></li>
+<li><a href="PPU-06-hebrew-thankyou-upsell.html"><code>PPU-06</code><span>האפסייל בדף התודה — עברית, כפי שהוא יושב בעמוד</span><em>PPU-06-hebrew-thankyou-upsell.html</em></a></li>
+<li><a href="PP-01-deposit-widget.html"><code>PP-01</code><span>מקדמה ותשלומים — הכפתורים והפאנל</span><em>PP-01-deposit-widget.html</em></a></li>
+<li><a href="PP-02-subscription-choice.html"><code>PP-02</code><span>בחירת אופן הרכישה — חד־פעמי או מנוי</span><em>PP-02-subscription-choice.html</em></a></li>
+<li><a href="PP-03-upsell-legacy.html"><code>PP-03</code><span>כרטיס האפסייל הישן — לפני העיצוב</span><em>PP-03-upsell-legacy.html</em></a></li>
+<li><a href="LC-01-loyalty-club-page.html"><code>LC-01</code><span>עמוד המועדון המלא — חבר מזוהה</span><em>LC-01-loyalty-club-page.html</em></a></li>
+<li><a href="LC-02-referral-program.html"><code>LC-02</code><span>תוכנית השותפים — כרטיס השיתוף וכל נוסחי הפיץ׳</span><em>LC-02-referral-program.html</em></a></li>
+<li><a href="LC-03-loyalty-states.html"><code>LC-03</code><span>מצבי המועדון — לא מחובר, לא חבר, כהה, הודעות</span><em>LC-03-loyalty-states.html</em></a></li>
+</ul>
+</body>
+</html>

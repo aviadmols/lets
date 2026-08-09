@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="he" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PP-01 — מקדמה ותשלומים — הכפתורים והפאנל</title>
+
+<!-- ===== the shop's own stylesheet(s), inlined verbatim ===== -->
+<style>
+/* ===== plugins/lets-payplus-woocommerce/assets/css/lets.css ===== */
+/*
+ * LETS — storefront widget styles (W11 P2). Token-driven, RTL-aware (inherits the
+ * page's dir). No inline styles in the markup; classes only. The plugin owns these
+ * styles (this is the plugin's own storefront asset, not the SaaS admin UI).
+ */
+/* Tokens are scoped to the widget's OWN elements, never :root. This stylesheet
+   loads inside the merchant's theme, and a --lets-pp-* on :root is a global the
+   theme did not ask for; more to the point, a theme that happens to use the same
+   name would silently restyle our widget. Every selector in this file is
+   .lets-pp*, so matching on the class prefix covers all of them and leaks none. */
+[class*="lets-pp"] {
+  --lets-pp-fg: #1a1a1a;
+  --lets-pp-muted: #6b7280;
+  --lets-pp-border: #d1d5db;
+  --lets-pp-bg: #f9fafb;
+  --lets-pp-accent: #111827;
+  --lets-pp-err: #b91c1c;
+  --lets-pp-ok: #047857;
+  --lets-pp-radius: 8px;
+}
+
+.lets-pp {
+  margin: 12px 0;
+}
+
+.lets-pp-open {
+  display: inline-block;
+  border: 1px solid var(--lets-pp-border);
+  background: var(--lets-pp-bg);
+  color: var(--lets-pp-fg);
+  border-radius: var(--lets-pp-radius);
+  padding: 10px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  margin-inline-end: 8px;
+}
+
+.lets-pp-open--subscribe {
+  background: #fff;
+}
+
+.lets-pp-sub {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--lets-pp-muted);
+}
+
+.lets-pp-panel {
+  margin-top: 12px;
+  border: 1px solid var(--lets-pp-border);
+  border-radius: var(--lets-pp-radius);
+  padding: 16px;
+  max-width: 420px;
+}
+
+.lets-pp-title {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.lets-pp-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+
+.lets-pp-field input,
+.lets-pp-field select {
+  width: 120px;
+  padding: 6px 8px;
+  border: 1px solid var(--lets-pp-border);
+  border-radius: 6px;
+}
+
+.lets-pp-schedule {
+  margin: 12px 0;
+  font-size: 14px;
+}
+
+.lets-pp-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  color: var(--lets-pp-muted);
+}
+
+.lets-pp-submit {
+  width: 100%;
+  border: 0;
+  background: var(--lets-pp-accent);
+  color: #fff;
+  border-radius: var(--lets-pp-radius);
+  padding: 12px 16px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.lets-pp-submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.lets-pp-error {
+  margin: 10px 0 0;
+  color: var(--lets-pp-err);
+  font-size: 13px;
+}
+
+/* Thank-you post-purchase upsell. */
+.lets-pp-upsell {
+  margin: 16px 0;
+}
+
+.lets-pp-upsell-card {
+  border: 1px solid var(--lets-pp-border);
+  border-radius: var(--lets-pp-radius);
+  padding: 16px;
+  max-width: 420px;
+}
+
+.lets-pp-upsell-price {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+
+.lets-pp-decline {
+  width: 100%;
+  margin-top: 8px;
+  border: 1px solid var(--lets-pp-border);
+  background: #fff;
+  color: var(--lets-pp-fg);
+  border-radius: var(--lets-pp-radius);
+  padding: 10px 16px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.lets-pp-upsell-done {
+  color: var(--lets-pp-ok, #047857);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* W16 — product media + name on the thank-you upsell card (functional; the full
+   redesign lands separately). */
+.lets-pp-media {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+.lets-pp-img {
+  max-width: 220px;
+  max-height: 220px;
+  width: auto;
+  height: auto;
+  border-radius: 12px;
+  object-fit: cover;
+}
+.lets-pp-product {
+  margin: 2px 0 6px;
+  font-size: 14px;
+  color: var(--lets-pp-muted, #6b7280);
+}
+
+/* W17 B — cart-based subscription choice on the product page. */
+.lets-pp-sub {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+}
+.lets-pp-sub__label { margin: 0 0 8px; }
+.lets-pp-sub__opt {
+  display: block;
+  margin: 6px 0;
+  cursor: pointer;
+}
+.lets-pp-sub__opt input { margin-inline-end: 8px; }
+.lets-pp-sub__note { margin: 0; font-weight: 600; }
+.lets-pp-sub__cadence { opacity: 0.7; font-size: 0.9em; }
+
+</style>
+
+<style>
+/* --- host page only: this is the sheet the element is pinned to, never
+       part of the component. Delete it when you copy the markup out. --- */
+html { -webkit-text-size-adjust: 100%; }
+body {
+    margin: 0 auto;
+    padding: 40px clamp(16px, 4vw, 48px);
+    /* A card shown edge to edge on a 2000px screen is not the card the shopper
+       sees. Full-page specimens opt out with data-wide. */
+    max-inline-size: 940px;
+    background: #ffffff;
+    color: #14161a;
+    /* The account CSS carries no font-family on purpose — it inherits the
+       merchant's theme. This stands in for that theme. */
+    font-family: "Segoe UI", "Noto Sans Hebrew", Arial, system-ui, sans-serif;
+    line-height: 1.55;
+}
+body[data-wide] { max-inline-size: 1480px; }
+body[data-ground="dark"] { background: #0d0f12; color: #f3f4f6; }
+body[data-ground="paper"] { background: #f4f5f7; }
+/* Shown without WooCommerce's navigation beside it, so the shell is one column. */
+.k-onecol { grid-template-columns: minmax(0, 1fr) !important; }
+/* A toast is position:fixed in the shop; pinned here so it stays on the page. */
+.k-pin .la-toast { position: static; transform: none; display: inline-block; }
+
+/* --- specimen labels. On a plate that is a matrix of variants the label is
+       half the information, so unlike the catalogue's captions these ship. --- */
+.k-group {
+    margin: 0 0 18px;
+    padding-block-end: 8px;
+    border-block-end: 1px solid rgba(128, 128, 128, 0.28);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+.k-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 28px 24px;
+    align-items: start;
+    margin-block-end: 44px;
+}
+.k-gallery:last-child { margin-block-end: 0; }
+.k-item { min-inline-size: 0; }
+.k-item--wide { grid-column: 1 / -1; }
+.k-label {
+    display: block;
+    margin-block-end: 10px;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.6875rem;
+    letter-spacing: 0.06em;
+    color: #8b929c;
+}
+
+/* --- tab scaffolding. In the shop each tab is its own page load; the sheet
+       keeps them in one file so the screens can be browsed. Nothing here
+       ships — .k-tab wrappers are the catalogue's, not the product's. --- */
+.k-tab[hidden] { display: none; }
+</style>
+</head>
+<body class="lets-el">
+
+<div class="lets-pp">
+    <button type="button" class="lets-pp-open">Pay a deposit &amp; reserve it</button>
+    <button type="button" class="lets-pp-open lets-pp-open--subscribe">Subscribe &amp; save</button>
+    <div class="lets-pp-panel">
+        <h3 class="lets-pp-title">Pay a deposit &amp; reserve it</h3>
+        <label class="lets-pp-field">
+            <span>Deposit %</span>
+            <input type="number" min="5" max="90" step="5" value="25">
+        </label>
+        <label class="lets-pp-field">
+            <span>Payments</span>
+            <input type="number" min="1" max="36" step="1" value="3">
+        </label>
+        <label class="lets-pp-field">
+            <span>Frequency</span>
+            <select>
+                <option>Monthly</option>
+                <option>Weekly</option>
+                <option>Every 2 weeks</option>
+            </select>
+        </label>
+        <div class="lets-pp-schedule">
+            <div class="lets-pp-row">
+                <span>Deposit</span>
+                <strong>ILS 1197.00</strong>
+            </div>
+            <div class="lets-pp-row">
+                <span>3 ×</span>
+                <strong>ILS 1197.00</strong>
+            </div>
+        </div>
+        <button type="button" class="lets-pp-submit">Continue to payment</button>
+        <p class="lets-pp-error">Something went wrong. Please try again.</p>
+    </div>
+</div>
+
+</body>
+</html>

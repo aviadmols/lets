@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LC-02 — תוכנית השותפים — כרטיס השיתוף וכל נוסחי הפיץ׳</title>
+
+<!-- ===== the shop's own stylesheet(s), inlined verbatim ===== -->
+<style>
+/* ===== public/css/loyalty.css ===== */
+/* loyalty.css — the members club page (storefront-facing, standalone).
+   Served on the merchant's own domain through the App Proxy, or in an iframe on
+   WooCommerce, so it carries its own tokens rather than the admin theme's.
+   Every colour comes from --lets-* custom properties the page sets from the
+   merchant's appearance settings; nothing here is hard-coded to a brand. */
+
+:root {
+    --lets-ink: #111827;
+    --lets-muted: #6b7280;
+    --lets-bg: #ffffff;
+    --lets-soft: #f4f4f5;
+    --lets-line: #e5e7eb;
+    --lets-accent: #7746ec;
+    --lets-accent-fg: #ffffff;
+    --lets-radius: 16px;
+    --lets-good: #10b981;
+    --lets-off: #9ca3af;
+}
+
+[data-theme="dark"] {
+    --lets-ink: #f9fafb;
+    --lets-muted: #9ca3af;
+    --lets-bg: #111827;
+    --lets-soft: #1f2937;
+    --lets-line: #374151;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--lets-bg);
+    color: var(--lets-ink);
+    font-family: "Heebo", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.55;
+}
+
+.lc { max-width: 1040px; margin: 0 auto; padding: 32px 20px 56px; }
+
+/* === Hero: who you are and how far to the next rung ====================== */
+.lc-hero {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+    gap: 24px;
+    background: var(--lets-soft);
+    border-radius: var(--lets-radius);
+    padding: 28px;
+    margin-block-end: 32px;
+}
+.lc-hero__side { display: flex; flex-direction: column; gap: 6px; min-inline-size: 200px; }
+.lc-hero__label { font-size: 13px; color: var(--lets-muted); }
+.lc-hero__tier { font-size: 26px; font-weight: 800; line-height: 1.15; }
+.lc-hero__points { font-size: 34px; font-weight: 800; line-height: 1; }
+.lc-hero__credit { font-size: 13px; color: var(--lets-muted); }
+
+.lc-progress { inline-size: 100%; margin-block-start: 10px; }
+.lc-progress__track {
+    inline-size: 100%; block-size: 8px;
+    background: var(--lets-line);
+    border-radius: 999px;
+    overflow: hidden;
+}
+.lc-progress__fill { block-size: 100%; background: var(--lets-accent); border-radius: 999px; }
+.lc-progress__note { font-size: 13px; color: var(--lets-muted); margin-block-start: 8px; }
+
+/* === Section rhythm ====================================================== */
+.lc-section { margin-block-end: 40px; }
+.lc-section__title { font-size: 20px; font-weight: 800; margin: 0 0 16px; }
+
+/* === Tier cards (the row of outlined cards in the reference) ============= */
+.lc-tiers {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 16px;
+}
+.lc-tier {
+    border: 2px solid var(--lets-tier, var(--lets-line));
+    border-radius: 22px;
+    padding: 28px 18px;
+    text-align: center;
+    background: var(--lets-bg);
+}
+.lc-tier--current { box-shadow: 0 6px 20px rgba(17, 24, 39, .10); }
+.lc-tier__icon { display: block; margin: 0 auto 14px; inline-size: 56px; block-size: 56px; color: var(--lets-tier, var(--lets-accent)); }
+.lc-tier__name { font-size: 19px; font-weight: 800; }
+.lc-tier__range { font-size: 13px; color: var(--lets-muted); margin-block-start: 4px; }
+.lc-tier__badge {
+    display: inline-block; margin-block-start: 10px;
+    padding: 2px 10px; border-radius: 999px;
+    background: var(--lets-accent); color: var(--lets-accent-fg);
+    font-size: 12px; font-weight: 700;
+}
+
+/* === Perk comparison table (alternating pill rows) ======================= */
+.lc-perks { inline-size: 100%; border-collapse: separate; border-spacing: 0 8px; }
+.lc-perks th {
+    font-size: 13px; font-weight: 700; color: var(--lets-muted);
+    padding: 6px 14px; text-align: center;
+}
+.lc-perks th:first-child { text-align: start; }
+.lc-perks td { padding: 14px; text-align: center; font-size: 14px; }
+.lc-perks td:first-child { text-align: start; font-weight: 700; }
+.lc-perks tbody tr { background: var(--lets-soft); }
+.lc-perks tbody tr td:first-child { border-start-start-radius: 999px; border-end-start-radius: 999px; }
+.lc-perks tbody tr td:last-child { border-start-end-radius: 999px; border-end-end-radius: 999px; }
+.lc-perks tbody tr:nth-child(even) { background: transparent; }
+
+.lc-mark { display: inline-grid; place-items: center; inline-size: 26px; block-size: 26px; border-radius: 999px; font-size: 15px; }
+.lc-mark--yes { background: var(--lets-good); color: #fff; }
+.lc-mark--no { background: var(--lets-off); color: #fff; }
+
+/* === Ways to earn (the circles) ========================================== */
+.lc-earn {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 20px;
+}
+.lc-way {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+    aspect-ratio: 1;
+    border-radius: 999px;
+    background: var(--lets-soft);
+    padding: 24px;
+    text-align: center;
+}
+.lc-way__icon { inline-size: 40px; block-size: 40px; color: var(--lets-accent); }
+.lc-way__points { font-size: 19px; font-weight: 800; }
+.lc-way__label { font-size: 13px; color: var(--lets-muted); }
+.lc-way__done { font-size: 13px; font-weight: 700; color: var(--lets-good); }
+
+/* === Buttons + forms ===================================================== */
+.lc-btn {
+    appearance: none; cursor: pointer;
+    border: 0; border-radius: 999px;
+    background: var(--lets-accent); color: var(--lets-accent-fg);
+    padding: 10px 22px;
+    font: inherit; font-weight: 700;
+}
+.lc-btn:hover { filter: brightness(.94); }
+.lc-btn[disabled] { opacity: .5; cursor: default; }
+.lc-btn--ghost { background: transparent; color: var(--lets-ink); border: 1px solid var(--lets-line); }
+.lc-btn--sm { padding: 6px 14px; font-size: 13px; }
+
+.lc-cta { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.lc-input {
+    border: 1px solid var(--lets-line); border-radius: 10px;
+    background: var(--lets-bg); color: var(--lets-ink);
+    padding: 9px 12px; font: inherit;
+}
+
+/* Join / sign-in prompt for a visitor we cannot identify. */
+.lc-prompt {
+    background: var(--lets-soft);
+    border-radius: var(--lets-radius);
+    padding: 24px;
+    text-align: center;
+}
+.lc-prompt__title { font-size: 18px; font-weight: 800; margin: 0 0 6px; }
+.lc-prompt__body { color: var(--lets-muted); margin: 0 0 16px; }
+
+/* === Share card ("friend brings a friend") =============================== */
+.lc-share {
+    background: var(--lets-soft);
+    border-radius: var(--lets-radius);
+    padding: 24px;
+    display: flex; flex-direction: column; gap: 12px;
+}
+.lc-share__pitch { margin: 0; font-size: 16px; font-weight: 700; }
+.lc-share__row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.lc-share__link { flex: 1 1 260px; direction: ltr; }
+.lc-share__code { margin: 0; font-size: 13px; color: var(--lets-muted); }
+.lc-share__stats { margin: 0; font-size: 13px; color: var(--lets-muted); }
+
+/* Inline outcome message (claim / redeem / birthday). */
+.lc-note { margin-block-start: 12px; font-size: 14px; }
+.lc-note--ok { color: var(--lets-good); }
+.lc-note--err { color: #ef4444; }
+.lc-code {
+    display: inline-block; margin-block-start: 8px;
+    padding: 8px 14px; border-radius: 10px;
+    background: var(--lets-soft); border: 1px dashed var(--lets-line);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 15px; font-weight: 700;
+    direction: ltr;
+}
+
+@media (max-width: 600px) {
+    .lc { padding: 20px 14px 40px; }
+    .lc-hero { padding: 20px; }
+    .lc-perks { display: block; overflow-x: auto; }
+}
+
+</style>
+
+<style>
+/* --- host page only: this is the block the SERVER renders into the club
+       page, from the merchant's appearance settings. --- */
+:root {
+    --lets-accent: #0f766e;
+    --lets-accent-fg: #ffffff;
+    --lets-radius: 16px;
+}
+.lc-tier[data-tier="0"] { --lets-tier: #b08968; }
+.lc-tier[data-tier="1"] { --lets-tier: #9aa3ad; }
+.lc-tier[data-tier="2"] { --lets-tier: #d4af37; }
+.lc-progress__fill { inline-size: 62%; }
+
+/* --- specimen labels (catalogue, not product) --- */
+.k-group {
+    margin: 0 0 18px;
+    padding-block-end: 8px;
+    border-block-end: 1px solid var(--lets-line);
+    font-size: 15px;
+    font-weight: 700;
+}
+.k-gallery { display: grid; gap: 32px; margin-block-end: 40px; }
+.k-label {
+    display: block;
+    margin-block-end: 10px;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--lets-muted);
+}
+</style>
+</head>
+<body>
+
+<p class="k-group">שלושת המודלים שבעל החנות יכול להפעיל למפנה</p>
+<div class="k-gallery">
+    <div class="k-item k-item--wide">
+        <span class="k-label">referral_you_percent — אחוז משווי כל עסקה שהפנית (המודל החדש)</span>
+        <div class="lc-share">
+            <p class="lc-share__pitch">החבר שלך מקבל 15% הנחה · ואתם מקבלים 10% מכל רכישה, בנקודות</p>
+            <div class="lc-share__row">
+                <input type="text" class="lc-input lc-share__link" readonly="" value="https://roastery.co.il/?ref=DANA240" data-lets-share-value="" aria-label="הקישור שלך">
+                <button type="button" class="lc-btn" data-lets-share-copy="">שיתוף</button>
+            </div>
+            <p class="lc-share__code">
+                או שתפו את הקוד:
+                <span class="lc-code">DANA240</span>
+            </p>
+            <p class="lc-share__stats">הבאתם 3 חברים וצברתם 480 נקודות.</p>
+            <p class="lc-note" data-lets-note="share">
+            </p>
+        </div>
+    </div>
+    <div class="k-item k-item--wide">
+        <span class="k-label">referral_you_flat — סכום נקודות קבוע לכל רכישה</span>
+        <div class="lc-share">
+            <p class="lc-share__pitch">החבר שלך מקבל 30 ₪ הנחה · ואתם מקבלים 250 נקודות על כל רכישה</p>
+            <div class="lc-share__row">
+                <input type="text" class="lc-input lc-share__link" readonly="" value="https://roastery.co.il/?ref=DANA240" data-lets-share-value="" aria-label="הקישור שלך">
+                <button type="button" class="lc-btn" data-lets-share-copy="">שיתוף</button>
+            </div>
+            <p class="lc-share__code">
+                או שתפו את הקוד:
+                <span class="lc-code">DANA240</span>
+            </p>
+            <p class="lc-note" data-lets-note="share">
+            </p>
+        </div>
+    </div>
+    <div class="k-item k-item--wide">
+        <span class="k-label">referral_you_rate — נקודות לכל ₪1 · ועדיין לא הופנה אף אחד</span>
+        <div class="lc-share">
+            <p class="lc-share__pitch">החבר שלך מקבל 15% הנחה · ואתם מקבלים 2 נקודות על כל ₪1 שהוא מוציא</p>
+            <div class="lc-share__row">
+                <input type="text" class="lc-input lc-share__link" readonly="" value="https://roastery.co.il/?ref=DANA240" data-lets-share-value="" aria-label="הקישור שלך">
+                <button type="button" class="lc-btn" data-lets-share-copy="">שיתוף</button>
+            </div>
+            <p class="lc-share__code">
+                או שתפו את הקוד:
+                <span class="lc-code">DANA240</span>
+            </p>
+            <p class="lc-note lc-note--ok">הקישור הועתק.</p>
+        </div>
+    </div>
+    <div class="k-item k-item--wide">
+        <span class="k-label">בלי קישור — רק קוד (חנות בלי דומיין להפניה)</span>
+        <div class="lc-share">
+            <p class="lc-share__pitch">החבר שלך מקבל 15% הנחה</p>
+            <div class="lc-share__row">
+                <input type="text" class="lc-input lc-share__link" readonly="" value="DANA240" data-lets-share-value="" aria-label="הקישור שלך">
+                <button type="button" class="lc-btn" data-lets-share-copy="">שיתוף</button>
+            </div>
+            <p class="lc-share__code">
+                או שתפו את הקוד:
+                <span class="lc-code">DANA240</span>
+            </p>
+            <p class="lc-note" data-lets-note="share">
+            </p>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,1738 @@
+<!doctype html>
+<html lang="he" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LA-10 — מצבי מערכת — ריק, לא מחובר, טוען, הודעה</title>
+
+<!-- ===== the shop's own stylesheet(s), inlined verbatim ===== -->
+<style>
+/* ===== public/account/lets-account.css ===== */
+/* =========================================================================
+   LETS — the shopper's personal area.  CANONICAL SOURCE.
+   bin/build-plugin.sh copies this verbatim into the WordPress plugin and
+   HARD-FAILS if the two drift. Never edit the plugin's copy.
+
+   TOKENS
+   Every colour, radius, spacing and size literal is a --la-* custom property
+   declared once in the token block below. Components consume the vars through
+   classes and never re-declare a token. Two things are deliberate:
+
+   1. Tokens live on the block roots (.lets-acct, .lets-shell, .la-nav), NOT
+      :root. This CSS sits inside somebody else's theme; a token on :root would
+      leak into their buttons. The shell and the nav carry the same block
+      because they wrap WooCommerce's own markup, which we re-skin below.
+   2. THERE IS NO font-family ANYWHERE IN THIS FILE. That is the entire point
+      of rendering natively instead of in an iframe — the area inherits the
+      merchant's typography, so it belongs to their shop rather than looking
+      like a widget bolted onto it. Do not add one.
+
+   Continuous values (accent, radius) arrive as custom properties written by
+   the renderer (mount) or by wp_add_inline_style (shell). Enum values (theme,
+   density, card) arrive as data-* attributes the stylesheet selects on — the
+   same split lets-ppu.css uses.
+
+   RTL comes from logical properties throughout (inline-start/end, margin-inline),
+   so there is no mirrored stylesheet to keep in sync.
+
+   THE PAGE IS A TAKEOVER. My Account is not a widget dropped into a theme
+   column: the plugin renders its own shell, its own navigation and its own
+   width, and WooCommerce's own screens (orders, addresses, account details)
+   are re-skinned with the same tokens at the end of this file. Their MARKUP
+   and their BEHAVIOUR stay WooCommerce's — reimplementing address validation
+   and password changes would be risk for no gain — but nothing on the page is
+   left looking like a different product.
+   ========================================================================= */
+
+.lets-acct,
+.lets-shell,
+.la-nav {
+    /* Surfaces */
+    --la-bg: transparent;
+    --la-card: #ffffff;
+    --la-card-2: #f7f8fa;
+    --la-border: #e6e8ec;
+    --la-border-strong: #d3d7de;
+
+    /* Ink */
+    --la-fg: #101828;
+    --la-muted: #667085;
+    --la-faint: #98a2b3;
+
+    /* Brand — overwritten by the renderer (mount) and by the shell's tokens */
+    --la-accent: #101828;
+    --la-accent-fg: #ffffff;
+    --la-accent-soft: rgba(16, 24, 40, 0.08);
+
+    /* Status */
+    --la-ok: #047857;
+    --la-ok-soft: #ecfdf5;
+    --la-warn: #b45309;
+    --la-warn-soft: #fffbeb;
+    --la-stop: #b91c1c;
+    --la-stop-soft: #fef2f2;
+    --la-calm: #1d4ed8;
+    --la-calm-soft: #eff6ff;
+
+    /* Shape + rhythm. The area breathes: a personal area a shopper opens once
+       a month should read like a statement, not like a settings table. */
+    --la-radius: 16px;
+    --la-radius-sm: 10px;
+    --la-gap: 24px;
+    --la-pad: 28px;
+    --la-rail: 340px;
+    --la-nav-w: 268px;
+
+    --la-shadow: none;
+    --la-ring: 0 0 0 3px var(--la-accent-soft);
+
+    color: var(--la-fg);
+    /* font-family is INHERITED on purpose — see the header. */
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+}
+
+.lets-acct {
+    background: var(--la-bg);
+}
+
+/* --- Theme ------------------------------------------------------------- */
+
+.lets-acct[data-theme='dark'],
+.lets-shell[data-theme='dark'],
+.la-nav[data-theme='dark'] {
+    --la-card: #111827;
+    --la-card-2: #0e1626;
+    --la-border: #1f2937;
+    --la-border-strong: #374151;
+    --la-fg: #f3f4f6;
+    --la-muted: #9ca3af;
+    --la-faint: #6b7280;
+    --la-ok-soft: rgba(4, 120, 87, 0.16);
+    --la-warn-soft: rgba(180, 83, 9, 0.16);
+    --la-stop-soft: rgba(185, 28, 28, 0.16);
+    --la-calm-soft: rgba(29, 78, 216, 0.16);
+}
+
+/* "Follow the shopper's device" — the merchant chose not to choose. */
+@media (prefers-color-scheme: dark) {
+    .lets-acct[data-theme='auto'],
+    .lets-shell[data-theme='auto'],
+    .la-nav[data-theme='auto'] {
+        --la-card: #111827;
+        --la-card-2: #0e1626;
+        --la-border: #1f2937;
+        --la-border-strong: #374151;
+        --la-fg: #f3f4f6;
+        --la-muted: #9ca3af;
+        --la-faint: #6b7280;
+        --la-ok-soft: rgba(4, 120, 87, 0.16);
+        --la-warn-soft: rgba(180, 83, 9, 0.16);
+        --la-stop-soft: rgba(185, 28, 28, 0.16);
+        --la-calm-soft: rgba(29, 78, 216, 0.16);
+    }
+}
+
+/* --- Density + card style ---------------------------------------------- */
+
+.lets-acct[data-density='compact'],
+.lets-shell[data-density='compact'],
+.la-nav[data-density='compact'] {
+    --la-gap: 16px;
+    --la-pad: 18px;
+}
+
+.lets-acct[data-card='flat'] {
+    --la-card: transparent;
+    --la-border: transparent;
+}
+
+.lets-acct[data-card='raised'],
+.lets-shell[data-card='raised'],
+.la-nav[data-card='raised'] {
+    --la-border: transparent;
+    --la-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 10px 30px rgba(16, 24, 40, 0.08);
+}
+
+/* =========================================================================
+   Layout — one hero, then main + rail
+   ========================================================================= */
+
+.lets-acct__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--la-gap);
+    align-items: start;
+}
+
+/* The rail appears only when there is room for it AND something to put in it —
+   an empty 340px column is worse than no column. */
+@media (min-width: 1080px) {
+    .lets-acct__grid.has-rail {
+        grid-template-columns: minmax(0, 1fr) var(--la-rail);
+    }
+}
+
+.lets-acct__main,
+.lets-acct__rail {
+    display: flex;
+    flex-direction: column;
+    gap: var(--la-gap);
+    min-width: 0;
+}
+
+/* =========================================================================
+   Primitives
+   ========================================================================= */
+
+.la-card {
+    background: var(--la-card);
+    border: 1px solid var(--la-border);
+    border-radius: var(--la-radius);
+    box-shadow: var(--la-shadow);
+    padding: var(--la-pad);
+}
+
+/* A titled group that is NOT itself a card — its children are. */
+.la-block {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+}
+
+.la-section__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-block-end: 16px;
+}
+
+.la-block > .la-section__head {
+    margin-block-end: 0;
+}
+
+.la-section__title {
+    font-size: 1.0625rem;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: -0.01em;
+}
+
+.la-block > .la-section__head .la-section__title {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--la-muted);
+}
+
+.la-section__aside {
+    font-size: 0.8125rem;
+    color: var(--la-muted);
+}
+
+.la-muted {
+    color: var(--la-muted);
+    font-size: 0.9375rem;
+    margin: 0;
+}
+
+.la-empty {
+    color: var(--la-muted);
+    font-size: 0.9375rem;
+    margin: 0;
+    padding: 6px 0;
+}
+
+/* Numbers, ids and dates read left-to-right even inside an RTL page. */
+.la-ltr {
+    direction: ltr;
+    unicode-bidi: isolate;
+    display: inline-block;
+}
+
+/* --- Buttons ----------------------------------------------------------- */
+
+.la-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 11px 18px;
+    border-radius: var(--la-radius-sm);
+    border: 1px solid var(--la-border-strong);
+    background: var(--la-card);
+    color: inherit;
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.2;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
+}
+
+.la-btn:hover:not(:disabled) {
+    background: var(--la-card-2);
+    border-color: var(--la-border-strong);
+}
+
+.la-btn:active:not(:disabled) {
+    transform: translateY(1px);
+}
+
+.la-btn:focus-visible {
+    outline: none;
+    box-shadow: var(--la-ring);
+}
+
+.la-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.la-btn--primary {
+    background: var(--la-accent);
+    border-color: var(--la-accent);
+    color: var(--la-accent-fg);
+}
+
+.la-btn--primary:hover:not(:disabled) {
+    background: var(--la-accent);
+    border-color: var(--la-accent);
+    opacity: 0.9;
+}
+
+/* Cancel is destructive and irreversible. It reads as a link, not a button,
+   so it never sits at the same visual weight as "skip this month". */
+.la-btn--quiet {
+    border-color: transparent;
+    background: transparent;
+    padding-inline: 10px;
+    color: var(--la-muted);
+    font-weight: 500;
+}
+
+.la-btn--danger {
+    border-color: transparent;
+    background: transparent;
+    padding-inline: 10px;
+    color: var(--la-stop);
+    font-weight: 500;
+}
+
+.la-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-block-start: 20px;
+    padding-block-start: 20px;
+    border-block-start: 1px solid var(--la-border);
+}
+
+.la-actions__spacer {
+    flex: 1 1 auto;
+}
+
+/* --- Badges ------------------------------------------------------------ */
+
+.la-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.la-badge::before {
+    content: '';
+    inline-size: 6px;
+    block-size: 6px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.la-badge[data-tone='active'] { color: var(--la-ok);   background: var(--la-ok-soft); }
+.la-badge[data-tone='paused'] { color: var(--la-warn); background: var(--la-warn-soft); }
+.la-badge[data-tone='attention'] { color: var(--la-stop); background: var(--la-stop-soft); }
+.la-badge[data-tone='ended']  { color: var(--la-muted); background: var(--la-card-2); }
+
+/* =========================================================================
+   Hero — the greeting plus the three numbers a shopper came to check
+   ========================================================================= */
+
+.la-hero {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--la-gap);
+    padding-block-end: 4px;
+}
+
+.la-hero__text {
+    min-width: 0;
+    flex: 1 1 320px;
+}
+
+.la-welcome__title {
+    font-size: clamp(1.75rem, 1.2rem + 1.8vw, 2.5rem);
+    font-weight: 800;
+    margin: 0 0 6px;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+}
+
+.la-hero .la-muted {
+    font-size: 1rem;
+    max-inline-size: 52ch;
+}
+
+/* The stat strip. Every value here is a number the SERVER sent — nothing is
+   derived in the browser, so the strip can never disagree with the cards. */
+.la-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    flex: 1 1 320px;
+}
+
+.la-stat {
+    padding: 14px 18px;
+    border-radius: var(--la-radius-sm);
+    background: var(--la-card);
+    border: 1px solid var(--la-border);
+    box-shadow: var(--la-shadow);
+    min-width: 0;
+}
+
+.la-stat__label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--la-muted);
+    margin-block-end: 4px;
+}
+
+.la-stat__value {
+    display: block;
+    font-size: 1.375rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+
+/* =========================================================================
+   Subscription card
+   ========================================================================= */
+
+.la-subs {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.la-sub {
+    position: relative;
+    overflow: hidden;
+}
+
+/* A hairline of the merchant's brand along the top of every live plan. The
+   ended ones stay grey — the accent means "this is running". */
+.la-sub::before {
+    content: '';
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline: 0;
+    block-size: 3px;
+    background: var(--la-accent);
+}
+
+.la-sub[data-tone='ended']::before { background: var(--la-border); }
+.la-sub[data-tone='paused']::before { background: var(--la-warn); }
+.la-sub[data-tone='attention']::before { background: var(--la-stop); }
+
+.la-sub__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+.la-sub__title {
+    font-size: 1.125rem;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: -0.01em;
+}
+
+.la-sub__id {
+    font-size: 0.75rem;
+    color: var(--la-faint);
+}
+
+.la-sub__price {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-block-start: 12px;
+    flex-wrap: wrap;
+}
+
+.la-sub__amount {
+    font-size: 1.75rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+}
+
+/* The pre-discount price, struck through — a shopper on an intro rate should
+   be able to see what they are actually saving. */
+.la-sub__was {
+    font-size: 1rem;
+    color: var(--la-faint);
+    text-decoration: line-through;
+}
+
+.la-sub__cadence {
+    font-size: 0.9375rem;
+    color: var(--la-muted);
+}
+
+.la-facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 10px;
+    margin-block-start: 20px;
+}
+
+.la-fact {
+    padding: 12px 14px;
+    border-radius: var(--la-radius-sm);
+    background: var(--la-card-2);
+    min-width: 0;
+}
+
+.la-fact__label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--la-muted);
+    margin-block-end: 3px;
+}
+
+.la-fact__value {
+    font-size: 0.9375rem;
+    font-weight: 600;
+}
+
+/* --- Progress (installments + intro window) ---------------------------- */
+
+.la-progress {
+    margin-block-start: 20px;
+}
+
+.la-progress__bar {
+    block-size: 8px;
+    border-radius: 999px;
+    background: var(--la-card-2);
+    border: 1px solid var(--la-border);
+    overflow: hidden;
+}
+
+.la-progress__fill {
+    display: block;
+    block-size: 100%;
+    border-radius: 999px;
+    background: var(--la-accent);
+    transition: inline-size 0.4s ease;
+}
+
+.la-progress__label {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 0.8125rem;
+    color: var(--la-muted);
+    margin-block-start: 8px;
+}
+
+/* --- Queued next-order contents ---------------------------------------- */
+
+.la-queued {
+    margin-block-start: 16px;
+    padding: 14px 16px;
+    border-radius: var(--la-radius-sm);
+    background: var(--la-calm-soft);
+    font-size: 0.9375rem;
+}
+
+.la-queued__title {
+    font-weight: 600;
+    margin: 0 0 4px;
+}
+
+.la-queued .la-muted {
+    font-size: 0.875rem;
+}
+
+/* --- Card on file ------------------------------------------------------ */
+
+.la-card-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--la-fg);
+}
+
+.la-card-chip__brand {
+    text-transform: uppercase;
+    font-weight: 700;
+    font-size: 0.6875rem;
+    letter-spacing: 0.06em;
+    padding: 3px 8px;
+    border-radius: 5px;
+    border: 1px solid var(--la-border-strong);
+    background: var(--la-card);
+    color: var(--la-fg);
+}
+
+/* --- Payments table ---------------------------------------------------- */
+
+.la-payments {
+    margin-block-start: 18px;
+    border-block-start: 1px solid var(--la-border);
+    padding-block-start: 16px;
+}
+
+.la-payments summary {
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--la-muted);
+    list-style-position: inside;
+}
+
+.la-payments summary:hover {
+    color: var(--la-fg);
+}
+
+.la-payments summary:focus-visible {
+    outline: none;
+    box-shadow: var(--la-ring);
+    border-radius: 4px;
+}
+
+/* Any table can overflow a narrow column; it scrolls inside itself so the page
+   body never scrolls sideways. */
+.la-table-wrap {
+    overflow-x: auto;
+    margin-block-start: 12px;
+}
+
+.la-table {
+    inline-size: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.la-table th,
+.la-table td {
+    text-align: start;
+    padding: 10px 12px;
+    border-block-end: 1px solid var(--la-border);
+    white-space: nowrap;
+}
+
+.la-table th {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--la-muted);
+}
+
+.la-table tr:last-child td {
+    border-block-end: 0;
+}
+
+/* =========================================================================
+   Benefit timeline — "what's next"
+   ========================================================================= */
+
+.la-timeline {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.la-tl {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 14px 0;
+    border-block-end: 1px solid var(--la-border);
+}
+
+.la-tl:first-child { padding-block-start: 0; }
+
+.la-tl:last-child {
+    border-block-end: 0;
+    padding-block-end: 0;
+}
+
+/* The date rail. Fixed width so the labels align into a readable column even
+   when one entry has no date at all. */
+.la-tl__when {
+    flex: 0 0 74px;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    line-height: 1.3;
+    padding-block-start: 1px;
+}
+
+.la-tl__when small {
+    display: block;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--la-muted);
+}
+
+/* An undated row says so rather than borrowing the row above's date. */
+.la-tl__when--none {
+    color: var(--la-faint);
+    font-weight: 500;
+}
+
+.la-tl__dot {
+    flex: 0 0 auto;
+    inline-size: 10px;
+    block-size: 10px;
+    border-radius: 50%;
+    margin-block-start: 6px;
+    background: var(--la-calm);
+    box-shadow: 0 0 0 4px var(--la-calm-soft);
+}
+
+.la-tl[data-tone='good'] .la-tl__dot { background: var(--la-ok); box-shadow: 0 0 0 4px var(--la-ok-soft); }
+.la-tl[data-tone='warn'] .la-tl__dot { background: var(--la-warn); box-shadow: 0 0 0 4px var(--la-warn-soft); }
+
+.la-tl__body { min-width: 0; }
+
+.la-tl__label {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.la-tl__meta {
+    font-size: 0.8125rem;
+    color: var(--la-muted);
+    margin: 2px 0 0;
+}
+
+/* =========================================================================
+   Loyalty card
+   ========================================================================= */
+
+.la-loyalty {
+    background: linear-gradient(140deg, var(--la-accent), color-mix(in srgb, var(--la-accent) 68%, #000));
+    color: var(--la-accent-fg);
+    border: 0;
+}
+
+.la-loyalty .la-section__title,
+.la-loyalty .la-section__aside {
+    color: inherit;
+}
+
+.la-loyalty__points {
+    font-size: 2.5rem;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    line-height: 1.05;
+}
+
+.la-loyalty__worth {
+    font-size: 0.875rem;
+    opacity: 0.85;
+}
+
+.la-loyalty__foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-block-start: 18px;
+    padding-block-start: 16px;
+    border-block-start: 1px solid rgba(255, 255, 255, 0.22);
+    font-size: 0.875rem;
+}
+
+/* =========================================================================
+   Support
+   ========================================================================= */
+
+.la-support__links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+/* =========================================================================
+   Side rail banners
+   ========================================================================= */
+
+.la-banner {
+    display: block;
+    border-radius: var(--la-radius);
+    border: 1px solid var(--la-border);
+    background: var(--la-card);
+    box-shadow: var(--la-shadow);
+    overflow: hidden;
+    color: inherit;
+    text-decoration: none;
+    transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+a.la-banner:hover {
+    border-color: var(--la-border-strong);
+    transform: translateY(-2px);
+}
+
+a.la-banner:focus-visible {
+    outline: none;
+    box-shadow: var(--la-ring);
+}
+
+.la-banner__img {
+    display: block;
+    inline-size: 100%;
+    block-size: auto;
+    max-inline-size: 100%;
+}
+
+.la-banner__body {
+    padding: 16px var(--la-pad);
+}
+
+.la-banner__heading {
+    font-size: 0.9375rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.la-banner__subtext {
+    font-size: 0.8125rem;
+    color: var(--la-muted);
+    margin: 4px 0 0;
+}
+
+/* =========================================================================
+   Sign-in prompt (logged out)
+   ========================================================================= */
+
+.la-signin {
+    text-align: center;
+    padding: 48px var(--la-pad);
+}
+
+.la-signin__text {
+    font-size: 1.0625rem;
+    margin: 0 0 16px;
+}
+
+/* =========================================================================
+   Inline editors (date picker, item rows) — revealed in place, never a modal:
+   a dialog inside somebody else's theme fights their z-index and their scroll.
+   ========================================================================= */
+
+.la-editor {
+    margin-block-start: 16px;
+    padding: 16px;
+    border-radius: var(--la-radius-sm);
+    background: var(--la-card-2);
+    border: 1px solid var(--la-border);
+}
+
+.la-editor[hidden] {
+    display: none;
+}
+
+.la-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.8125rem;
+}
+
+.la-field__label {
+    font-weight: 600;
+    color: var(--la-muted);
+}
+
+.la-input {
+    font: inherit;
+    font-size: 0.9375rem;
+    padding: 11px 13px;
+    border-radius: var(--la-radius-sm);
+    border: 1px solid var(--la-border-strong);
+    background: var(--la-card);
+    color: inherit;
+    inline-size: 100%;
+    max-inline-size: 280px;
+}
+
+.la-input:focus-visible {
+    outline: none;
+    box-shadow: var(--la-ring);
+    border-color: var(--la-accent);
+}
+
+.la-editor__actions {
+    display: flex;
+    gap: 8px;
+    margin-block-start: 14px;
+}
+
+/* --- Item rows --------------------------------------------------------- */
+
+.la-item-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 0;
+    border-block-end: 1px solid var(--la-border);
+    font-size: 0.875rem;
+}
+
+.la-item-row:last-of-type {
+    border-block-end: 0;
+}
+
+.la-qty {
+    inline-size: 72px;
+    max-inline-size: 72px;
+}
+
+/* =========================================================================
+   Feedback
+   ========================================================================= */
+
+.la-toast {
+    position: fixed;
+    inset-block-end: 24px;
+    inset-inline-start: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+    padding: 12px 22px;
+    border-radius: 999px;
+    background: var(--la-fg);
+    color: var(--la-card);
+    font-size: 0.875rem;
+    font-weight: 600;
+    box-shadow: 0 10px 30px rgba(16, 24, 40, 0.22);
+}
+
+.la-toast[data-tone='bad'] {
+    background: var(--la-stop);
+    color: #ffffff;
+}
+
+/* The whole area dims while a verb is in flight, so a shopper cannot fire two
+   cancels at a subscription while the first is still travelling. */
+.lets-acct.is-busy {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* --- Skeleton ---------------------------------------------------------- */
+
+.la-skeleton {
+    border-radius: var(--la-radius);
+    background: linear-gradient(90deg, var(--la-card-2) 25%, var(--la-border) 37%, var(--la-card-2) 63%);
+    background-size: 400% 100%;
+    animation: la-shimmer 1.3s ease-in-out infinite;
+    block-size: 132px;
+}
+
+@keyframes la-shimmer {
+    0% { background-position: 100% 50%; }
+    100% { background-position: 0 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .la-skeleton { animation: none; }
+    .la-progress__fill,
+    .la-banner,
+    .la-btn { transition: none; }
+    a.la-banner:hover { transform: none; }
+}
+
+/* =========================================================================
+   Preview mode — the admin's iframe. Every control is inert; a merchant
+   dragging a colour picker must not be able to cancel a sample subscription.
+   ========================================================================= */
+
+.lets-acct[data-preview] .la-btn {
+    pointer-events: none;
+}
+
+/* =========================================================================
+   THE SHELL — our own My Account page.
+
+   `templates/myaccount/my-account.php` wraps the whole screen in .lets-shell
+   and `lets-account-shell.js` measures how much room the theme actually gave
+   it, writing --la-shell-w / --la-shell-pull when the page deserves more. The
+   defaults below are inert, so a theme we cannot measure simply keeps its own
+   width instead of overflowing.
+   ========================================================================= */
+
+.lets-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+    align-items: start;
+    inline-size: var(--la-shell-w, auto);
+    max-inline-size: none;
+    margin-inline-start: var(--la-shell-pull, 0px);
+}
+
+@media (min-width: 900px) {
+    .lets-shell {
+        grid-template-columns: var(--la-nav-w) minmax(0, 1fr);
+    }
+}
+
+/* WooCommerce's own containers stop deciding the width — the shell decides. */
+.lets-shell .woocommerce-MyAccount-navigation,
+.lets-shell .woocommerce-MyAccount-content {
+    inline-size: auto;
+    max-inline-size: none;
+    float: none;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+}
+
+.lets-shell .woocommerce-MyAccount-content::after {
+    content: '';
+    display: table;
+    clear: both;
+}
+
+/* --- Our navigation ---------------------------------------------------- */
+
+.la-nav {
+    min-width: 0;
+}
+
+@media (min-width: 900px) {
+    .la-nav__inner {
+        position: sticky;
+        inset-block-start: 24px;
+        border: 1px solid var(--la-border);
+        border-radius: var(--la-radius);
+        background: var(--la-card);
+        box-shadow: var(--la-shadow);
+        padding: 14px;
+    }
+}
+
+/* Who is signed in. On a shared machine this is the first thing worth being
+   sure of, and it is the line the theme's own header rarely shows. */
+.la-nav__me {
+    display: none;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 8px 16px;
+    margin-block-end: 10px;
+    border-block-end: 1px solid var(--la-border);
+    min-width: 0;
+}
+
+@media (min-width: 900px) {
+    .la-nav__me { display: flex; }
+}
+
+.la-nav__avatar {
+    flex: 0 0 auto;
+    inline-size: 42px;
+    block-size: 42px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--la-accent);
+    color: var(--la-accent-fg);
+    font-size: 1rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.la-nav__who {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.la-nav__name {
+    font-size: 0.9375rem;
+    font-weight: 700;
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.la-nav__email {
+    font-size: 0.75rem;
+    color: var(--la-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.la-nav ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    gap: 4px;
+    /* Mobile: one scrollable strip of pills instead of a stack that pushes the
+       content a screen and a half down. */
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+.la-nav ul::-webkit-scrollbar {
+    display: none;
+}
+
+@media (min-width: 900px) {
+    .la-nav ul {
+        flex-direction: column;
+        overflow: visible;
+    }
+}
+
+.la-nav li {
+    margin: 0;
+    list-style: none;
+    flex: 0 0 auto;
+}
+
+.la-nav li::before,
+.la-nav li::marker {
+    content: none;
+}
+
+.la-nav a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 14px;
+    border-radius: var(--la-radius-sm);
+    border: 1px solid transparent;
+    text-decoration: none;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: var(--la-fg);
+    white-space: nowrap;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.la-nav a:hover {
+    background: var(--la-card-2);
+}
+
+.la-nav a:focus-visible {
+    outline: none;
+    box-shadow: var(--la-ring);
+}
+
+.la-nav__icon {
+    flex: 0 0 auto;
+    inline-size: 18px;
+    block-size: 18px;
+    color: var(--la-muted);
+}
+
+.la-nav__icon svg {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+}
+
+.la-nav li.is-active > a {
+    background: var(--la-accent-soft);
+    color: var(--la-accent);
+    font-weight: 700;
+}
+
+.la-nav li.is-active .la-nav__icon {
+    color: currentColor;
+}
+
+/* Signing out is not a destination; it never sits in the same list as one. */
+.la-nav__foot {
+    margin-block-start: 10px;
+    padding-block-start: 10px;
+    border-block-start: 1px solid var(--la-border);
+}
+
+.la-nav__foot a {
+    color: var(--la-muted);
+    font-size: 0.875rem;
+}
+
+@media (max-width: 899px) {
+    .la-nav {
+        margin-inline: calc(var(--la-pad) * -0.5);
+        padding-inline: calc(var(--la-pad) * 0.5);
+    }
+
+    .la-nav__inner {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+    }
+
+    .la-nav ul {
+        padding-block-end: 4px;
+    }
+
+    .la-nav a {
+        border: 1px solid var(--la-border);
+        background: var(--la-card);
+    }
+
+    .la-nav li.is-active > a {
+        border-color: var(--la-accent);
+    }
+
+    .la-nav__foot {
+        margin: 0;
+        padding: 0;
+        border: 0;
+    }
+
+    .la-nav__foot ul {
+        margin-block-start: 4px;
+    }
+}
+
+/* --- The tab heading we print above WooCommerce's own screens ---------- */
+
+.la-shell__title {
+    font-size: clamp(1.5rem, 1.1rem + 1.4vw, 2rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    margin: 0 0 20px;
+    color: var(--la-fg);
+}
+
+/* =========================================================================
+   Re-skin of WooCommerce's OWN My Account screens.
+   Orders, addresses and account details are WooCommerce's markup and its
+   behaviour — reimplementing them would mean re-testing address validation
+   and password changes for no gain. They are restyled with the same tokens so
+   the whole page reads as one product.
+   ========================================================================= */
+
+/* --- Notices ----------------------------------------------------------- */
+
+.lets-shell .woocommerce-message,
+.lets-shell .woocommerce-info,
+.lets-shell .woocommerce-error,
+.lets-shell .woocommerce-Message {
+    list-style: none;
+    margin: 0 0 20px;
+    padding: 16px 18px;
+    border: 1px solid var(--la-border);
+    border-inline-start: 3px solid var(--la-calm);
+    border-radius: var(--la-radius-sm);
+    background: var(--la-card);
+    color: var(--la-fg);
+    font-size: 0.9375rem;
+}
+
+.lets-shell .woocommerce-message {
+    border-inline-start-color: var(--la-ok);
+    background: var(--la-ok-soft);
+}
+
+.lets-shell .woocommerce-error {
+    border-inline-start-color: var(--la-stop);
+    background: var(--la-stop-soft);
+}
+
+.lets-shell .woocommerce-error li {
+    list-style: none;
+}
+
+/* --- Buttons ----------------------------------------------------------- */
+
+.lets-shell .button,
+.lets-shell .woocommerce-Button,
+.lets-shell button[type='submit'],
+.lets-shell input[type='submit'] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 11px 18px;
+    border-radius: var(--la-radius-sm);
+    border: 1px solid var(--la-accent);
+    background: var(--la-accent);
+    color: var(--la-accent-fg);
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.2;
+    text-decoration: none;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+}
+
+.lets-shell .button:hover,
+.lets-shell .woocommerce-Button:hover,
+.lets-shell button[type='submit']:hover,
+.lets-shell input[type='submit']:hover {
+    opacity: 0.9;
+    color: var(--la-accent-fg);
+}
+
+/* A row of order actions is a row of SECONDARY verbs — view, pay, cancel. Only
+   the page's own primary action keeps the brand fill. */
+.lets-shell .woocommerce-orders-table__cell-order-actions .button,
+.lets-shell .woocommerce-Address .edit,
+.lets-shell .woocommerce-MyAccount-downloads .button {
+    background: var(--la-card);
+    border-color: var(--la-border-strong);
+    color: var(--la-fg);
+}
+
+.lets-shell .woocommerce-orders-table__cell-order-actions .button:hover,
+.lets-shell .woocommerce-Address .edit:hover,
+.lets-shell .woocommerce-MyAccount-downloads .button:hover {
+    background: var(--la-card-2);
+    color: var(--la-fg);
+    opacity: 1;
+}
+
+/* --- Tables ------------------------------------------------------------ */
+
+.lets-shell table.shop_table,
+.lets-shell table.woocommerce-orders-table,
+.lets-shell table.woocommerce-MyAccount-orders {
+    inline-size: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    border: 1px solid var(--la-border);
+    border-radius: var(--la-radius);
+    background: var(--la-card);
+    box-shadow: var(--la-shadow);
+    overflow: hidden;
+    margin: 0 0 20px;
+    font-size: 0.9375rem;
+}
+
+.lets-shell table.shop_table th,
+.lets-shell table.shop_table td {
+    text-align: start;
+    padding: 14px 18px;
+    border: 0;
+    border-block-end: 1px solid var(--la-border);
+    vertical-align: middle;
+}
+
+.lets-shell table.shop_table thead th {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--la-muted);
+    background: var(--la-card-2);
+}
+
+.lets-shell table.shop_table tbody tr:last-child td {
+    border-block-end: 0;
+}
+
+.lets-shell table.shop_table tbody tr:hover td {
+    background: var(--la-card-2);
+}
+
+.lets-shell table.shop_table tfoot td,
+.lets-shell table.shop_table tfoot th {
+    background: var(--la-card-2);
+    font-weight: 600;
+}
+
+/* Below the fold of a phone a five-column table is unreadable; each row
+   becomes a stacked card with WooCommerce's own data-title as the label. */
+@media (max-width: 719px) {
+    .lets-shell table.shop_table thead {
+        position: absolute;
+        inline-size: 1px;
+        block-size: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    .lets-shell table.shop_table tbody tr {
+        display: block;
+        padding: 6px 0;
+        border-block-end: 1px solid var(--la-border);
+    }
+
+    .lets-shell table.shop_table tbody tr:last-child {
+        border-block-end: 0;
+    }
+
+    .lets-shell table.shop_table tbody td {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        border: 0;
+        padding: 8px 18px;
+        text-align: end;
+    }
+
+    .lets-shell table.shop_table tbody td::before {
+        content: attr(data-title);
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--la-muted);
+        text-align: start;
+    }
+
+    .lets-shell table.shop_table tbody tr:hover td {
+        background: transparent;
+    }
+}
+
+/* --- Pagination -------------------------------------------------------- */
+
+.lets-shell .woocommerce-pagination ul,
+.lets-shell .woocommerce-Pagination {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.lets-shell .woocommerce-pagination li {
+    border: 0;
+    margin: 0;
+}
+
+.lets-shell .woocommerce-pagination a,
+.lets-shell .woocommerce-pagination span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-inline-size: 40px;
+    padding: 8px 12px;
+    border-radius: var(--la-radius-sm);
+    border: 1px solid var(--la-border);
+    background: var(--la-card);
+    color: var(--la-fg);
+    text-decoration: none;
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.lets-shell .woocommerce-pagination .current {
+    background: var(--la-accent);
+    border-color: var(--la-accent);
+    color: var(--la-accent-fg);
+}
+
+/* --- Addresses --------------------------------------------------------- */
+
+.lets-shell .woocommerce-Addresses,
+.lets-shell .u-columns.addresses {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    margin: 0;
+}
+
+.lets-shell .woocommerce-Address {
+    inline-size: auto;
+    float: none;
+    padding: var(--la-pad);
+    border: 1px solid var(--la-border);
+    border-radius: var(--la-radius);
+    background: var(--la-card);
+    box-shadow: var(--la-shadow);
+}
+
+.lets-shell .woocommerce-Address-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-block-end: 12px;
+}
+
+.lets-shell .woocommerce-Address-title h2,
+.lets-shell .woocommerce-Address-title h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.lets-shell .woocommerce-Address address {
+    font-style: normal;
+    color: var(--la-muted);
+    line-height: 1.7;
+    margin: 0;
+}
+
+/* --- Forms ------------------------------------------------------------- */
+
+.lets-shell form.woocommerce-EditAccountForm,
+.lets-shell form.woocommerce-address-fields,
+.lets-shell form.edit-account {
+    padding: var(--la-pad);
+    border: 1px solid var(--la-border);
+    border-radius: var(--la-radius);
+    background: var(--la-card);
+    box-shadow: var(--la-shadow);
+}
+
+.lets-shell .form-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0 0 18px;
+    padding: 0;
+    float: none;
+    inline-size: auto;
+}
+
+.lets-shell .form-row label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--la-muted);
+}
+
+.lets-shell .input-text,
+.lets-shell .woocommerce-Input,
+.lets-shell select,
+.lets-shell textarea,
+.lets-shell .select2-container .select2-selection {
+    font: inherit;
+    font-size: 0.9375rem;
+    padding: 11px 13px;
+    border-radius: var(--la-radius-sm);
+    border: 1px solid var(--la-border-strong);
+    background: var(--la-card);
+    color: var(--la-fg);
+    inline-size: 100%;
+    block-size: auto;
+    box-sizing: border-box;
+}
+
+.lets-shell .input-text:focus,
+.lets-shell .woocommerce-Input:focus,
+.lets-shell select:focus,
+.lets-shell textarea:focus {
+    outline: none;
+    box-shadow: var(--la-ring);
+    border-color: var(--la-accent);
+}
+
+.lets-shell fieldset {
+    margin: 24px 0 0;
+    padding: 20px 0 0;
+    border: 0;
+    border-block-start: 1px solid var(--la-border);
+}
+
+.lets-shell fieldset legend {
+    padding: 0;
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.lets-shell .woocommerce-form-row .required {
+    color: var(--la-stop);
+    text-decoration: none;
+}
+
+.lets-shell em,
+.lets-shell .woocommerce-password-hint {
+    color: var(--la-muted);
+    font-size: 0.8125rem;
+}
+
+/* --- Order detail + downloads ------------------------------------------ */
+
+.lets-shell .woocommerce-order-details__title,
+.lets-shell .woocommerce-column__title,
+.lets-shell .woocommerce-order-downloads__title {
+    font-size: 1.125rem;
+    font-weight: 700;
+    margin: 0 0 14px;
+}
+
+.lets-shell .woocommerce-customer-details .col2-set,
+.lets-shell .woocommerce-columns--addresses {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.lets-shell .woocommerce-customer-details .col-1,
+.lets-shell .woocommerce-customer-details .col-2,
+.lets-shell .woocommerce-columns--addresses .col-1,
+.lets-shell .woocommerce-columns--addresses .col-2 {
+    inline-size: auto;
+    float: none;
+    padding: var(--la-pad);
+    border: 1px solid var(--la-border);
+    border-radius: var(--la-radius);
+    background: var(--la-card);
+}
+
+.lets-shell .woocommerce-customer-details address {
+    font-style: normal;
+    border: 0;
+    padding: 0;
+    color: var(--la-muted);
+    line-height: 1.7;
+}
+
+/* =========================================================================
+   Themes we could not measure, or a merchant who kept their own account
+   template: the shell never rendered, so at least strip the float layout that
+   squeezes our area into a third of the page.
+   ========================================================================= */
+
+.lets-acct-shell .woocommerce-MyAccount-content {
+    inline-size: auto;
+    max-inline-size: none;
+    float: none;
+}
+
+</style>
+
+<style>
+/* --- host page only: this is the sheet the element is pinned to, never
+       part of the component. Delete it when you copy the markup out. --- */
+html { -webkit-text-size-adjust: 100%; }
+body {
+    margin: 0 auto;
+    padding: 40px clamp(16px, 4vw, 48px);
+    /* A card shown edge to edge on a 2000px screen is not the card the shopper
+       sees. Full-page specimens opt out with data-wide. */
+    max-inline-size: 940px;
+    background: #ffffff;
+    color: #14161a;
+    /* The account CSS carries no font-family on purpose — it inherits the
+       merchant's theme. This stands in for that theme. */
+    font-family: "Segoe UI", "Noto Sans Hebrew", Arial, system-ui, sans-serif;
+    line-height: 1.55;
+}
+body[data-wide] { max-inline-size: 1480px; }
+body[data-ground="dark"] { background: #0d0f12; color: #f3f4f6; }
+body[data-ground="paper"] { background: #f4f5f7; }
+/* Shown without WooCommerce's navigation beside it, so the shell is one column. */
+.k-onecol { grid-template-columns: minmax(0, 1fr) !important; }
+/* A toast is position:fixed in the shop; pinned here so it stays on the page. */
+.k-pin .la-toast { position: static; transform: none; display: inline-block; }
+
+/* --- specimen labels. On a plate that is a matrix of variants the label is
+       half the information, so unlike the catalogue's captions these ship. --- */
+.k-group {
+    margin: 0 0 18px;
+    padding-block-end: 8px;
+    border-block-end: 1px solid rgba(128, 128, 128, 0.28);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+.k-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 28px 24px;
+    align-items: start;
+    margin-block-end: 44px;
+}
+.k-gallery:last-child { margin-block-end: 0; }
+.k-item { min-inline-size: 0; }
+.k-item--wide { grid-column: 1 / -1; }
+.k-label {
+    display: block;
+    margin-block-end: 10px;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.6875rem;
+    letter-spacing: 0.06em;
+    color: #8b929c;
+}
+
+/* --- tab scaffolding. In the shop each tab is its own page load; the sheet
+       keeps them in one file so the screens can be browsed. Nothing here
+       ships — .k-tab wrappers are the catalogue's, not the product's. --- */
+.k-tab[hidden] { display: none; }
+</style>
+</head>
+<body class="lets-el k-pin">
+
+<div class="lets-acct" data-theme="light" data-density="comfortable" data-card="outlined">
+    <section class="la-block">
+        <div class="la-section__head">
+            <h2 class="la-section__title">Subscriptions</h2>
+        </div>
+        <div class="la-card">
+            <p class="la-empty">You have no active subscriptions yet.</p>
+        </div>
+    </section>
+</div>
+<div class="lets-acct" data-theme="light" data-density="comfortable" data-card="outlined">
+    <section class="la-card la-signin">
+        <p class="la-signin__text">Sign in to see your subscriptions and rewards.</p>
+    </section>
+</div>
+<div class="lets-acct" data-theme="light" data-density="comfortable" data-card="outlined">
+    <div class="la-skeleton">
+    </div>
+</div>
+<div class="lets-acct" data-theme="light" data-density="comfortable" data-card="outlined">
+    <div class="la-toast" data-tone="good" role="status" aria-live="polite">Saved</div>
+    <div class="la-toast" data-tone="bad" role="status" aria-live="polite">That didn't work. Try again.</div>
+</div>
+<div class="lets-acct is-busy" data-theme="light" data-density="comfortable" data-card="outlined">
+    <div class="la-card">
+        <p class="la-empty">Cancelling…</p>
+    </div>
+</div>
+
+</body>
+</html>
