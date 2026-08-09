@@ -233,3 +233,59 @@ function lets_payplus_order_docs_customer_link($order)
         . '<p><a href="' . esc_url($url) . '" target="_blank" rel="noopener">' . esc_html($link_text) . ' ↗</a></p>'
         . '</section>';
 }
+
+// ---------------------------------------------------------------------------
+// Order HISTORY — the document beside each row
+// ---------------------------------------------------------------------------
+
+add_filter('woocommerce_my_account_my_orders_actions', 'lets_payplus_order_docs_list_action', 10, 2);
+
+/**
+ * A shopper looking for last month's receipt should not have to open the order
+ * to find out whether there is one. The link goes in WooCommerce's own actions
+ * column, so it inherits the table, the mobile stacking and the re-skin — and
+ * a theme that renders its own orders table still gets it, because this is the
+ * filter WooCommerce itself calls for that column.
+ *
+ * Reads STAMPED META ONLY. A history page lists many orders, and a lookup per
+ * row would turn one page view into a fan-out of SaaS calls; an order whose
+ * document has not been stamped yet simply shows no link, and the order page
+ * (which reads a single order) remains the place where the fallback runs.
+ *
+ * @param array    $actions
+ * @param WC_Order $order
+ * @return array
+ */
+function lets_payplus_order_docs_list_action($actions, $order)
+{
+    if (! $order instanceof WC_Order) {
+        return $actions;
+    }
+
+    $url = (string) $order->get_meta(LETS_PAYPLUS_INVOICE_URL_META);
+    if ($url === '') {
+        return $actions;
+    }
+
+    $settings = lets_payplus_invoicing_settings();
+    if (empty($settings['attach_to_order'])) {
+        return $actions;
+    }
+
+    $he = lets_payplus_is_he();
+    $number = (string) $order->get_meta(LETS_PAYPLUS_INVOICE_NUMBER_META);
+
+    /* The key becomes a class on the button, which is how the stylesheet can
+       tell a document link from "view" and "pay" without a second hook.
+       WooCommerce's own template prints no target/rel here, so the document
+       opens in the same tab — the back button is the way back. */
+    $actions['lets_invoice'] = array(
+        'url' => $url,
+        'name' => $he ? 'חשבונית' : 'Invoice',
+        'aria-label' => $number !== ''
+            ? sprintf($he ? 'צפייה במסמך %s' : 'View document %s', $number)
+            : ($he ? 'צפייה בחשבונית' : 'View invoice'),
+    );
+
+    return $actions;
+}
