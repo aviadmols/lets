@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.23.0
+Stable tag: 0.24.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,20 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.24.0 =
+* Your theme's link styling no longer bleeds into the personal area: the
+  navigation, the order numbers and the banners stop arriving underlined and in
+  the theme's link colour. Order numbers now read in the page's own ink and
+  underline on hover, where an underline means "this goes somewhere".
+* The order history's buttons sit properly side by side, and the invoice reads
+  as the quieter of the two — the row is about the order; the receipt is beside
+  it.
+* New setting: the typeface. The default is unchanged and is still the
+  recommendation — the area declares no font at all and inherits your shop's, so
+  it reads as part of your shop. Heebo and the system font are there for a theme
+  font that cannot carry a page of numbers and labels. Heebo is only downloaded
+  if you pick it.
 
 = 0.23.0 =
 * Your banners, colours, section order and wording are now edited inside

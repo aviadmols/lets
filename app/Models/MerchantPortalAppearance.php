@@ -79,6 +79,17 @@ class MerchantPortalAppearance extends Model
     public const CARD_STYLES = [self::CARD_FLAT, self::CARD_OUTLINED, self::CARD_RAISED];
 
     /**
+     * The typeface. `theme` means the stylesheet declares no font at all and the
+     * area inherits the shop's — the default, and the recommendation: it is what
+     * makes the page read as part of the shop instead of as a widget inside it.
+     * The other two exist for a theme font that cannot carry the page.
+     */
+    public const FONT_THEME = 'theme';
+    public const FONT_HEEBO = 'heebo';
+    public const FONT_SYSTEM = 'system';
+    public const FONTS = [self::FONT_THEME, self::FONT_HEEBO, self::FONT_SYSTEM];
+
+    /**
      * The language the area is written in. AUTO follows the store — the
      * WordPress site language the plugin sends with every call — which is the
      * right default for a merchant who never opens this setting, and the only
@@ -294,6 +305,12 @@ class MerchantPortalAppearance extends Model
     public function cardStyle(): string
     {
         return $this->oneOf($this->card_style, self::CARD_STYLES, self::CARD_OUTLINED);
+    }
+
+    /** The typeface. Defaults to the shop's own, which is the point of the area. */
+    public function fontFamily(): string
+    {
+        return $this->oneOf($this->font_family, self::FONTS, self::FONT_THEME);
     }
 
     /**

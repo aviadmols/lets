@@ -118,6 +118,7 @@ final class PortalSettingsController extends WooStorefrontController
             'corner_radius' => [MerchantPortalAppearance::CORNER_RADII, MerchantPortalAppearance::RADIUS_SOFT],
             'density' => [MerchantPortalAppearance::DENSITIES, MerchantPortalAppearance::DENSITY_COMFORTABLE],
             'card_style' => [MerchantPortalAppearance::CARD_STYLES, MerchantPortalAppearance::CARD_OUTLINED],
+            'font_family' => [MerchantPortalAppearance::FONTS, MerchantPortalAppearance::FONT_THEME],
         ];
 
         foreach ($enums as $field => [$allowed, $fallback]) {
@@ -247,6 +248,7 @@ final class PortalSettingsController extends WooStorefrontController
                 'corner_radius' => $s->corner_radius,
                 'density' => $s->density,
                 'card_style' => $s->card_style,
+                'font_family' => $s->fontFamily(),
                 'page_locale' => $s->page_locale ?? MerchantPortalAppearance::LOCALE_AUTO,
 
                 // --- structure ---
@@ -274,6 +276,7 @@ final class PortalSettingsController extends WooStorefrontController
                 'available_radii' => MerchantPortalAppearance::CORNER_RADII,
                 'available_densities' => MerchantPortalAppearance::DENSITIES,
                 'available_card_styles' => MerchantPortalAppearance::CARD_STYLES,
+                'available_fonts' => MerchantPortalAppearance::FONTS,
                 'available_locales' => self::locales(),
                 'available_login_channels' => MerchantPortalAppearance::LOGIN_CHANNELS,
                 'banner_slots' => MerchantPortalAppearance::BANNER_SLOTS,

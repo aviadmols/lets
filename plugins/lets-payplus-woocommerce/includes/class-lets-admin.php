@@ -229,6 +229,18 @@ function lets_payplus_admin_appearance($s, $he)
             'options' => $s['available_card_styles'],
             'labels' => array('flat' => $he ? 'שטוח' : 'Flat', 'outlined' => $he ? 'ממוסגר' : 'Outlined', 'raised' => $he ? 'מוגבה' : 'Raised'),
         ),
+        'font_family' => array(
+            'label' => $he ? 'גופן' : 'Typeface',
+            'options' => $s['available_fonts'],
+            'labels' => array(
+                'theme' => $he ? 'הגופן של האתר (מומלץ)' : 'The site’s own font (recommended)',
+                'heebo' => 'Heebo',
+                'system' => $he ? 'גופן המערכת' : 'System font',
+            ),
+            'hint' => $he
+                ? 'ברירת המחדל לא מגדירה גופן בכלל — האזור יורש את הגופן של החנות, וזה מה שגורם לו להיראות חלק ממנה. בחרו אחרת רק אם הגופן של התבנית לא נושא עמוד של מספרים ותוויות.'
+                : 'The default declares no font at all — the area inherits the shop’s, which is what makes it read as part of it. Choose otherwise only if the theme font cannot carry a page of numbers and labels.',
+        ),
         'page_locale' => array(
             'label' => $he ? 'שפת העמוד' : 'Page language',
             'options' => $s['available_locales'],
@@ -259,7 +271,7 @@ function lets_payplus_admin_appearance($s, $he)
         }
         $control .= '</select>';
 
-        lets_payplus_admin_row($meta['label'], $control, '');
+        lets_payplus_admin_row($meta['label'], $control, isset($meta['hint']) ? $meta['hint'] : '');
     }
 
     echo '</tbody></table>';
@@ -472,7 +484,7 @@ function lets_payplus_admin_save()
 function lets_payplus_admin_body($tab)
 {
     if ('appearance' === $tab) {
-        $fields = array('accent_color', 'accent_text_color', 'theme_mode', 'corner_radius', 'density', 'card_style', 'page_locale');
+        $fields = array('accent_color', 'accent_text_color', 'theme_mode', 'corner_radius', 'density', 'card_style', 'font_family', 'page_locale');
         $body = array();
 
         foreach ($fields as $field) {

@@ -57,6 +57,30 @@ final class WooPortalSettingsTest extends TestCase
         $this->assertSame(MerchantPortalAppearance::BANNER_SLOTS, $settings['banner_slots']);
     }
 
+    /**
+     * The area's whole point is that it wears the shop's own type, so a shop
+     * that never opens the setting must render exactly as it did before the
+     * setting existed: no font declared, no webfont fetched.
+     */
+    public function test_the_typeface_defaults_to_the_shops_own(): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop('portal-font.example.com');
+
+        $settings = $this->signed('GET', $key, $secret, self::PATH)->assertOk()->json('settings');
+        $this->assertSame(MerchantPortalAppearance::FONT_THEME, $settings['font_family']);
+        $this->assertSame(MerchantPortalAppearance::FONTS, $settings['available_fonts']);
+
+        $this->signed('POST', $key, $secret, self::PATH, ['font_family' => 'comic-sans'])->assertOk();
+
+        Tenant::run($shop, function (): void {
+            $this->assertSame(MerchantPortalAppearance::FONT_THEME, MerchantPortalAppearance::current()->fontFamily());
+        });
+
+        $this->signed('POST', $key, $secret, self::PATH, ['font_family' => MerchantPortalAppearance::FONT_HEEBO])
+            ->assertOk()
+            ->assertJsonPath('settings.font_family', MerchantPortalAppearance::FONT_HEEBO);
+    }
+
     public function test_a_garbage_colour_or_enum_falls_back_instead_of_being_stored(): void
     {
         [$shop, $key, $secret] = $this->connectedShop('portal-clamp.example.com');

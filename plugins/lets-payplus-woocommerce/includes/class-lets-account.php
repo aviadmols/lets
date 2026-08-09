@@ -291,10 +291,19 @@ function lets_payplus_account_shell_assets()
         return;
     }
 
+    // Heebo is fetched ONLY when the merchant asked for it. The default is the
+    // shop's own typeface, and a webfont nobody chose is a render-blocking
+    // request on somebody else's storefront.
+    $deps = array();
+    if ('heebo' === lets_payplus_account_font()) {
+        wp_enqueue_style('lets-payplus-heebo');
+        $deps[] = 'lets-payplus-heebo';
+    }
+
     wp_enqueue_style(
         'lets-payplus-account',
         LETS_PAYPLUS_URL . 'assets/css/lets-account.css',
-        array(),
+        $deps,
         LETS_PAYPLUS_VERSION
     );
 
@@ -366,6 +375,22 @@ function lets_payplus_account_hex($value)
  *
  * @return string
  */
+/**
+ * The typeface the merchant chose, from the same payload the shell reads.
+ * `theme` — the default and the recommendation — means we declare nothing and
+ * the area inherits the shop's own type.
+ *
+ * @return string one of theme|heebo|system
+ */
+function lets_payplus_account_font()
+{
+    $config = lets_payplus_account_shell_config();
+    $appearance = isset($config['appearance']) ? (array) $config['appearance'] : array();
+    $font = isset($appearance['font']) ? (string) $appearance['font'] : '';
+
+    return in_array($font, array('theme', 'heebo', 'system'), true) ? $font : 'theme';
+}
+
 function lets_payplus_account_shell_attributes()
 {
     $config = lets_payplus_account_shell_config();
@@ -375,8 +400,14 @@ function lets_payplus_account_shell_attributes()
         'data-theme' => array('light', 'dark', 'auto'),
         'data-density' => array('comfortable', 'compact'),
         'data-card' => array('outlined', 'flat', 'raised'),
+        'data-font' => array('theme', 'heebo', 'system'),
     );
-    $keys = array('data-theme' => 'theme', 'data-density' => 'density', 'data-card' => 'card');
+    $keys = array(
+        'data-theme' => 'theme',
+        'data-density' => 'density',
+        'data-card' => 'card',
+        'data-font' => 'font',
+    );
 
     $out = '';
     foreach ($enums as $attribute => $allowed) {

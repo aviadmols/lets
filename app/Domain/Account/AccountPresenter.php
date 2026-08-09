@@ -252,6 +252,7 @@ final class AccountPresenter
                 'radius' => $settings->cornerRadiusPx(),
                 'density' => $settings->density(),
                 'card' => $settings->cardStyle(),
+                'font' => $settings->fontFamily(),
                 // The language this payload was RESOLVED in, not the merchant's
                 // setting: the plugin has chrome of its own (the nav label, the
                 // sign-in panel) and it has to speak whatever the copy below

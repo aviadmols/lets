@@ -743,10 +743,13 @@ body {
       :root. This CSS sits inside somebody else's theme; a token on :root would
       leak into their buttons. The shell and the nav carry the same block
       because they wrap WooCommerce's own markup, which we re-skin below.
-   2. THERE IS NO font-family ANYWHERE IN THIS FILE. That is the entire point
-      of rendering natively instead of in an iframe — the area inherits the
-      merchant's typography, so it belongs to their shop rather than looking
-      like a widget bolted onto it. Do not add one.
+   2. TYPE IS THE SHOP'S BY DEFAULT. Rendering natively instead of in an iframe
+      is what lets the area inherit the merchant's own typography, so it belongs
+      to their shop rather than looking like a widget bolted onto it — and that
+      stays the default and the recommendation. The ONLY font declarations in
+      this file sit behind `[data-font='heebo']` and `[data-font='system']`, for
+      the merchant who asked; `theme`, the default, has no rule at all. Never
+      add a font declaration outside that opt-in.
 
    Continuous values (accent, radius) arrive as custom properties written by
    the renderer (mount) or by wp_add_inline_style (shell). Enum values (theme,
@@ -815,6 +818,67 @@ body {
 
 .lets-acct {
     background: var(--la-bg);
+}
+
+/* --- Typeface -----------------------------------------------------------
+   The DEFAULT is still no font-family at all: the area inherits the shop's
+   type, which is what makes it read as part of the shop rather than as a
+   widget inside it. `data-font` exists for the merchant whose theme font
+   cannot carry a page of numbers and Hebrew labels — and it is opt-in, so a
+   shop that never opens the setting is byte-for-byte what it was.
+
+   The value is set on the three block roots, and inherits from there; the
+   webfont itself is only fetched when heebo is the choice.
+   ----------------------------------------------------------------------- */
+
+.lets-acct[data-font='heebo'],
+.lets-shell[data-font='heebo'],
+.la-nav[data-font='heebo'] {
+    font-family: 'Heebo', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+}
+
+.lets-acct[data-font='system'],
+.lets-shell[data-font='system'],
+.la-nav[data-font='system'] {
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+}
+
+/* WooCommerce's own screens sit inside the shell, so they follow the choice
+   too — otherwise a merchant who picked a font would get it on half a page. */
+.lets-shell[data-font='heebo'] input,
+.lets-shell[data-font='heebo'] select,
+.lets-shell[data-font='heebo'] textarea,
+.lets-shell[data-font='heebo'] button,
+.lets-shell[data-font='system'] input,
+.lets-shell[data-font='system'] select,
+.lets-shell[data-font='system'] textarea,
+.lets-shell[data-font='system'] button {
+    font-family: inherit;
+}
+
+/* --- The theme's link rules stop at our door ----------------------------
+   A theme that underlines every anchor underlines our navigation, our order
+   numbers and our banners with it, and its link colour turns them pink. Our
+   own rules said `text-decoration: none` already and lost — not on
+   specificity but on ORDER: a theme stylesheet enqueued after ours wins a tie.
+   Doubling the block class buys one class of specificity, which settles it
+   without reaching for !important and without touching anything outside the
+   page we own.
+
+   Only the DECORATION is claimed here. Colour stays with the components, so
+   `.la-btn--danger` and the rest keep deciding what they look like.
+   ----------------------------------------------------------------------- */
+
+.lets-acct.lets-acct a,
+.lets-shell.lets-shell a,
+.la-nav.la-nav a {
+    text-decoration: none;
+}
+
+.lets-acct.lets-acct a:hover,
+.lets-shell.lets-shell a:hover,
+.la-nav.la-nav a:hover {
+    text-decoration: none;
 }
 
 /* --- Theme ------------------------------------------------------------- */
@@ -2006,12 +2070,17 @@ a.la-banner:focus-visible {
     list-style: none;
 }
 
-/* --- Buttons ----------------------------------------------------------- */
+/* --- Buttons -------------------------------------------------------------
+   Doubled block class throughout this section, for the same reason as the link
+   rules above: WooCommerce themes carry long, high-specificity button selectors
+   (`.woocommerce #respond input#submit, .woocommerce a.button, …`) and a plain
+   `.lets-shell .button` loses to them on a shop we have never seen.
+   ------------------------------------------------------------------------ */
 
-.lets-shell .button,
-.lets-shell .woocommerce-Button,
-.lets-shell button[type='submit'],
-.lets-shell input[type='submit'] {
+.lets-shell.lets-shell .button,
+.lets-shell.lets-shell .woocommerce-Button,
+.lets-shell.lets-shell button[type='submit'],
+.lets-shell.lets-shell input[type='submit'] {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -2030,30 +2099,70 @@ a.la-banner:focus-visible {
     transition: opacity 0.15s ease;
 }
 
-.lets-shell .button:hover,
-.lets-shell .woocommerce-Button:hover,
-.lets-shell button[type='submit']:hover,
-.lets-shell input[type='submit']:hover {
+.lets-shell.lets-shell .button:hover,
+.lets-shell.lets-shell .woocommerce-Button:hover,
+.lets-shell.lets-shell button[type='submit']:hover,
+.lets-shell.lets-shell input[type='submit']:hover {
     opacity: 0.9;
     color: var(--la-accent-fg);
 }
 
-/* A row of order actions is a row of SECONDARY verbs — view, pay, cancel. Only
-   the page's own primary action keeps the brand fill. */
-.lets-shell .woocommerce-orders-table__cell-order-actions .button,
-.lets-shell .woocommerce-Address .edit,
-.lets-shell .woocommerce-MyAccount-downloads .button {
+/* A row of order actions is a row of SECONDARY verbs — view, invoice, pay,
+   cancel. Only the page's own primary action keeps the brand fill. */
+.lets-shell.lets-shell .woocommerce-orders-table__cell-order-actions .button,
+.lets-shell.lets-shell .woocommerce-Address .edit,
+.lets-shell.lets-shell .woocommerce-MyAccount-downloads .button {
     background: var(--la-card);
     border-color: var(--la-border-strong);
     color: var(--la-fg);
 }
 
-.lets-shell .woocommerce-orders-table__cell-order-actions .button:hover,
-.lets-shell .woocommerce-Address .edit:hover,
-.lets-shell .woocommerce-MyAccount-downloads .button:hover {
+.lets-shell.lets-shell .woocommerce-orders-table__cell-order-actions .button:hover,
+.lets-shell.lets-shell .woocommerce-Address .edit:hover,
+.lets-shell.lets-shell .woocommerce-MyAccount-downloads .button:hover {
     background: var(--la-card-2);
     color: var(--la-fg);
     opacity: 1;
+}
+
+/* Two or three verbs share the cell (view + invoice). A margin rather than a
+   flex container, because the phone layout below turns every cell into a flex
+   row of its own and two competing display modes is a bug waiting to happen. */
+.lets-shell.lets-shell .woocommerce-orders-table__cell-order-actions .button + .button {
+    margin-inline-start: 8px;
+}
+
+/* The document is the quieter of the two: a shopper on this row came for the
+   order, and finds the receipt beside it. */
+.lets-shell.lets-shell .woocommerce-orders-table__cell-order-actions .lets_invoice {
+    color: var(--la-muted);
+}
+
+.lets-shell.lets-shell .woocommerce-orders-table__cell-order-actions .lets_invoice:hover {
+    color: var(--la-fg);
+}
+
+/* --- Links inside WooCommerce's own tables ------------------------------
+   The order number identifies the row; it is not a link out into the theme's
+   palette. It takes the page's ink, and earns an underline on hover — where an
+   underline means "this goes somewhere" rather than "this is a link, always".
+   ------------------------------------------------------------------------ */
+
+.lets-shell.lets-shell table.shop_table a:not(.button) {
+    color: var(--la-fg);
+    font-weight: 600;
+}
+
+.lets-shell.lets-shell table.shop_table a:not(.button):hover {
+    color: var(--la-accent);
+    text-decoration: underline;
+}
+
+.lets-shell.lets-shell table.shop_table a:focus-visible,
+.lets-shell.lets-shell .la-nav a:focus-visible {
+    outline: none;
+    box-shadow: var(--la-ring);
+    border-radius: 4px;
 }
 
 /* --- Tables ------------------------------------------------------------ */
@@ -4155,21 +4264,21 @@ html, body {
                     </thead>
                     <tbody>
                         <tr>
-                            <td data-title="Order">#3126</td>
+                            <td data-title="Order" class="woocommerce-orders-table__cell-order-number"><a href="#LA-11">#3126</a></td>
                             <td data-title="Date">12 Aug 2026</td>
                             <td data-title="Status">Completed</td>
                             <td data-title="Total">399 ILS for 1 item</td>
                             <td data-title="Actions" class="woocommerce-orders-table__cell-order-actions"><a href="#LA-11" class="woocommerce-button button view">View</a><a href="#LA-11" class="woocommerce-button button lets_invoice" aria-label="View document 2026-0412">Invoice</a></td>
                         </tr>
                         <tr>
-                            <td data-title="Order">#3095</td>
+                            <td data-title="Order" class="woocommerce-orders-table__cell-order-number"><a href="#LA-11">#3095</a></td>
                             <td data-title="Date">12 Jul 2026</td>
                             <td data-title="Status">Completed</td>
                             <td data-title="Total">399 ILS for 1 item</td>
                             <td data-title="Actions" class="woocommerce-orders-table__cell-order-actions"><a href="#LA-11" class="woocommerce-button button view">View</a><a href="#LA-11" class="woocommerce-button button lets_invoice" aria-label="View document 2026-0389">Invoice</a></td>
                         </tr>
                         <tr>
-                            <td data-title="Order">#3061</td>
+                            <td data-title="Order" class="woocommerce-orders-table__cell-order-number"><a href="#LA-11">#3061</a></td>
                             <td data-title="Date">12 Jun 2026</td>
                             <td data-title="Status">Refunded</td>
                             <td data-title="Total">149 ILS for 1 item</td>
@@ -4591,21 +4700,21 @@ html, body {
                             </thead>
                             <tbody>
                                 <tr>
-                                    <td data-title="הזמנה"><span class="la-ltr" dir="ltr">#3126</span></td>
+                                    <td data-title="הזמנה" class="woocommerce-orders-table__cell-order-number"><a href="#LA-13" class="la-ltr" dir="ltr">#3126</a></td>
                                     <td data-title="תאריך">12 באוג׳ 2026</td>
                                     <td data-title="סטטוס">הושלמה</td>
                                     <td data-title="סה״כ">399 ₪ עבור פריט אחד</td>
                                     <td data-title="פעולות" class="woocommerce-orders-table__cell-order-actions"><a href="#LA-13" class="woocommerce-button button view">צפייה</a><a href="#LA-13" class="woocommerce-button button lets_invoice" aria-label="צפייה במסמך 2026-0412">חשבונית</a></td>
                                 </tr>
                                 <tr>
-                                    <td data-title="הזמנה"><span class="la-ltr" dir="ltr">#3095</span></td>
+                                    <td data-title="הזמנה" class="woocommerce-orders-table__cell-order-number"><a href="#LA-13" class="la-ltr" dir="ltr">#3095</a></td>
                                     <td data-title="תאריך">12 ביולי 2026</td>
                                     <td data-title="סטטוס">הושלמה</td>
                                     <td data-title="סה״כ">399 ₪ עבור פריט אחד</td>
                                     <td data-title="פעולות" class="woocommerce-orders-table__cell-order-actions"><a href="#LA-13" class="woocommerce-button button view">צפייה</a><a href="#LA-13" class="woocommerce-button button lets_invoice" aria-label="צפייה במסמך 2026-0389">חשבונית</a></td>
                                 </tr>
                                 <tr>
-                                    <td data-title="הזמנה"><span class="la-ltr" dir="ltr">#3061</span></td>
+                                    <td data-title="הזמנה" class="woocommerce-orders-table__cell-order-number"><a href="#LA-13" class="la-ltr" dir="ltr">#3061</a></td>
                                     <td data-title="תאריך">12 ביוני 2026</td>
                                     <td data-title="סטטוס">הוחזרה</td>
                                     <td data-title="סה״כ">149 ₪ עבור פריט אחד</td>

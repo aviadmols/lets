@@ -185,6 +185,8 @@
         attr(mount, 'data-theme', a.theme || 'light');
         attr(mount, 'data-density', a.density || 'comfortable');
         attr(mount, 'data-card', a.card || 'outlined');
+        // 'theme' declares no font at all and lets the shop's own type through.
+        attr(mount, 'data-font', a.font || 'theme');
         if (a.dir) { mount.setAttribute('dir', a.dir); }
     }
 

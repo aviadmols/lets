@@ -185,9 +185,32 @@ final class AccountLayoutTest extends TestCase
             $this->assertStringContainsString($selector, $css, "{$selector} is not re-skinned");
         }
 
-        // The area still imposes no typography — it belongs to the merchant's shop.
-        // (The words appear in the header comment saying exactly that; what must
-        // never appear is the DECLARATION.)
-        $this->assertDoesNotMatchRegularExpression('/font-family\s*:/', $css);
+        // The area imposes no typography of its own. A merchant CAN now ask for
+        // one, so the law is no longer "never declare a font" — it is "never
+        // declare one the merchant did not ask for": every font-family in the
+        // file has to sit behind a data-font selector, and the default value of
+        // that attribute, `theme`, must have no rule at all.
+        // Comments explain the rule and therefore contain the words; only the
+        // declarations are under test.
+        $declarations = (string) preg_replace('#/\*.*?\*/#s', '', $css);
+
+        foreach (explode('}', $declarations) as $block) {
+            if (! str_contains($block, 'font-family')) {
+                continue;
+            }
+
+            $selector = substr($block, 0, (int) strrpos($block, '{'));
+
+            $this->assertStringContainsString(
+                'data-font',
+                $selector,
+                'a font-family declaration escaped the opt-in: '.trim($selector),
+            );
+            $this->assertStringNotContainsString(
+                "data-font='theme'",
+                $selector,
+                'the default must inherit the shop’s type, not declare one',
+            );
+        }
     }
 }
