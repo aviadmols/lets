@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.21.0
+Stable tag: 0.23.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,36 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.23.0 =
+* Your banners, colours, section order and wording are now edited inside
+  WordPress, under the new LETS menu — no second tab, no second login. They are
+  still stored in your LETS account, so the preview there and the page your
+  shoppers get can never drift apart.
+* A shopper looking for last month's receipt no longer has to open the order:
+  the invoice sits in the actions column of the order history, on every order
+  that has one.
+* The LETS shortcut in the toolbar now opens these screens instead of leaving
+  WordPress. Reports and the advanced settings are one click further in.
+
+= 0.22.0 =
+* My Account is now one screen rather than a plugin bolted onto WooCommerce's:
+  the plugin renders the whole page — its own navigation carrying the shopper's
+  name, its own layout, and WooCommerce's orders, addresses and account details
+  restyled to match.
+* The page uses the width it can actually have instead of the theme's narrow
+  prose column, and lays out as a header, a main column of subscriptions and a
+  rail for rewards, what's next and your banners. On a phone the tabs become one
+  scrollable strip.
+* WooCommerce's dashboard prose ("from your account dashboard you can view your
+  recent orders…") is replaced by the personal area itself.
+* The area's language is now its own setting in the LETS dashboard — Hebrew,
+  English, or follow the store — instead of being borrowed from the members-club
+  page. It covers the sign-in codes you send, too.
+* The personal area now renders even on a theme that ships its own My Account
+  template — which most themes do, usually without having changed anything in it.
+  A shop that really did write its own account page can hand it back with one
+  filter: add_filter('lets_payplus_account_own_template', '__return_false').
 
 = 0.21.0 =
 * A full personal area inside My Account: the shopper sees their subscriptions,

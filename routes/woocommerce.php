@@ -8,6 +8,7 @@ use App\Http\Controllers\WooCommerce\CheckoutSettingsController;
 use App\Http\Controllers\WooCommerce\DiagnosticsController;
 use App\Http\Controllers\WooCommerce\InstallController;
 use App\Http\Controllers\WooCommerce\InvoicingController;
+use App\Http\Controllers\WooCommerce\PortalSettingsController;
 use App\Http\Controllers\WooCommerce\Storefront\WooDepositCallbackController;
 use App\Http\Controllers\WooCommerce\Storefront\WooDepositReturnController;
 use App\Http\Controllers\WooCommerce\Storefront\WooGatewayCallbackController;
@@ -64,6 +65,21 @@ Route::middleware(VerifyWooCommerceSignature::class)
             ->name('woocommerce.checkout_settings.show');
         Route::post('/checkout-settings', [CheckoutSettingsController::class, 'update'])
             ->name('woocommerce.checkout_settings.update');
+
+        /*
+        |----------------------------------------------------------------------
+        | The personal area's own settings — banners, appearance, copy
+        |----------------------------------------------------------------------
+        | Same contract as checkout-settings, for the surface the SHOPPER sees:
+        | the merchant edits in WordPress, LETS stores per shop, and the Filament
+        | preview and the storefront read the same row — so the preview cannot
+        | show a page the shopper will not get. Merchant input either way: every
+        | field is allow-listed, clamped, and https-forced server-side.
+        */
+        Route::get('/portal-settings', [PortalSettingsController::class, 'show'])
+            ->name('woocommerce.portal_settings.show');
+        Route::post('/portal-settings', [PortalSettingsController::class, 'update'])
+            ->name('woocommerce.portal_settings.update');
 
         /*
         |----------------------------------------------------------------------

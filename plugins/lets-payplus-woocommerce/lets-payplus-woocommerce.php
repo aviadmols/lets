@@ -3,7 +3,7 @@
  * Plugin Name: LETS — PayPlus Subscriptions & Installments for WooCommerce
  * Plugin URI: https://app.lets.co.il
  * Description: Connect your WooCommerce store to LETS to offer PayPlus deposits + installments, recurring subscriptions, one-click post-purchase upsells, and optional full PayPlus checkout. Paste the connection token from your LETS dashboard to link this store.
- * Version: 0.21.0
+ * Version: 0.23.0
  * Author: LETS
  * Author URI: https://app.lets.co.il
  * Text Domain: lets-payplus
@@ -24,7 +24,7 @@ if (! defined('ABSPATH')) {
     exit; // never run outside WordPress
 }
 
-define('LETS_PAYPLUS_VERSION', '0.21.0');
+define('LETS_PAYPLUS_VERSION', '0.23.0');
 define('LETS_PAYPLUS_OPT', 'lets_payplus_connection'); // wp_option holding the decoded token
 define('LETS_PAYPLUS_FILE', __FILE__);
 define('LETS_PAYPLUS_URL', plugin_dir_url(__FILE__)); // base URL for assets
@@ -112,9 +112,14 @@ add_action('admin_menu', function () {
 });
 
 /**
- * A persistent "LETS" shortcut in the WordPress admin bar → opens the LETS management
- * dashboard in a new tab, so the merchant can reach it from ANY admin screen (not only
- * Settings → LETS). Admins only; admin context only.
+ * A persistent "LETS" shortcut in the WordPress admin bar, reachable from ANY
+ * admin screen. It goes to the plugin's OWN screens — inside WordPress, same
+ * tab. A merchant configuring their own shop should not be thrown out of their
+ * own admin to do it.
+ *
+ * The hosted dashboard is still one click away, as a child node, for the reports
+ * and the screens that have no WordPress equivalent yet. That one does open in a
+ * new tab, because it is a different application with its own sign-in.
  */
 add_action('admin_bar_menu', function ($bar) {
     if (! is_admin() || ! current_user_can('manage_options')) {
@@ -124,26 +129,35 @@ add_action('admin_bar_menu', function ($bar) {
     $bar->add_node(array(
         'id'    => 'lets-payplus-dashboard',
         'title' => 'LETS',
-        'href'  => lets_payplus_dashboard_url(),
+        'href'  => admin_url('admin.php?page=lets-payplus-portal'),
         'meta'  => array(
+            'title' => __('LETS — the customer personal area', 'lets-payplus'),
+        ),
+    ));
+
+    $bar->add_node(array(
+        'id'     => 'lets-payplus-hosted',
+        'parent' => 'lets-payplus-dashboard',
+        'title'  => __('Reports & advanced settings', 'lets-payplus'),
+        'href'   => lets_payplus_dashboard_url(),
+        'meta'   => array(
             'target' => '_blank',
             'rel'    => 'noopener noreferrer',
-            'title'  => __('Open the LETS management dashboard', 'lets-payplus'),
         ),
     ));
 }, 80);
 
 /**
- * Quick links on the Plugins list row: "Settings" (the connect page) + "Dashboard"
- * (the LETS management system, new tab) — the fastest path to the SaaS from within WP.
+ * Quick links on the Plugins list row: "Settings" (the connect page) and
+ * "Personal area" (the plugin's own screens). Both stay inside WordPress.
  */
 add_filter('plugin_action_links_' . plugin_basename(LETS_PAYPLUS_FILE), function ($links) {
     $settings = '<a href="' . esc_url(admin_url('options-general.php?page=lets-payplus')) . '">'
         . esc_html__('Settings', 'lets-payplus') . '</a>';
-    $dashboard = '<a href="' . esc_url(lets_payplus_dashboard_url()) . '" target="_blank" rel="noopener noreferrer">'
-        . esc_html__('Dashboard', 'lets-payplus') . '</a>';
+    $portal = '<a href="' . esc_url(admin_url('admin.php?page=lets-payplus-portal')) . '">'
+        . esc_html__('Personal area', 'lets-payplus') . '</a>';
 
-    array_unshift($links, $settings, $dashboard);
+    array_unshift($links, $settings, $portal);
 
     return $links;
 });
@@ -327,12 +341,19 @@ function lets_payplus_render_settings()
         <?php endif; ?>
 
         <p>
-            <a class="button button-primary" href="<?php echo esc_url(lets_payplus_dashboard_url()); ?>"
+            <?php if ($conn) : ?>
+                <a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=lets-payplus-portal')); ?>">
+                    <?php esc_html_e('Edit the personal area', 'lets-payplus'); ?>
+                </a>
+            <?php endif; ?>
+
+            <?php // Getting the token, and the reports, still live in the hosted app. ?>
+            <a class="button<?php echo $conn ? '' : ' button-primary'; ?>" href="<?php echo esc_url(lets_payplus_dashboard_url()); ?>"
                target="_blank" rel="noopener noreferrer">
                 <span class="dashicons dashicons-external" style="vertical-align:text-bottom"></span>
                 <?php
                 echo $conn
-                    ? esc_html__('Open LETS dashboard', 'lets-payplus')
+                    ? esc_html__('Reports & advanced settings', 'lets-payplus')
                     : esc_html__('Open LETS dashboard to get your token', 'lets-payplus');
                 ?>
             </a>
@@ -427,3 +448,9 @@ require_once __DIR__ . '/includes/class-lets-loyalty.php';
 // class-lets-subscriptions defines. Unlike the club it is NOT an iframe: the
 // markup lands in the theme's own DOM so it inherits the theme's typography.
 require_once __DIR__ . '/includes/class-lets-account.php';
+
+// The merchant's own screens for that area — banners, appearance, section order
+// and copy — edited inside WordPress instead of in a second tab. Loads after the
+// account file so it can reuse its Hebrew helper, and after the signer, which is
+// how it reads and writes the ONE row LETS stores per shop.
+require_once __DIR__ . '/includes/class-lets-admin.php';
