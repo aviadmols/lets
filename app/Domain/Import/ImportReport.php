@@ -51,6 +51,9 @@ final class ImportReport
     /** Consent rows transcribed from the source system. */
     public int $consents = 0;
 
+    /** Plans parked PAUSED by a hold, waiting for a release. */
+    public int $held = 0;
+
     /** @var list<array{line: int, key: string, message: string}> */
     public array $errors = [];
 
@@ -119,6 +122,7 @@ final class ImportReport
             'money_in_horizon' => round($this->moneyInHorizon, 2),
             'tokens' => $this->tokens,
             'consents' => $this->consents,
+            'held' => $this->held,
             'errors' => $this->errors,
             'warnings' => $this->warnings,
             'error_tally' => $this->errorTally,

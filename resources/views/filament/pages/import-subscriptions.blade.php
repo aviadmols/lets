@@ -53,7 +53,22 @@
                         <label class="rc-field__label" for="import-dateformat">{{ __('import.option.date_format') }}</label>
                         <input id="import-dateformat" type="text" class="rc-input rc-ltr" wire:model="dateFormat" placeholder="d/m/Y">
                     </div>
+                    {{-- Try one member before trusting the file with five thousand. --}}
+                    <div class="rc-field">
+                        <label class="rc-field__label" for="import-only">{{ __('import.option.only') }}</label>
+                        <input id="import-only" type="text" class="rc-input rc-ltr" wire:model="only" placeholder="1001">
+                        <p class="rc-field__hint">{{ __('import.option.only_help') }}</p>
+                    </div>
                 </div>
+
+                {{-- The hold. Ticked by default — see the page class. --}}
+                <label class="rc-check">
+                    <input type="checkbox" wire:model="holdAsPaused">
+                    <span class="rc-check__body">
+                        <span class="rc-check__title">{{ __('import.option.hold') }}</span>
+                        <span class="rc-check__hint">{{ __('import.option.hold_help') }}</span>
+                    </span>
+                </label>
 
                 {{-- The money switch. Off means imported, not scheduled. --}}
                 <label class="rc-check">
@@ -99,11 +114,16 @@
                     <x-rc.kpi label="import.report.updates" :value="$report['updates']" />
                     <x-rc.kpi label="import.report.invalid" :value="$report['invalid']" />
                     <x-rc.kpi label="import.report.scheduled" :value="$report['scheduled']" />
+                    <x-rc.kpi label="import.report.held" :value="$report['held'] ?? 0" />
                     <x-rc.kpi
                         :label="$moneyLabel"
                         :value="number_format($report['money_in_horizon'], 2)"
                     />
                 </div>
+
+                @if(($report['skipped'] ?? 0) > 0)
+                    <p class="rc-muted">{{ __('import.report.filtered', ['count' => $report['skipped']]) }}</p>
+                @endif
 
                 @if($report['unknown_headers'] !== [])
                     <p class="rc-muted">
@@ -168,6 +188,60 @@
                         <x-rc.kpi label="import.report.consents" :value="$run['report']['consents'] ?? 0" />
                         <x-rc.kpi label="import.report.scheduled" :value="$run['report']['scheduled'] ?? 0" />
                     </div>
+                @endif
+            </div>
+        @endif
+
+        {{-- The release. Only exists while there is something parked to release. --}}
+        @php $held = $this->heldCount(); $rel = $this->releasePreview; @endphp
+        @if($held > 0)
+            <div class="rc-section">
+                <div class="rc-banner">
+                    <div class="rc-banner__text">
+                        <span class="rc-banner__title">{{ __('import.release.title', ['count' => $held]) }}</span>
+                        <span class="rc-banner__body">{{ __('import.release.body') }}</span>
+                    </div>
+                    <x-rc.cta variant="ghost" wire:click="previewRelease">
+                        {{ __('import.release.preview') }}
+                    </x-rc.cta>
+                </div>
+
+                @if($rel !== null)
+                    <div class="rc-kpi-grid">
+                        <x-rc.kpi label="import.release.found" :value="$rel['found']" />
+                        <x-rc.kpi label="import.release.scheduled" :value="$rel['scheduled']" />
+                        <x-rc.kpi label="import.release.rolled" :value="$rel['rolled']" />
+                        <x-rc.kpi :label="$moneyLabel" :value="number_format($rel['money_in_horizon'], 2)" />
+                    </div>
+
+                    <table class="rc-table">
+                        <thead>
+                            <tr>
+                                <th>{{ __('import.release.col.membership') }}</th>
+                                <th>{{ __('import.release.col.customer') }}</th>
+                                <th>{{ __('import.release.col.amount') }}</th>
+                                <th>{{ __('import.release.col.next') }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($rel['rows'] as $row)
+                                <tr wire:key="rel-{{ $loop->index }}">
+                                    <td class="rc-ltr">{{ $row['membership_id'] ?? '—' }}</td>
+                                    <td>{{ $row['customer'] }}</td>
+                                    <td class="rc-ltr">{{ $row['amount'] }}</td>
+                                    <td class="rc-ltr">{{ $row['next_charge_at'] ?? '—' }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+
+                    @unless($rel['committed'])
+                        <div class="rc-row">
+                            <x-rc.cta variant="danger" wire:click="commitRelease">
+                                {{ __('import.release.commit') }}
+                            </x-rc.cta>
+                        </div>
+                    @endunless
                 @endif
             </div>
         @endif

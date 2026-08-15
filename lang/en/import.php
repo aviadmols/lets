@@ -21,6 +21,10 @@ return [
         'default_product' => 'Product ID for rows without one',
         'currency' => 'Currency for rows without one',
         'date_format' => 'Date format (leave empty to detect)',
+        'only' => 'Import only this membership',
+        'only_help' => 'A membership_id, or a few separated by commas. Everything else in the file is skipped — use it to try one member first.',
+        'hold' => 'Import paused — nobody is charged until I release them',
+        'hold_help' => 'Every subscription lands paused with no charge date, whatever the file says. They stay that way until you release them from this screen, so nothing can bill before you are live.',
     ],
 
     'report' => [
@@ -45,9 +49,33 @@ return [
         'empty' => 'Choose a file to check it.',
         'running' => 'Importing… this page updates itself.',
         'columns' => 'The columns this file can carry',
+        'held' => 'Held (paused)',
+        'filtered' => ':count rows in the file were skipped by the membership filter.',
+    ],
+
+    'release' => [
+        'title' => ':count migrated subscriptions are paused',
+        'body' => 'They were imported on hold: no charge date, and the scheduler ignores them. Releasing puts each one back to active and gives it a next charge date.',
+        'preview' => 'Show me what would happen',
+        'commit' => 'Release them',
+        'found' => 'Paused by the import',
+        'scheduled' => 'Will get a charge date',
+        'unscheduled' => 'No date could be worked out',
+        'rolled' => 'Dates rolled forward past today',
+        'released' => 'Released',
+        'none' => 'Nothing is on hold — no imported subscription is waiting to be released.',
+        'preview_only' => 'This was a preview. Re-run with --commit to release them.',
+        'done' => 'Released :count subscriptions.',
+        'col' => [
+            'membership' => 'Membership',
+            'customer' => 'Customer',
+            'amount' => 'Per cycle',
+            'next' => 'Next charge',
+        ],
     ],
 
     'abort' => [
+        'no_match' => 'No row in the file matches that membership filter.',
         'invalid_rows' => 'Nothing was imported: :count rows are invalid.',
         'missing_header' => 'The file has no :column column, so no row can be matched to a subscription.',
         'no_rows' => 'The file has a header but no rows.',
@@ -76,6 +104,10 @@ return [
         'total_required' => 'A new installments plan needs a total_amount.',
         'product_required' => 'A new subscription needs a product_id (or set a default for the whole file).',
         'token_required' => 'This subscription is set to keep charging but carries no card_token.',
+        'no_shop' => 'No store is selected for this screen, so there is nothing to import into.',
+        'upload_gone' => 'The uploaded file is no longer there. Choose it again.',
+        'not_checked' => 'Check the file first — an import only runs on a file where every row is valid.',
+        'stash_expired' => 'The checked file has expired. Press "Check the file" again and then import.',
     ],
 
     'warn' => [
@@ -90,6 +122,7 @@ return [
     'cli' => [
         'dry_run_only' => 'This was a check only. Re-run with --commit to write it.',
         'written' => 'Imported :count subscriptions.',
+        'held_next' => ':count of them are paused and will never charge. Release them with: lets:subscriptions:release --shop=<id> --commit',
         'exported' => 'Exported :count subscriptions to :path',
     ],
 ];

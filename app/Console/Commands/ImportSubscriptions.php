@@ -28,6 +28,9 @@ final class ImportSubscriptions extends Command
         {--shop= : the shop id to import into}
         {--commit : actually write (default is a dry run)}
         {--start-charging : schedule the imported plans from the file dates}
+        {--hold : land every plan PAUSED and unscheduled until lets:subscriptions:release}
+        {--only= : import only these membership ids (comma-separated) — for trying one}
+        {--limit=0 : stop after this many rows}
         {--product= : product id for rows that carry none}
         {--variant= : variant id for rows that carry none}
         {--currency= : currency for rows that carry none}
@@ -58,6 +61,9 @@ final class ImportSubscriptions extends Command
 
         $options = new ImportOptions(
             startCharging: (bool) $this->option('start-charging'),
+            holdAsPaused: (bool) $this->option('hold'),
+            only: $this->list($this->option('only')),
+            limit: max(0, (int) $this->option('limit')),
             defaultCurrency: (string) ($this->option('currency') ?: SubscriptionCsvSchema::DEFAULT_CURRENCY),
             defaultProductId: $this->option('product') ? (string) $this->option('product') : null,
             defaultVariantId: $this->option('variant') ? (string) $this->option('variant') : null,
@@ -114,8 +120,13 @@ final class ImportSubscriptions extends Command
             [__('import.report.money', ['days' => ImportReport::HORIZON_DAYS]), number_format($report->moneyInHorizon, 2)],
             [__('import.report.tokens'), $report->tokens],
             [__('import.report.consents'), $report->consents],
+            [__('import.report.held'), $report->held],
             [__('import.report.written'), $report->written],
         ]);
+
+        if ($report->skipped > 0) {
+            $this->comment(__('import.report.filtered', ['count' => $report->skipped]));
+        }
 
         if ($report->unknownHeaders !== []) {
             $this->warn(__('import.report.unknown_headers', ['columns' => implode(', ', $report->unknownHeaders)]));
@@ -144,6 +155,22 @@ final class ImportSubscriptions extends Command
         }
 
         $this->info(__('import.cli.written', ['count' => $report->written]));
+
+        if ($report->held > 0) {
+            $this->comment(__('import.cli.held_next', ['count' => $report->held]));
+        }
+    }
+
+    /**
+     * A comma-separated option as a clean list.
+     *
+     * @return list<string>
+     */
+    private function list(?string $raw): array
+    {
+        return $raw === null || trim($raw) === ''
+            ? []
+            : array_values(array_filter(array_map('trim', explode(',', $raw)), fn (string $v): bool => $v !== ''));
     }
 
     /**

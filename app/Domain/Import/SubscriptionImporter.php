@@ -55,6 +55,12 @@ final class SubscriptionImporter
     /** meta key holding everything the file said, for the audit trail. */
     public const META_IMPORT = 'import';
 
+    /** meta.import flag: this plan was parked by an import and is waiting to be released. */
+    public const META_HELD = 'held';
+
+    /** meta.import: the status a release should restore. */
+    public const META_HOLD_RELEASE_TO = 'hold_release_to';
+
     /** The consent terms version recorded when the source system's own is unknown. */
     public const CONSENT_VERSION_MIGRATED = 'migrated';
 
@@ -118,12 +124,25 @@ final class SubscriptionImporter
 
         return Tenant::run($shop, function () use ($shop, $reader, $normalizer, $options, $write, $report, $present, &$seen, &$buffer): ImportReport {
             foreach ($reader->rows() as $raw) {
+                // The --only / --limit filter is applied BEFORE validation, so a row
+                // this run is not importing is never judged. That is what makes
+                // "try one member" possible on a file whose other rows are still
+                // being fixed — the alternative would demand the whole file be
+                // perfect before a single test import, which is backwards.
+                if (! $this->wanted($raw['values'], $options, $report)) {
+                    continue;
+                }
+
                 $report->rows++;
                 $buffer[] = $normalizer->normalize($raw['line'], $raw['values']);
 
                 if (count($buffer) >= SubscriptionCsvSchema::CHUNK) {
                     $this->flush($shop, $buffer, $normalizer, $options, $present, $report, $seen, $write);
                     $buffer = [];
+                }
+
+                if ($options->limit > 0 && $report->rows >= $options->limit) {
+                    break;
                 }
             }
 
@@ -133,11 +152,38 @@ final class SubscriptionImporter
             }
 
             if ($report->rows === 0) {
-                $report->abort(__('import.abort.no_rows'));
+                $report->abort($options->isFiltered()
+                    ? __('import.abort.no_match')
+                    : __('import.abort.no_rows'));
             }
 
             return $report;
         });
+    }
+
+    /**
+     * Does this raw row belong to this run? Reads the two key columns directly —
+     * before normalization, because filtering is cheaper than parsing and a skipped
+     * row should cost nothing at all on a fifty-thousand-row file.
+     *
+     * @param  array<string, string>  $values
+     */
+    private function wanted(array $values, ImportOptions $options, ImportReport $report): bool
+    {
+        if ($options->only === []) {
+            return true;
+        }
+
+        $wanted = $options->wants(
+            trim((string) ($values['membership_id'] ?? '')) ?: null,
+            trim((string) ($values['public_id'] ?? '')) ?: null,
+        );
+
+        if (! $wanted) {
+            $report->skipped++;
+        }
+
+        return $wanted;
     }
 
     /**
@@ -194,6 +240,10 @@ final class SubscriptionImporter
 
             if ($options->writeConsent && $normalizer->wouldCharge($row)) {
                 $report->consents++;
+            }
+
+            if ($this->isHeld($row, $options)) {
+                $report->held++;
             }
 
             $writable[] = [$row, $plan];
@@ -256,7 +306,9 @@ final class SubscriptionImporter
 
             // The guarded machine is the law for a live plan. Finding the illegal
             // move HERE is the point of the dry run — the commit must never meet one.
-            $target = $row->get('status');
+            // Judged against the status the run will ACTUALLY write, which under a
+            // hold is `paused` and not what the file asked for.
+            $target = $this->targetStatus($row, $options);
             if ($target instanceof PlanStatus && $target !== $plan->status) {
                 $legal = array_map(
                     fn (PlanStatus $s): string => $s->value,
@@ -310,7 +362,7 @@ final class SubscriptionImporter
         if ($creating) {
             $plan->forceFill([
                 'shop_id' => (int) $shop->getKey(),
-                'status' => ($row->get('status') ?? PlanStatus::DRAFT)->value,
+                'status' => ($this->targetStatus($row, $options) ?? PlanStatus::DRAFT)->value,
             ]);
         }
 
@@ -318,7 +370,7 @@ final class SubscriptionImporter
 
         // An existing plan's status moves through the guarded machine, never by
         // assignment — that is what writes the Timeline row and enforces the rules.
-        $target = $row->get('status');
+        $target = $this->targetStatus($row, $options);
         if (! $creating && $target instanceof PlanStatus && $target !== $plan->status) {
             $plan->transitionTo($target, ['source' => ImportOptions::SOURCE]);
         }
@@ -340,6 +392,34 @@ final class SubscriptionImporter
             planId: $plan->getKey(),
             shopId: (int) $shop->getKey(),
         );
+    }
+
+    /**
+     * The status this run will actually write.
+     *
+     * Under a hold, a plan the file calls ACTIVE lands PAUSED — the one status the
+     * scheduler will not look at. Nothing else is touched: a cancelled member stays
+     * cancelled (holding them would make a dead subscription look merely sleeping),
+     * and a draft or failed plan cannot charge either way. The hold exists to stop
+     * charges, not to rewrite a store's history.
+     */
+    private function targetStatus(NormalizedRow $row, ImportOptions $options): ?PlanStatus
+    {
+        $status = $row->get('status');
+
+        if (! $status instanceof PlanStatus) {
+            return null;
+        }
+
+        return $options->holdAsPaused && $status === PlanStatus::ACTIVE
+            ? PlanStatus::PAUSED
+            : $status;
+    }
+
+    /** Is this row one the hold actually parked? (For the report's count.) */
+    private function isHeld(NormalizedRow $row, ImportOptions $options): bool
+    {
+        return $options->holdAsPaused && $row->get('status') === PlanStatus::ACTIVE;
     }
 
     /**
@@ -449,6 +529,14 @@ final class SubscriptionImporter
      */
     private function scheduleFor(NormalizedRow $row, InstallmentPlan $plan, ImportOptions $options, array $present, bool $creating): CarbonImmutable|null|false
     {
+        // A hold beats everything, including a date the file names and including
+        // --start-charging. That totality is the point: re-running an import with
+        // --hold is a panic button that parks every member it touches, and a button
+        // with exceptions is not a panic button.
+        if ($options->holdAsPaused) {
+            return null;
+        }
+
         if (in_array('next_charge_at', $present, true) && $row->filled('next_charge_at')) {
             return $row->get('next_charge_at');
         }
@@ -533,6 +621,17 @@ final class SubscriptionImporter
 
         if ($row->get('history') !== []) {
             $import['history'] = $row->get('history');
+        }
+
+        // The hold marker, and what to put back. A release reads THESE, so it
+        // restores the subscription the file described instead of making every
+        // parked member active — and a plan the merchant paused by hand carries no
+        // marker, so a release can never wake it up by accident.
+        if ($this->isHeld($row, $options)) {
+            $import[self::META_HELD] = true;
+            $import[self::META_HOLD_RELEASE_TO] = PlanStatus::ACTIVE->value;
+        } elseif ($options->holdAsPaused === false) {
+            unset($import[self::META_HELD], $import[self::META_HOLD_RELEASE_TO]);
         }
 
         $import['source'] = ImportOptions::SOURCE;

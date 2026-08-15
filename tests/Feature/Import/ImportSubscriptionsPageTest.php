@@ -91,6 +91,44 @@ final class ImportSubscriptionsPageTest extends TestCase
         Queue::assertPushed(ImportSubscriptionsJob::class, fn (ImportSubscriptionsJob $job): bool => $job->shopId === (int) $this->shop->getKey());
     }
 
+    /**
+     * The reported bug: check the file, then press Import, and nothing happens.
+     *
+     * The commit used to read Livewire's temporary upload a second time. That file
+     * lives on the disk of whichever web container took the upload, so on a
+     * multi-replica deploy the next click could land somewhere it does not exist —
+     * and the guard returned void, so the button looked broken rather than blocked.
+     * The file is stashed in the shared cache at CHECK time now, so losing the
+     * temporary upload changes nothing.
+     */
+    public function test_the_import_still_runs_after_the_temporary_upload_is_gone(): void
+    {
+        Queue::fake();
+
+        $component = Livewire::test(ImportSubscriptions::class)
+            ->set('upload', $this->csv("membership_id,product_id,cycle,plan_amount,status,card_token\n1,7788,monthly,50,active,tok\n"))
+            ->call('check');
+
+        $this->assertTrue($component->instance()->reportIsClean());
+
+        // The temporary upload disappears between the two clicks.
+        $component->set('upload', null)->call('commit');
+
+        Queue::assertPushed(ImportSubscriptionsJob::class);
+    }
+
+    /** A refusal is always spoken. "Nothing happened" is not an acceptable answer. */
+    public function test_committing_without_a_checked_file_says_why(): void
+    {
+        Queue::fake();
+
+        Livewire::test(ImportSubscriptions::class)
+            ->call('commit')
+            ->assertNotified(__('import.error.not_checked'));
+
+        Queue::assertNothingPushed();
+    }
+
     private function csv(string $contents): UploadedFile
     {
         return UploadedFile::fake()->createWithContent('members.csv', $contents);

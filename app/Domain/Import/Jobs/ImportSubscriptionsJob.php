@@ -124,13 +124,45 @@ final class ImportSubscriptionsJob implements ShouldQueue
         }
     }
 
-    /** Hand a file to a run, then dispatch it. */
-    public static function start(int $shopId, string $runId, string $contents, ImportOptions $options): void
+    /**
+     * Park an uploaded file where any container can read it.
+     *
+     * Deliberately separate from queue(): the file is stashed at CHECK time, while
+     * the request certainly holds it, and the import runs from the stash. Reaching
+     * back for Livewire's temporary upload on a later request is a bet that the
+     * click lands on the same web container that took the upload — a bet that loses
+     * quietly, and looks to the merchant like a button that does nothing.
+     */
+    public static function stash(string $runId, string $contents): void
     {
         Cache::put(self::FILE_KEY.$runId, $contents, now()->addMinutes(self::TTL_MINUTES));
+    }
+
+    /** Is the stashed file still there? (It has a TTL; a page left open all day is not.) */
+    public static function hasStash(string $runId): bool
+    {
+        return Cache::has(self::FILE_KEY.$runId);
+    }
+
+    /**
+     * Queue the import of an already-stashed file.
+     *
+     * NOT named queue(): Laravel's dispatcher treats a `queue` method on a job as
+     * the custom-queueing hook and calls it with its own arguments, which turns a
+     * dispatch into a TypeError deep inside the framework.
+     */
+    public static function enqueue(int $shopId, string $runId, ImportOptions $options): void
+    {
         self::putResult($runId, ['state' => self::STATE_QUEUED]);
 
         self::dispatch($shopId, $runId, $options);
+    }
+
+    /** Stash + queue in one call (the CLI-shaped entry point). */
+    public static function start(int $shopId, string $runId, string $contents, ImportOptions $options): void
+    {
+        self::stash($runId, $contents);
+        self::enqueue($shopId, $runId, $options);
     }
 
     /** @return array<string, mixed>|null */

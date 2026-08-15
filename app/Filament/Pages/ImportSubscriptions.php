@@ -8,6 +8,7 @@ use App\Domain\Import\Jobs\ImportSubscriptionsJob;
 use App\Domain\Import\SubscriptionCsvSchema;
 use App\Domain\Import\SubscriptionExporter;
 use App\Domain\Import\SubscriptionImporter;
+use App\Domain\Import\SubscriptionReleaser;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Models\Shop;
 use App\Support\Tenant;
@@ -58,6 +59,17 @@ class ImportSubscriptions extends Page
     /** Money: off by default — importing records and scheduling charges are two decisions. */
     public bool $startCharging = false;
 
+    /**
+     * The hold. On by DEFAULT on this screen, unlike the CLI: someone migrating a
+     * store through a browser is mid-setup, and the safe reading of a half-finished
+     * migration is "these people must not be charged yet". Unticking it is a
+     * decision; leaving it is not one.
+     */
+    public bool $holdAsPaused = true;
+
+    /** Try one member first: a membership id, or a few separated by commas. */
+    public string $only = '';
+
     public string $defaultProduct = '';
 
     public string $currency = SubscriptionCsvSchema::DEFAULT_CURRENCY;
@@ -71,6 +83,18 @@ class ImportSubscriptions extends Page
     public ?string $runId = null;
 
     public ?array $runResult = null;
+
+    /** The last release preview (or its result after committing). */
+    public ?array $releasePreview = null;
+
+    /**
+     * The checked file, parked in the shared cache. This — not Livewire's temporary
+     * upload — is what the import actually reads, so the commit does not depend on
+     * a file sitting on one particular container's disk.
+     */
+    public ?string $stashId = null;
+
+    public ?string $stashName = null;
 
     public static function getNavigationGroup(): ?string
     {
@@ -92,7 +116,16 @@ class ImportSubscriptions extends Page
         return ImportReport::HORIZON_DAYS;
     }
 
-    /** Read the whole file and report. Writes nothing. */
+    /**
+     * Read the whole file and report. Writes nothing to the store — but it DOES
+     * stash the file, and that is the important part.
+     *
+     * The upload is copied into the shared cache here, while we are certainly
+     * holding it, and the import later works from that copy. Reaching back for
+     * Livewire's temporary file on the next request is what made this screen fail
+     * silently: the temp file lives on the disk of whichever web container took the
+     * upload, and the click that follows may well land on a different one.
+     */
     public function check(): void
     {
         $this->validate([
@@ -101,43 +134,80 @@ class ImportSubscriptions extends Page
 
         $shop = $this->shop();
 
-        if ($shop === null || $this->upload === null) {
+        if ($shop === null) {
+            $this->fail('import.error.no_shop');
+
             return;
         }
 
-        $report = app(SubscriptionImporter::class)
-            ->dryRun($shop, $this->upload->getRealPath(), $this->options());
+        $path = $this->upload?->getRealPath();
+
+        if ($path === null || $path === false || ! is_file($path)) {
+            $this->fail('import.error.upload_gone');
+
+            return;
+        }
+
+        $report = app(SubscriptionImporter::class)->dryRun($shop, $path, $this->options());
 
         $this->report = $report->toArray();
         $this->runId = null;
         $this->runResult = null;
+
+        $this->stashId = (string) Str::ulid();
+        $this->stashName = $this->upload?->getClientOriginalName();
+        ImportSubscriptionsJob::stash($this->stashId, (string) file_get_contents($path));
     }
 
     /**
-     * Hand the file to a worker. Only reachable once a scan has cleared it, and
-     * the scan is re-run by the importer itself before it writes — the button
-     * being enabled is a convenience, not the safety.
+     * Hand the stashed file to a worker.
+     *
+     * Every way this can refuse says so out loud. A guard that returns void is
+     * indistinguishable from a broken button, and "I click and nothing happens" is
+     * the worst bug report a screen can earn — the user cannot tell whether it is
+     * protecting them or ignoring them.
      */
     public function commit(): void
     {
         $shop = $this->shop();
 
-        if ($shop === null || $this->upload === null || ! $this->reportIsClean()) {
+        if ($shop === null) {
+            $this->fail('import.error.no_shop');
+
             return;
         }
 
-        $this->runId = (string) Str::ulid();
+        if (! $this->reportIsClean()) {
+            $this->fail('import.error.not_checked');
 
-        ImportSubscriptionsJob::start(
+            return;
+        }
+
+        if ($this->stashId === null || ! ImportSubscriptionsJob::hasStash($this->stashId)) {
+            // The stash outlived its TTL, or this page was restored from an older
+            // session. Re-checking is one click and costs nothing.
+            $this->fail('import.error.stash_expired');
+
+            return;
+        }
+
+        $this->runId = $this->stashId;
+
+        ImportSubscriptionsJob::enqueue(
             shopId: (int) $shop->getKey(),
             runId: $this->runId,
-            contents: (string) file_get_contents($this->upload->getRealPath()),
             options: $this->options(),
         );
 
         $this->runResult = ['state' => ImportSubscriptionsJob::STATE_QUEUED];
 
         Notification::make()->title(__('import.action.commit'))->success()->send();
+    }
+
+    /** Say why, on screen. Never fail quietly. */
+    private function fail(string $key): void
+    {
+        Notification::make()->title(__($key))->danger()->persistent()->send();
     }
 
     /** Called by wire:poll while a run is in flight. */
@@ -193,15 +263,66 @@ class ImportSubscriptions extends Page
         return SubscriptionCsvSchema::COLUMNS;
     }
 
+    /** How many migrated subscriptions are currently parked, waiting to be released. */
+    public function heldCount(): int
+    {
+        $shop = $this->shop();
+
+        return $shop === null ? 0 : app(SubscriptionReleaser::class)->heldCount($shop);
+    }
+
+    /** Preview the release — counts and money, no writes. */
+    public function previewRelease(): void
+    {
+        $shop = $this->shop();
+
+        if ($shop !== null) {
+            $this->releasePreview = app(SubscriptionReleaser::class)->release($shop)->toArray();
+        }
+    }
+
+    /**
+     * Turn the parked subscriptions on. Deliberately NOT one click from the import:
+     * the preview has to have been asked for first, because this is the moment a
+     * few thousand cards become chargeable.
+     */
+    public function commitRelease(): void
+    {
+        $shop = $this->shop();
+
+        if ($shop === null || $this->releasePreview === null) {
+            return;
+        }
+
+        $this->releasePreview = app(SubscriptionReleaser::class)->release($shop, write: true)->toArray();
+
+        Notification::make()
+            ->title(__('import.release.done', ['count' => $this->releasePreview['released']]))
+            ->success()
+            ->send();
+    }
+
     private function options(): ImportOptions
     {
         return new ImportOptions(
             startCharging: $this->startCharging,
+            holdAsPaused: $this->holdAsPaused,
+            only: $this->onlyList(),
             defaultCurrency: strtoupper(trim($this->currency)) ?: SubscriptionCsvSchema::DEFAULT_CURRENCY,
             defaultProductId: trim($this->defaultProduct) ?: null,
             dateFormat: trim($this->dateFormat) ?: null,
-            filename: $this->upload?->getClientOriginalName(),
+            // The stashed name, not the live upload's: by commit time the temporary
+            // upload may be gone, and the audit trail should still name the file.
+            filename: $this->stashName ?? $this->upload?->getClientOriginalName(),
         );
+    }
+
+    /** @return list<string> */
+    private function onlyList(): array
+    {
+        return trim($this->only) === ''
+            ? []
+            : array_values(array_filter(array_map('trim', explode(',', $this->only)), fn (string $v): bool => $v !== ''));
     }
 
     private function shop(): ?Shop
