@@ -6,11 +6,13 @@ use App\Filament\Concerns\ShopScopedScreen;
 use App\Filament\Resources\SubscriptionResource\Pages;
 use App\Models\InstallmentPlan;
 use App\Models\Shop;
+use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Support\Tenant;
 use App\Support\Ui\Money;
 use App\Support\Ui\StatusBadge;
+use Filament\Forms\Components\DatePicker;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -32,9 +34,19 @@ class SubscriptionResource extends Resource
 
     // === CONSTANTS ===
     protected static ?string $model = InstallmentPlan::class;
+
     protected static ?string $slug = 'subscriptions';
+
     protected static ?string $navigationIcon = 'heroicon-o-arrow-path-rounded-square';
+
     protected static ?int $navigationSort = 20;
+
+    /**
+     * How far ahead a card counts as "expiring". Two months is the window in
+     * which a merchant can still ask the customer to update it before a cycle
+     * fails — long enough to act, short enough to be a real list.
+     */
+    public const CARD_EXPIRING_MONTHS = 2;
 
     public static function getNavigationGroup(): ?string
     {
@@ -124,12 +136,12 @@ class SubscriptionResource extends Resource
 
                 Tables\Columns\TextColumn::make('plan_kind')
                     ->label(__('subscriptions.list.col.kind'))
-                    ->formatStateUsing(fn (PlanKind $state): string => __('billing.plan_kind.' . $state->value)),
+                    ->formatStateUsing(fn (PlanKind $state): string => __('billing.plan_kind.'.$state->value)),
 
                 Tables\Columns\TextColumn::make('status')
                     ->label(__('subscriptions.list.col.status'))
                     ->badge()
-                    ->formatStateUsing(fn (PlanStatus $state): string => __('billing.status.' . $state->value))
+                    ->formatStateUsing(fn (PlanStatus $state): string => __('billing.status.'.$state->value))
                     ->color(fn (PlanStatus $state): string => self::filamentColor($state->value)),
 
                 Tables\Columns\TextColumn::make('next_charge_at')
@@ -151,8 +163,84 @@ class SubscriptionResource extends Resource
                 Tables\Filters\SelectFilter::make('status')
                     ->label(__('subscriptions.list.col.status'))
                     ->options(collect(PlanStatus::cases())
-                        ->mapWithKeys(fn (PlanStatus $s): array => [$s->value => __('billing.status.' . $s->value)])
+                        ->mapWithKeys(fn (PlanStatus $s): array => [$s->value => __('billing.status.'.$s->value)])
                         ->all()),
+
+                /*
+                 * WHEN it charges. The pair of dates is also the "click a date,
+                 * see everyone due then" drill-down: a link that sets both ends
+                 * to the same day lands here, so one filter serves both the
+                 * merchant scanning a week and the one auditing a single date.
+                 */
+                Tables\Filters\Filter::make('next_charge_at')
+                    ->label(__('subscriptions.filter.charge_date'))
+                    ->form([
+                        DatePicker::make('from')->label(__('subscriptions.filter.charge_from')),
+                        DatePicker::make('until')->label(__('subscriptions.filter.charge_until')),
+                    ])
+                    ->query(fn (Builder $query, array $data): Builder => $query
+                        ->when($data['from'] ?? null, fn (Builder $q, $d): Builder => $q->whereDate('next_charge_at', '>=', $d))
+                        ->when($data['until'] ?? null, fn (Builder $q, $d): Builder => $q->whereDate('next_charge_at', '<=', $d)))
+                    ->indicateUsing(function (array $data): ?string {
+                        $from = $data['from'] ?? null;
+                        $until = $data['until'] ?? null;
+
+                        if ($from === null && $until === null) {
+                            return null;
+                        }
+                        if ($from !== null && $from === $until) {
+                            return __('subscriptions.filter.charge_on', ['date' => $from]);
+                        }
+
+                        return __('subscriptions.filter.charge_between', [
+                            'from' => $from ?? '…',
+                            'until' => $until ?? '…',
+                        ]);
+                    }),
+
+                /*
+                 * The card, not the subscription. A plan can be perfectly active
+                 * and completely uncollectable because the card behind it expired
+                 * — the one list a merchant needs BEFORE the charge fails, not
+                 * after. Expiry is compared on (year, month) rather than a date
+                 * string so it works the same on Postgres and SQLite.
+                 */
+                Tables\Filters\SelectFilter::make('card_status')
+                    ->label(__('subscriptions.filter.card'))
+                    ->options([
+                        'expired' => __('subscriptions.filter.card_expired'),
+                        'expiring' => __('subscriptions.filter.card_expiring'),
+                        'valid' => __('subscriptions.filter.card_valid'),
+                        'none' => __('subscriptions.filter.card_none'),
+                    ])
+                    ->query(fn (Builder $query, array $data): Builder => match ($data['value'] ?? null) {
+                        'expired' => $query->whereHas('paymentMethod', fn (Builder $q): Builder => self::cardExpiredBefore($q, now())),
+                        'expiring' => $query->whereHas('paymentMethod', fn (Builder $q): Builder => self::cardExpiredBefore($q, now()->addMonths(self::CARD_EXPIRING_MONTHS))
+                            ->whereNot(fn (Builder $inner): Builder => self::cardExpiredBefore($inner, now()))),
+                        'valid' => $query->whereHas('paymentMethod', fn (Builder $q): Builder => $q->whereNot(fn (Builder $inner): Builder => self::cardExpiredBefore($inner, now()))),
+                        'none' => $query->whereDoesntHave('paymentMethod'),
+                        default => $query,
+                    }),
+
+                /* How the last attempt went — the failures worth chasing. */
+                Tables\Filters\SelectFilter::make('last_payment_status')
+                    ->label(__('subscriptions.filter.last_payment'))
+                    ->options(collect(PaymentStatus::cases())
+                        ->mapWithKeys(fn (PaymentStatus $s): array => [$s->value => __('billing.status.'.$s->value)])
+                        ->all())
+                    ->query(function (Builder $query, array $data): Builder {
+                        $status = $data['value'] ?? null;
+
+                        if ($status === null || $status === '') {
+                            return $query;
+                        }
+
+                        // The LATEST payment only: a plan that failed once a year
+                        // ago and has billed cleanly since is not a failing plan.
+                        return $query->whereHas('payments', fn (Builder $q): Builder => $q
+                            ->where('status', $status)
+                            ->whereRaw('sequence = (select max(sequence) from installment_payments p2 where p2.plan_id = installment_payments.plan_id)'));
+                    }),
             ])
             ->recordUrl(fn (InstallmentPlan $record): string => Pages\ViewSubscription::getUrl(['plan' => $record->getKey()]))
             ->defaultSort('id', 'desc')
@@ -160,18 +248,39 @@ class SubscriptionResource extends Resource
             ->emptyStateIcon('heroicon-o-arrow-path-rounded-square');
     }
 
+    /**
+     * "This card is dead by <date>" as a query, on (exp_year, exp_month).
+     *
+     * A card is good until the END of its expiry month, so the comparison is
+     * "expires before this month" OR "same year and an earlier month". Doing it
+     * on the two integer columns rather than composing a date string keeps the
+     * same behaviour on Postgres and on the tests' SQLite, and lets the index on
+     * the columns do the work.
+     */
+    private static function cardExpiredBefore(Builder $query, \DateTimeInterface $when): Builder
+    {
+        $year = (int) $when->format('Y');
+        $month = (int) $when->format('n');
+
+        return $query->where(fn (Builder $q): Builder => $q
+            ->where('exp_year', '<', $year)
+            ->orWhere(fn (Builder $same): Builder => $same
+                ->where('exp_year', $year)
+                ->where('exp_month', '<', $month)));
+    }
+
     /** Kind-aware amount/balance cell (installments show paid/total + bal; recurring show per-cycle). */
     public static function amountBalance(InstallmentPlan $record): string
     {
         if ($record->plan_kind === PlanKind::RECURRING) {
             $freq = $record->interval_count > 1
-                ? $record->interval_count . 'd'
+                ? $record->interval_count.'d'
                 : ($record->billing_frequency?->value ?? '');
 
-            return Money::format($record->installment_amount) . ($freq ? ' / ' . $freq : '');
+            return Money::format($record->installment_amount).($freq ? ' / '.$freq : '');
         }
 
-        return Money::format($record->total_charged) . ' / ' . Money::format($record->total_amount);
+        return Money::format($record->total_charged).' / '.Money::format($record->total_amount);
     }
 
     /** Maps a status to the Filament color name used by its native ->color(). */

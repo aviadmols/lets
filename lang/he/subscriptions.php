@@ -24,6 +24,21 @@ return [
             'installments' => 'תשלומים',
             'recurring' => 'מנוי חוזר',
         ],
+
+        'charge_date' => 'תאריך החיוב הבא',
+        'charge_from' => 'מחויב מ־',
+        'charge_until' => 'מחויב עד',
+        'charge_on' => 'מחויב בתאריך :date',
+        'charge_between' => 'מחויב :from ← :until',
+
+        /* הכרטיס שמאחורי המנוי — הכשלונות שאפשר עוד למנוע. */
+        'card' => 'מצב הכרטיס',
+        'card_expired' => 'פג תוקף',
+        'card_expiring' => 'עומד לפוג',
+        'card_valid' => 'בתוקף',
+        'card_none' => 'אין כרטיס שמור',
+
+        'last_payment' => 'התשלום האחרון',
     ],
 
     'detail' => [

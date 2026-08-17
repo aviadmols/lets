@@ -24,6 +24,21 @@ return [
             'installments' => 'Installments',
             'recurring' => 'Recurring',
         ],
+
+        'charge_date' => 'Next charge date',
+        'charge_from' => 'Charging from',
+        'charge_until' => 'Charging until',
+        'charge_on' => 'Charging on :date',
+        'charge_between' => 'Charging :from → :until',
+
+        /* The card behind the plan — the failures a merchant can still prevent. */
+        'card' => 'Card status',
+        'card_expired' => 'Expired',
+        'card_expiring' => 'Expiring soon',
+        'card_valid' => 'Valid',
+        'card_none' => 'No saved card',
+
+        'last_payment' => 'Last payment',
     ],
 
     'detail' => [
