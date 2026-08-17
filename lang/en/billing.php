@@ -185,10 +185,15 @@ return [
             'support_email_help' => 'Where customers can reach you about their plan.',
         ],
 
+        /* Every case of BillingFrequency — a filter offers them all, and a
+           missing key renders as its own raw name in front of a merchant. */
         'frequency' => [
+            'daily' => 'Daily',
             'weekly' => 'Weekly',
             'biweekly' => 'Every 2 weeks',
             'monthly' => 'Monthly',
+            'quarterly' => 'Quarterly',
+            'yearly' => 'Yearly',
         ],
     ],
 ];

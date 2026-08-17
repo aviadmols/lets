@@ -24,7 +24,9 @@ class InstallmentPaymentMethod extends Model
     protected $table = 'installment_payment_methods';
 
     public const STATUS_ACTIVE = 'active';
+
     public const STATUS_EXPIRED = 'expired';
+
     public const STATUS_REVOKED = 'revoked';
 
     protected $guarded = [];
@@ -61,6 +63,57 @@ class InstallmentPaymentMethod extends Model
                 'encrypted_payplus_token' => $value === null ? null : Crypt::encryptString($value),
             ],
         );
+    }
+
+    /**
+     * Correct the card's LABEL from what PayPlus just told us about it.
+     *
+     * The expiry, brand and last four here are description, not credentials: the
+     * charge rides `payplus_card_token_uid` and never reads any of them. They are
+     * written once at vaulting — or copied from a migration file, which is how a
+     * store arrives with dates that were already years old — and until now they
+     * were never written again. Meanwhile the token keeps working straight
+     * through a bank's renewal, which reissues the same card with a new date. So
+     * the label drifts out of true while the card is perfectly chargeable, and a
+     * merchant reads "expired" about somebody who paid this morning.
+     *
+     * This is the correction, and the only trustworthy moment for it: PayPlus has
+     * just charged the card and is describing the card it charged. Nothing else
+     * in the system can claim to know.
+     *
+     * Deliberately narrow:
+     *  - only fields the response actually carried (an absent one never nulls a
+     *    good stored value);
+     *  - it SAVES only when something really changed, so a monthly cycle across
+     *    thousands of subscribers does not become thousands of pointless writes;
+     *  - it never touches the token, the status or the shop.
+     *
+     * @param  array{exp_month?: int, exp_year?: int, card_last_four?: string, card_brand?: string}  $card
+     * @return bool true when the stored label was actually corrected
+     */
+    public function refreshLabelFrom(array $card): bool
+    {
+        $changed = [];
+
+        foreach (['exp_month', 'exp_year', 'card_last_four', 'card_brand'] as $field) {
+            if (! array_key_exists($field, $card)) {
+                continue;
+            }
+
+            // Loose comparison on purpose: the column may hold "09" where the
+            // gateway sends 9, and rewriting one as the other is not a change.
+            if ((string) $this->{$field} !== (string) $card[$field]) {
+                $changed[$field] = $card[$field];
+            }
+        }
+
+        if ($changed === []) {
+            return false;
+        }
+
+        $this->forceFill($changed)->save();
+
+        return true;
     }
 
     public function isActive(): bool

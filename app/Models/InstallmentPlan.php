@@ -8,6 +8,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use BackedEnum;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -155,6 +156,46 @@ class InstallmentPlan extends Model
         $catalog = trim((string) ($this->product?->title ?? ''));
 
         return $catalog !== '' ? $catalog : null;
+    }
+
+    /**
+     * The day this subscription ENDS — or null, because most do not end.
+     *
+     * A recurring plan bills until somebody cancels it; that is what recurring
+     * means, and "no end date" is the correct answer for it rather than a gap in
+     * the data. Only a plan that will genuinely stop carries a date here.
+     *
+     * The distinction matters because a migration file blurs it. The store that
+     * moved in carries `expires_at` on nearly every row, and for the renewing
+     * majority it holds the end of the CURRENT PERIOD — the very same value as
+     * current_period_end, the day the next charge falls. Printing that as an
+     * expiry would tell a merchant that hundreds of subscribers are about to
+     * lapse when every one of them is about to renew. Measured on this store's
+     * own data: of 400 imported rows, 344 auto-renew and 367 have expires_at
+     * equal to the period end.
+     *
+     * So the date is honoured ONLY when the source said the subscription does
+     * not auto-renew — the one case where it describes an ending.
+     */
+    public function expiresAt(): ?CarbonImmutable
+    {
+        $import = (array) (($this->meta ?? [])['import'] ?? []);
+
+        // Absent means unknown, and unknown must not read as "ends": a plan
+        // created at checkout has no import block at all and never expires.
+        if (! array_key_exists('auto_renew', $import) || (bool) $import['auto_renew'] === true) {
+            return null;
+        }
+
+        foreach (['expires_at', 'current_period_end'] as $key) {
+            $value = $import[$key] ?? null;
+
+            if (is_string($value) && $value !== '') {
+                return CarbonImmutable::parse($value);
+            }
+        }
+
+        return null;
     }
 
     /**

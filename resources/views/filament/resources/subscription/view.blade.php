@@ -61,6 +61,19 @@
                     <span class="rc-kv__v rc-ltr">{{ optional($record->next_charge_at)->format('d M Y') ?? '—' }}</span>
                     <span class="rc-kv__k">{{ __('subscriptions.detail.started') }}</span>
                     <span class="rc-kv__v rc-ltr">{{ optional($record->created_at)->format('d M Y') }}</span>
+
+                    {{--
+                        WHEN IT ENDS — and "it does not" is an answer, not a gap.
+                        Most recurring plans bill until somebody cancels, so the
+                        row says so in words rather than leaving a dash the
+                        merchant has to interpret. A date appears only when the
+                        subscription genuinely stops (see InstallmentPlan::expiresAt).
+                    --}}
+                    <span class="rc-kv__k">{{ __('subscriptions.detail.expires') }}</span>
+                    @php $expires = $record->expiresAt(); @endphp
+                    <span class="rc-kv__v {{ $expires ? 'rc-ltr' : '' }}">
+                        {{ $expires ? $expires->format('d M Y') : __('subscriptions.detail.no_expiry') }}
+                    </span>
                     @php $checkout = $this->checkoutOrder(); @endphp
                     @if($checkout)
                         <span class="rc-kv__k">{{ __('subscriptions.detail.checkout_order') }}</span>

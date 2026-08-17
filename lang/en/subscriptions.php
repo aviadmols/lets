@@ -22,7 +22,7 @@ return [
         'all' => 'All',
         'upcoming' => 'Upcoming',
         'failed' => 'Failed',
-        'card_expired' => 'Expired card',
+        'failing' => 'Could not charge',
         'paused' => 'Paused',
         'cancelled' => 'Cancelled',
     ],
@@ -40,12 +40,8 @@ return [
         'charge_on' => 'Charging on :date',
         'charge_between' => 'Charging :from → :until',
 
-        /* The card behind the plan — the failures a merchant can still prevent. */
-        'card' => 'Card status',
-        'card_expired' => 'Expired',
-        'card_expiring' => 'Expiring soon',
-        'card_valid' => 'Valid',
-        'card_none' => 'No saved card',
+        'frequency' => 'Billing frequency',
+        'product' => 'Product',
 
         'last_payment' => 'Last payment',
     ],
@@ -71,6 +67,8 @@ return [
         'preview_unavailable' => 'This email preview is no longer available.',
         'next_cycle' => 'Next cycle',
         'started' => 'Started',
+        'expires' => 'Expires',
+        'no_expiry' => 'No end date — renews until cancelled',
         'checkout_order' => 'Checkout order',
         'coupon_applied' => 'Coupon applied',
         'intro_window' => 'Intro discount',
@@ -139,6 +137,21 @@ return [
             'failed_retry' => 'Charge failed — a retry is scheduled.',
             'skipped' => 'Nothing to charge right now (already paid or awaiting consent).',
         ],
+        'frequency' => [
+            'label' => 'Change frequency',
+            'heading' => 'How often does this bill?',
+            'body' => 'Applies from the cycle AFTER the next charge. The next charge date does not move — use "Edit next charge" for that.',
+            'every' => 'Every',
+            'unit' => 'Unit',
+            'unit_months' => 'months',
+            'unit_years' => 'years',
+            'save' => 'Save frequency',
+            'success' => 'Billing frequency updated.',
+        ],
+        'export' => [
+            'label' => 'Export these',
+        ],
+
         'edit_next' => [
             'label' => 'Edit next charge',
             'heading' => 'Edit the next charge',

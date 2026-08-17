@@ -10,6 +10,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -50,15 +51,24 @@ final class SubscriptionExporter
 
     private const ESCAPE = '';
 
-    /** A browser download that starts before the last row is read. */
-    public function download(Shop $shop): StreamedResponse
+    /**
+     * A browser download that starts before the last row is read.
+     *
+     * The optional query is what lets the SUBSCRIPTIONS SCREEN export exactly
+     * what it is showing — its tab, its filters, its search — instead of the
+     * whole book. Omitted, it exports everything, which is what the import
+     * screen wants.
+     *
+     * @param  Builder<InstallmentPlan>|null  $query
+     */
+    public function download(Shop $shop, ?Builder $query = null): StreamedResponse
     {
         $filename = 'subscriptions-'.$shop->getKey().'-'.now()->format('Y-m-d').'.csv';
 
         return response()->streamDownload(
-            function () use ($shop): void {
+            function () use ($shop, $query): void {
                 $handle = fopen('php://output', 'w');
-                $this->write($shop, $handle);
+                $this->write($shop, $handle, $query);
                 fclose($handle);
             },
             $filename,
@@ -86,15 +96,16 @@ final class SubscriptionExporter
      * @param  resource  $handle
      * @return int rows written
      */
-    public function write(Shop $shop, $handle): int
+    public function write(Shop $shop, $handle, ?Builder $query = null): int
     {
         fwrite($handle, SubscriptionCsvSchema::BOM);
         $this->put($handle, SubscriptionCsvSchema::COLUMNS);
 
-        return (int) Tenant::run($shop, function () use ($handle): int {
+        return (int) Tenant::run($shop, function () use ($handle, $query): int {
             $written = 0;
 
-            InstallmentPlan::query()
+            ($query ?? InstallmentPlan::query())
+                ->reorder()
                 ->orderBy('id')
                 ->chunkById(self::CHUNK, function (Collection $plans) use ($handle, &$written): void {
                     $methods = $this->methodsFor($plans);

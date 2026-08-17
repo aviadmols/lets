@@ -6,6 +6,7 @@ use App\Filament\Concerns\ShopScopedScreen;
 use App\Filament\Resources\SubscriptionResource\Pages;
 use App\Models\InstallmentPlan;
 use App\Models\Shop;
+use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
@@ -40,13 +41,6 @@ class SubscriptionResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-arrow-path-rounded-square';
 
     protected static ?int $navigationSort = 20;
-
-    /**
-     * How far ahead a card counts as "expiring". Two months is the window in
-     * which a merchant can still ask the customer to update it before a cycle
-     * fails — long enough to act, short enough to be a real list.
-     */
-    public const CARD_EXPIRING_MONTHS = 2;
 
     public static function getNavigationGroup(): ?string
     {
@@ -199,28 +193,31 @@ class SubscriptionResource extends Resource
                     }),
 
                 /*
-                 * The card, not the subscription. A plan can be perfectly active
-                 * and completely uncollectable because the card behind it expired
-                 * — the one list a merchant needs BEFORE the charge fails, not
-                 * after. Expiry is compared on (year, month) rather than a date
-                 * string so it works the same on Postgres and SQLite.
+                 * Cadence. The stored shape is a unit plus a count, so "monthly"
+                 * and "every 3 months" are two different rows — the filter offers
+                 * the UNIT, which is the question a merchant actually asks ("show
+                 * me the yearly ones"), and leaves the count to the column.
                  */
-                Tables\Filters\SelectFilter::make('card_status')
-                    ->label(__('subscriptions.filter.card'))
-                    ->options([
-                        'expired' => __('subscriptions.filter.card_expired'),
-                        'expiring' => __('subscriptions.filter.card_expiring'),
-                        'valid' => __('subscriptions.filter.card_valid'),
-                        'none' => __('subscriptions.filter.card_none'),
-                    ])
-                    ->query(fn (Builder $query, array $data): Builder => match ($data['value'] ?? null) {
-                        'expired' => $query->whereHas('paymentMethod', fn (Builder $q): Builder => self::cardExpiredBefore($q, now())),
-                        'expiring' => $query->whereHas('paymentMethod', fn (Builder $q): Builder => self::cardExpiredBefore($q, now()->addMonths(self::CARD_EXPIRING_MONTHS))
-                            ->whereNot(fn (Builder $inner): Builder => self::cardExpiredBefore($inner, now()))),
-                        'valid' => $query->whereHas('paymentMethod', fn (Builder $q): Builder => $q->whereNot(fn (Builder $inner): Builder => self::cardExpiredBefore($inner, now()))),
-                        'none' => $query->whereDoesntHave('paymentMethod'),
-                        default => $query,
-                    }),
+                Tables\Filters\SelectFilter::make('billing_frequency')
+                    ->label(__('subscriptions.filter.frequency'))
+                    ->options(collect(BillingFrequency::cases())
+                        ->mapWithKeys(fn (BillingFrequency $f): array => [
+                            $f->value => __('billing.settings.frequency.'.$f->value),
+                        ])
+                        ->all()),
+
+                /*
+                 * Product. Matched on the platform product id rather than on a
+                 * title: two plans can name the same product differently (one
+                 * captured its title at checkout, one fell back to the catalog),
+                 * and an id is the only thing that identifies the same thing
+                 * twice. The option LABELS still come from the catalog, so the
+                 * merchant reads product names and the query stays exact.
+                 */
+                Tables\Filters\SelectFilter::make('external_product_id')
+                    ->label(__('subscriptions.filter.product'))
+                    ->options(fn (): array => self::productOptions())
+                    ->searchable(),
 
                 /* How the last attempt went — the failures worth chasing. */
                 Tables\Filters\SelectFilter::make('last_payment_status')
@@ -249,24 +246,26 @@ class SubscriptionResource extends Resource
     }
 
     /**
-     * "This card is dead by <date>" as a query, on (exp_year, exp_month).
+     * Products this shop actually has subscriptions for, as id → name.
      *
-     * A card is good until the END of its expiry month, so the comparison is
-     * "expires before this month" OR "same year and an earlier month". Doing it
-     * on the two integer columns rather than composing a date string keeps the
-     * same behaviour on Postgres and on the tests' SQLite, and lets the index on
-     * the columns do the work.
+     * Built from the PLANS, not from the whole catalog: a filter listing four
+     * hundred products of which six are subscribed to is a filter nobody can
+     * use. The label falls back to the id so a plan whose product was deleted
+     * from the catalog is still selectable rather than an empty row.
+     *
+     * @return array<string, string>
      */
-    private static function cardExpiredBefore(Builder $query, \DateTimeInterface $when): Builder
+    public static function productOptions(): array
     {
-        $year = (int) $when->format('Y');
-        $month = (int) $when->format('n');
-
-        return $query->where(fn (Builder $q): Builder => $q
-            ->where('exp_year', '<', $year)
-            ->orWhere(fn (Builder $same): Builder => $same
-                ->where('exp_year', $year)
-                ->where('exp_month', '<', $month)));
+        return InstallmentPlan::query()
+            ->whereNotNull('external_product_id')
+            ->with('product')
+            ->get(['id', 'external_product_id', 'meta'])
+            ->mapWithKeys(static fn (InstallmentPlan $plan): array => [
+                (string) $plan->external_product_id => $plan->productTitle() ?: (string) $plan->external_product_id,
+            ])
+            ->sort()
+            ->all();
     }
 
     /** Kind-aware amount/balance cell (installments show paid/total + bal; recurring show per-cycle). */

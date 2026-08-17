@@ -218,6 +218,17 @@ final class ChargeOrchestrator
 
         $payment->markSucceeded($result->transactionUid, $result->approvalNumber, $masked);
 
+        // The card just told us what it is. Our stored expiry/brand/last-four are
+        // written once at vaulting and never again — while the token keeps working
+        // through a bank's renewal, which reissues the same card with a new date.
+        // So the label drifts, and a merchant reads "expired" about somebody who
+        // paid this morning. PayPlus describes the card it charged in every
+        // response; this is the one moment that description can be trusted.
+        //
+        // A label, not a credential: it cannot affect this or any future charge,
+        // and a failure to write it must never touch the money that just moved.
+        $this->refreshCardLabel($plan, $result);
+
         // Advance plan money + state INSIDE the txn, BEFORE any external side effect.
         $plan->total_charged = round((float) $plan->total_charged + (float) $payment->amount, 2);
         $plan->save();
@@ -284,6 +295,38 @@ final class ChargeOrchestrator
         );
 
         return ChargeOutcome::succeeded($ledger->idempotency_key, $result->transactionUid, $isFinal);
+    }
+
+    /**
+     * Correct the stored card label from the charge response — best effort.
+     *
+     * Wrapped because it is bookkeeping standing next to money that has already
+     * moved: the ledger is succeeded and the plan advanced before this runs, and
+     * nothing about a description is worth risking that on. A failure is logged
+     * and the charge stands.
+     */
+    private function refreshCardLabel(InstallmentPlan $plan, GatewayResult $result): void
+    {
+        try {
+            $card = $result->cardInformation();
+            $method = $plan->activePaymentMethod();
+
+            if ($card === [] || $method === null || ! $method->refreshLabelFrom($card)) {
+                return;
+            }
+
+            Log::info('payplus.card_label_refreshed', [
+                'shop_id' => (int) $plan->shop_id,
+                'plan_id' => $plan->getKey(),
+                'payment_method_id' => $method->getKey(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('payplus.card_label_refresh_failed', [
+                'plan_id' => $plan->getKey(),
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function onFailure(

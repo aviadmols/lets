@@ -66,6 +66,62 @@ final class GatewayResult
         );
     }
 
+    /**
+     * The card PayPlus actually charged, as it describes it right now.
+     *
+     * Every charge response carries `data.card_information` — the four digits,
+     * the brand, and the CURRENT expiry. That last one matters more than it
+     * looks: the expiry we store is written once, when the card is vaulted (or
+     * copied from a migration file), and never again — while the token keeps
+     * working through a bank's renewal, which issues the same card with a new
+     * date. So our label goes stale while the card is perfectly chargeable, and
+     * this is where the truth comes back to us.
+     *
+     * Shapes vary by endpoint, so both the nested and the flat forms are read.
+     * Returns only the keys that were actually present — an absent field must
+     * not overwrite a good stored value with a null.
+     *
+     * @return array{exp_month?: int, exp_year?: int, card_last_four?: string, card_brand?: string}
+     */
+    public function cardInformation(): array
+    {
+        $card = $this->raw['data']['card_information']
+            ?? $this->raw['data']['data']['card_information']
+            ?? $this->raw['card_information']
+            ?? null;
+
+        if (! is_array($card)) {
+            return [];
+        }
+
+        $out = [];
+
+        $month = (int) ($card['expiry_month'] ?? 0);
+        if ($month >= 1 && $month <= 12) {
+            $out['exp_month'] = $month;
+        }
+
+        // PayPlus sends two-digit years ("29") as often as four. Both mean this
+        // century; a bare "29" written straight to the column would read as the
+        // year 29 and make every card look expired.
+        $year = (int) ($card['expiry_year'] ?? 0);
+        if ($year > 0) {
+            $out['exp_year'] = $year < 100 ? 2000 + $year : $year;
+        }
+
+        $four = trim((string) ($card['four_digits'] ?? ''));
+        if ($four !== '') {
+            $out['card_last_four'] = $four;
+        }
+
+        $brand = trim((string) ($card['brand_name'] ?? $card['brand'] ?? ''));
+        if ($brand !== '') {
+            $out['card_brand'] = $brand;
+        }
+
+        return $out;
+    }
+
     /** Build a transport-level failure (HTTP error, timeout, malformed body). */
     public static function transportFailure(string $code, string $message, array $raw = []): self
     {

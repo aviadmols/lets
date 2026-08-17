@@ -2,19 +2,25 @@
 
 namespace App\Filament\Resources\SubscriptionResource\Pages;
 
+use App\Domain\Billing\CycleAmountResolver;
 use App\Domain\Lifecycle\ChargeNowService;
 use App\Domain\Lifecycle\SubscriptionEditService;
 use App\Domain\Lifecycle\SubscriptionLifecycleService;
 use App\Filament\Resources\SubscriptionResource;
 use App\Models\ActivityEvent;
 use App\Models\InstallmentPayment;
+use App\Models\InstallmentPlan;
+use App\Models\MerchantMailSettings;
 use App\Models\PaymentLedger;
+use App\Models\Product;
+use App\Models\Shop;
+use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentType;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Services\ChargeOutcome;
-use App\Models\MerchantMailSettings;
+use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Support\EmailPreviewRenderer;
 use App\Support\Tenant;
 use App\Support\Ui\EventPresenter;
@@ -46,10 +52,18 @@ class ViewSubscription extends Page
 {
     // === CONSTANTS ===
     protected static string $resource = SubscriptionResource::class;
+
     protected static string $view = 'filament.resources.subscription.view';
 
     /** Cap the timeline/ledger feed length on the detail page. */
     public const FEED_LIMIT = 50;
+
+    /**
+     * The largest interval a cadence may carry. Twelve of anything is a year of
+     * months or a dozen years; past that it is a typo, and a typo in a billing
+     * interval is a customer who is never charged again.
+     */
+    public const MAX_INTERVAL = 12;
 
     /**
      * #[Locked] — the record may NEVER be re-pointed from the browser. Livewire re-hydrates a
@@ -59,7 +73,7 @@ class ViewSubscription extends Page
      * act on (pause/cancel/charge) — another shop's plan. Tenant-safety is a release blocker.
      */
     #[Locked]
-    public \App\Models\InstallmentPlan $record;
+    public InstallmentPlan $record;
 
     /**
      * The route param is `{plan}` (see SubscriptionResource::getPages()) and NOT `{record}` — that
@@ -213,7 +227,109 @@ class ViewSubscription extends Page
                         ]),
                 ])
                 ->action(fn (array $data) => $this->editNextCharge($data)),
+
+            /*
+             * How often it bills, from here on.
+             *
+             * Expressed as a NUMBER and a UNIT — every 2 months, every 1 year —
+             * rather than as the engine's six-name enum, because that is how a
+             * merchant says it and because "quarterly" and "every 3 months" being
+             * two different answers to the same question is a trap. The unit list
+             * is deliberately months and years only: those are the two a
+             * subscription business actually re-negotiates.
+             *
+             * It changes the CADENCE, never the next date. A subscriber who is
+             * due on the 29th stays due on the 29th; the new interval applies
+             * from the cycle after that. Moving somebody's next charge because
+             * their plan was re-priced is how you charge a person early, and
+             * "Edit next charge" already exists for when that is what you mean.
+             */
+            Actions\Action::make('changeFrequency')
+                ->label(__('subscriptions.action.frequency.label'))
+                ->icon('heroicon-m-arrow-path')
+                ->color('gray')
+                ->visible(fn (): bool => $this->canChangeFrequency())
+                ->fillForm(fn (): array => $this->frequencyDefaults())
+                ->modalHeading(__('subscriptions.action.frequency.heading'))
+                ->modalDescription(__('subscriptions.action.frequency.body'))
+                ->modalSubmitActionLabel(__('subscriptions.action.frequency.save'))
+                ->form([
+                    TextInput::make('interval_count')
+                        ->label(__('subscriptions.action.frequency.every'))
+                        ->numeric()
+                        ->minValue(1)
+                        ->maxValue(self::MAX_INTERVAL)
+                        ->required(),
+                    Select::make('billing_frequency')
+                        ->label(__('subscriptions.action.frequency.unit'))
+                        ->options([
+                            BillingFrequency::MONTHLY->value => __('subscriptions.action.frequency.unit_months'),
+                            BillingFrequency::YEARLY->value => __('subscriptions.action.frequency.unit_years'),
+                        ])
+                        ->required(),
+                ])
+                ->action(fn (array $data) => $this->changeFrequency($data)),
         ];
+    }
+
+    /** A cadence belongs to a recurring plan; installments bill a fixed schedule. */
+    private function canChangeFrequency(): bool
+    {
+        return $this->record->plan_kind === PlanKind::RECURRING
+            && ! $this->record->status->isTerminal();
+    }
+
+    /** @return array<string, mixed> */
+    private function frequencyDefaults(): array
+    {
+        $current = $this->record->billing_frequency;
+
+        return [
+            'interval_count' => max(1, (int) $this->record->interval_count),
+            // A plan on a cadence this form cannot express (weekly, quarterly)
+            // opens on months rather than on a blank — the merchant is here to
+            // change it, and an empty select would look like missing data.
+            'billing_frequency' => $current === BillingFrequency::YEARLY
+                ? BillingFrequency::YEARLY->value
+                : BillingFrequency::MONTHLY->value,
+        ];
+    }
+
+    /**
+     * Write the new cadence. The NEXT charge date is deliberately untouched —
+     * see the action's note. Recorded on the timeline because a merchant asking
+     * "why is this billing yearly now" deserves an answer with a name on it.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    protected function changeFrequency(array $data): void
+    {
+        $unit = BillingFrequency::tryFrom((string) ($data['billing_frequency'] ?? ''));
+        $count = max(1, min(self::MAX_INTERVAL, (int) ($data['interval_count'] ?? 1)));
+
+        if ($unit === null) {
+            Notification::make()->title(__('subscriptions.action.failed'))->danger()->send();
+
+            return;
+        }
+
+        $was = trim(($this->record->interval_count ?? 1).' '.($this->record->billing_frequency?->value ?? ''));
+
+        $this->record->forceFill([
+            'billing_frequency' => $unit->value,
+            'interval_count' => $count,
+        ])->save();
+
+        Timeline::record(
+            kind: Timeline::KIND_PLAN_EDITED,
+            details: ['field' => 'billing_frequency', 'was' => $was, 'now' => $count.' '.$unit->value],
+            planId: $this->record->getKey(),
+            shopId: (int) $this->record->shop_id,
+        );
+
+        $this->record->refresh();
+
+        Notification::make()->title(__('subscriptions.action.frequency.success'))->success()->send();
     }
 
     /** Editing the next charge is a recurring-plan, non-terminal operation. */
@@ -274,11 +390,11 @@ class ViewSubscription extends Page
     /** The tenant's synced product catalog as Select options ("Title · ₪price"), keyed by external id. */
     public function productOptions(): array
     {
-        return \App\Models\Product::query()
+        return Product::query()
             ->with('variants')
             ->orderBy('title')
             ->get()
-            ->mapWithKeys(function (\App\Models\Product $product): array {
+            ->mapWithKeys(function (Product $product): array {
                 $variant = $product->variants->sortBy('position')->first();
                 $price = $variant !== null
                     ? ' · '.Money::format((float) $variant->price, $this->record->currency ?: Money::DEFAULT_CURRENCY)
@@ -444,7 +560,7 @@ class ViewSubscription extends Page
     {
         if ($this->record->plan_kind === PlanKind::RECURRING) {
             $freq = $this->record->interval_count > 1
-                ? $this->record->interval_count . 'd'
+                ? $this->record->interval_count.'d'
                 : ($this->record->billing_frequency?->value ?? '');
 
             return __('subscriptions.detail.every_frequency', ['frequency' => $freq]);
@@ -479,7 +595,7 @@ class ViewSubscription extends Page
         if ($orderId === '' || ! ctype_digit($orderId)) {
             return null;
         }
-        if ($this->record->shop?->platform !== \App\Models\Shop::PLATFORM_WOOCOMMERCE) {
+        if ($this->record->shop?->platform !== Shop::PLATFORM_WOOCOMMERCE) {
             return null;
         }
         $base = rtrim((string) ($this->record->shop?->wooConfig()['base_url'] ?? ''), '/');
@@ -551,7 +667,7 @@ class ViewSubscription extends Page
      */
     public function introWindow(): ?array
     {
-        $status = (new \App\Domain\Billing\CycleAmountResolver)->introWindowStatus($this->record);
+        $status = (new CycleAmountResolver)->introWindowStatus($this->record);
         if ($status === null) {
             return null;
         }
@@ -566,7 +682,7 @@ class ViewSubscription extends Page
     /** The amount the NEXT charge will bill (override → intro window → steady state). */
     public function nextCycleAmount(): float
     {
-        $resolver = new \App\Domain\Billing\CycleAmountResolver;
+        $resolver = new CycleAmountResolver;
 
         return $resolver->amountForCharge($this->record, $resolver->chargeNumberForNext($this->record));
     }
@@ -655,7 +771,7 @@ class ViewSubscription extends Page
         return (int) (round($this->progressPercent() / 5) * 5);
     }
 
-    /** @return iterable<\App\Models\InstallmentPayment> ordered schedule slots */
+    /** @return iterable<InstallmentPayment> ordered schedule slots */
     public function schedule(): iterable
     {
         return $this->record->payments()->orderBy('sequence')->get();
