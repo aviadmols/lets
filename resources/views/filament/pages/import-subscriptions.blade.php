@@ -79,16 +79,39 @@
                     </span>
                 </label>
 
-                <div class="rc-row">
+                {{--
+                    TWO signals on the import button, deliberately from two different
+                    layers. `pressed` is Alpine and fires on the DOM click itself; the
+                    line beside it is Livewire's and appears only once a request is
+                    actually IN FLIGHT. A merchant reads either as "something is
+                    happening" — but if the first appears and the second never does,
+                    the click reached the page and never became a request, which is
+                    the one thing "I press it and nothing happens" could not say.
+                --}}
+                <div class="rc-row" x-data="{ pressed: false }">
                     <x-rc.cta variant="primary" wire:click="check" wire:loading.attr="disabled">
                         {{ __('import.action.dry_run') }}
                     </x-rc.cta>
 
                     {{-- Only a file the scan cleared can be written. --}}
                     @if($this->reportIsClean() && $this->runId === null)
-                        <x-rc.cta variant="danger" wire:click="commit" wire:loading.attr="disabled">
+                        <x-rc.cta
+                            variant="danger"
+                            wire:click="commit"
+                            wire:target="commit"
+                            wire:loading.attr="disabled"
+                            x-on:click="pressed = true"
+                        >
                             {{ __('import.action.commit') }}
                         </x-rc.cta>
+
+                        <span class="rc-muted" x-show="pressed" x-cloak wire:loading.remove wire:target="commit">
+                            {{ __('import.action.pressed') }}
+                        </span>
+
+                        <span class="rc-muted" wire:loading wire:target="commit">
+                            {{ __('import.action.committing') }}
+                        </span>
                     @endif
                 </div>
             </div>

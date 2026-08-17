@@ -11,6 +11,9 @@ return [
         'choose_file' => 'Choose CSV file',
         'dry_run' => 'Check the file',
         'commit' => 'Import now',
+        // Two states, from two layers — see the note in the Blade view.
+        'pressed' => 'Pressed — waiting for the server…',
+        'committing' => 'Sending to the server…',
         'export' => 'Export subscriptions (CSV)',
         'template' => 'Download an empty template',
     ],
