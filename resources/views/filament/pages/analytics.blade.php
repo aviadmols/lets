@@ -83,5 +83,103 @@
                 <span class="rc-muted">{{ __('analytics.trend.note') }}</span>
             @endif
         </div>
+
+        {{--
+            PAYMENTS — the money half, read from the ledger.
+            The subscriber numbers above describe the book; these describe whether
+            it is actually being billed. Same range selector as the trend.
+        --}}
+        <div class="rc-section">
+            <div class="rc-section__title">{{ __('analytics.payments.title') }}</div>
+
+            <div class="rc-kpi-grid">
+                @foreach($this->paymentKpis() as $kpi)
+                    <x-rc.kpi :label="$kpi['label']" :value="$kpi['value']" />
+                @endforeach
+            </div>
+
+            <span class="rc-muted">{{ __('analytics.payments.note') }}</span>
+        </div>
+
+        {{-- Realized vs lost, month by month. --}}
+        <div class="rc-section">
+            <div class="rc-section__title">{{ __('analytics.payments.chart_title') }}</div>
+
+            @php $pc = $this->paymentChart(); @endphp
+            @if(! $pc['has_data'])
+                <x-rc.empty title="analytics.payments.empty" icon="heroicon-o-banknotes" />
+            @else
+                <div class="rc-chart rc-ltr">
+                    <svg viewBox="0 0 {{ $pc['width'] }} {{ $pc['height'] }}" role="img"
+                         aria-label="{{ __('analytics.payments.chart_title') }}" preserveAspectRatio="xMidYMid meet">
+                        <line class="rc-chart__axis" x1="0" y1="{{ $pc['zero_y'] }}"
+                              x2="{{ $pc['width'] }}" y2="{{ $pc['zero_y'] }}"></line>
+
+                        @foreach($pc['bars'] as $bar)
+                            @if($bar['realized_h'] > 0)
+                                <rect class="rc-chart__bar rc-chart__bar--new"
+                                      x="{{ $bar['x'] }}" y="{{ $bar['realized_y'] }}"
+                                      width="{{ $bar['w'] }}" height="{{ $bar['realized_h'] }}" rx="2">
+                                    <title>{{ $bar['title'] }}</title>
+                                </rect>
+                            @endif
+                            @if($bar['lost_h'] > 0)
+                                <rect class="rc-chart__bar rc-chart__bar--churn"
+                                      x="{{ $bar['x'] }}" y="{{ $bar['lost_y'] }}"
+                                      width="{{ $bar['w'] }}" height="{{ $bar['lost_h'] }}" rx="2">
+                                    <title>{{ $bar['title'] }}</title>
+                                </rect>
+                            @endif
+
+                            @if($bar['rate'] !== '')
+                                <text class="rc-chart__tick" x="{{ $bar['x'] + $bar['w'] / 2 }}"
+                                      y="{{ $bar['lost_y'] - 6 }}" text-anchor="middle">{{ $bar['rate'] }}</text>
+                            @endif
+
+                            <text class="rc-chart__tick" x="{{ $bar['x'] + $bar['w'] / 2 }}"
+                                  y="{{ $pc['zero_y'] + 20 }}" text-anchor="middle">{{ $bar['label'] }}</text>
+                        @endforeach
+                    </svg>
+                </div>
+
+                <div class="rc-chart-legend">
+                    <span class="rc-chart-legend__item"><span class="rc-chart-legend__swatch rc-chart-legend__swatch--new"></span>{{ __('analytics.payments.realized') }}</span>
+                    <span class="rc-chart-legend__item"><span class="rc-chart-legend__swatch rc-chart-legend__swatch--churn"></span>{{ __('analytics.payments.lost') }}</span>
+                </div>
+            @endif
+        </div>
+
+        {{--
+            WHAT IS ABOUT TO BE CHARGED, by day. Every row is a link into the
+            subscriptions list with the date filter already set to that one day —
+            a number is only useful if you can open it and see the people in it.
+        --}}
+        <div class="rc-section">
+            <div class="rc-section__title">{{ __('analytics.payments.upcoming_title', ['days' => \App\Filament\Pages\Analytics::UPCOMING_DAYS]) }}</div>
+
+            @php $days = $this->upcoming(); @endphp
+            @if($days === [])
+                <x-rc.empty title="analytics.payments.upcoming_empty" icon="heroicon-o-calendar-days" />
+            @else
+                <table class="rc-table">
+                    <thead>
+                        <tr>
+                            <th>{{ __('analytics.payments.col_date') }}</th>
+                            <th>{{ __('analytics.payments.col_count') }}</th>
+                            <th>{{ __('analytics.payments.col_amount') }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($days as $day)
+                            <tr wire:key="due-{{ $day['date'] }}">
+                                <td><a href="{{ $day['url'] }}">{{ $day['label'] }}</a></td>
+                                <td class="rc-ltr">{{ $day['count'] }}</td>
+                                <td class="rc-ltr">{{ $day['amount'] }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            @endif
+        </div>
     </div>
 </x-filament-panels::page>

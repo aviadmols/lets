@@ -18,6 +18,15 @@ return [
         ],
     ],
 
+    'tab' => [
+        'all' => 'הכול',
+        'upcoming' => 'חיובים קרובים',
+        'failed' => 'נכשלו',
+        'card_expired' => 'כרטיס פג תוקף',
+        'paused' => 'מושהים',
+        'cancelled' => 'בוטלו',
+    ],
+
     'filter' => [
         'kind' => [
             'all' => 'הכול',

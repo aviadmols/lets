@@ -18,6 +18,15 @@ return [
         ],
     ],
 
+    'tab' => [
+        'all' => 'All',
+        'upcoming' => 'Upcoming',
+        'failed' => 'Failed',
+        'card_expired' => 'Expired card',
+        'paused' => 'Paused',
+        'cancelled' => 'Cancelled',
+    ],
+
     'filter' => [
         'kind' => [
             'all' => 'All',

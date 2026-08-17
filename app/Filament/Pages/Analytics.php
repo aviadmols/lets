@@ -3,10 +3,13 @@
 namespace App\Filament\Pages;
 
 use App\Domain\Dashboard\AnalyticsMetrics;
+use App\Domain\Dashboard\PaymentMetrics;
 use App\Filament\Concerns\ShopScopedScreen;
+use App\Filament\Resources\SubscriptionResource;
 use App\Support\Ui\Money;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
+use Illuminate\Support\Carbon;
 
 /**
  * Analytics — subscription KPIs + the subscribers trend (the Loop-style
@@ -24,8 +27,11 @@ class Analytics extends Page
 
     // === CONSTANTS ===
     protected static ?string $navigationIcon = 'heroicon-o-chart-bar';
+
     protected static string $view = 'filament.pages.analytics';
+
     protected static ?string $slug = 'analytics';
+
     protected static ?int $navigationSort = -5; // right under Home
 
     /** Selectable ranges, in days. */
@@ -37,15 +43,26 @@ class Analytics extends Page
 
     public const DEFAULT_RANGE = 'month';
 
+    /** How far ahead the upcoming-charges table looks. */
+    public const UPCOMING_DAYS = 30;
+
     // --- SVG geometry (viewBox units; CSS scales the box responsively) ---
     private const W = 1000;
+
     private const H = 320;
+
     private const PAD_START = 46;   // room for the line-axis labels
+
     private const PAD_END = 34;     // room for the bar-axis labels
+
     private const LINE_TOP = 16;
+
     private const LINE_BOTTOM = 180; // the active line lives in the top band
+
     private const BAR_ZERO = 250;    // bars grow up (new) / down (cancelled) from here
+
     private const BAR_MAX = 52;      // tallest bar, in units
+
     private const TICK_Y = 312;
 
     public string $range = self::DEFAULT_RANGE;
@@ -82,6 +99,120 @@ class Analytics extends Page
     private ?array $metricsMemo = null;
 
     // === KPI cards ===
+
+    // === Payments (the money half) ===
+
+    /**
+     * What the shop actually collected in the selected window.
+     *
+     * Kept apart from the subscriber KPIs above because it answers a different
+     * question: those describe the book, these describe whether it is being
+     * billed. A merchant reading "120 active subscriptions" with an 80% success
+     * rate is looking at a problem the first number alone would have hidden.
+     *
+     * @return list<array{label: string, value: string, tone: string}>
+     */
+    public function paymentKpis(): array
+    {
+        $p = $this->payments();
+
+        return [
+            ['label' => 'analytics.payments.attempted', 'value' => Money::format($p['attempted']), 'tone' => 'plain'],
+            ['label' => 'analytics.payments.realized', 'value' => Money::format($p['realized']), 'tone' => 'good'],
+            ['label' => 'analytics.payments.success_rate', 'value' => Money::number($p['success_rate']).'%', 'tone' => 'good'],
+            ['label' => 'analytics.payments.retrying', 'value' => Money::format($p['retrying']), 'tone' => 'warn'],
+            ['label' => 'analytics.payments.lost', 'value' => Money::format($p['lost']), 'tone' => 'stop'],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public function payments(): array
+    {
+        return $this->paymentsMemo ??= PaymentMetrics::snapshot($this->rangeDays());
+    }
+
+    /** @var array<string, mixed>|null */
+    private ?array $paymentsMemo = null;
+
+    /**
+     * Realized vs lost per month, as stacked bars — the shape of the year.
+     *
+     * Geometry only, in the same viewBox discipline as the trend chart above:
+     * every colour is a class, nothing is styled inline.
+     *
+     * @return array{bars: list<array{x: float, realized_y: float, realized_h: float, lost_y: float, lost_h: float, label: string, rate: string, title: string}>, width: int, height: int, zero_y: int, has_data: bool}
+     */
+    public function paymentChart(): array
+    {
+        $months = PaymentMetrics::monthly();
+        $n = count($months);
+
+        $plotW = self::W - self::PAD_START - self::PAD_END;
+        $slot = $plotW / max(1, $n);
+        $barW = min(46, $slot * 0.55);
+
+        $top = 30;          // room for the per-month rate label
+        $zero = 250;        // the baseline both stacks grow from
+        $maxUnits = $zero - $top;
+
+        $peak = 0.0;
+        foreach ($months as $m) {
+            $peak = max($peak, $m['realized'] + $m['lost']);
+        }
+
+        $scale = fn (float $v): float => $peak > 0 ? round($v * $maxUnits / $peak, 1) : 0.0;
+
+        $bars = [];
+        foreach ($months as $i => $m) {
+            $x = round(self::PAD_START + $i * $slot + ($slot - $barW) / 2, 1);
+            $lostH = $scale($m['lost']);
+            $realizedH = $scale($m['realized']);
+
+            $bars[] = [
+                'x' => $x,
+                'w' => round($barW, 1),
+                // Lost sits ON TOP of realized, so the green block always starts
+                // at the baseline and months stay comparable at a glance.
+                'realized_y' => round($zero - $realizedH, 1),
+                'realized_h' => $realizedH,
+                'lost_y' => round($zero - $realizedH - $lostH, 1),
+                'lost_h' => $lostH,
+                'label' => $m['label'],
+                'rate' => $m['rate'] > 0 ? $m['rate'].'%' : '',
+                'title' => $m['label'].' · '.Money::format($m['realized']).' / '.Money::format($m['realized'] + $m['lost']),
+            ];
+        }
+
+        return [
+            'bars' => $bars,
+            'width' => self::W,
+            'height' => 300,
+            'zero_y' => $zero,
+            'has_data' => $peak > 0,
+        ];
+    }
+
+    /**
+     * The next month of scheduled charges, by day.
+     *
+     * Each row links into the subscriptions list with the date filter already
+     * set to that single day — which is the whole point: a number is only useful
+     * if you can open it and see the people inside it.
+     *
+     * @return list<array{date: string, label: string, count: int, amount: string, url: string}>
+     */
+    public function upcoming(): array
+    {
+        return array_map(static fn (array $day): array => [
+            'date' => $day['date'],
+            'label' => $day['label'],
+            'count' => $day['count'],
+            'amount' => Money::format($day['amount']),
+            'url' => SubscriptionResource::getUrl('index', [
+                'tableFilters' => ['next_charge_at' => ['from' => $day['date'], 'until' => $day['date']]],
+            ]),
+        ], PaymentMetrics::upcoming(self::UPCOMING_DAYS));
+    }
 
     /** @return list<array{label: string, value: string}> */
     public function kpis(): array
@@ -141,7 +272,7 @@ class Analytics extends Page
             $px = $x($i);
             $py = $yLine((int) $day['active']);
             $points[] = $px.','.$py;
-            $label = \Illuminate\Support\Carbon::parse($day['date'])->format('d M');
+            $label = Carbon::parse($day['date'])->format('d M');
             $dots[] = [
                 'x' => $px, 'y' => $py,
                 'title' => $label.' — '.__('analytics.chart.active_tip', ['count' => $day['active']]),
@@ -179,7 +310,7 @@ class Analytics extends Page
         $xTicks = [];
         $step = max(1, (int) ceil($n / 6));
         for ($i = 0; $i < $n; $i += $step) {
-            $xTicks[] = ['x' => $x($i), 'label' => \Illuminate\Support\Carbon::parse($trend[$i]['date'])->format('d M')];
+            $xTicks[] = ['x' => $x($i), 'label' => Carbon::parse($trend[$i]['date'])->format('d M')];
         }
 
         return [
