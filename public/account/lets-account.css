@@ -1459,11 +1459,24 @@ a.la-banner:focus-visible {
     border-radius: 4px;
 }
 
-/* --- Tables ------------------------------------------------------------ */
+/* --- Tables ------------------------------------------------------------ *
 
-.lets-shell table.shop_table,
-.lets-shell table.woocommerce-orders-table,
-.lets-shell table.woocommerce-MyAccount-orders {
+   DOUBLED CLASS, on purpose. WooCommerce themes ship their own
+   `.woocommerce table.shop_table`, which is (0,2,1) — the SAME specificity as
+   `.lets-shell table.shop_table`. A tie is broken by load order, and the theme's
+   stylesheet is enqueued after ours, so on some themes the theme simply won:
+   its own padding, 5px radius, right-aligned text and a -1px left margin came
+   through and knocked the table out of line with the cards beside it.
+   `.lets-shell.lets-shell` is (0,3,1) and settles it without !important — the
+   same trick the link rules above already use for the same fight.
+
+   The theme's own paddings are also reset explicitly rather than left to be
+   inherited: a table that carries both its padding and ours is a table with two
+   different gutters. */
+
+.lets-shell.lets-shell table.shop_table,
+.lets-shell.lets-shell table.woocommerce-orders-table,
+.lets-shell.lets-shell table.woocommerce-MyAccount-orders {
     inline-size: 100%;
     border-collapse: separate;
     border-spacing: 0;
@@ -1473,11 +1486,13 @@ a.la-banner:focus-visible {
     box-shadow: var(--la-shadow);
     overflow: hidden;
     margin: 0 0 20px;
+    padding: 0;
+    text-align: start;
     font-size: 0.9375rem;
 }
 
-.lets-shell table.shop_table th,
-.lets-shell table.shop_table td {
+.lets-shell.lets-shell table.shop_table th,
+.lets-shell.lets-shell table.shop_table td {
     text-align: start;
     padding: 14px 18px;
     border: 0;
@@ -1485,7 +1500,7 @@ a.la-banner:focus-visible {
     vertical-align: middle;
 }
 
-.lets-shell table.shop_table thead th {
+.lets-shell.lets-shell table.shop_table thead th {
     font-size: 0.75rem;
     font-weight: 700;
     letter-spacing: 0.06em;
@@ -1494,7 +1509,7 @@ a.la-banner:focus-visible {
     background: var(--la-card-2);
 }
 
-.lets-shell table.shop_table tbody tr:last-child td {
+.lets-shell.lets-shell table.shop_table tbody tr:last-child td {
     border-block-end: 0;
 }
 
@@ -1502,10 +1517,97 @@ a.la-banner:focus-visible {
     background: var(--la-card-2);
 }
 
-.lets-shell table.shop_table tfoot td,
-.lets-shell table.shop_table tfoot th {
-    background: var(--la-card-2);
+/* --- The order's totals ------------------------------------------------- *
+
+   WooCommerce puts subtotal, discount, shipping and total in the SAME table as
+   the products, as more rows of equal weight. Read cold, an order then has no
+   shape: the line the shopper is actually looking for — what they paid — sits in
+   the last row looking exactly like the shipping method above it.
+
+   So the tfoot is drawn as a summary rather than as more table: the labels step
+   back, the figures come forward, a heavier rule separates it from the goods,
+   and the final row is the conclusion it actually is. Amounts are tabular so the
+   digits line up in a column instead of drifting.
+
+   Doubled class throughout: themes ship `background:#fff` for thead/tfoot/odd
+   rows at the same specificity as ours, and a tie goes to whoever loaded last. */
+
+.lets-shell.lets-shell table.shop_table tfoot tr:first-child td,
+.lets-shell.lets-shell table.shop_table tfoot tr:first-child th {
+    border-block-start: 2px solid var(--la-border-strong);
+}
+
+.lets-shell.lets-shell table.shop_table tfoot td,
+.lets-shell.lets-shell table.shop_table tfoot th {
+    background: var(--la-card);
+    padding-block: 10px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* The label column: this is scaffolding, not the answer. */
+.lets-shell.lets-shell table.shop_table tfoot th {
+    font-weight: 500;
+    color: var(--la-muted);
+}
+
+/* The figure column. */
+.lets-shell.lets-shell table.shop_table tfoot td {
     font-weight: 600;
+    text-align: end;
+}
+
+/* The last line is what the shopper came to read. */
+.lets-shell.lets-shell table.shop_table tfoot tr:last-child th,
+.lets-shell.lets-shell table.shop_table tfoot tr:last-child td {
+    padding-block: 16px;
+    font-size: 1.125rem;
+    font-weight: 800;
+    color: var(--la-fg);
+    background: var(--la-card-2);
+    border-block-end: 0;
+}
+
+/* Products: the name leads, the money aligns with the totals below it. */
+.lets-shell.lets-shell table.shop_table tbody td {
+    background: var(--la-card);
+    font-variant-numeric: tabular-nums;
+}
+
+.lets-shell.lets-shell table.shop_table tbody th,
+.lets-shell.lets-shell table.shop_table tbody .product-name {
+    font-weight: 600;
+    background: var(--la-card);
+}
+
+.lets-shell.lets-shell table.shop_table tbody .product-total,
+.lets-shell.lets-shell table.shop_table tbody td:last-child {
+    text-align: end;
+}
+
+/* A theme's zebra striping cuts across the split we just drew. */
+.lets-shell.lets-shell table.shop_table tbody tr:nth-child(odd) > td,
+.lets-shell.lets-shell table.shop_table tbody tr:nth-child(odd) > th {
+    background: var(--la-card);
+}
+
+/* "Order #2939 was placed on … and is currently …" — the sentence that opens
+   the screen, given the standing of a lead rather than of body copy. */
+.lets-shell.lets-shell .woocommerce-order > p:first-of-type,
+.lets-shell.lets-shell p.woocommerce-thankyou-order-received {
+    padding: 14px 18px;
+    border: 1px solid var(--la-border);
+    border-radius: var(--la-radius-sm);
+    background: var(--la-card-2);
+    color: var(--la-fg);
+    font-size: 1rem;
+    margin: 0 0 var(--la-gap);
+}
+
+.lets-shell.lets-shell .woocommerce-order > p:first-of-type mark,
+.lets-shell.lets-shell p.woocommerce-thankyou-order-received mark {
+    background: transparent;
+    color: var(--la-fg);
+    font-weight: 700;
 }
 
 /* Below the fold of a phone a five-column table is unreadable; each row
@@ -1718,19 +1820,34 @@ a.la-banner:focus-visible {
 
 /* --- Order detail + downloads ------------------------------------------ */
 
-.lets-shell .woocommerce-order-details__title,
-.lets-shell .woocommerce-column__title,
-.lets-shell .woocommerce-order-downloads__title {
+.lets-shell.lets-shell .woocommerce-order-details__title,
+.lets-shell.lets-shell .woocommerce-column__title,
+.lets-shell.lets-shell .woocommerce-order-downloads__title,
+.lets-shell.lets-shell .woocommerce-customer-details h2 {
     font-size: 1.125rem;
     font-weight: 700;
     margin: 0 0 14px;
+    color: var(--la-fg);
 }
 
+/* The order screen is three blocks — the sentence, the table, the addresses —
+   and they need air between them or the page reads as one long ledger. */
+.lets-shell.lets-shell .woocommerce-order-details,
+.lets-shell.lets-shell .woocommerce-customer-details {
+    margin-block-start: var(--la-gap);
+}
+
+/* Stacked, not side by side. Two address cards in a narrow account column were
+   cramped at every width the rail leaves them, and an address reads better full
+   width than squeezed into half of one. The children keep their own spacing. */
 .lets-shell .woocommerce-customer-details .col2-set,
 .lets-shell .woocommerce-columns--addresses {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 16px;
+    display: block;
+}
+
+.lets-shell .woocommerce-customer-details .col2-set > * + *,
+.lets-shell .woocommerce-columns--addresses > * + * {
+    margin-block-start: 16px;
 }
 
 .lets-shell .woocommerce-customer-details .col-1,
