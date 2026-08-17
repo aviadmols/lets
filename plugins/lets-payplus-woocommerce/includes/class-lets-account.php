@@ -144,8 +144,14 @@ function lets_payplus_account_menu_items($items)
         return $items;
     }
 
+    $hidden = lets_payplus_account_hidden_endpoints();
+
     $out = array();
     foreach ($items as $key => $label) {
+        if (isset($hidden[$key])) {
+            continue;
+        }
+
         $out[$key] = $label;
         if ('dashboard' === $key) {
             $out[LETS_ACCOUNT_ENDPOINT] = lets_payplus_account_menu_label();
@@ -163,6 +169,47 @@ function lets_payplus_account_menu_items($items)
 function lets_payplus_account_menu_label()
 {
     return lets_payplus_account_is_he() ? 'המנויים שלי' : 'My subscriptions';
+}
+
+/**
+ * WooCommerce endpoints the merchant has switched off, as a lookup.
+ *
+ * The "sections" setting has always said it "hides the section from every
+ * shopper", but for WooCommerce's OWN tabs it only ever hid the block we draw —
+ * the navigation kept the tab, so unchecking Orders did nothing a shopper could
+ * see. These four keys map a section onto the endpoint it names, which makes the
+ * setting mean what it says, and gives a shop with nothing downloadable a way to
+ * take the empty Downloads tab out of its customers' navigation.
+ *
+ * FAIL-OPEN. An unreadable config hides nothing: a shopper losing their orders
+ * tab because LETS was briefly unreachable is far worse than an empty tab.
+ *
+ * @return array<string, true>
+ */
+function lets_payplus_account_hidden_endpoints()
+{
+    $map = array(
+        'orders' => 'orders',
+        'downloads' => 'downloads',
+        'edit-account' => 'profile',
+        'edit-address' => 'addresses',
+    );
+
+    $config = lets_payplus_account_shell_config();
+    $sections = isset($config['sections']) ? (array) $config['sections'] : array();
+
+    if (array() === $sections) {
+        return array();
+    }
+
+    $hidden = array();
+    foreach ($map as $endpoint => $section) {
+        if (! in_array($section, $sections, true)) {
+            $hidden[$endpoint] = true;
+        }
+    }
+
+    return $hidden;
 }
 
 add_action('woocommerce_account_' . LETS_ACCOUNT_ENDPOINT . '_endpoint', 'lets_payplus_account_render_endpoint');
@@ -557,6 +604,10 @@ function lets_payplus_account_shell_config()
 
     $config = array(
         'appearance' => array(),
+        // The VISIBLE section keys, in the merchant's order. Read by the account
+        // navigation, which hides a WooCommerce tab whose section is switched
+        // off. Empty means "we do not know" and nothing is hidden.
+        'sections'   => array(),
         'login'      => array('enabled' => false, 'channel' => 'email', 'google_client_id' => ''),
         // Storefront purchase rules. They ride the SHELL because the shell is the
         // cached half: the storefront must know whether the one-subscription rule
@@ -584,6 +635,9 @@ function lets_payplus_account_shell_config()
 
         if (! empty($account['appearance'])) {
             $config['appearance'] = (array) $account['appearance'];
+        }
+        if (! empty($account['sections'])) {
+            $config['sections'] = array_values(array_map('strval', (array) $account['sections']));
         }
         if (! empty($account['login'])) {
             $login = (array) $account['login'];

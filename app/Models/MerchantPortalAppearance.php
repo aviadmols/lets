@@ -39,6 +39,13 @@ class MerchantPortalAppearance extends Model
 
     public const SECTION_ORDERS = 'orders';
 
+    /**
+     * WooCommerce's own Downloads tab. It has no block of ours to draw — it is
+     * here so a shop that sells nothing downloadable can take the empty tab out
+     * of its customers' navigation, which is the state most stores are in.
+     */
+    public const SECTION_DOWNLOADS = 'downloads';
+
     public const SECTION_DOCUMENTS = 'documents';
 
     public const SECTION_PROFILE = 'profile';
@@ -54,6 +61,7 @@ class MerchantPortalAppearance extends Model
         self::SECTION_BENEFITS,
         self::SECTION_LOYALTY,
         self::SECTION_ORDERS,
+        self::SECTION_DOWNLOADS,
         self::SECTION_DOCUMENTS,
         self::SECTION_PROFILE,
         self::SECTION_ADDRESSES,
@@ -144,6 +152,38 @@ class MerchantPortalAppearance extends Model
 
     /** The side rail. Three is enough to be useful and few enough to stay tidy. */
     public const BANNER_SLOTS = 3;
+
+    /**
+     * Where a banner sits. The rail is the narrow column beside the cards — the
+     * original and still the default. `top` spans the full width ABOVE the two
+     * columns, for the announcement a shopper is meant to read before anything
+     * else rather than glance at sideways.
+     */
+    public const BANNER_RAIL = 'rail';
+
+    public const BANNER_TOP = 'top';
+
+    public const BANNER_PLACEMENTS = [self::BANNER_RAIL, self::BANNER_TOP];
+
+    /**
+     * Who sees it. The whole point of a banner in a personal area is that the
+     * reader is KNOWN: "join the club" belongs in front of somebody who has not,
+     * and is an insult to somebody who already pays every month.
+     *
+     * A logged-OUT visitor is neither, and sees only `everyone` — we cannot make
+     * a claim about a person we have not identified.
+     */
+    public const AUDIENCE_EVERYONE = 'everyone';
+
+    public const AUDIENCE_SUBSCRIBERS = 'subscribers';
+
+    public const AUDIENCE_NON_SUBSCRIBERS = 'non_subscribers';
+
+    public const BANNER_AUDIENCES = [
+        self::AUDIENCE_EVERYONE,
+        self::AUDIENCE_SUBSCRIBERS,
+        self::AUDIENCE_NON_SUBSCRIBERS,
+    ];
 
     public const DEFAULT_ACCENT = '#111827';
 
@@ -240,11 +280,15 @@ class MerchantPortalAppearance extends Model
             return self::defaultSections();
         }
 
-        // A locked section the merchant never had (a new release adds one) is
-        // appended rather than silently missing.
-        foreach (self::LOCKED_SECTIONS as $locked) {
-            if (! isset($seen[$locked])) {
-                $out[] = ['key' => $locked, 'enabled' => true];
+        // A section the merchant's saved list predates — because a release added
+        // one — is appended ENABLED rather than left missing. Missing used to read
+        // as "off" (sectionEnabled returns false for anything it cannot find), so
+        // shipping a new section would have switched it off for every existing
+        // shop on the day it arrived. A new part of the page shows up; a merchant
+        // turns it off if they do not want it.
+        foreach (self::SECTION_KEYS as $key) {
+            if (! isset($seen[$key])) {
+                $out[] = ['key' => $key, 'enabled' => true];
             }
         }
 

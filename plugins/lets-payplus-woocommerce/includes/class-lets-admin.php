@@ -283,6 +283,7 @@ function lets_payplus_admin_sections($s, $he)
         'benefits'      => $he ? 'ההטבות שלי' : 'Benefits',
         'loyalty'       => $he ? 'מועדון הלקוחות' : 'Rewards',
         'orders'        => $he ? 'הזמנות' : 'Orders',
+        'downloads'     => $he ? 'ההורדות שלי' : 'Downloads',
         'documents'     => $he ? 'חשבוניות וקבלות' : 'Invoices & receipts',
         'profile'       => $he ? 'פרטי החשבון' : 'Account details',
         'addresses'     => $he ? 'כתובות' : 'Addresses',

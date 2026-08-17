@@ -208,9 +208,25 @@ final class WooPortalSettingsTest extends TestCase
             $keys = array_column($sections, 'key');
 
             $this->assertNotContains('not-a-section', $keys);
-            $this->assertSame(['subscriptions', 'welcome'], $keys, 'the duplicate collapses, first wins');
+            $this->assertSame(
+                ['subscriptions', 'welcome'],
+                array_slice($keys, 0, 2),
+                'the merchant\'s own order leads, and the duplicate collapses — first wins',
+            );
             $this->assertTrue($sections[0]['enabled'], 'subscriptions is locked on');
             $this->assertFalse($sections[1]['enabled']);
+
+            // Everything the saved list did not name is APPENDED, enabled. A key
+            // that is merely absent must never read as "switched off": the account
+            // navigation hides a WooCommerce tab whose section is off, so a
+            // release that adds a key would otherwise take a tab away from every
+            // shop that had ever saved this screen.
+            $this->assertContains(MerchantPortalAppearance::SECTION_DOWNLOADS, $keys);
+            $this->assertCount(count(MerchantPortalAppearance::SECTION_KEYS), $keys);
+
+            foreach (array_slice($sections, 2) as $appended) {
+                $this->assertTrue($appended['enabled'], $appended['key'].' should arrive visible');
+            }
         });
     }
 

@@ -183,6 +183,7 @@ return [
                 'benefits' => 'Benefits',
                 'loyalty' => 'Rewards / loyalty club',
                 'orders' => 'Order history',
+                'downloads' => 'Downloads (WooCommerce tab)',
                 'documents' => 'Invoices & receipts',
                 'profile' => 'My details',
                 'addresses' => 'Addresses',
