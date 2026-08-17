@@ -97,19 +97,19 @@
                     @if($this->reportIsClean() && $this->runId === null)
                         <x-rc.cta
                             variant="danger"
-                            wire:click="commit"
-                            wire:target="commit"
+                            wire:click="startImport"
+                            wire:target="startImport"
                             wire:loading.attr="disabled"
                             x-on:click="pressed = true"
                         >
                             {{ __('import.action.commit') }}
                         </x-rc.cta>
 
-                        <span class="rc-muted" x-show="pressed" x-cloak wire:loading.remove wire:target="commit">
+                        <span class="rc-muted" x-show="pressed" x-cloak wire:loading.remove wire:target="startImport">
                             {{ __('import.action.pressed') }}
                         </span>
 
-                        <span class="rc-muted" wire:loading wire:target="commit">
+                        <span class="rc-muted" wire:loading wire:target="startImport">
                             {{ __('import.action.committing') }}
                         </span>
                     @endif

@@ -167,8 +167,23 @@ class ImportSubscriptions extends Page
      * indistinguishable from a broken button, and "I click and nothing happens" is
      * the worst bug report a screen can earn — the user cannot tell whether it is
      * protecting them or ignoring them.
+     *
+     * NOT named commit(). Livewire's `$wire` proxy keeps an ALIAS table that maps
+     * a handful of bare names onto its own internals — `on`, `get`, `set`, `call`,
+     * `watch`, `dispatch`, `upload` … and `commit`. So `wire:click="commit"` never
+     * reached this class: it resolved to `$wire.$commit`, Livewire's own "flush the
+     * pending update to the server", which sends a REAL round trip and re-renders
+     * the page while calling no method at all. That is why the button looked dead
+     * while the server logged a healthy 200, and why every test passed —
+     * `Livewire::test()->call('commit')` invokes the PHP method directly and never
+     * touches the proxy that was eating the name. ImportSubscriptionsJob::enqueue()
+     * carries a scar from the same family: `queue()` is Laravel's own hook.
+     *
+     * (`wire:model="upload"` is on that alias list too, but is safe: Livewire's
+     * uploader sends the property NAME as a string in the payload, so it never
+     * resolves it through the proxy.)
      */
-    public function commit(): void
+    public function startImport(): void
     {
         // Logged on ENTRY, before any guard. "I click and nothing happens" has two
         // very different causes — a refusal the screen swallowed, or a method that

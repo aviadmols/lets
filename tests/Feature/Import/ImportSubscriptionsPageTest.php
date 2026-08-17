@@ -67,7 +67,7 @@ final class ImportSubscriptionsPageTest extends TestCase
 
         // Pressing import anyway does nothing — the gate is in the method, not
         // only in the button that is hidden from the merchant.
-        $component->call('commit');
+        $component->call('startImport');
         Queue::assertNothingPushed();
         $this->assertSame(0, InstallmentPlan::query()->count());
     }
@@ -86,7 +86,7 @@ final class ImportSubscriptionsPageTest extends TestCase
         // Checking alone writes nothing.
         $this->assertSame(0, InstallmentPlan::query()->count());
 
-        $component->call('commit');
+        $component->call('startImport');
 
         Queue::assertPushed(ImportSubscriptionsJob::class, fn (ImportSubscriptionsJob $job): bool => $job->shopId === (int) $this->shop->getKey());
     }
@@ -112,7 +112,7 @@ final class ImportSubscriptionsPageTest extends TestCase
         $this->assertTrue($component->instance()->reportIsClean());
 
         // The temporary upload disappears between the two clicks.
-        $component->set('upload', null)->call('commit');
+        $component->set('upload', null)->call('startImport');
 
         Queue::assertPushed(ImportSubscriptionsJob::class);
     }
@@ -123,7 +123,7 @@ final class ImportSubscriptionsPageTest extends TestCase
         Queue::fake();
 
         Livewire::test(ImportSubscriptions::class)
-            ->call('commit')
+            ->call('startImport')
             ->assertNotified(__('import.error.not_checked'));
 
         Queue::assertNothingPushed();
