@@ -46,14 +46,23 @@ use Throwable;
  *   7. Route to the next branch offer (accept path) or finish.
  *
  * Tenant MUST be bound by the caller (the controller binds from the signed shop).
+ *
+ * NOT gated by the shop's live-charging switch, and that is a decision rather than
+ * an oversight. That switch exists so a merchant can hold a MIGRATION — stop the
+ * scheduler from billing subscribers they are still checking — and it is read by
+ * ChargeOrchestrator, which owns every automatic charge. An upsell is the opposite
+ * situation: a shopper is standing at the checkout, one click into a purchase they
+ * just chose to make. Refusing it would break live sales in a store that only
+ * wanted its migration held still. If a merchant ever needs a true "charge
+ * nothing at all", the same guard belongs here, in step 2's neighbourhood.
  */
 final class UpsellChargeService
 {
     /**
-     * @param (callable(Shop): ShopifyDraftOrderService)|null $draftOrderFactory
-     *   Builds the per-shop draft-order service. Null in production = build from
-     *   the per-shop Admin client (ShopifyClientFactory::for($shop)). Tests inject
-     *   a closure returning a recording fake so no real HTTP runs.
+     * @param  (callable(Shop): ShopifyDraftOrderService)|null  $draftOrderFactory
+     *                                                                              Builds the per-shop draft-order service. Null in production = build from
+     *                                                                              the per-shop Admin client (ShopifyClientFactory::for($shop)). Tests inject
+     *                                                                              a closure returning a recording fake so no real HTTP runs.
      */
     public function __construct(
         private readonly UpsellResolver $resolver,
@@ -244,7 +253,7 @@ final class UpsellChargeService
             ];
 
             $hold->forceFill(['added_items' => $items])->save();
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             Log::warning('upsell.hold.addition_failed', ['shop_id' => $shopId, 'message' => $e->getMessage()]);
         }
     }

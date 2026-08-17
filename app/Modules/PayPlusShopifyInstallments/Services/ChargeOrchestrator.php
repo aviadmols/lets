@@ -9,12 +9,15 @@ use App\Domain\Billing\IdempotencyKey;
 use App\Domain\Billing\Ledger;
 use App\Domain\Invoicing\DocumentContext;
 use App\Domain\Invoicing\Jobs\IssueDocumentJob;
+use App\Domain\Portal\PortalSignedUrlService;
 use App\Events\ChargeFailed;
 use App\Events\ChargeSucceeded;
 use App\Mail\ManualRecurringPaymentMail;
 use App\Models\CustomerConsent;
 use App\Models\InstallmentPayment;
 use App\Models\InstallmentPlan;
+use App\Models\MerchantBillingSettings;
+use App\Models\MerchantMailSettings;
 use App\Models\PaymentLedger;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\ChargeContext;
@@ -93,6 +96,28 @@ final class ChargeOrchestrator
             // Idempotent short-circuit — a succeeded ledger row means done.
             if (Ledger::hasSucceeded($shopId, $key)) {
                 return ChargeOutcome::skipped('already_succeeded', $key);
+            }
+
+            // THE LIVE-CHARGING SWITCH. A merchant mid-migration wants their plans
+            // active and readable long before they want a saved card touched, and
+            // this is the one place every charge passes through — scheduler, manual
+            // retry, upsell alike — so it is the only place the answer can be
+            // enforced rather than merely hoped for.
+            //
+            // It fails CLOSED and CHEAP: before the attempt event, before a payment
+            // row, before a ledger row, before the gateway. Nothing is written that
+            // a resumed shop would then have to reconcile. The skip IS recorded on
+            // the plan's timeline, because a subscription that quietly did not bill
+            // is exactly the thing a merchant must be able to discover later.
+            if (! MerchantBillingSettings::current()->chargingIsLive()) {
+                Timeline::record(
+                    kind: Timeline::KIND_CHARGING_PAUSED,
+                    details: ['type' => $type->value, 'key' => $key],
+                    planId: $plan->getKey(),
+                    shopId: $shopId,
+                );
+
+                return ChargeOutcome::skipped('charging_paused', $key);
             }
 
             Timeline::record(
@@ -478,7 +503,7 @@ final class ChargeOrchestrator
             return $signed;
         }
 
-        $settings = \App\Models\MerchantMailSettings::acrossAllTenants()
+        $settings = MerchantMailSettings::acrossAllTenants()
             ->where('shop_id', $plan->shop_id)
             ->first();
 
@@ -495,13 +520,13 @@ final class ChargeOrchestrator
         if (empty($plan->public_id)) {
             return null;
         }
-        if (\App\Domain\Portal\PortalSignedUrlService::customerRef($plan)
-            === \App\Domain\Portal\PortalSignedUrlService::CUSTOMER_REF_NONE) {
+        if (PortalSignedUrlService::customerRef($plan)
+            === PortalSignedUrlService::CUSTOMER_REF_NONE) {
             return null;
         }
 
         try {
-            return app(\App\Domain\Portal\PortalSignedUrlService::class)->showUrl($plan);
+            return app(PortalSignedUrlService::class)->showUrl($plan);
         } catch (\Throwable) {
             return null;
         }

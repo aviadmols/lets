@@ -21,22 +21,37 @@ final class Timeline
 {
     // === CONSTANTS — kind taxonomy (extended in Phase 3.5) ===
     public const KIND_STATUS_CHANGED = 'status_changed';
+
     public const KIND_CHARGE_ATTEMPT_STARTED = 'charge_attempt_started';
+
     public const KIND_CHARGE_SUCCEEDED = 'charge_succeeded';
+
     public const KIND_CHARGE_FAILED = 'charge_failed';
+
     public const KIND_CHARGE_RETRY_SCHEDULED = 'charge_retry_scheduled';
+
     public const KIND_PLAN_COMPLETED = 'plan_completed';
+
     public const KIND_REFUNDED = 'refunded';
+
     /** A merchant edited the plan (next charge date / amount / next-order line items) — W25. */
     public const KIND_PLAN_EDITED = 'plan_edited';
+
     /** No customer_consents row for (shop, customer, context) — charge skipped, left for admin. */
     public const KIND_CONSENT_MISSING = 'consent_missing';
+
+    /** The shop's live-charging switch is off — the due charge was skipped, not failed. */
+    public const KIND_CHARGING_PAUSED = 'charging_paused';
+
     /** An accounting document was issued by the invoicing provider (Green Invoice). */
     public const KIND_DOCUMENT_ISSUED = 'document_issued';
+
     /** The invoicing provider refused/failed to issue — the money still stands. */
     public const KIND_DOCUMENT_FAILED = 'document_failed';
+
     /** A merchant re-queued a document whose failure proved nothing was created. */
     public const KIND_DOCUMENT_RETRIED = 'document_retried';
+
     /**
      * A merchant issued a document whose earlier attempt had an UNKNOWN outcome,
      * after asserting they checked the provider and found none. Its OWN kind, not
@@ -44,8 +59,10 @@ final class Timeline
      * duplicate tax document, and it must be greppable in the Timeline on its own.
      */
     public const KIND_DOCUMENT_FORCE_ISSUED = 'document_force_issued';
+
     /** The intro-discount window ended — the cycle price stepped up to regular_amount. */
     public const KIND_PRICE_STEPPED_UP = 'price_stepped_up';
+
     /** A coupon/discount was captured from the checkout order at activation. */
     public const KIND_CHECKOUT_DISCOUNT_CAPTURED = 'checkout_discount_captured';
 
@@ -58,7 +75,7 @@ final class Timeline
      * explicit $actor (e.g. ACTOR_CUSTOMER / ACTOR_WEBHOOK from the engine) always
      * wins — we never silently overwrite a known actor with the platform admin.
      *
-     * @param array<string, mixed> $details
+     * @param  array<string, mixed>  $details
      */
     public static function record(
         string $kind,

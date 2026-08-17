@@ -68,6 +68,14 @@ class MerchantBillingSettings extends Model
     /** One live subscription per customer — a purchase rule, off unless chosen. */
     public const DEFAULT_SINGLE_ACTIVE_SUBSCRIPTION = false;
 
+    /**
+     * Live charging. TRUE by default — a shop that never opens the screen charges
+     * exactly as it always did. Turned off, no saved token is charged for this
+     * shop by ANY path, while plans stay active and their dates stay readable.
+     * New checkouts are unaffected: a shopper typing their own card is not this.
+     */
+    public const DEFAULT_LIVE_CHARGING_ENABLED = true;
+
     /** Policy / terms. */
     public const DEFAULT_TERMS_VERSION = 'v1';
 
@@ -110,6 +118,8 @@ class MerchantBillingSettings extends Model
             'allow_customer_reschedule' => 'boolean',
             'allow_customer_edit_items' => 'boolean',
             'single_active_subscription' => 'boolean',
+            'live_charging_enabled' => 'boolean',
+            'charging_paused_at' => 'datetime',
         ];
     }
 
@@ -142,6 +152,7 @@ class MerchantBillingSettings extends Model
                 'allow_customer_reschedule' => self::DEFAULT_ALLOW_CUSTOMER_RESCHEDULE,
                 'allow_customer_edit_items' => self::DEFAULT_ALLOW_CUSTOMER_EDIT_ITEMS,
                 'single_active_subscription' => self::DEFAULT_SINGLE_ACTIVE_SUBSCRIPTION,
+                'live_charging_enabled' => self::DEFAULT_LIVE_CHARGING_ENABLED,
                 'terms_version' => self::DEFAULT_TERMS_VERSION,
                 'default_upsell_order_strategy' => self::DEFAULT_UPSELL_ORDER_STRATEGY,
             ],
@@ -235,6 +246,19 @@ class MerchantBillingSettings extends Model
      * one to inherit. Turning it on refuses the second PURCHASE — it never touches
      * a subscription a customer already holds.
      */
+    /**
+     * May this shop charge a saved token right now?
+     *
+     * Read at the ONE place a charge happens (ChargeOrchestrator) so every path
+     * obeys it — scheduler, manual retry, upsell — and again by the scheduler
+     * fan-out, which skips the shop entirely rather than queueing thousands of
+     * jobs whose only purpose is to stop.
+     */
+    public function chargingIsLive(): bool
+    {
+        return (bool) ($this->live_charging_enabled ?? self::DEFAULT_LIVE_CHARGING_ENABLED);
+    }
+
     public function allowsOneSubscriptionOnly(): bool
     {
         return (bool) ($this->single_active_subscription ?? self::DEFAULT_SINGLE_ACTIVE_SUBSCRIPTION);

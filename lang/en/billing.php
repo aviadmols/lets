@@ -114,6 +114,23 @@ return [
             'detected_shopify_payments' => 'This store sells through Shopify Payments, so it was set to bill subscriptions there and the PayPlus connection settings are hidden. Switch to PayPlus below to use a PayPlus terminal instead.',
         ],
 
+        /*
+         * The master tap on saved-token money. Deliberately its own section, and
+         * deliberately worded so a merchant knows exactly what keeps working while
+         * it is off: the store still sells, subscriptions still exist, dates still
+         * show — only the automatic charging stops.
+         */
+        'charging' => [
+            'heading' => 'Live charging',
+            'intro' => 'Whether this store may charge saved cards automatically.',
+            'live' => 'Charge subscriptions live',
+            'live_help' => 'Turn this off while you check a migration. Subscriptions stay active and their charge dates stay visible, but no saved card is charged — not by the scheduler, not by a retry, not by "charge now". Your store keeps selling: a shopper paying at checkout is unaffected.',
+            'overdue_heading' => 'Before you turn charging back on',
+            'overdue_body' => 'Charge dates kept passing while charging was off, and :count subscriptions are now overdue. Turning it back on rolls each of them forward a whole cycle instead of billing them all at once — you will be told how many moved and how much is about to be charged.',
+            'resumed_title' => 'Live charging is on',
+            'resumed_body' => ':rolled overdue subscriptions were rolled forward a cycle. :due are now due within :days days, totalling :money.',
+        ],
+
         'retries' => [
             'heading' => 'Payments & retries',
             'intro' => 'How a failed charge is retried before a plan is marked failed.',

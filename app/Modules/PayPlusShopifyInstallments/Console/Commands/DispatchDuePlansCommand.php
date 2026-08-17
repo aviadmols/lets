@@ -9,6 +9,8 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Jobs\ChargeJob;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Scheduler fan-out. Streams DUE plans across ALL tenants (chunkById over the
@@ -37,6 +39,14 @@ final class DispatchDuePlansCommand extends Command
         $chunk = (int) $this->option('chunk');
 
         $dispatched = 0;
+        $held = 0;
+
+        // Shops whose merchant has switched live charging off. The orchestrator
+        // refuses these anyway — that is the wall — but a migrating store can have
+        // thousands of plans come due at once, and queueing thousands of jobs whose
+        // only purpose is to stop is pure cost. Read ONCE per run: this is a handful
+        // of rows, and asking per plan would be a query per subscriber.
+        $paused = $this->shopsWithChargingPaused();
 
         // AUDITED cross-tenant scan; each dispatched job re-binds its own tenant.
         InstallmentPlan::acrossAllTenants()
@@ -44,8 +54,14 @@ final class DispatchDuePlansCommand extends Command
             ->whereNotNull('next_charge_at')
             ->where('next_charge_at', '<=', $dueBefore)
             ->orderBy('id')
-            ->chunkById($chunk, function ($plans) use (&$dispatched): void {
+            ->chunkById($chunk, function ($plans) use (&$dispatched, &$held, $paused): void {
                 foreach ($plans as $plan) {
+                    if (isset($paused[(int) $plan->shop_id])) {
+                        $held++;
+
+                        continue;
+                    }
+
                     ChargeJob::dispatch(
                         (int) $plan->shop_id,
                         (int) $plan->id,
@@ -57,9 +73,37 @@ final class DispatchDuePlansCommand extends Command
 
         Cache::forever(self::HEARTBEAT_KEY, now()->toIso8601String());
 
-        $this->info("Dispatched {$dispatched} due charge job(s).");
+        // Counted and said out loud, once per run. A scheduler that silently
+        // charges nobody looks identical to a scheduler with nothing to do.
+        if ($held > 0) {
+            Log::info('charging.paused_skipped_due_plans', [
+                'plans' => $held,
+                'shops' => array_keys($paused),
+            ]);
+        }
+
+        $this->info("Dispatched {$dispatched} due charge job(s)".($held > 0 ? "; skipped {$held} on shops with live charging off." : '.'));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * shop_id → true for every shop with live charging switched off.
+     *
+     * Read straight off the settings table rather than through the tenant-scoped
+     * model: this command is the one audited cross-tenant caller, and it needs the
+     * answer for every shop before it knows which shops it will meet.
+     *
+     * @return array<int, true>
+     */
+    private function shopsWithChargingPaused(): array
+    {
+        return DB::table('merchant_billing_settings')
+            ->where('live_charging_enabled', false)
+            ->pluck('shop_id')
+            ->flip()
+            ->map(static fn (): bool => true)
+            ->all();
     }
 
     private function paymentTypeFor(InstallmentPlan $plan): PaymentType

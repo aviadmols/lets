@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Domain\Billing\ChargingResumeService;
 use App\Domain\ShopifySubscriptions\Jobs\BackfillContractsJob;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Jobs\Shopify\RegisterShopifyWebhooksJob;
@@ -10,6 +11,7 @@ use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Support\Tenant;
 use Filament\Forms\Components\CheckboxList;
+use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\TagsInput;
@@ -104,6 +106,7 @@ class ManageBillingSettings extends Page implements HasForms
             'allow_customer_reschedule' => $settings->allowsCustomerReschedule(),
             'allow_customer_edit_items' => $settings->allowsCustomerEditItems(),
             'single_active_subscription' => $settings->allowsOneSubscriptionOnly(),
+            'live_charging_enabled' => $settings->chargingIsLive(),
 
             'cancellation_policy_text' => $settings->cancellationPolicyText(),
             'terms_version' => $settings->termsVersion(),
@@ -117,6 +120,7 @@ class ManageBillingSettings extends Page implements HasForms
             ->statePath('data')
             ->schema([
                 $this->railSection(),
+                $this->liveChargingSection(),
                 $this->retriesSection(),
                 $this->installmentsSection(),
                 $this->selfServiceSection(),
@@ -220,6 +224,40 @@ class ManageBillingSettings extends Page implements HasForms
     }
 
     /**
+     * The live-charging switch — the master tap on this shop's saved-token money.
+     *
+     * Separated from every other setting on the page on purpose: it is the only
+     * control here that decides whether money moves at all, and it should never be
+     * something a merchant flips while looking for something else.
+     */
+    private function liveChargingSection(): Section
+    {
+        $paused = ! MerchantBillingSettings::current()->chargingIsLive();
+        $overdue = $paused && Tenant::check()
+            ? app(ChargingResumeService::class)->overdueCount(Tenant::current())
+            : 0;
+
+        return Section::make(__('billing.settings.charging.heading'))
+            ->description(__('billing.settings.charging.intro'))
+            ->schema([
+                Toggle::make('live_charging_enabled')
+                    ->label(__('billing.settings.charging.live'))
+                    ->helperText(__('billing.settings.charging.live_help'))
+                    ->columnSpanFull(),
+
+                // Only while it is OFF, and only when there is actually something
+                // overdue: a merchant who turns charging back on with dates that
+                // expired meanwhile would otherwise bill all of them at once.
+                Placeholder::make('charging_overdue_warning')
+                    ->label(__('billing.settings.charging.overdue_heading'))
+                    ->content(__('billing.settings.charging.overdue_body', ['count' => $overdue]))
+                    ->visible($overdue > 0)
+                    ->columnSpanFull(),
+            ])
+            ->columns(1);
+    }
+
+    /**
      * Customer self-service — which buttons the subscription card offers.
      *
      * Each switch is read twice by CustomerSubscriptionActions: once to decide
@@ -310,14 +348,73 @@ class ManageBillingSettings extends Page implements HasForms
         $settings->allow_customer_edit_items = (bool) ($input['allow_customer_edit_items'] ?? true);
         $settings->single_active_subscription = (bool) ($input['single_active_subscription'] ?? false);
 
+        $resumed = $this->applyLiveChargingSwitch($settings, (bool) ($input['live_charging_enabled'] ?? true));
+
         $settings->cancellation_policy_text = $this->blankToNull($input['cancellation_policy_text'] ?? null);
         $settings->terms_version = $this->blankToNull($input['terms_version'] ?? null) ?? MerchantBillingSettings::DEFAULT_TERMS_VERSION;
         $settings->support_email = $this->blankToNull($input['support_email'] ?? null);
 
         $settings->save();
 
+        // The roll-forward runs AFTER the switch is persisted, so a plan can never
+        // be given a fresh date while charging is still recorded as off.
+        if ($resumed !== null) {
+            $this->rollOverdueForward($resumed);
+        }
+
         $this->mount();
         Notification::make()->title(__('billing.settings.saved'))->success()->send();
+    }
+
+    /**
+     * Move the live-charging switch, and say which way it moved.
+     *
+     * @return bool|null true = just RESUMED (caller must roll overdue dates
+     *                   forward), false = just paused, null = unchanged
+     */
+    private function applyLiveChargingSwitch(MerchantBillingSettings $settings, bool $wanted): ?bool
+    {
+        $was = $settings->chargingIsLive();
+        $settings->live_charging_enabled = $wanted;
+
+        if ($was === $wanted) {
+            return null;
+        }
+
+        // Stamped on the way DOWN and kept on the way up until the next pause: the
+        // merchant needs to be able to answer "since when was nobody charged?".
+        $settings->charging_paused_at = $wanted ? $settings->charging_paused_at : now();
+
+        return $wanted;
+    }
+
+    /**
+     * Charging just came back on. Every date that expired while it was off is due
+     * this instant — hundreds of cards in one minute for cycles nobody billed. Roll
+     * them a whole cycle forward instead, and tell the merchant exactly what the
+     * shop is now about to charge.
+     */
+    private function rollOverdueForward(bool $resumed): void
+    {
+        $shop = Tenant::current();
+
+        if (! $resumed || ! $shop instanceof Shop) {
+            return;
+        }
+
+        $report = app(ChargingResumeService::class)->resume($shop, write: true);
+
+        Notification::make()
+            ->title(__('billing.settings.charging.resumed_title'))
+            ->body(__('billing.settings.charging.resumed_body', [
+                'rolled' => $report['rolled'],
+                'due' => $report['due_in_horizon'],
+                'money' => number_format($report['money_in_horizon'], 2),
+                'days' => ChargingResumeService::HORIZON_DAYS,
+            ]))
+            ->success()
+            ->persistent()
+            ->send();
     }
 
     /**
