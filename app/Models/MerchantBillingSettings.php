@@ -39,16 +39,34 @@ class MerchantBillingSettings extends Model
 
     /** Retry policy. */
     public const DEFAULT_RETRY_BACKOFF_HOURS = [4, 24, 72];
+
     public const DEFAULT_MAX_CHARGE_ATTEMPTS = 3;
+
     public const DEFAULT_FAILED_PAYMENT_GRACE_DAYS = 3;
 
     /** Installment bounds. */
     public const DEFAULT_MIN_DEPOSIT_PERCENT = 10;
+
     public const DEFAULT_MAX_INSTALLMENTS = 12;
 
-    /** Customer self-service. */
+    /**
+     * Customer self-service. Every verb the account area draws has a switch here,
+     * and the switch is read in BOTH places that matter: the list of actions the
+     * card offers, and the endpoint that performs one. A hidden button is a UI
+     * choice; a refused verb is the rule.
+     */
     public const DEFAULT_ALLOW_CUSTOMER_PAUSE = true;
+
     public const DEFAULT_ALLOW_CUSTOMER_CANCEL = true;
+
+    public const DEFAULT_ALLOW_CUSTOMER_SKIP = true;
+
+    public const DEFAULT_ALLOW_CUSTOMER_RESCHEDULE = true;
+
+    public const DEFAULT_ALLOW_CUSTOMER_EDIT_ITEMS = true;
+
+    /** One live subscription per customer — a purchase rule, off unless chosen. */
+    public const DEFAULT_SINGLE_ACTIVE_SUBSCRIPTION = false;
 
     /** Policy / terms. */
     public const DEFAULT_TERMS_VERSION = 'v1';
@@ -88,6 +106,10 @@ class MerchantBillingSettings extends Model
             'lock_fulfillment_until_paid' => 'boolean',
             'allow_customer_pause' => 'boolean',
             'allow_customer_cancel' => 'boolean',
+            'allow_customer_skip' => 'boolean',
+            'allow_customer_reschedule' => 'boolean',
+            'allow_customer_edit_items' => 'boolean',
+            'single_active_subscription' => 'boolean',
         ];
     }
 
@@ -116,6 +138,10 @@ class MerchantBillingSettings extends Model
                 // pre-settings config('portal.*') behaviour is preserved verbatim).
                 'allow_customer_pause' => (bool) config('portal.allow_customer_pause', self::DEFAULT_ALLOW_CUSTOMER_PAUSE),
                 'allow_customer_cancel' => (bool) config('portal.allow_customer_cancel', self::DEFAULT_ALLOW_CUSTOMER_CANCEL),
+                'allow_customer_skip' => self::DEFAULT_ALLOW_CUSTOMER_SKIP,
+                'allow_customer_reschedule' => self::DEFAULT_ALLOW_CUSTOMER_RESCHEDULE,
+                'allow_customer_edit_items' => self::DEFAULT_ALLOW_CUSTOMER_EDIT_ITEMS,
+                'single_active_subscription' => self::DEFAULT_SINGLE_ACTIVE_SUBSCRIPTION,
                 'terms_version' => self::DEFAULT_TERMS_VERSION,
                 'default_upsell_order_strategy' => self::DEFAULT_UPSELL_ORDER_STRATEGY,
             ],
@@ -184,6 +210,34 @@ class MerchantBillingSettings extends Model
     public function allowsCustomerCancel(): bool
     {
         return (bool) ($this->allow_customer_cancel ?? self::DEFAULT_ALLOW_CUSTOMER_CANCEL);
+    }
+
+    public function allowsCustomerSkip(): bool
+    {
+        return (bool) ($this->allow_customer_skip ?? self::DEFAULT_ALLOW_CUSTOMER_SKIP);
+    }
+
+    public function allowsCustomerReschedule(): bool
+    {
+        return (bool) ($this->allow_customer_reschedule ?? self::DEFAULT_ALLOW_CUSTOMER_RESCHEDULE);
+    }
+
+    public function allowsCustomerEditItems(): bool
+    {
+        return (bool) ($this->allow_customer_edit_items ?? self::DEFAULT_ALLOW_CUSTOMER_EDIT_ITEMS);
+    }
+
+    /**
+     * May one customer hold more than one live subscription?
+     *
+     * Off by default: a shop that sells several different plans wants a shopper to
+     * be able to take two, and a rule that silently refuses the second sale is not
+     * one to inherit. Turning it on refuses the second PURCHASE — it never touches
+     * a subscription a customer already holds.
+     */
+    public function allowsOneSubscriptionOnly(): bool
+    {
+        return (bool) ($this->single_active_subscription ?? self::DEFAULT_SINGLE_ACTIVE_SUBSCRIPTION);
     }
 
     public function termsVersion(): string

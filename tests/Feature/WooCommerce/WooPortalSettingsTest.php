@@ -3,6 +3,7 @@
 namespace Tests\Feature\WooCommerce;
 
 use App\Models\MerchantPortalAppearance;
+use App\Models\Shop;
 use App\Services\WooCommerce\WooCommerceShopProvisioner;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -105,6 +106,30 @@ final class WooPortalSettingsTest extends TestCase
             $this->assertSame(MerchantPortalAppearance::DENSITY_COMFORTABLE, $s->density);
             $this->assertSame(MerchantPortalAppearance::CARD_OUTLINED, $s->card_style);
             $this->assertSame(MerchantPortalAppearance::LOCALE_AUTO, $s->page_locale);
+        });
+    }
+
+    public function test_a_google_client_id_is_stored_only_when_it_is_one(): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop('portal-google.example.com');
+
+        // Not shaped like a client id → stored as nothing, echoed as null.
+        $this->signed('POST', $key, $secret, self::PATH, [
+            'login_google_client_id' => '"><script>alert(1)</script>',
+        ])->assertOk()
+            ->assertJsonPath('settings.login_google_client_id', null);
+
+        // The real thing survives and reaches both the payload and the shell.
+        $this->signed('POST', $key, $secret, self::PATH, [
+            'login_google_client_id' => '1234567890-abc123.apps.googleusercontent.com',
+        ])->assertOk()
+            ->assertJsonPath('settings.login_google_client_id', '1234567890-abc123.apps.googleusercontent.com');
+
+        Tenant::run($shop, function (): void {
+            $this->assertSame(
+                '1234567890-abc123.apps.googleusercontent.com',
+                MerchantPortalAppearance::current()->loginGoogleClientId(),
+            );
         });
     }
 
@@ -238,7 +263,7 @@ final class WooPortalSettingsTest extends TestCase
         $this->assertSame([], $settingsB['banners_live']);
     }
 
-    /** @return array{0:\App\Models\Shop,1:string,2:string} */
+    /** @return array{0:Shop,1:string,2:string} */
     private function connectedShop(string $domain): array
     {
         $result = (new WooCommerceShopProvisioner)->provision($domain);

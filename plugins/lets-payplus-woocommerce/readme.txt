@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.24.0
+Stable tag: 0.25.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,43 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.25.0 =
+* SMS sign-in now works on a store of any size. The phone number a shopper types
+  is matched through an index the plugin maintains and backfills in the
+  background, instead of a scan that gave up after the first 500 customers —
+  which meant customer 501 was told a code was on its way and never got one.
+* A phone number is one number however it is written. `050-123 4567`,
+  `+972 50 123 4567` and `0501234567` are now the same destination everywhere:
+  the code you were sent verifies whatever way you retype the number, asking for
+  a new code retires the old one, and the "5 codes an hour" limit counts a
+  handset once instead of once per spelling.
+* The sign-in panel tells the truth when something goes wrong. A blocked or
+  failed request used to look exactly like a delivered code — and, on the second
+  step, told shoppers their correct code was wrong. It now says so.
+* Pressing Enter in the panel asks for the code instead of submitting the
+  WooCommerce login form with an empty username, and signing in from the
+  checkout's "returning customer?" form leaves you in the checkout with your
+  cart, instead of dropping you on the account page.
+* Passwordless sign-in is for customers. An account that can edit the site, its
+  products or its orders is refused and must use the WordPress login, so a
+  six-digit code can never open the shop's back office.
+* Sign in with Google. Paste your Google OAuth client ID in the LETS dashboard
+  (Settings → Customer area → Sign-in) and the login form shows Google's own
+  button. Google proves the email; WordPress decides which account it belongs
+  to and signs that customer in — existing accounts only, and the plugin
+  verifies every credential against your client ID on the server.
+* The one-time-code panel grew up: when you offer both email and SMS, the
+  shopper picks the channel with a proper toggle instead of a one-way link —
+  and a shop that offers only SMS now opens on the phone field instead of an
+  email field it would never send to.
+* The members-club shortcode is finally dressed: the signed-out invitation now
+  wears the plugin's own card styling instead of whatever the theme does to a
+  naked heading, and the iframe's sizing moved out of inline styles.
+* Design housekeeping flagged by the design kit: the product-page "subscribe"
+  hint and the cart subscription box no longer share a class (each gets its own
+  intended look), the side-by-side upsell layout is defined once instead of
+  twice, and a dead timer rule is gone.
 
 = 0.24.0 =
 * Your theme's link styling no longer bleeds into the personal area: the

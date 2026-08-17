@@ -2148,6 +2148,31 @@ a.la-banner:focus-visible {
     color: var(--la-fg);
 }
 
+/* The same receipt on the SINGLE order page. The section used to have no rule
+   at all, so the link arrived in the theme's default link colour while its
+   sibling in the history table was dressed; it now reads as the same quiet
+   secondary verb in both places. */
+.lets-shell.lets-shell .lets-order-document p {
+    margin: 8px 0 0;
+}
+
+.lets-shell.lets-shell .lets-order-document a {
+    display: inline-block;
+    padding: 8px 16px;
+    border: 1px solid var(--la-border-strong);
+    border-radius: var(--la-radius-sm);
+    background: var(--la-card);
+    color: var(--la-fg);
+    text-decoration: none;
+    transition: background 0.2s ease;
+}
+
+.lets-shell.lets-shell .lets-order-document a:hover {
+    background: var(--la-card-2);
+    color: var(--la-fg);
+    text-decoration: none;
+}
+
 /* --- Links inside WooCommerce's own tables ------------------------------
    The order number identifies the row; it is not a link out into the theme's
    palette. It takes the page's ink, and earns an underline on hover — where an
@@ -2477,6 +2502,95 @@ a.la-banner:focus-visible {
     float: none;
 }
 
+/* =========================================================================
+   The sign-in panel on the login form: one-time codes, and — when the
+   merchant configured a client id — Google. The card should read as ONE way
+   in with three doors, not three stacked widgets: Google first (a single
+   click beats typing a code), a quiet "or" line, then the code flow with the
+   channel chips. Google's own button is an iframe GIS renders; we only own
+   the box it sits in, so the centring happens on the container.
+   ========================================================================= */
+
+.lets-acct .la-login {
+    max-inline-size: 420px;
+    margin-block-start: var(--la-gap);
+}
+
+.lets-acct .la-login .la-section__title {
+    margin-block-end: 6px;
+}
+
+.la-login__google {
+    display: flex;
+    justify-content: center;
+    margin-block-start: 14px;
+    /* GIS pops in async; reserving the button's height keeps the card from
+       jumping when it lands. */
+    min-block-size: 44px;
+}
+
+.la-login__divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-block: 18px 4px;
+    color: var(--la-faint);
+}
+
+.la-login__divider::before,
+.la-login__divider::after {
+    content: '';
+    block-size: 1px;
+    flex: 1;
+    background: var(--la-border);
+}
+
+.la-login__divider-word {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+}
+
+/* Email / SMS as one segmented control: the choice is a mode, not two links. */
+.la-login__channels {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px;
+    margin-block: 4px 14px;
+    border: 1px solid var(--la-border);
+    border-radius: calc(var(--la-radius-sm) + 4px);
+    background: var(--la-card-2);
+}
+
+.la-chip {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--la-muted);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+    padding: 8px 18px;
+    border-radius: var(--la-radius-sm);
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.la-chip:hover {
+    color: var(--la-fg);
+}
+
+.la-chip.is-active {
+    background: var(--la-accent);
+    color: var(--la-accent-fg);
+}
+
+.la-chip:focus-visible {
+    outline: none;
+    box-shadow: var(--la-ring);
+}
+
 
 
 /* ============================================================
@@ -2628,13 +2742,6 @@ a.la-banner:focus-visible {
   white-space: nowrap;
 }
 .lets-ppu__timer.is-urgent { color: var(--lets-ppu-warn); border-block-end-color: var(--lets-ppu-warn); }
-.lets-ppu__timer-label {
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  color: var(--lets-ppu-muted);
-}
 
 /* ============================ MEDIA ============================ */
 .lets-ppu__media {
@@ -2646,36 +2753,33 @@ a.la-banner:focus-visible {
 }
 
 /* ==================== SIDE-BY-SIDE LAYOUT ("media_side") ====================
-   The renderer has always emitted .lets-ppu__body/.lets-ppu__content for this
-   layout — the stylesheet had no rule for either, so choosing "image beside the
-   text" produced exactly the stacked card it was meant to replace.
-
-   Desktop: the product beside its copy, the way a product page presents it.
-   Mobile: one above the other, because two columns on a phone is two cramped
-   columns. The grid does both with one declaration and no JS.
+   The product beside its copy, the way a product page presents it — but only
+   where there is width for two columns; on a phone the card stacks and the
+   image keeps its usual banner spacing. ONE block, all of it scoped to the
+   layout attribute: this section used to be written twice (an unscoped grid
+   here and a scoped one further down), and the second silently won.
    ========================================================================== */
-.lets-ppu[data-layout="media_side"] {
-  /* The stacked card is a narrow column; a two-column one needs the room. */
-  max-inline-size: 780px;
-}
-.lets-ppu__body {
-  display: grid;
-  gap: 28px;
-  align-items: center;
-}
-.lets-ppu__content {
-  min-inline-size: 0; /* let long product names wrap instead of stretching the grid */
-}
-/* Side by side only where there is width for it. */
-@media (min-width: 640px) {
-  .lets-ppu__body {
-    grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+@media (min-width: 440px) {
+  .lets-ppu[data-layout="media_side"] {
+    /* The stacked card is a narrow column; a two-column one needs the room. */
+    max-inline-size: 620px;
   }
-}
-/* In the two-column layout the image is a column, not a banner with a gap under it. */
-.lets-ppu__body .lets-ppu__media {
-  margin-block-end: 0;
-  align-self: start;
+  .lets-ppu[data-layout="media_side"] .lets-ppu__body {
+    display: grid;
+    /* minmax keeps long product names wrapping instead of stretching the grid. */
+    grid-template-columns: 200px minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+  }
+  /* Belt to the minmax braces: the content column must never propagate a long
+     word's intrinsic width into the grid. */
+  .lets-ppu[data-layout="media_side"] .lets-ppu__content {
+    min-inline-size: 0;
+  }
+  /* The image is a column here, not a banner with a gap under it. */
+  .lets-ppu[data-layout="media_side"] .lets-ppu__media {
+    margin-block-end: 0;
+  }
 }
 .lets-ppu__img {
   display: block;
@@ -2934,21 +3038,6 @@ a.la-banner:focus-visible {
 .lets-ppu__skel--price { block-size: 40px; inline-size: 55%; margin-block: 8px 20px; }
 .lets-ppu__skel--btn { block-size: 48px; }
 
-/* ============================ LAYOUT: media beside content ============================ */
-@media (min-width: 440px) {
-  .lets-ppu[data-layout="media_side"] {
-    max-inline-size: 620px;
-  }
-  .lets-ppu[data-layout="media_side"] .lets-ppu__body {
-    display: grid;
-    grid-template-columns: 200px 1fr;
-    gap: 24px;
-    align-items: start;
-  }
-  .lets-ppu[data-layout="media_side"] .lets-ppu__media {
-    margin-block-end: 0;
-  }
-}
 
 
 
@@ -2964,8 +3053,10 @@ a.la-banner:focus-visible {
    loads inside the merchant's theme, and a --lets-pp-* on :root is a global the
    theme did not ask for; more to the point, a theme that happens to use the same
    name would silently restyle our widget. Every selector in this file is
-   .lets-pp*, so matching on the class prefix covers all of them and leaks none. */
-[class*="lets-pp"] {
+   .lets-pp* or .lets-loyalty-*, so matching on the class prefixes covers all of
+   them and leaks none. */
+[class*="lets-pp"],
+[class*="lets-loyalty"] {
   --lets-pp-fg: #1a1a1a;
   --lets-pp-muted: #6b7280;
   --lets-pp-border: #d1d5db;
@@ -2996,7 +3087,11 @@ a.la-banner:focus-visible {
   background: #fff;
 }
 
-.lets-pp-sub {
+/* The one-liner under "Subscribe & save" in the calculator panel. Its own class:
+   .lets-pp-sub is the cart subscription-choice BOX further down, and the two
+   used to share a name — which dressed this paragraph in a border it never
+   asked for, and that box in 13px muted type. */
+.lets-pp-sublabel {
   margin: 0 0 12px;
   font-size: 13px;
   color: var(--lets-pp-muted);
@@ -3140,6 +3235,66 @@ a.la-banner:focus-visible {
 .lets-pp-sub__opt input { margin-inline-end: 8px; }
 .lets-pp-sub__note { margin: 0; font-weight: 600; }
 .lets-pp-sub__cadence { opacity: 0.7; font-size: 0.9em; }
+
+/* ==================== MEMBERS CLUB ([lets_loyalty]) ====================
+   The iframe wrapper, and the signed-out prompt. The prompt is an invitation,
+   not an error, so it reads like a small hero: a centred card, a heading, one
+   line of copy, one button. The iframe's height is a floor — the club page
+   reports its real height over postMessage and the script stretches it. */
+
+.lets-loyalty-wrap {
+  margin: 12px 0;
+}
+
+.lets-loyalty-frame {
+  display: block;
+  width: 100%;
+  border: 0;
+  /* Mirrors LETS_PAYPLUS_LOYALTY_MIN_HEIGHT until the page reports its own. */
+  min-height: 900px;
+}
+
+.lets-loyalty-prompt {
+  margin: 12px 0;
+  padding: 44px 28px;
+  text-align: center;
+  border: 1px solid var(--lets-pp-border);
+  border-radius: var(--lets-pp-radius);
+  background: var(--lets-pp-bg);
+}
+
+.lets-loyalty-prompt h3 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--lets-pp-fg);
+}
+
+.lets-loyalty-prompt p {
+  margin: 0 auto 22px;
+  max-width: 46ch;
+  color: var(--lets-pp-muted);
+  line-height: 1.6;
+}
+
+/* .button is WooCommerce's own class on the link, which keeps the prompt
+   working with no stylesheet at all; these rules dress it in the widget's
+   accent when the stylesheet IS there. */
+.lets-loyalty-prompt .button {
+  display: inline-block;
+  padding: 11px 30px;
+  border: 1px solid var(--lets-pp-accent);
+  border-radius: var(--lets-pp-radius);
+  background: var(--lets-pp-accent);
+  color: #fff;
+  text-decoration: none;
+  transition: opacity 0.2s ease;
+}
+
+.lets-loyalty-prompt .button:hover {
+  opacity: 0.85;
+  color: #fff;
+}
 
 
 
@@ -3389,6 +3544,7 @@ html, body {
                     <li><a href="#LA-11"><code>LA-11</code><span>מסכי WooCommerce</span></a></li>
                     <li><a href="#LA-12"><code>LA-12</code><span>עברית + כהה</span></a></li>
                     <li><a href="#LA-13"><code>LA-13</code><span>עברית — עמוד מלא</span></a></li>
+                    <li><a href="#LA-14"><code>LA-14</code><span>פאנל הכניסה</span></a></li>
                 </ol>
 
                 <h2>ב · האפסייל</h2>
@@ -4211,6 +4367,7 @@ html, body {
             <div class="lets-acct" data-theme="light" data-density="comfortable" data-card="outlined">
                 <section class="la-card la-signin">
                     <p class="la-signin__text">Sign in to see your subscriptions and rewards.</p>
+                    <a class="la-btn la-btn--primary la-signin__cta" href="#">Sign in</a>
                 </section>
             </div>
         </div>
@@ -4240,7 +4397,7 @@ html, body {
             <li>ההודעה (toast) חיה היא <code>position: fixed</code> בתחתית המסך במרכז, גלולה מלאה ברוחב תוכן, נעלמת אחרי 3.2 שניות. יש לה <code>role="status"</code> ו‑<code>aria-live="polite"</code>.</li>
             <li>אחרי כל פעולה <strong>כל האזור מצויר מחדש מהתשובה של השרת</strong>, לא רק הכרטיס שנגעו בו: דילוג על משלוח מזיז את תאריך החיוב, שמזיז את ציר הזמן. ממשק שמעדכן רק חצי מעצמו סותר את עצמו.</li>
             <li>‎<code>.la-skeleton</code> הוא בגובה 132px עם shimmer של 1.3s; ב‑<code>prefers-reduced-motion</code> האנימציה נעצרת.</li>
-            <li class="k-flag"><b>חסר</b>מסך "לא מחובר" מציג רק משפט — <code>renderSignIn()</code> לא מייצר כפתור, למרות שהמחרוזת <code>sign_in_cta</code> ("התחברות") כבר קיימת בשני קבצי השפה. צריך להוסיף כפתור.</li>
+            <li><b>נסגר:</b> ‎<code>renderSignIn()</code> מייצר עכשיו גם כפתור (<code>.la-signin__cta</code>, ‏<code>la-btn--primary</code>). ה‑URL מגיע מהמארח — בוורדפרס זה עמוד "החשבון שלי", שטופס ההתחברות שלו נושא את פאנל הכניסה (גוגל + קוד חד‑פעמי). בלי URL — אין כפתור מת.</li>
         </ul>
     </div>
 
@@ -4822,6 +4979,82 @@ html, body {
             <li>ארבעת הטאבים האחרים הם המסכים של WooCommerce עצמו אחרי ה‑re‑skin — הזמנות, אמצעי תשלום, כתובות ופרטי החשבון. הכותרת מעל כל אחד מהם (<code>.la-shell__title</code>) מוזרקת על ידינו.</li>
             <li>שם המשתמש בעיגול הניווט הוא <strong>האות הראשונה בעברית</strong> (<code>mb_substr</code>) — לא ראשי תיבות באנגלית.</li>
             <li>הטקסט "מחיר ההיכרות מסתיים — המחיר יהיה" הוא מחרוזת שלמה מ‑<code>benefit.intro_ending</code>; היא נגמרת באמצע משפט כי הסכום מגיע אחריה. <strong>בעיצוב צריך מקום למספר בהמשך השורה.</strong></li>
+        </ul>
+    </div>
+
+    <details class="k-src"><summary>HTML</summary><div class="k-src__wrap"><button type="button" class="k-copy">copy</button><pre><code></code></pre></div></details>
+</section>
+
+<!-- LA-14 -->
+<section class="k-plate" id="LA-14">
+    <div class="k-plate__head">
+        <span class="k-plate__code">LA-14</span>
+        <h3 class="k-plate__title">הדלתות פנימה — פאנל הכניסה והמועדון למבקר לא מחובר</h3>
+        <span class="k-plate__src">.la-login · .la-chip · .lets-loyalty-prompt</span>
+    </div>
+
+    <div class="k-stage k-stage--row" dir="rtl" data-lock-dir>
+        <div class="k-col k-col--flow">
+            <span class="k-cap">פאנל הכניסה על טופס ההתחברות — גוגל + קוד חד־פעמי</span>
+            <div class="lets-acct" data-theme="light" data-density="comfortable" data-card="outlined" dir="rtl">
+                <div class="la-card la-login">
+                    <h3 class="la-section__title">כניסה מהירה</h3>
+                    <div class="la-login__google">
+                        <span class="la-btn"><b>G</b> כניסה באמצעות Google</span>
+                    </div>
+                    <div class="la-login__divider" aria-hidden="true">
+                        <span class="la-login__divider-word">או</span>
+                    </div>
+                    <p class="la-muted">נשלח לכם קוד חד-פעמי.</p>
+                    <div class="la-login__channels" role="group" aria-label="איך לשלוח את הקוד">
+                        <button type="button" class="la-chip is-active" aria-pressed="true">מייל</button>
+                        <button type="button" class="la-chip" aria-pressed="false">SMS</button>
+                    </div>
+                    <label class="la-field">
+                        <span class="la-field__label">כתובת מייל</span>
+                        <input type="text" class="la-input" autocomplete="email" inputmode="email">
+                    </label>
+                    <div class="la-editor__actions">
+                        <button type="button" class="la-btn la-btn--primary">שליחת קוד</button>
+                    </div>
+                </div>
+            </div>
+
+            <span class="k-cap">אחרי שליחה — קופסת הקוד נפתחת במקום, לא במודאל</span>
+            <div class="lets-acct" data-theme="light" data-density="comfortable" data-card="outlined" dir="rtl">
+                <div class="la-card la-login">
+                    <div class="la-editor">
+                        <label class="la-field">
+                            <span class="la-field__label">קוד אימות</span>
+                            <input type="text" class="la-input la-ltr" inputmode="numeric" autocomplete="one-time-code" value="928141">
+                        </label>
+                        <div class="la-editor__actions">
+                            <button type="button" class="la-btn la-btn--primary">כניסה</button>
+                        </div>
+                    </div>
+                    <p class="la-muted" role="status" aria-live="polite">אם יש חשבון תואם, הקוד בדרך.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="k-col k-col--flow">
+            <span class="k-cap">המועדון למבקר לא מחובר — הזמנה, לא שגיאה</span>
+            <div class="lets-loyalty-prompt" dir="rtl">
+                <h3>מועדון החברים</h3>
+                <p>התחברו לחשבון שלכם כדי לראות את הנקודות והסטטוס שלכם.</p>
+                <a class="button" href="#LA-14">התחברות</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="k-notes">
+        <ul>
+            <li>הכרטיס הוא <strong>דרך כניסה אחת עם שלוש דלתות</strong>, לא שלושה ווידג'טים בערימה: גוגל קודם (קליק אחד מנצח הקלדת קוד), קו "או" שקט, ואז מסלול הקוד עם צ'יפים של מייל/SMS.</li>
+            <li>כפתור הגוגל האמיתי הוא iframe ש‑GIS מצייר; אנחנו בעלים רק של הקופסה (<code>.la-login__google</code>), שמרכזת אותו ושומרת גובה של 44px כדי שהכרטיס לא יקפוץ כשהוא נוחת. מה שמופיע כאן הוא ממלא מקום.</li>
+            <li>הצ'יפים (מייל / SMS) הם segmented control אחד — הבחירה היא מצב, לא שני קישורים. מוצגים רק כשהמוכר הפעיל את שני הערוצים.</li>
+            <li>קופסת הקוד היא אותו <code>.la-editor</code> של שאר האזור האישי — נפתחת במקום, אף פעם לא מודאל. שדה הקוד הוא <code>la-ltr</code> עם <code>autocomplete="one-time-code"</code>.</li>
+            <li>שורת הסטטוס עונה תמיד באותו נוסח — "אם יש חשבון תואם, הקוד בדרך" — כדי שלא ניתן יהיה לנחש מבחוץ אילו כתובות קיימות במערכת.</li>
+            <li>ההנחיה של המועדון גרה ב‑<code>lets.css</code> (משפחת הווידג'טים של החנות), לא ב‑<code>lets-account.css</code> — היא מוצגת בעמוד המועדון, מחוץ לאזור האישי.</li>
         </ul>
     </div>
 
@@ -5550,7 +5783,7 @@ html, body {
             <li>הווידג'ט יושב בעמוד המוצר מעל כפתור "הוספה לסל" ומצטרף לסל הרגיל של WooCommerce — אין מסלול תשלום נפרד.</li>
             <li>במוצר עם וריאציות המחיר מתעדכן ב‑<code>found_variation</code> — כלומר <strong>המחיר במנוי משתנה אחרי בחירת גודל/צבע</strong>. צריך מצב ביניים ויזואלי לזה.</li>
             <li>אם המוצר נמכר רק כמנוי, אין רדיו בכלל — רק שורת מידע.</li>
-            <li class="k-flag"><b>התנגשות ב‑CSS</b>המחלקה <code>.lets-pp-sub</code> מוגדרת <strong>פעמיים</strong> ב‑<code>lets.css</code>: פעם אחת (שורה 42) כטקסט משנה מושתק בתוך פאנל המקדמה, ופעם שנייה (שורה 171) כקופסה ממוסגרת. שתיהן חלות על אותו אלמנט — הקופסה מנצחת על המסגרת והריפוד, אבל <code>font-size: 13px</code> ו‑<code>color: muted</code> מהראשונה עדיין דבוקים. צריך לפצל לשני שמות.</li>
+            <li>שורת ההסבר מתחת ל"הרשמה למנוי" היא <code>.lets-pp-sublabel</code>, וקופסת הבחירה בסל היא <code>.lets-pp-sub</code> — שתי מחלקות נפרדות. (בעבר חלקו שם אחד ושני הכללים זלגו זה לזה.)</li>
         </ul>
     </div>
 
@@ -6008,13 +6241,9 @@ html, body {
     </div>
     <div class="k-notes">
         <ul>
-            <li class="k-flag"><b>lets-ppu.css · media_side מוגדר פעמיים</b>שורות 173–190 (<code>780px</code>, גריד <code>5fr / 6fr</code>, מ‑640px) מול שורות 454–467 (<code>620px</code>, גריד <code>200px 1fr</code>, מ‑440px). האחרון מנצח בכל רוחב מסך, אז הבלוק הראשון — כולל ההערה המפורטת שמסבירה למה הוא קיים — לא משפיע על כלום.</li>
-            <li class="k-flag"><b>lets.css · ‎.lets-pp-sub מוגדר פעמיים</b>שורה 42 (טקסט משנה מושתק) ושורה 171 (קופסה ממוסגרת) חלות על אותו אלמנט. התוצאה בפועל היא קופסה ממוסגרת עם טקסט של 13px בצבע מושתק — ככל הנראה לא מה שהתכוונו לשניהם.</li>
-            <li class="k-flag"><b>lets-ppu.css · ‎.lets-ppu__timer-label</b>מוגדר בגיליון, אף פעם לא מיוצר על ידי ה‑renderer.</li>
             <li class="k-flag"><b>lets-account.css · ‎.la-item-row / .la-qty</b>מוגדרים לעריכת פריטים בהזמנה הבאה, אבל הפעולה עצמה (<code>action_items</code>) עדיין לא ממומשת ב‑renderer.</li>
-            <li class="k-flag"><b>‎.lets-loyalty-wrap ו‑.lets-loyalty-prompt — בלי שום CSS</b>שתי המחלקות שעוטפות את המועדון בוורדפרס לא מופיעות באף גיליון סגנון בפרויקט. ה‑iframe מקבל <code>width</code>, ‎<code>border</code> ו‑<code>min-height</code> כ‑<code>style=""</code> inline (החריגה היחידה מהכלל "בלי inline CSS"), ומסך "התחברו כדי לראות את הנקודות" מקבל את הסגנון של התבנית של בעל החנות — כלומר <strong>הוא ייראה אחרת בכל חנות</strong>. זה המקום היחיד שבו משטח שלנו יוצא ללקוח בלי עיצוב משלנו.</li>
-            <li class="k-flag"><b>‎.lets-order-document — בלי CSS</b>הקישור לחשבונית בעמוד ההזמנה הבודדת עטוף ב‑<code>&lt;section class="lets-order-document"&gt;</code> שאין לו אף כלל סגנון. הוא יורש את הכותרת של WooCommerce (<code>.woocommerce-column__title</code>, שכן מעוצבת אצלנו) אבל הקישור עצמו הוא קישור ברירת מחדל של התבנית. <strong>הקישור בטבלת ההיסטוריה כן מעוצב</strong>, כי הוא יושב בעמודת הפעולות. שווה ליישר את השניים.</li>
             <li class="k-flag"><b>שתי כניסות לאותו מסך</b>גם "לוח בקרה" וגם "המנויים שלי" מדפיסים את <code>lets_payplus_account_markup()</code>. אפשרי בכוונה (מי שנוחת בלוח הבקרה רואה מיד את המנוי), אבל בניווט זה נראה כמו שני יעדים שונים.</li>
+            <li><b>נסגרו:</b> ‎<code>media_side</code> מוגדר עכשיו פעם אחת, מסוקף ל‑<code>[data-layout]</code>; ‎<code>.lets-pp-sub</code> פוצל (<code>.lets-pp-sublabel</code> לשורת ההסבר); ‎<code>.lets-ppu__timer-label</code> המת הוסר; המועדון (<code>.lets-loyalty-wrap</code>/<code>-prompt</code>/<code>-frame</code>) קיבל עיצוב משלו ב‑<code>lets.css</code> וה‑inline‑style של ה‑iframe הוסר; ‎<code>.lets-order-document</code> בעמוד ההזמנה הבודדת מיושר עכשיו עם הקישור שבטבלת ההיסטוריה.</li>
         </ul>
     </div>
 </section>

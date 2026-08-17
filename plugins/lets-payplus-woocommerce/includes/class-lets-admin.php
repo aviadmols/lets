@@ -17,10 +17,7 @@
  * Saving goes through admin-post.php (nonce + capability), never through a
  * REST call from the browser: the api_secret lives on the server and the
  * browser never gets to sign anything.
- *
- * @package LETS_PayPlus
  */
-
 if (! defined('ABSPATH')) {
     exit;
 }
@@ -160,9 +157,9 @@ function lets_payplus_admin_tabs($current, $he)
 {
     $labels = array(
         'appearance' => $he ? 'מראה' : 'Appearance',
-        'sections' => $he ? 'אזורים' : 'Sections',
-        'banners' => $he ? 'באנרים' : 'Banners',
-        'copy' => $he ? 'טקסטים' : 'Copy',
+        'sections'   => $he ? 'אזורים' : 'Sections',
+        'banners'    => $he ? 'באנרים' : 'Banners',
+        'copy'       => $he ? 'טקסטים' : 'Copy',
     );
 
     echo '<h2 class="nav-tab-wrapper">';
@@ -210,31 +207,31 @@ function lets_payplus_admin_appearance($s, $he)
 {
     $enums = array(
         'theme_mode' => array(
-            'label' => $he ? 'ערכת צבעים' : 'Theme',
+            'label'   => $he ? 'ערכת צבעים' : 'Theme',
             'options' => $s['available_themes'],
-            'labels' => array('light' => $he ? 'בהיר' : 'Light', 'dark' => $he ? 'כהה' : 'Dark', 'auto' => $he ? 'לפי המכשיר' : 'Follow the device'),
+            'labels'  => array('light' => $he ? 'בהיר' : 'Light', 'dark' => $he ? 'כהה' : 'Dark', 'auto' => $he ? 'לפי המכשיר' : 'Follow the device'),
         ),
         'corner_radius' => array(
-            'label' => $he ? 'פינות' : 'Corners',
+            'label'   => $he ? 'פינות' : 'Corners',
             'options' => $s['available_radii'],
-            'labels' => array('sharp' => $he ? 'חדות' : 'Sharp', 'soft' => $he ? 'רכות' : 'Soft', 'pill' => $he ? 'עגולות' : 'Pill'),
+            'labels'  => array('sharp' => $he ? 'חדות' : 'Sharp', 'soft' => $he ? 'רכות' : 'Soft', 'pill' => $he ? 'עגולות' : 'Pill'),
         ),
         'density' => array(
-            'label' => $he ? 'צפיפות' : 'Density',
+            'label'   => $he ? 'צפיפות' : 'Density',
             'options' => $s['available_densities'],
-            'labels' => array('comfortable' => $he ? 'מרווחת' : 'Comfortable', 'compact' => $he ? 'צפופה' : 'Compact'),
+            'labels'  => array('comfortable' => $he ? 'מרווחת' : 'Comfortable', 'compact' => $he ? 'צפופה' : 'Compact'),
         ),
         'card_style' => array(
-            'label' => $he ? 'סגנון כרטיס' : 'Card style',
+            'label'   => $he ? 'סגנון כרטיס' : 'Card style',
             'options' => $s['available_card_styles'],
-            'labels' => array('flat' => $he ? 'שטוח' : 'Flat', 'outlined' => $he ? 'ממוסגר' : 'Outlined', 'raised' => $he ? 'מוגבה' : 'Raised'),
+            'labels'  => array('flat' => $he ? 'שטוח' : 'Flat', 'outlined' => $he ? 'ממוסגר' : 'Outlined', 'raised' => $he ? 'מוגבה' : 'Raised'),
         ),
         'font_family' => array(
-            'label' => $he ? 'גופן' : 'Typeface',
+            'label'   => $he ? 'גופן' : 'Typeface',
             'options' => $s['available_fonts'],
-            'labels' => array(
-                'theme' => $he ? 'הגופן של האתר (מומלץ)' : 'The site’s own font (recommended)',
-                'heebo' => 'Heebo',
+            'labels'  => array(
+                'theme'  => $he ? 'הגופן של האתר (מומלץ)' : 'The site’s own font (recommended)',
+                'heebo'  => 'Heebo',
                 'system' => $he ? 'גופן המערכת' : 'System font',
             ),
             'hint' => $he
@@ -242,9 +239,9 @@ function lets_payplus_admin_appearance($s, $he)
                 : 'The default declares no font at all — the area inherits the shop’s, which is what makes it read as part of it. Choose otherwise only if the theme font cannot carry a page of numbers and labels.',
         ),
         'page_locale' => array(
-            'label' => $he ? 'שפת העמוד' : 'Page language',
+            'label'   => $he ? 'שפת העמוד' : 'Page language',
             'options' => $s['available_locales'],
-            'labels' => array('auto' => $he ? 'לפי האתר' : 'Follow the site', 'he' => 'עברית', 'en' => 'English'),
+            'labels'  => array('auto' => $he ? 'לפי האתר' : 'Follow the site', 'he' => 'עברית', 'en' => 'English'),
         ),
     );
 
@@ -280,16 +277,16 @@ function lets_payplus_admin_appearance($s, $he)
 function lets_payplus_admin_sections($s, $he)
 {
     $labels = array(
-        'welcome' => $he ? 'כותרת פתיחה' : 'Welcome heading',
+        'welcome'       => $he ? 'כותרת פתיחה' : 'Welcome heading',
         'subscriptions' => $he ? 'מנויים' : 'Subscriptions',
-        'upcoming' => $he ? 'מה מחכה לך' : "What's next",
-        'benefits' => $he ? 'ההטבות שלי' : 'Benefits',
-        'loyalty' => $he ? 'מועדון הלקוחות' : 'Rewards',
-        'orders' => $he ? 'הזמנות' : 'Orders',
-        'documents' => $he ? 'חשבוניות וקבלות' : 'Invoices & receipts',
-        'profile' => $he ? 'פרטי החשבון' : 'Account details',
-        'addresses' => $he ? 'כתובות' : 'Addresses',
-        'support' => $he ? 'תמיכה' : 'Support',
+        'upcoming'      => $he ? 'מה מחכה לך' : "What's next",
+        'benefits'      => $he ? 'ההטבות שלי' : 'Benefits',
+        'loyalty'       => $he ? 'מועדון הלקוחות' : 'Rewards',
+        'orders'        => $he ? 'הזמנות' : 'Orders',
+        'documents'     => $he ? 'חשבוניות וקבלות' : 'Invoices & receipts',
+        'profile'       => $he ? 'פרטי החשבון' : 'Account details',
+        'addresses'     => $he ? 'כתובות' : 'Addresses',
+        'support'       => $he ? 'תמיכה' : 'Support',
     );
 
     echo '<p class="description">' . esc_html($he
@@ -340,11 +337,11 @@ function lets_payplus_admin_banners($s, $he)
 
     for ($i = 0; $i < $slots; $i++) {
         $banner = isset($s['banners'][$i]) ? $s['banners'][$i] : array(
-            'enabled' => false,
-            'heading' => '',
-            'subtext' => '',
+            'enabled'   => false,
+            'heading'   => '',
+            'subtext'   => '',
             'image_url' => '',
-            'link_url' => '',
+            'link_url'  => '',
         );
 
         echo '<h2>' . esc_html(sprintf($he ? 'באנר %d' : 'Banner %d', $i + 1)) . '</h2>';
@@ -467,6 +464,11 @@ function lets_payplus_admin_save()
         $args['lets_message'] = $result->get_error_message();
     } else {
         $args['lets_status'] = 'saved';
+
+        // The storefront caches this shop's appearance and sign-in config. Without
+        // the flush, the merchant lands back on a settings page that reports what
+        // they just saved while the shop itself keeps serving the old one.
+        do_action('lets_payplus_settings_changed');
     }
 
     wp_safe_redirect(add_query_arg($args, admin_url('admin.php')));
@@ -478,7 +480,7 @@ function lets_payplus_admin_save()
  * the key is present, so a partial body cannot blank the tabs the merchant was
  * not looking at.
  *
- * @param string $tab
+ * @param  string  $tab
  * @return array
  */
 function lets_payplus_admin_body($tab)
@@ -504,7 +506,7 @@ function lets_payplus_admin_body($tab)
             }
 
             $sections[] = array(
-                'key' => sanitize_key($row['key']),
+                'key'     => sanitize_key($row['key']),
                 'enabled' => ! empty($row['enabled']),
             );
         }
@@ -522,11 +524,11 @@ function lets_payplus_admin_body($tab)
             }
 
             $banners[] = array(
-                'enabled' => ! empty($row['enabled']),
-                'heading' => isset($row['heading']) ? sanitize_text_field($row['heading']) : '',
-                'subtext' => isset($row['subtext']) ? sanitize_textarea_field($row['subtext']) : '',
+                'enabled'   => ! empty($row['enabled']),
+                'heading'   => isset($row['heading']) ? sanitize_text_field($row['heading']) : '',
+                'subtext'   => isset($row['subtext']) ? sanitize_textarea_field($row['subtext']) : '',
                 'image_url' => isset($row['image_url']) ? esc_url_raw($row['image_url']) : '',
-                'link_url' => isset($row['link_url']) ? esc_url_raw($row['link_url']) : '',
+                'link_url'  => isset($row['link_url']) ? esc_url_raw($row['link_url']) : '',
             );
         }
 
@@ -536,7 +538,7 @@ function lets_payplus_admin_body($tab)
     return array(
         'welcome_heading' => isset($_POST['welcome_heading']) ? sanitize_text_field(wp_unslash($_POST['welcome_heading'])) : '',
         'welcome_subtext' => isset($_POST['welcome_subtext']) ? sanitize_textarea_field(wp_unslash($_POST['welcome_subtext'])) : '',
-        'support_email' => isset($_POST['support_email']) ? sanitize_email(wp_unslash($_POST['support_email'])) : '',
-        'support_url' => isset($_POST['support_url']) ? esc_url_raw(wp_unslash($_POST['support_url'])) : '',
+        'support_email'   => isset($_POST['support_email']) ? sanitize_email(wp_unslash($_POST['support_email'])) : '',
+        'support_url'     => isset($_POST['support_url']) ? esc_url_raw(wp_unslash($_POST['support_url'])) : '',
     );
 }

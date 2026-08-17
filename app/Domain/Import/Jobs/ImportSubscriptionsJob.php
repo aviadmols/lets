@@ -61,6 +61,21 @@ final class ImportSubscriptionsJob implements ShouldQueue
     /** One attempt — see the class docblock. */
     public int $tries = 1;
 
+    /**
+     * Long enough for a real store's file.
+     *
+     * WITHOUT this the job inherits the Horizon supervisor's 60 seconds, which is
+     * sized for a charge, not for a migration: a 765KB export is thousands of
+     * subscribers and the worker would be killed part-way through — and with
+     * `tries = 1` there is no second attempt, so the merchant is left with a
+     * half-imported store and a "failed" they cannot act on.
+     *
+     * The queue connection's `retry_after` MUST stay above this (Railway sets
+     * REDIS_QUEUE_RETRY_AFTER), or Redis hands the job to a second worker while
+     * the first is still writing.
+     */
+    public int $timeout = 900;
+
     public function __construct(
         /** The tenant, carried explicitly — never inferred from global state. */
         public readonly int $shopId,

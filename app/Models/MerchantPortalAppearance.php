@@ -28,14 +28,23 @@ class MerchantPortalAppearance extends Model
 
     /** Sections the merchant can show, hide and reorder. */
     public const SECTION_WELCOME = 'welcome';
+
     public const SECTION_SUBSCRIPTIONS = 'subscriptions';
+
     public const SECTION_UPCOMING = 'upcoming';
+
     public const SECTION_BENEFITS = 'benefits';
+
     public const SECTION_LOYALTY = 'loyalty';
+
     public const SECTION_ORDERS = 'orders';
+
     public const SECTION_DOCUMENTS = 'documents';
+
     public const SECTION_PROFILE = 'profile';
+
     public const SECTION_ADDRESSES = 'addresses';
+
     public const SECTION_SUPPORT = 'support';
 
     public const SECTION_KEYS = [
@@ -60,22 +69,33 @@ class MerchantPortalAppearance extends Model
     public const LOCKED_SECTIONS = [self::SECTION_SUBSCRIPTIONS];
 
     public const THEME_LIGHT = 'light';
+
     public const THEME_DARK = 'dark';
+
     public const THEME_AUTO = 'auto';
+
     public const THEME_MODES = [self::THEME_LIGHT, self::THEME_DARK, self::THEME_AUTO];
 
     public const RADIUS_SHARP = 'sharp';
+
     public const RADIUS_SOFT = 'soft';
+
     public const RADIUS_PILL = 'pill';
+
     public const CORNER_RADII = [self::RADIUS_SHARP, self::RADIUS_SOFT, self::RADIUS_PILL];
 
     public const DENSITY_COMPACT = 'compact';
+
     public const DENSITY_COMFORTABLE = 'comfortable';
+
     public const DENSITIES = [self::DENSITY_COMPACT, self::DENSITY_COMFORTABLE];
 
     public const CARD_FLAT = 'flat';
+
     public const CARD_OUTLINED = 'outlined';
+
     public const CARD_RAISED = 'raised';
+
     public const CARD_STYLES = [self::CARD_FLAT, self::CARD_OUTLINED, self::CARD_RAISED];
 
     /**
@@ -85,8 +105,11 @@ class MerchantPortalAppearance extends Model
      * The other two exist for a theme font that cannot carry the page.
      */
     public const FONT_THEME = 'theme';
+
     public const FONT_HEEBO = 'heebo';
+
     public const FONT_SYSTEM = 'system';
+
     public const FONTS = [self::FONT_THEME, self::FONT_HEEBO, self::FONT_SYSTEM];
 
     /**
@@ -96,19 +119,34 @@ class MerchantPortalAppearance extends Model
      * one that stays right when they translate their shop.
      */
     public const LOCALE_AUTO = 'auto';
+
     public const LOCALE_HE = 'he';
+
     public const LOCALE_EN = 'en';
+
     public const PAGE_LOCALES = [self::LOCALE_AUTO, self::LOCALE_HE, self::LOCALE_EN];
 
     public const CHANNEL_EMAIL = 'email';
+
     public const CHANNEL_SMS = 'sms';
+
     public const CHANNEL_BOTH = 'both';
+
     public const LOGIN_CHANNELS = [self::CHANNEL_EMAIL, self::CHANNEL_SMS, self::CHANNEL_BOTH];
+
+    /**
+     * A Google OAuth client id and nothing else. The value is interpolated into
+     * a customer page (the GIS button's data-client_id) and compared against a
+     * token's `aud`, so anything that is not shaped like a client id is treated
+     * as absent rather than trusted.
+     */
+    public const GOOGLE_CLIENT_ID_PATTERN = '/^[0-9a-zA-Z][0-9a-zA-Z\-_.]{2,180}\.apps\.googleusercontent\.com$/';
 
     /** The side rail. Three is enough to be useful and few enough to stay tidy. */
     public const BANNER_SLOTS = 3;
 
     public const DEFAULT_ACCENT = '#111827';
+
     public const DEFAULT_ACCENT_TEXT = '#ffffff';
 
     /** Radius enum → the px the stylesheet actually uses. */
@@ -119,8 +157,11 @@ class MerchantPortalAppearance extends Model
     ];
 
     private const HEX_PATTERN = '/^#[0-9a-fA-F]{6}$/';
+
     private const MAX_HEADING = 80;
+
     private const MAX_SUBTEXT = 300;
+
     private const MAX_URL = 500;
 
     protected $guarded = ['id', 'shop_id'];
@@ -344,6 +385,24 @@ class MerchantPortalAppearance extends Model
 
         return $this->loginCodeChannel() === self::CHANNEL_BOTH
             || $this->loginCodeChannel() === $channel;
+    }
+
+    /** Does this shop's choice involve sending text messages at all? */
+    public function offersSmsCodes(): bool
+    {
+        return $this->allowsChannel(self::CHANNEL_SMS);
+    }
+
+    /**
+     * The merchant's Google OAuth client id, or null. Presence is what enables
+     * the "Sign in with Google" button — there is no separate toggle, because a
+     * button without a client id to verify against could only ever fail.
+     */
+    public function loginGoogleClientId(): ?string
+    {
+        $value = is_string($this->login_google_client_id) ? trim($this->login_google_client_id) : '';
+
+        return preg_match(self::GOOGLE_CLIENT_ID_PATTERN, $value) === 1 ? $value : null;
     }
 
     // === Copy ===

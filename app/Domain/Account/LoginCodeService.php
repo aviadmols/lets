@@ -4,6 +4,7 @@ namespace App\Domain\Account;
 
 use App\Mail\LoginCodeMail;
 use App\Models\CustomerLoginCode;
+use App\Models\MerchantLoyaltySettings;
 use App\Models\MerchantPortalAppearance;
 use App\Models\Shop;
 use App\Services\Sms\SmsSenderFactory;
@@ -71,8 +72,11 @@ class LoginCodeService
 
     /** Outcomes of a verify. */
     public const VERIFIED = 'verified';
+
     public const REJECTED = 'rejected';
+
     public const EXHAUSTED = 'exhausted';
+
     public const EXPIRED = 'expired';
 
     /**
@@ -97,18 +101,18 @@ class LoginCodeService
                 return true;
             }
 
-            if (! $this->withinLimits($shop, $destination, $ip)) {
+            if (! $this->withinLimits($shop, $channel, $destination, $ip)) {
                 Log::info('account.login_code.throttled', ['shop_id' => $shop->getKey()]);
 
                 return true;
             }
 
             $code = $this->generateCode();
-            $this->invalidateLive($shop, $destination);
+            $this->invalidateLive($shop, $channel, $destination);
 
             CustomerLoginCode::create([
                 'channel' => $channel,
-                'destination_hash' => CustomerLoginCode::hashDestination((int) $shop->getKey(), $destination),
+                'destination_hash' => CustomerLoginCode::hashDestination((int) $shop->getKey(), $channel, $destination),
                 'code_hash' => Hash::make($code),
                 'attempts' => 0,
                 'expires_at' => now()->addMinutes(self::TTL_MINUTES),
@@ -131,7 +135,7 @@ class LoginCodeService
         return Tenant::run($shop, function () use ($shop, $channel, $destination, $code): string {
             $row = CustomerLoginCode::query()
                 ->where('channel', $channel)
-                ->where('destination_hash', CustomerLoginCode::hashDestination((int) $shop->getKey(), $destination))
+                ->where('destination_hash', CustomerLoginCode::hashDestination((int) $shop->getKey(), $channel, $destination))
                 ->whereNull('consumed_at')
                 ->orderByDesc('id')
                 ->first();
@@ -186,20 +190,21 @@ class LoginCodeService
      * make the old one useless, or a code glimpsed on a lock screen stays valid
      * for its whole TTL after the shopper has already moved on.
      */
-    private function invalidateLive(Shop $shop, string $destination): void
+    private function invalidateLive(Shop $shop, string $channel, string $destination): void
     {
         CustomerLoginCode::query()
-            ->where('destination_hash', CustomerLoginCode::hashDestination((int) $shop->getKey(), $destination))
+            ->where('channel', $channel)
+            ->where('destination_hash', CustomerLoginCode::hashDestination((int) $shop->getKey(), $channel, $destination))
             ->whereNull('consumed_at')
             ->where('expires_at', '>', now())
             ->update(['consumed_at' => now()]);
     }
 
     /** Three buckets, all of which must have room. */
-    private function withinLimits(Shop $shop, string $destination, ?string $ip): bool
+    private function withinLimits(Shop $shop, string $channel, string $destination, ?string $ip): bool
     {
         $shopId = (int) $shop->getKey();
-        $destKey = 'lets:login-code:dest:'.CustomerLoginCode::hashDestination($shopId, $destination);
+        $destKey = 'lets:login-code:dest:'.CustomerLoginCode::hashDestination($shopId, $channel, $destination);
         $shopKey = 'lets:login-code:shop:'.$shopId;
 
         if (RateLimiter::tooManyAttempts($destKey, self::MAX_PER_DESTINATION_HOUR)
@@ -239,7 +244,18 @@ class LoginCodeService
 
             if ($channel === CustomerLoginCode::CHANNEL_SMS) {
                 $sender = SmsSenderFactory::for($shop);
-                $sender?->send($destination, __('account.sms.login_code', [
+
+                if ($sender === null) {
+                    // The merchant offers SMS sign-in but has no usable 019 account,
+                    // so this code can never arrive. The shopper is still told the
+                    // same thing — but a silent `?->` here is how a shop stays
+                    // un-signable-into for weeks with nothing in any log to find.
+                    Log::warning('account.login_code.no_sms_sender', ['shop_id' => $shop->getKey()]);
+
+                    return;
+                }
+
+                $sender->send($destination, __('account.sms.login_code', [
                     'code' => $code,
                     'minutes' => self::TTL_MINUTES,
                 ]));
@@ -271,10 +287,10 @@ class LoginCodeService
     private function localeFor(Shop $shop): string
     {
         return Tenant::run($shop, static function (): string {
-            $choice = \App\Models\MerchantPortalAppearance::current()->pageLocale();
+            $choice = MerchantPortalAppearance::current()->pageLocale();
 
-            return $choice === \App\Models\MerchantPortalAppearance::LOCALE_AUTO
-                ? \App\Models\MerchantLoyaltySettings::current()->pageLocale()
+            return $choice === MerchantPortalAppearance::LOCALE_AUTO
+                ? MerchantLoyaltySettings::current()->pageLocale()
                 : $choice;
         });
     }

@@ -193,6 +193,105 @@ add_action('woocommerce_before_add_to_cart_button', function () {
 }, 25);
 
 // ============================================================================
+// One subscription per customer — the merchant's rule, enforced at purchase
+// ============================================================================
+
+/**
+ * Is this add-to-cart a SUBSCRIBE for a product that has a subscription?
+ *
+ * Same reading as the cart-data filter below, and deliberately the same rule for
+ * an empty mode: a subscription-ONLY product added from a listing (no form, so no
+ * mode) is still a subscribe.
+ */
+function lets_payplus_is_subscribe_add($product_id, $variation_id, $mode)
+{
+    if ('one_time' === $mode) {
+        return false;
+    }
+
+    $variant_id = (int) $variation_id ?: (int) $product_id;
+    $config     = lets_payplus_sub_config((int) $product_id, $variant_id);
+
+    if (! is_array($config) || empty($config['has_subscription']) || empty($config['subscription'])) {
+        return false;
+    }
+
+    if ('' === $mode && empty($config['one_time_allowed'])) {
+        return true;
+    }
+
+    return 'subscribe' === $mode;
+}
+
+/**
+ * Refuse a SECOND subscription while the shopper already has a live one.
+ *
+ * Two hooks, because a shopper is identified at two different moments. A logged-in
+ * member is known the instant they press the button, so they are told there and
+ * then, before the cart fills up. A GUEST is nobody until they type an email at
+ * checkout — so the same question is asked again there, against the billing email.
+ * Only the first hook can be skipped by shopping logged-out; the second cannot.
+ */
+add_filter('woocommerce_add_to_cart_validation', function ($passed, $product_id, $quantity, $variation_id = 0) {
+    if (! $passed || ! function_exists('lets_payplus_account_subscription_block_notice')) {
+        return $passed;
+    }
+
+    $mode = isset($_POST['lets_purchase_mode']) ? sanitize_text_field(wp_unslash($_POST['lets_purchase_mode'])) : '';
+    if (! lets_payplus_is_subscribe_add($product_id, $variation_id, $mode)) {
+        return $passed;
+    }
+
+    $user = wp_get_current_user();
+    if (! $user || ! $user->ID) {
+        return $passed; // a guest is checked at checkout, where they name themselves
+    }
+
+    $notice = lets_payplus_account_subscription_block_notice((string) $user->user_email, (string) $user->ID);
+    if (null === $notice) {
+        return $passed;
+    }
+
+    wc_add_notice($notice, 'error');
+
+    return false;
+}, 10, 4);
+
+add_action('woocommerce_after_checkout_validation', function ($data, $errors) {
+    if (! function_exists('lets_payplus_account_subscription_block_notice') || ! WC()->cart) {
+        return;
+    }
+
+    $has_subscription_line = false;
+    foreach (WC()->cart->get_cart() as $item) {
+        if (! empty($item['_lets_subscription'])) {
+            $has_subscription_line = true;
+            break;
+        }
+    }
+
+    if (! $has_subscription_line) {
+        return;
+    }
+
+    // A logged-in shopper is their user id — the same ref the ledger records. A
+    // guest is their billing email, which is the plugin's own convention for a
+    // customer with no WordPress account.
+    $user  = wp_get_current_user();
+    $email = isset($data['billing_email']) ? (string) $data['billing_email'] : '';
+    if ('' === $email && $user && $user->ID) {
+        $email = (string) $user->user_email;
+    }
+
+    $ref = ($user && $user->ID) ? (string) $user->ID : $email;
+
+    $notice = lets_payplus_account_subscription_block_notice($email, $ref);
+    if (null !== $notice) {
+        $errors->add('lets_single_subscription', $notice);
+    }
+}, 10, 2);
+
+// ============================================================================
 // Cart — carry the subscription intent + the server per-cycle price
 // ============================================================================
 

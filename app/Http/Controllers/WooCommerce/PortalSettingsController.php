@@ -39,7 +39,9 @@ final class PortalSettingsController extends WooStorefrontController
     ];
 
     private const MAX_BANNER_HEADING = 80;
+
     private const MAX_BANNER_SUBTEXT = 300;
+
     private const MAX_URL = 500;
 
     /** GET /api/woocommerce/portal-settings — what the plugin renders its forms from. */
@@ -84,6 +86,14 @@ final class PortalSettingsController extends WooStorefrontController
                 $settings->login_code_channel = in_array($channel, MerchantPortalAppearance::LOGIN_CHANNELS, true)
                     ? $channel
                     : MerchantPortalAppearance::CHANNEL_EMAIL;
+            }
+
+            // Anything not shaped like a client id is stored as nothing, not as
+            // itself: the value lands on a customer page and in an `aud` check.
+            if ($request->has('login_google_client_id')) {
+                $id = trim((string) $request->input('login_google_client_id'));
+                $settings->login_google_client_id =
+                    preg_match(MerchantPortalAppearance::GOOGLE_CLIENT_ID_PATTERN, $id) === 1 ? $id : null;
             }
 
             $settings->save();
@@ -158,7 +168,7 @@ final class PortalSettingsController extends WooStorefrontController
      * collapse, and a locked section cannot be turned off — the same three rules
      * the model applies on read, applied here so the STORED row is already true.
      *
-     * @param  array<int, mixed> $rows
+     * @param  array<int, mixed>  $rows
      * @return list<array{key: string, enabled: bool}>
      */
     private function cleanSections(array $rows): array
@@ -190,7 +200,7 @@ final class PortalSettingsController extends WooStorefrontController
      * stay stable across a save, but a slot with neither heading nor image can
      * never reach a shopper — the model drops it on read.
      *
-     * @param  array<int, mixed> $rows
+     * @param  array<int, mixed>  $rows
      * @return list<array{enabled: bool, heading: ?string, subtext: ?string, image_url: ?string, link_url: ?string}>
      */
     private function cleanBanners(array $rows): array
@@ -268,6 +278,7 @@ final class PortalSettingsController extends WooStorefrontController
                 // --- sign-in ---
                 'login_code_enabled' => (bool) $s->login_code_enabled,
                 'login_code_channel' => $s->login_code_channel,
+                'login_google_client_id' => $s->loginGoogleClientId(),
 
                 // --- catalogues the plugin renders its controls from ---
                 'available_sections' => MerchantPortalAppearance::SECTION_KEYS,

@@ -28,17 +28,25 @@ use Illuminate\Support\Carbon;
  *    Dropping the key (rather than validating it) is deliberate — there is no
  *    value of `unit_price` from this surface that is legitimate.
  *
- * Pause and cancel additionally obey the merchant's own switches; a merchant who
- * turned self-service off does not get a personal area that quietly re-enables it.
+ * Every verb additionally obeys the merchant's own switch; a merchant who turned
+ * self-service off does not get a personal area that quietly re-enables it. The
+ * switch is read TWICE on purpose — once by availableFor() so the card stops
+ * drawing the button, and once inside the verb so a hand-made POST to the action
+ * endpoint is refused too. Hiding a control is presentation; refusing it is policy.
  */
 final class CustomerSubscriptionActions
 {
     // === CONSTANTS ===
     public const ACTION_PAUSE = 'pause';
+
     public const ACTION_RESUME = 'resume';
+
     public const ACTION_CANCEL = 'cancel';
+
     public const ACTION_SKIP = 'skip';
+
     public const ACTION_RESCHEDULE = 'reschedule';
+
     public const ACTION_ITEMS = 'items';
 
     public const ACTIONS = [
@@ -55,7 +63,9 @@ final class CustomerSubscriptionActions
 
     /** Plan states a customer may act from — the portal's table, unchanged. */
     private const PAUSABLE = [PlanStatus::ACTIVE];
+
     private const RESUMABLE = [PlanStatus::PAUSED];
+
     private const CANCELLABLE = [
         PlanStatus::ACTIVE,
         PlanStatus::PAUSED,
@@ -68,12 +78,16 @@ final class CustomerSubscriptionActions
 
     /** A shopper cannot stack more than this into one next-order edit. */
     public const MAX_LINE_ITEMS = 20;
+
     public const MAX_QUANTITY = 20;
 
     /** Outcomes, so the caller can answer without re-deriving them. */
     public const RESULT_OK = 'ok';
+
     public const RESULT_NOT_ALLOWED = 'not_allowed';
+
     public const RESULT_BAD_STATE = 'bad_state';
+
     public const RESULT_INVALID = 'invalid';
 
     public function __construct(
@@ -120,9 +134,9 @@ final class CustomerSubscriptionActions
             self::ACTION_PAUSE => $settings->allowsCustomerPause() && in_array($plan->status, self::PAUSABLE, true),
             self::ACTION_RESUME => $settings->allowsCustomerPause() && in_array($plan->status, self::RESUMABLE, true),
             self::ACTION_CANCEL => $settings->allowsCustomerCancel() && in_array($plan->status, self::CANCELLABLE, true),
-            self::ACTION_SKIP => $recurring && $plan->status === PlanStatus::ACTIVE,
-            self::ACTION_RESCHEDULE => $recurring && $plan->status === PlanStatus::ACTIVE,
-            self::ACTION_ITEMS => $recurring && $plan->status === PlanStatus::ACTIVE,
+            self::ACTION_SKIP => $settings->allowsCustomerSkip() && $recurring && $plan->status === PlanStatus::ACTIVE,
+            self::ACTION_RESCHEDULE => $settings->allowsCustomerReschedule() && $recurring && $plan->status === PlanStatus::ACTIVE,
+            self::ACTION_ITEMS => $settings->allowsCustomerEditItems() && $recurring && $plan->status === PlanStatus::ACTIVE,
         ];
     }
 
@@ -183,6 +197,10 @@ final class CustomerSubscriptionActions
      */
     private function skip(InstallmentPlan $plan): array
     {
+        if (! MerchantBillingSettings::current()->allowsCustomerSkip()) {
+            return $this->fail(self::RESULT_NOT_ALLOWED);
+        }
+
         $next = $this->recurringNextDate($plan);
         if ($next === null) {
             return $this->fail(self::RESULT_BAD_STATE);
@@ -200,6 +218,10 @@ final class CustomerSubscriptionActions
 
     private function reschedule(InstallmentPlan $plan, mixed $date): array
     {
+        if (! MerchantBillingSettings::current()->allowsCustomerReschedule()) {
+            return $this->fail(self::RESULT_NOT_ALLOWED);
+        }
+
         if ($this->recurringNextDate($plan) === null) {
             return $this->fail(self::RESULT_BAD_STATE);
         }
@@ -227,6 +249,10 @@ final class CustomerSubscriptionActions
      */
     private function items(InstallmentPlan $plan, array $rows): array
     {
+        if (! MerchantBillingSettings::current()->allowsCustomerEditItems()) {
+            return $this->fail(self::RESULT_NOT_ALLOWED);
+        }
+
         if ($this->recurringNextDate($plan) === null) {
             return $this->fail(self::RESULT_BAD_STATE);
         }

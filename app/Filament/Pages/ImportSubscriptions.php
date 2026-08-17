@@ -15,6 +15,7 @@ use App\Support\Tenant;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
@@ -169,6 +170,19 @@ class ImportSubscriptions extends Page
      */
     public function commit(): void
     {
+        // Logged on ENTRY, before any guard. "I click and nothing happens" has two
+        // very different causes — a refusal the screen swallowed, or a method that
+        // was never reached at all — and from the server they look identical: a
+        // 200 with no job queued. This line separates them in one click. Every
+        // refusal below logs its own reason, so the log names the guard.
+        Log::info('import.commit_pressed', [
+            'shop_id' => $this->shop()?->getKey(),
+            'has_report' => $this->report !== null,
+            'report_clean' => $this->reportIsClean(),
+            'stash_id' => $this->stashId,
+            'stash_present' => $this->stashId !== null && ImportSubscriptionsJob::hasStash($this->stashId),
+        ]);
+
         $shop = $this->shop();
 
         if ($shop === null) {
@@ -204,9 +218,21 @@ class ImportSubscriptions extends Page
         Notification::make()->title(__('import.action.commit'))->success()->send();
     }
 
-    /** Say why, on screen. Never fail quietly. */
+    /**
+     * Say why — on screen AND in the log.
+     *
+     * The notification is for the merchant; the log line is for whoever they call
+     * when the notification does not reach them. A refusal that exists only as a
+     * toast is invisible the moment anything swallows the toast.
+     */
     private function fail(string $key): void
     {
+        Log::warning('import.commit_refused', [
+            'reason' => $key,
+            'shop_id' => $this->shop()?->getKey(),
+            'stash_id' => $this->stashId,
+        ]);
+
         Notification::make()->title(__($key))->danger()->persistent()->send();
     }
 

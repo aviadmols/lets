@@ -4,6 +4,7 @@ use App\Domain\Account\CustomerSubscriptionActions;
 use App\Http\Controllers\WooCommerce\Account\AccountActionController;
 use App\Http\Controllers\WooCommerce\Account\AccountBootstrapController;
 use App\Http\Controllers\WooCommerce\Account\AccountOtpController;
+use App\Http\Controllers\WooCommerce\Account\SubscriptionEligibilityController;
 use App\Http\Controllers\WooCommerce\CheckoutSettingsController;
 use App\Http\Controllers\WooCommerce\DiagnosticsController;
 use App\Http\Controllers\WooCommerce\InstallController;
@@ -13,12 +14,12 @@ use App\Http\Controllers\WooCommerce\Storefront\WooDepositCallbackController;
 use App\Http\Controllers\WooCommerce\Storefront\WooDepositReturnController;
 use App\Http\Controllers\WooCommerce\Storefront\WooGatewayCallbackController;
 use App\Http\Controllers\WooCommerce\Storefront\WooGatewaySessionController;
+use App\Http\Controllers\WooCommerce\Storefront\WooGatewayVerifyController;
 use App\Http\Controllers\WooCommerce\Storefront\WooInstallmentQuoteController;
+use App\Http\Controllers\WooCommerce\Storefront\WooLoyaltyPageUrlController;
 use App\Http\Controllers\WooCommerce\Storefront\WooStartInstallmentPlanController;
 use App\Http\Controllers\WooCommerce\Storefront\WooSubscribeController;
 use App\Http\Controllers\WooCommerce\Storefront\WooSubscriptionCatalogController;
-use App\Http\Controllers\WooCommerce\Storefront\WooGatewayVerifyController;
-use App\Http\Controllers\WooCommerce\Storefront\WooLoyaltyPageUrlController;
 use App\Http\Controllers\WooCommerce\Storefront\WooUpsellAcceptController;
 use App\Http\Controllers\WooCommerce\Storefront\WooUpsellDeclineController;
 use App\Http\Controllers\WooCommerce\Storefront\WooUpsellOfferController;
@@ -212,6 +213,12 @@ Route::middleware(VerifyWooCommerceSignature::class)
         Route::post('/account/subscriptions/{action}', AccountActionController::class)
             ->whereIn('action', CustomerSubscriptionActions::ACTIONS)
             ->name('woocommerce.account.subscriptions.act');
+
+        // Asked by the STOREFRONT, not the account page: may this shopper start
+        // another subscription? Same HMAC group because the answer depends on who
+        // the plugin's server says is buying.
+        Route::post('/account/subscription-eligibility', SubscriptionEligibilityController::class)
+            ->name('woocommerce.account.subscription_eligibility');
     });
 
 /*

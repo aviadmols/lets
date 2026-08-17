@@ -5,8 +5,8 @@ namespace App\Domain\Account;
 use App\Domain\Billing\CycleAmountResolver;
 use App\Domain\Loyalty\Http\LoyaltyVisitor;
 use App\Domain\Loyalty\Rendering\LoyaltyPagePresenter;
-use App\Models\InstallmentPlan;
 use App\Models\InstallmentPaymentMethod;
+use App\Models\InstallmentPlan;
 use App\Models\MerchantBillingSettings;
 use App\Models\MerchantLoyaltySettings;
 use App\Models\MerchantPortalAppearance;
@@ -14,6 +14,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 /**
  * The whole personal area as ONE JSON view-model.
@@ -37,8 +38,11 @@ final class AccountPresenter
     // === CONSTANTS ===
     /** Status → the badge tone the stylesheet knows how to draw. */
     public const TONE_ACTIVE = 'active';
+
     public const TONE_PAUSED = 'paused';
+
     public const TONE_ENDED = 'ended';
+
     public const TONE_ATTENTION = 'attention';
 
     private const STATUS_TONES = [
@@ -49,6 +53,35 @@ final class AccountPresenter
         'draft' => self::TONE_ATTENTION,
         'completed' => self::TONE_ENDED,
         'cancelled' => self::TONE_ENDED,
+    ];
+
+    /**
+     * Reading order for the subscription list — lower sorts higher on the page.
+     * A live plan outranks one that never started; an ended one sinks.
+     */
+    private const STATUS_ORDER = [
+        'active' => 0,
+        'paused' => 1,
+        'failed' => 2,
+        'awaiting_first_payment' => 3,
+        'draft' => 4,
+        'completed' => 5,
+        'cancelled' => 6,
+    ];
+
+    /** An unknown status sorts with the live ones rather than vanishing to the end. */
+    private const STATUS_ORDER_DEFAULT = 2;
+
+    /**
+     * What a shopper should SEE instead of a three-letter currency code. "ILS 1"
+     * is a code beside a number; "1 ₪" is a price. Anything not listed keeps its
+     * code, which is the correct fallback for a currency we have no symbol for.
+     */
+    private const CURRENCY_SYMBOLS = [
+        'ILS' => '₪',
+        'USD' => '$',
+        'EUR' => '€',
+        'GBP' => '£',
     ];
 
     /** Payment rows shown per plan. Enough to recognise, few enough to scan. */
@@ -83,10 +116,12 @@ final class AccountPresenter
             ];
         }
 
-        $plans = $visitor->plans()
-            ->with(['payments' => fn ($q) => $q->orderByDesc('sequence')->limit(self::MAX_PAYMENTS)])
-            ->orderByDesc('id')
-            ->get();
+        $plans = $this->inReadingOrder(
+            $visitor->plans()
+                ->with(['payments' => fn ($q) => $q->orderByDesc('sequence')->limit(self::MAX_PAYMENTS)])
+                ->orderByDesc('id')
+                ->get()
+        );
 
         $account = $visitor->loyaltyAccount();
 
@@ -108,7 +143,7 @@ final class AccountPresenter
      * subscribed, while "that ends on the 4th" is a reason to check the date. Two
      * sections, so neither reads as the other.
      *
-     * @param  \Illuminate\Support\Collection<int, InstallmentPlan>  $plans
+     * @param  Collection<int, InstallmentPlan>  $plans
      * @return list<array{label: string, note: ?string}>
      */
     private function activeBenefits($plans, $account): array
@@ -268,10 +303,22 @@ final class AccountPresenter
             'login' => [
                 'enabled' => $settings->loginCodeEnabled(),
                 'channel' => $settings->loginCodeChannel(),
+                // A client id is public by design (it ships inside Google's own
+                // button markup on every site that uses it); the plugin still
+                // verifies every credential's `aud` against it server-side.
+                'google_client_id' => $settings->loginGoogleClientId(),
             ],
             'support' => [
                 'email' => $settings->supportEmail() ?? MerchantBillingSettings::current()->supportEmail(),
                 'url' => $settings->supportUrl(),
+            ],
+            // Purchase rules the STOREFRONT enforces, not the account page. They
+            // ride the shell because the shell is what the plugin already caches:
+            // the per-customer question ("does this one have a subscription?")
+            // costs a round trip, and asking it on every add-to-cart in a shop
+            // that never turned the rule on would be a round trip for nothing.
+            'purchase' => [
+                'single_subscription' => MerchantBillingSettings::current()->allowsOneSubscriptionOnly(),
             ],
             'copy' => $this->copy($settings),
         ];
@@ -344,6 +391,30 @@ final class AccountPresenter
 
     // === Subscriptions ===
 
+    /**
+     * The order a subscriber reads their own plans in: the LIVE one first.
+     *
+     * Newest-first put an abandoned "awaiting first payment" card — a checkout that
+     * was never finished — above the subscription the customer is actually paying
+     * for, which reads as though the working one is the leftover. Within a rank the
+     * newest still wins, so the query's order is preserved by the stable sort.
+     *
+     * @param  Collection<int, InstallmentPlan>  $plans
+     * @return Collection<int, InstallmentPlan>
+     */
+    private function inReadingOrder(Collection $plans): Collection
+    {
+        return $plans
+            ->sortBy(
+                fn (InstallmentPlan $plan): int => self::STATUS_ORDER[
+                    $plan->status instanceof PlanStatus ? $plan->status->value : (string) $plan->status
+                ] ?? self::STATUS_ORDER_DEFAULT,
+                SORT_REGULAR,
+                false,
+            )
+            ->values();
+    }
+
     /** @return array<string, mixed> */
     private function plan(InstallmentPlan $plan): array
     {
@@ -358,6 +429,7 @@ final class AccountPresenter
             'status' => $status,
             'tone' => self::STATUS_TONES[$status] ?? self::TONE_ATTENTION,
             'currency' => (string) ($plan->currency ?: ''),
+            'currency_symbol' => $this->currencySymbol($plan->currency),
             'amount' => $recurring
                 ? $this->cycles->amountForCharge($plan, $this->cycles->chargeNumberForNext($plan))
                 : round((float) $plan->installment_amount, 2),
@@ -367,6 +439,7 @@ final class AccountPresenter
             'remaining' => $recurring ? null : round((float) $plan->remainingAmount(), 2),
             'frequency' => $plan->billing_frequency?->value,
             'interval_count' => max(1, (int) $plan->interval_count),
+            'cadence' => $this->cadence($plan->billing_frequency?->value, (int) $plan->interval_count),
             'next_charge_at' => $plan->next_charge_at instanceof Carbon ? $plan->next_charge_at->toDateString() : null,
             'intro' => $this->cycles->introWindowStatus($plan),
             'next_order' => $this->nextOrderSummary($plan),
@@ -374,6 +447,41 @@ final class AccountPresenter
             'actions' => array_keys(array_filter($actions)),
             'payments' => $this->payments($plan),
         ];
+    }
+
+    /**
+     * "every month" / "כל חודש" / "כל 3 חודשים" — resolved HERE, not in the browser.
+     *
+     * The renderer used to hold an English map of frequency → unit, so a Hebrew
+     * store read "ILS 1 כל month". Hebrew also needs the plural to agree with the
+     * count (חודש / חודשים), which a lookup table in JS cannot express — so the
+     * unit is a choice string and the sentence is assembled from lang/{en,he}.
+     */
+    private function cadence(?string $frequency, int $intervalCount): ?string
+    {
+        if ($frequency === null || $frequency === '') {
+            return null;
+        }
+
+        $count = max(1, $intervalCount);
+        $unit = trans_choice('account.cycle.unit.'.$frequency, $count);
+
+        // A frequency with no translation of its own must not print the raw key.
+        if (! is_string($unit) || str_starts_with($unit, 'account.cycle.')) {
+            $unit = $frequency;
+        }
+
+        return $count === 1
+            ? __('account.cycle.every', ['unit' => $unit])
+            : __('account.cycle.every_n', ['count' => $count, 'unit' => $unit]);
+    }
+
+    /** The symbol a price is read with, falling back to the currency's own code. */
+    private function currencySymbol(mixed $currency): string
+    {
+        $code = strtoupper(trim((string) ($currency ?: '')));
+
+        return self::CURRENCY_SYMBOLS[$code] ?? $code;
     }
 
     /** What is already queued for the next cycle, if anything. */
@@ -487,6 +595,25 @@ final class AccountPresenter
     // === Sample data ===
 
     /** @return array<string, mixed> */
+    /**
+     * The verbs the sample card offers — the merchant's switches, applied to an
+     * imaginary ACTIVE recurring plan (the state in which every verb is legal).
+     *
+     * @return list<string>
+     */
+    private function sampleActions(): array
+    {
+        $settings = MerchantBillingSettings::current();
+
+        return array_values(array_filter([
+            $settings->allowsCustomerSkip() ? CustomerSubscriptionActions::ACTION_SKIP : null,
+            $settings->allowsCustomerReschedule() ? CustomerSubscriptionActions::ACTION_RESCHEDULE : null,
+            $settings->allowsCustomerEditItems() ? CustomerSubscriptionActions::ACTION_ITEMS : null,
+            $settings->allowsCustomerPause() ? CustomerSubscriptionActions::ACTION_PAUSE : null,
+            $settings->allowsCustomerCancel() ? CustomerSubscriptionActions::ACTION_CANCEL : null,
+        ]));
+    }
+
     private function sampleSubscription(string $nextDate): array
     {
         return [
@@ -496,6 +623,7 @@ final class AccountPresenter
             'status' => 'active',
             'tone' => self::TONE_ACTIVE,
             'currency' => 'ILS',
+            'currency_symbol' => $this->currencySymbol('ILS'),
             'amount' => 89.0,
             'regular_amount' => 119.0,
             'total' => null,
@@ -503,17 +631,14 @@ final class AccountPresenter
             'remaining' => null,
             'frequency' => 'monthly',
             'interval_count' => 1,
+            'cadence' => $this->cadence('monthly', 1),
             'next_charge_at' => $nextDate,
             'intro' => ['used' => 2, 'total' => 3],
             'next_order' => null,
             'card' => ['brand' => 'visa', 'last_four' => '4242', 'expires' => '09/29', 'active' => true],
-            'actions' => [
-                CustomerSubscriptionActions::ACTION_SKIP,
-                CustomerSubscriptionActions::ACTION_RESCHEDULE,
-                CustomerSubscriptionActions::ACTION_ITEMS,
-                CustomerSubscriptionActions::ACTION_PAUSE,
-                CustomerSubscriptionActions::ACTION_CANCEL,
-            ],
+            // The preview obeys the merchant's own switches: a shop that turned
+            // "skip" off must not see a sample card offering it.
+            'actions' => $this->sampleActions(),
             'payments' => [
                 ['sequence' => 2, 'amount' => 89.0, 'status' => 'succeeded', 'at' => now()->subDays(21)->toDateString()],
                 ['sequence' => 1, 'amount' => 89.0, 'status' => 'succeeded', 'at' => now()->subDays(51)->toDateString()],

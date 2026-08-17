@@ -6,13 +6,17 @@ use App\Domain\Account\CustomerSubscriptionActions;
 use App\Models\CustomerLoginCode;
 use App\Models\InstallmentPlan;
 use App\Models\MerchantPortalAppearance;
+use App\Models\MerchantSmsSettings;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Services\Sms\Sms019Sender;
 use App\Services\WooCommerce\WooCommerceShopProvisioner;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
@@ -31,7 +35,9 @@ final class AccountEndpointTest extends TestCase
 
     // === CONSTANTS ===
     private const BOOTSTRAP = '/api/woocommerce/account/bootstrap';
+
     private const OTP_REQUEST = '/api/woocommerce/account/otp/request';
+
     private const OTP_VERIFY = '/api/woocommerce/account/otp/verify';
 
     protected function setUp(): void
@@ -75,7 +81,25 @@ final class AccountEndpointTest extends TestCase
             ->assertJsonPath('account.subscriptions', [])
             // The shell is still there: the plugin needs the copy and the login
             // settings to draw a sign-in prompt rather than a blank page.
-            ->assertJsonStructure(['account' => ['sections', 'appearance', 'copy', 'login']]);
+            ->assertJsonStructure(['account' => ['sections', 'appearance', 'copy', 'login']])
+            // Google rides the shell too — the button renders for a logged-OUT
+            // visitor, and null (not a missing key) is how "not configured" reads.
+            ->assertJsonPath('account.login.google_client_id', null);
+    }
+
+    public function test_a_configured_google_client_id_reaches_the_shell(): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop('acct-google.example.com');
+
+        Tenant::run($shop, static function (): void {
+            $settings = MerchantPortalAppearance::current();
+            $settings->login_google_client_id = '1234567890-abc123.apps.googleusercontent.com';
+            $settings->save();
+        });
+
+        $this->signedPost($key, $secret, self::BOOTSTRAP, ['customer_ref' => ''])
+            ->assertOk()
+            ->assertJsonPath('account.login.google_client_id', '1234567890-abc123.apps.googleusercontent.com');
     }
 
     public function test_bootstrap_returns_only_the_callers_own_subscriptions(): void
@@ -178,6 +202,36 @@ final class AccountEndpointTest extends TestCase
         $this->assertSame(['ok', 'verified', 'reason'], array_keys($body));
     }
 
+    public function test_an_sms_code_survives_the_shopper_retyping_the_number(): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop('acct-otp-sms.example.com');
+        $this->enableCodeLogin($shop);
+        $this->enableSms($shop);
+
+        Http::fake([Sms019Sender::ENDPOINT => Http::response(['status' => 0], 200)]);
+
+        $this->signedPost($key, $secret, self::OTP_REQUEST, [
+            'channel' => 'sms', 'destination' => '050-123 4567',
+        ])->assertOk()->assertJsonPath('offered', true);
+
+        $code = null;
+        Http::assertSent(static function (Request $request) use (&$code): bool {
+            preg_match('/\d{6}/', (string) $request->data()['sms']['message'], $found);
+            $code = $found[0] ?? null;
+
+            return true;
+        });
+        $this->assertNotNull($code, 'the 019 message should carry the code');
+
+        // The message arrived on the handset; the shopper comes back and types the
+        // number the plain way. Same phone, so it must be the same code.
+        $this->signedPost($key, $secret, self::OTP_VERIFY, [
+            'channel' => 'sms', 'destination' => '+972501234567', 'code' => $code,
+        ])
+            ->assertOk()
+            ->assertJsonPath('verified', true);
+    }
+
     public function test_a_shop_with_code_login_off_offers_nothing(): void
     {
         [, $key, $secret] = $this->connectedShop('acct-otp4.example.com');
@@ -212,6 +266,18 @@ final class AccountEndpointTest extends TestCase
             $settings->login_code_enabled = true;
             $settings->login_code_channel = MerchantPortalAppearance::CHANNEL_BOTH;
             $settings->save();
+        });
+    }
+
+    private function enableSms(Shop $shop): void
+    {
+        Tenant::run($shop, static function (): void {
+            MerchantSmsSettings::current()->forceFill([
+                'enabled' => true,
+                'username' => 'shop-user',
+                'api_token' => 'secret-token',
+                'sender' => 'LETS',
+            ])->save();
         });
     }
 

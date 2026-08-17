@@ -79,12 +79,20 @@
         return parent;
     }
 
-    /** A number the shopper reads, in their own locale, with the plan's currency. */
-    function money(amount, currency) {
+    /**
+     * A number the shopper reads, in their own locale, with the plan's currency.
+     *
+     * Takes the whole subscription rather than a currency string so it can prefer
+     * the SYMBOL the server resolved (₪) over the three-letter code (ILS) — a code
+     * beside a number reads like a database field, not a price. Older payloads
+     * carry no symbol, so the code remains the fallback.
+     */
+    function money(amount, sub) {
         if (amount === null || amount === undefined) { return ''; }
         var n = Number(amount);
         var text = isFinite(n) ? n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : String(amount);
-        return currency ? text + ' ' + currency : text;
+        var unit = (sub && (sub.currency_symbol || sub.currency)) || '';
+        return unit ? text + ' ' + unit : text;
     }
 
     /** A date the shopper reads. Falls back to the ISO string rather than "Invalid Date". */
@@ -101,7 +109,15 @@
         return isNaN(d.getTime()) ? '' : String(d.getFullYear());
     }
 
+    /**
+     * "every month" / "כל חודש". The SERVER writes this sentence now: only it knows
+     * the shopper's locale catalog, and Hebrew needs the unit to agree with the
+     * count (חודש / חודשים) — agreement a frequency→word map in here cannot express,
+     * which is how a Hebrew store came to read "כל month". The old path stays as the
+     * fallback for a plugin talking to a LETS that predates the `cadence` field.
+     */
     function cadence(model, sub) {
+        if (sub.cadence) { return sub.cadence; }
         var unit = CADENCE[sub.frequency] || sub.frequency || '';
         var n = sub.interval_count > 1 ? sub.interval_count + ' ' : '';
         return unit ? (model.copy.every + ' ' + n + unit) : '';
@@ -125,11 +141,12 @@
             endpoint: options.endpoint || '',
             nonce: options.nonce || '',
             preview: !!options.preview,
+            signInUrl: options.signInUrl || '',
             onUpdate: typeof options.onUpdate === 'function' ? options.onUpdate : null
         };
 
         if (!model.identified) {
-            append(mount, renderSignIn(model));
+            append(mount, renderSignIn(model, state));
             return;
         }
 
@@ -288,10 +305,10 @@
 
         // --- price
         var price = el('div', 'la-sub__price');
-        append(price, el('span', 'la-sub__amount', money(sub.amount, sub.currency)));
+        append(price, el('span', 'la-sub__amount', money(sub.amount, sub)));
         // Only strike the regular price when the shopper is actually below it.
         if (sub.regular_amount && sub.regular_amount > sub.amount) {
-            append(price, el('s', 'la-sub__was', money(sub.regular_amount, sub.currency)));
+            append(price, el('s', 'la-sub__was', money(sub.regular_amount, sub)));
         }
         var cad = cadence(m, sub);
         if (cad) { append(price, el('span', 'la-sub__cadence', cad)); }
@@ -303,7 +320,7 @@
             append(facts, fact(m.copy.next_charge, dateLong(sub.next_charge_at) + ' ' + dateYear(sub.next_charge_at)));
         }
         if (sub.kind === 'installments' && sub.remaining !== null) {
-            append(facts, fact(m.copy.remaining, money(sub.remaining, sub.currency)));
+            append(facts, fact(m.copy.remaining, money(sub.remaining, sub)));
         }
         append(facts, fact(m.copy.payment_method, null, sub.card ? cardChip(sub.card) : el('span', 'la-card-chip', m.copy.no_card)));
         append(card, facts);
@@ -367,7 +384,7 @@
 
         if (sub.kind === 'installments' && sub.total > 0) {
             percent = Math.max(0, Math.min(100, Math.round((sub.paid / sub.total) * 100)));
-            left = money(sub.paid, sub.currency) + ' ' + m.copy.paid_of + ' ' + money(sub.total, sub.currency);
+            left = money(sub.paid, sub) + ' ' + m.copy.paid_of + ' ' + money(sub.total, sub);
             right = percent + '%';
         } else if (sub.intro && sub.intro.total > 0) {
             percent = Math.max(0, Math.min(100, Math.round((sub.intro.used / sub.intro.total) * 100)));
@@ -406,7 +423,7 @@
             var row = el('tr');
             append(row,
                 el('td', null, p.sequence),
-                el('td', null, money(p.amount, sub.currency) + (p.at ? ' · ' + dateLong(p.at) : '')),
+                el('td', null, money(p.amount, sub) + (p.at ? ' · ' + dateLong(p.at) : '')),
                 el('td', null, m.copy['status_' + p.status] || p.status)
             );
             append(tbody, row);
@@ -595,9 +612,9 @@
 
         var meta = [];
         if (row.label) { meta.push(row.label); }
-        if (row.amount !== null && row.amount !== undefined) { meta.push(money(row.amount, '')); }
+        if (row.amount !== null && row.amount !== undefined) { meta.push(money(row.amount, null)); }
         if (row.points) { meta.push('+' + row.points); }
-        if (row.remaining !== null && row.remaining !== undefined) { meta.push(money(row.remaining, '')); }
+        if (row.remaining !== null && row.remaining !== undefined) { meta.push(money(row.remaining, null)); }
         if (meta.length) { append(body, el('p', 'la-tl__meta', meta.join(' · '))); }
 
         return append(item, when, el('span', 'la-tl__dot'), body);
@@ -707,9 +724,18 @@
 
     // === Signed-out ===
 
-    function renderSignIn(model) {
+    function renderSignIn(model, state) {
         var card = el('section', 'la-card la-signin');
         append(card, el('p', 'la-signin__text', model.copy.sign_in_prompt));
+
+        // The host page knows where its login lives (WooCommerce: the My Account
+        // form); the model deliberately doesn't. No URL — no dead button.
+        if (state && state.signInUrl) {
+            var cta = el('a', 'la-btn la-btn--primary la-signin__cta', model.copy.sign_in_cta);
+            attr(cta, 'href', state.signInUrl);
+            append(card, cta);
+        }
+
         return card;
     }
 

@@ -61,7 +61,7 @@
     var depositControls = isDeposit
       ? field(i18n.deposit, '<input type="number" min="5" max="90" step="5" value="25" data-k="deposit_percent">') +
         field(i18n.installments, '<input type="number" min="1" max="36" step="1" value="3" data-k="installments">')
-      : '<p class="lets-pp-sub">' + esc(i18n.subscribeSublabel) + '</p>';
+      : '<p class="lets-pp-sublabel">' + esc(i18n.subscribeSublabel) + '</p>';
 
     panel.innerHTML =
       '<h3 class="lets-pp-title">' + esc(title) + '</h3>' +

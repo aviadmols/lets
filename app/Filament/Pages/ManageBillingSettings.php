@@ -48,8 +48,11 @@ class ManageBillingSettings extends Page implements HasForms
 
     // === CONSTANTS ===
     protected static ?string $navigationIcon = 'heroicon-o-banknotes';
+
     protected static string $view = 'filament.pages.billing-settings';
+
     protected static ?string $slug = 'settings/billing';
+
     protected static ?int $navigationSort = 30;
 
     /** Installment frequencies a merchant may offer (drives the CheckboxList). */
@@ -97,6 +100,10 @@ class ManageBillingSettings extends Page implements HasForms
 
             'allow_customer_pause' => $settings->allowsCustomerPause(),
             'allow_customer_cancel' => $settings->allowsCustomerCancel(),
+            'allow_customer_skip' => $settings->allowsCustomerSkip(),
+            'allow_customer_reschedule' => $settings->allowsCustomerReschedule(),
+            'allow_customer_edit_items' => $settings->allowsCustomerEditItems(),
+            'single_active_subscription' => $settings->allowsOneSubscriptionOnly(),
 
             'cancellation_policy_text' => $settings->cancellationPolicyText(),
             'terms_version' => $settings->termsVersion(),
@@ -212,7 +219,13 @@ class ManageBillingSettings extends Page implements HasForms
             ->columns(2);
     }
 
-    /** Customer self-service — the portal pause/cancel gates. */
+    /**
+     * Customer self-service — which buttons the subscription card offers.
+     *
+     * Each switch is read twice by CustomerSubscriptionActions: once to decide
+     * whether to draw the button, once to decide whether to honour the verb. So
+     * turning one off here is a rule, not a hidden control.
+     */
     private function selfServiceSection(): Section
     {
         return Section::make(__('billing.settings.self_service.heading'))
@@ -224,6 +237,19 @@ class ManageBillingSettings extends Page implements HasForms
                 Toggle::make('allow_customer_cancel')
                     ->label(__('billing.settings.self_service.allow_cancel'))
                     ->helperText(__('billing.settings.self_service.allow_cancel_help')),
+                Toggle::make('allow_customer_skip')
+                    ->label(__('billing.settings.self_service.allow_skip'))
+                    ->helperText(__('billing.settings.self_service.allow_skip_help')),
+                Toggle::make('allow_customer_reschedule')
+                    ->label(__('billing.settings.self_service.allow_reschedule'))
+                    ->helperText(__('billing.settings.self_service.allow_reschedule_help')),
+                Toggle::make('allow_customer_edit_items')
+                    ->label(__('billing.settings.self_service.allow_edit_items'))
+                    ->helperText(__('billing.settings.self_service.allow_edit_items_help')),
+                Toggle::make('single_active_subscription')
+                    ->label(__('billing.settings.self_service.single_subscription'))
+                    ->helperText(__('billing.settings.self_service.single_subscription_help'))
+                    ->columnSpanFull(),
             ])
             ->columns(2);
     }
@@ -279,6 +305,10 @@ class ManageBillingSettings extends Page implements HasForms
 
         $settings->allow_customer_pause = (bool) ($input['allow_customer_pause'] ?? true);
         $settings->allow_customer_cancel = (bool) ($input['allow_customer_cancel'] ?? true);
+        $settings->allow_customer_skip = (bool) ($input['allow_customer_skip'] ?? true);
+        $settings->allow_customer_reschedule = (bool) ($input['allow_customer_reschedule'] ?? true);
+        $settings->allow_customer_edit_items = (bool) ($input['allow_customer_edit_items'] ?? true);
+        $settings->single_active_subscription = (bool) ($input['single_active_subscription'] ?? false);
 
         $settings->cancellation_policy_text = $this->blankToNull($input['cancellation_policy_text'] ?? null);
         $settings->terms_version = $this->blankToNull($input['terms_version'] ?? null) ?? MerchantBillingSettings::DEFAULT_TERMS_VERSION;
@@ -335,7 +365,6 @@ class ManageBillingSettings extends Page implements HasForms
      * Clean the tag input into a list of positive ints; empty falls back to the
      * default schedule so a charge always has a backoff to follow.
      *
-     * @param  mixed  $value
      * @return list<int>
      */
     private function normalizeBackoff(mixed $value): array
@@ -353,7 +382,6 @@ class ManageBillingSettings extends Page implements HasForms
      * Keep only real, installment-eligible frequencies; empty falls back to the full
      * selectable set (never leave the storefront with zero choices).
      *
-     * @param  mixed  $value
      * @return list<string>
      */
     private function normalizeFrequencies(mixed $value): array

@@ -47,8 +47,11 @@ class ManageCustomerArea extends Page implements HasForms
 
     // === CONSTANTS ===
     protected static ?string $navigationIcon = 'heroicon-o-user-circle';
+
     protected static string $view = 'filament.pages.customer-area';
+
     protected static ?string $slug = 'settings/customer-area';
+
     protected static ?int $navigationSort = 45;
 
     /** @var array<string, mixed> form state (statePath: data). */
@@ -220,6 +223,16 @@ class ManageCustomerArea extends Page implements HasForms
                     ->options($this->options(MerchantPortalAppearance::LOGIN_CHANNELS, 'channel_option', 'login'))
                     ->inline()
                     ->visible(fn (Get $get): bool => (bool) $get('login_code_enabled')),
+                // Not gated on login_code_enabled: Google is its own way in, and a
+                // merchant may offer it alone. Pasting the id is what turns it on.
+                TextInput::make('login_google_client_id')
+                    ->label(__('account.admin.login.google_client_id'))
+                    ->helperText(__('account.admin.login.google_client_id_help'))
+                    ->placeholder('1234567890-abc123.apps.googleusercontent.com')
+                    ->regex(MerchantPortalAppearance::GOOGLE_CLIENT_ID_PATTERN)
+                    ->validationMessages(['regex' => __('account.admin.login.google_client_id_invalid')])
+                    ->maxLength(200)
+                    ->extraInputAttributes(['dir' => 'ltr']),
             ]);
     }
 
@@ -303,20 +316,39 @@ class ManageCustomerArea extends Page implements HasForms
         }
         $settings->save();
 
-        $sms = MerchantSmsSettings::current();
-        $sms->enabled = (bool) ($input['sms_enabled'] ?? false);
-        $sms->username = $this->blankToNull($input['sms_username'] ?? null);
-        $sms->sender = $this->blankToNull($input['sms_sender'] ?? null);
-        // A blank token means "leave what is stored" — a password field that
-        // renders empty must not wipe a working credential on an unrelated save.
-        $token = $this->blankToNull($input['sms_token'] ?? null);
-        if ($token !== null) {
-            $sms->api_token = $token;
+        // The 019 fields live behind the code-sign-in toggle, and Filament does not
+        // submit a hidden field at all. Writing them from an input that never
+        // carried them would delete the merchant's gateway account every time they
+        // saved this page with the login tab collapsed — so the whole block is
+        // skipped unless the form actually presented it.
+        if (array_key_exists('sms_enabled', $input)) {
+            $sms = MerchantSmsSettings::current();
+            $sms->enabled = (bool) $input['sms_enabled'];
+            $sms->username = $this->blankToNull($input['sms_username'] ?? null);
+            $sms->sender = $this->blankToNull($input['sms_sender'] ?? null);
+            // A blank token means "leave what is stored" — a password field that
+            // renders empty must not wipe a working credential on an unrelated save.
+            $token = $this->blankToNull($input['sms_token'] ?? null);
+            if ($token !== null) {
+                $sms->api_token = $token;
+            }
+            $sms->save();
         }
-        $sms->save();
 
         $this->mount();
         Notification::make()->title(__('account.admin.saved'))->success()->send();
+
+        // Offering SMS sign-in without a usable 019 account produces codes that are
+        // issued and never arrive — the shopper is told one is on its way and waits
+        // for a message nobody sent. Say so at the moment the choice is made.
+        if ($settings->offersSmsCodes() && ! MerchantSmsSettings::current()->usable()) {
+            Notification::make()
+                ->title(__('account.admin.login.sms_incomplete'))
+                ->body(__('account.admin.login.sms_incomplete_help'))
+                ->warning()
+                ->persistent()
+                ->send();
+        }
     }
 
     // === Live preview ===
@@ -371,6 +403,7 @@ class ManageCustomerArea extends Page implements HasForms
             'banners' => $this->bannerRows($s),
             'login_code_enabled' => $s->loginCodeEnabled(),
             'login_code_channel' => $s->loginCodeChannel(),
+            'login_google_client_id' => $s->loginGoogleClientId(),
             'welcome_heading' => $s->welcomeHeading(),
             'welcome_subtext' => $s->welcomeSubtext(),
             'support_email' => $s->supportEmail(),
@@ -417,7 +450,15 @@ class ManageCustomerArea extends Page implements HasForms
             'sections' => $this->normalizeSections($input['sections'] ?? []),
             'banners' => $this->normalizeBanners($input['banners'] ?? []),
             'login_code_enabled' => (bool) ($input['login_code_enabled'] ?? false),
-            'login_code_channel' => $input['login_code_channel'] ?? null,
+            // ABSENT is not the same as BLANK. Filament drops a hidden field from
+            // the submitted state, and the channel picker is hidden whenever code
+            // sign-in is switched off — so a merchant on SMS who toggles the
+            // feature off and back on would silently come back on email. When the
+            // key is missing we keep what is stored.
+            'login_code_channel' => array_key_exists('login_code_channel', $input)
+                ? $input['login_code_channel']
+                : MerchantPortalAppearance::current()->loginCodeChannel(),
+            'login_google_client_id' => $this->blankToNull($input['login_google_client_id'] ?? null),
             'welcome_heading' => $this->blankToNull($input['welcome_heading'] ?? null),
             'welcome_subtext' => $this->blankToNull($input['welcome_subtext'] ?? null),
             'support_email' => $this->blankToNull($input['support_email'] ?? null),

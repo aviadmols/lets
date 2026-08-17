@@ -1,5 +1,8 @@
 <?php
 
+use Dom\Element;
+use Dom\HTMLDocument;
+
 /**
  * Builds the storefront UI kit — the sheet a designer works from.
  *
@@ -19,8 +22,6 @@
  * The per-element files are EXTRACTED from the same template, never typed a
  * second time. There is one source of truth for the markup and one for the
  * styling, and both of them are the shop's.
- *
- * @package LETS
  */
 
 // === CONSTANTS ===
@@ -50,52 +51,59 @@ const TITLE_TAG = '/<title>(.*?)<\/title>\s*/s';
 const FALLBACK_TITLE = 'LETS — Storefront UI Kit';
 
 /** Which canonical stylesheet each family of elements needs. */
-const SHEETS = [
-    'LA' => 'public/account/lets-account.css',
+const SHEETS = array(
+    'LA'  => 'public/account/lets-account.css',
     'PPU' => 'plugins/lets-payplus-woocommerce/assets/css/lets-ppu.css',
-    'PP' => 'plugins/lets-payplus-woocommerce/assets/css/lets.css',
-    'LC' => 'public/css/loyalty.css',
-];
+    'PP'  => 'plugins/lets-payplus-woocommerce/assets/css/lets.css',
+    'LC'  => 'public/css/loyalty.css',
+);
 
 /**
  * Plates that need more than their family's stylesheet. The thank-you upsell
  * is drawn by lets-ppu.css but MOUNTED in a container lets.css owns, and the
  * container's own margin is part of how the card sits in the page.
  */
-const PLATE_SHEETS = [
-    'PPU-06' => [
+const PLATE_SHEETS = array(
+    'PPU-06' => array(
         'plugins/lets-payplus-woocommerce/assets/css/lets-ppu.css',
         'plugins/lets-payplus-woocommerce/assets/css/lets.css',
-    ],
-];
+    ),
+    // The sign-in panel is account CSS, but the loyalty prompt beside it is a
+    // storefront widget — lets.css dresses it.
+    'LA-14' => array(
+        'public/account/lets-account.css',
+        'plugins/lets-payplus-woocommerce/assets/css/lets.css',
+    ),
+);
 
 /** A readable filename per plate — the code alone tells a designer nothing. */
-const SLUGS = [
-    'LA-01' => 'full-page',
-    'LA-02' => 'navigation',
-    'LA-03' => 'hero-and-stats',
-    'LA-04' => 'subscription-card',
-    'LA-05' => 'subscription-states',
-    'LA-06' => 'timeline',
-    'LA-07' => 'loyalty-card',
-    'LA-08' => 'support-and-banners',
-    'LA-09' => 'primitives',
-    'LA-10' => 'system-states',
-    'LA-11' => 'woocommerce-screens',
-    'LA-12' => 'hebrew-rtl-dark',
-    'LA-13' => 'hebrew-account-page',
+const SLUGS = array(
+    'LA-01'  => 'full-page',
+    'LA-02'  => 'navigation',
+    'LA-03'  => 'hero-and-stats',
+    'LA-04'  => 'subscription-card',
+    'LA-05'  => 'subscription-states',
+    'LA-06'  => 'timeline',
+    'LA-07'  => 'loyalty-card',
+    'LA-08'  => 'support-and-banners',
+    'LA-09'  => 'primitives',
+    'LA-10'  => 'system-states',
+    'LA-11'  => 'woocommerce-screens',
+    'LA-12'  => 'hebrew-rtl-dark',
+    'LA-13'  => 'hebrew-account-page',
+    'LA-14'  => 'sign-in-panel',
     'PPU-01' => 'upsell-card',
     'PPU-02' => 'upsell-media-side',
     'PPU-03' => 'upsell-dark-outline',
     'PPU-04' => 'upsell-states',
     'PPU-06' => 'hebrew-thankyou-upsell',
-    'PP-01' => 'deposit-widget',
-    'PP-02' => 'subscription-choice',
-    'PP-03' => 'upsell-legacy',
-    'LC-01' => 'loyalty-club-page',
-    'LC-02' => 'referral-program',
-    'LC-03' => 'loyalty-states',
-];
+    'PP-01'  => 'deposit-widget',
+    'PP-02'  => 'subscription-choice',
+    'PP-03'  => 'upsell-legacy',
+    'LC-01'  => 'loyalty-club-page',
+    'LC-02'  => 'referral-program',
+    'LC-03'  => 'loyalty-states',
+);
 
 /**
  * The only styling a per-element file adds on top of the shop's own CSS.
@@ -229,13 +237,13 @@ JS;
 $template = @file_get_contents(TEMPLATE);
 
 if (false === $template) {
-    fwrite(STDERR, "cannot read " . TEMPLATE . "\n");
+    fwrite(STDERR, 'cannot read ' . TEMPLATE . "\n");
     exit(1);
 }
 
 /* --- inline every canonical stylesheet ---------------------------------- */
 
-$missing = [];
+$missing = array();
 
 $template = preg_replace_callback(MARKER_SCOPED, static function (array $m) use (&$missing): string {
     $relative = trim($m[1]);
@@ -274,7 +282,7 @@ $body = preg_replace_callback(MARKER, static function (array $m) use (&$missing)
 }, $template);
 
 if ($missing) {
-    fwrite(STDERR, "missing stylesheet(s): " . implode(', ', $missing) . "\n");
+    fwrite(STDERR, 'missing stylesheet(s): ' . implode(', ', $missing) . "\n");
     exit(1);
 }
 
@@ -318,7 +326,7 @@ printf(
 /**
  * Cuts every specimen out of the built sheet and writes it as its own page.
  *
- * @param  string $html the built sheet
+ * @param  string  $html  the built sheet
  * @return array<int, array{code: string, file: string, title: string}>
  */
 function emitElements(string $html): array
@@ -327,8 +335,8 @@ function emitElements(string $html): array
         mkdir(OUT_ELEMENTS, 0o777, true);
     }
 
-    $doc = Dom\HTMLDocument::createFromString($html, LIBXML_NOERROR);
-    $written = [];
+    $doc = HTMLDocument::createFromString($html, LIBXML_NOERROR);
+    $written = array();
 
     foreach ($doc->querySelectorAll('.k-plate') as $plate) {
         $code = (string) $plate->getAttribute('id');
@@ -341,11 +349,11 @@ function emitElements(string $html): array
         $titleNode = $plate->querySelector('.k-plate__title');
         $title = null === $titleNode ? $code : trim($titleNode->textContent);
 
-        $written[] = [
-            'code' => $code,
+        $written[] = array(
+            'code'  => $code,
             'title' => $title,
-            'file' => writeElement($doc, $code, $title, $stage),
-        ];
+            'file'  => writeElement($doc, $code, $title, $stage),
+        );
     }
 
     writeElementIndex($written);
@@ -354,13 +362,12 @@ function emitElements(string $html): array
 }
 
 /**
- * @param  Dom\HTMLDocument $doc
- * @param  string           $code  e.g. "LA-04"
- * @param  string           $title the plate's Hebrew title
- * @param  Dom\Element      $stage the specimen canvas
+ * @param  string  $code  e.g. "LA-04"
+ * @param  string  $title  the plate's Hebrew title
+ * @param  Element  $stage  the specimen canvas
  * @return string the filename written
  */
-function writeElement(Dom\HTMLDocument $doc, string $code, string $title, Dom\Element $stage): string
+function writeElement(HTMLDocument $doc, string $code, string $title, Element $stage): string
 {
     $stage = $stage->cloneNode(true);
 
@@ -373,7 +380,7 @@ function writeElement(Dom\HTMLDocument $doc, string $code, string $title, Dom\El
 
     for ($pass = 0; $pass < 3; $pass++) {
         foreach (iterator_to_array($stage->childNodes) as $child) {
-            if (! $child instanceof Dom\Element || 'div' !== strtolower($child->tagName)) {
+            if (! $child instanceof Element || 'div' !== strtolower($child->tagName)) {
                 continue;
             }
 
@@ -405,7 +412,7 @@ function writeElement(Dom\HTMLDocument $doc, string $code, string $title, Dom\El
     $markup = formatMarkup($markup);
 
     $family = explode('-', $code)[0];
-    $sheets = PLATE_SHEETS[$code] ?? [SHEETS[$family] ?? SHEETS['LA']];
+    $sheets = PLATE_SHEETS[$code] ?? array(SHEETS[$family] ?? SHEETS['LA']);
 
     $css = '';
     foreach ($sheets as $sheet) {
@@ -416,7 +423,7 @@ function writeElement(Dom\HTMLDocument $doc, string $code, string $title, Dom\El
     $ground = $stage->getAttribute('data-ground');
     $pin = str_contains($markup, 'la-toast') ? ' k-pin' : '';
     /* Whole-screen specimens need the room; a single card does not. */
-    $wide = in_array($code, ['LA-01', 'LA-11', 'LA-12', 'LA-13'], true) ? ' data-wide' : '';
+    $wide = in_array($code, array('LA-01', 'LA-11', 'LA-12', 'LA-13'), true) ? ' data-wide' : '';
 
     $page = "<!doctype html>\n"
         . '<html lang="he" dir="' . $dir . "\">\n"
@@ -425,7 +432,7 @@ function writeElement(Dom\HTMLDocument $doc, string $code, string $title, Dom\El
         . "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
         . '<title>' . $code . ' — ' . htmlspecialchars($title, ENT_QUOTES) . "</title>\n"
         . "\n<!-- ===== the shop's own stylesheet(s), inlined verbatim ===== -->\n"
-        . "<style>" . $css . "\n</style>\n"
+        . '<style>' . $css . "\n</style>\n"
         . "\n<style>\n" . ('LC' === $family ? LC_HOST_CSS : HOST_CSS) . "\n</style>\n"
         . "</head>\n"
         /* The club page IS the body in production — it takes no host chrome. */
@@ -448,9 +455,6 @@ function writeElement(Dom\HTMLDocument $doc, string $code, string $title, Dom\El
  * Deliberately dumb: the specimens are plain, well-formed elements with no
  * <pre>, no comments and no scripts, so a depth counter is enough and a real
  * formatter would be a dependency for nothing.
- *
- * @param  string $html
- * @return string
  */
 function formatMarkup(string $html): string
 {
@@ -468,6 +472,7 @@ function formatMarkup(string $html): string
 
         if ('<' !== $part[0]) {
             $out .= str_repeat('    ', $depth) . trim($part) . "\n";
+
             continue;
         }
 
@@ -482,6 +487,7 @@ function formatMarkup(string $html): string
             && str_starts_with($parts[$i + 2], '</')) {
             $out .= str_repeat('    ', $depth) . $part . trim($parts[$i + 1]) . $parts[$i + 2] . "\n";
             $i += 2;
+
             continue;
         }
 
@@ -500,7 +506,7 @@ function formatMarkup(string $html): string
 }
 
 /**
- * @param array<int, array{code: string, file: string, title: string}> $written
+ * @param  array<int, array{code: string, file: string, title: string}>  $written
  */
 function writeElementIndex(array $written): void
 {

@@ -12,10 +12,7 @@
  *
  * A logged-out visitor gets a sign-in prompt instead of an iframe: a members
  * page with no member is either an empty page or, worse, someone else's.
- *
- * @package LETS_PayPlus
  */
-
 defined('ABSPATH') || exit;
 
 // === CONSTANTS ===
@@ -92,6 +89,12 @@ function lets_payplus_loyalty_shortcode()
 
     $he = function_exists('lets_payplus_is_he') && lets_payplus_is_he();
 
+    // Both faces of the shortcode — the iframe and the signed-out prompt — wear
+    // the plugin's own stylesheet. The prompt used to render bare and inherit
+    // whatever the theme did to a naked <h3>; it was the one surface of ours
+    // that reached a shopper undressed.
+    wp_enqueue_style('lets-payplus-storefront');
+
     if (! is_user_logged_in()) {
         return lets_payplus_loyalty_login_prompt($he);
     }
@@ -151,7 +154,7 @@ function lets_payplus_loyalty_page_url()
  * club is tall and varies with the number of tiers; a fixed height would either
  * clip it or leave a hole).
  *
- * @param string $url
+ * @param  string  $url
  * @return string
  */
 function lets_payplus_loyalty_iframe($url)
@@ -167,7 +170,6 @@ function lets_payplus_loyalty_iframe($url)
             src="<?php echo esc_url($url); ?>"
             title="<?php echo esc_attr__('Members club', 'lets-payplus'); ?>"
             loading="lazy"
-            style="width:100%;border:0;min-height:<?php echo (int) LETS_PAYPLUS_LOYALTY_MIN_HEIGHT; ?>px"
         ></iframe>
     </div>
     <script>
@@ -189,14 +191,14 @@ function lets_payplus_loyalty_iframe($url)
 /**
  * The signed-out state: an invitation, not an error.
  *
- * @param bool $he
+ * @param  bool  $he
  * @return string
  */
 function lets_payplus_loyalty_login_prompt($he)
 {
     $title = $he ? 'מועדון החברים' : 'Members club';
-    $body  = $he ? 'התחברו לחשבון שלכם כדי לראות את הנקודות והסטטוס שלכם.' : 'Sign in to your account to see your points and status.';
-    $cta   = $he ? 'התחברות' : 'Sign in';
+    $body = $he ? 'התחברו לחשבון שלכם כדי לראות את הנקודות והסטטוס שלכם.' : 'Sign in to your account to see your points and status.';
+    $cta = $he ? 'התחברות' : 'Sign in';
 
     ob_start();
     ?>

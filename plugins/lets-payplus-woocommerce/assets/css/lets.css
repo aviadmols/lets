@@ -7,8 +7,10 @@
    loads inside the merchant's theme, and a --lets-pp-* on :root is a global the
    theme did not ask for; more to the point, a theme that happens to use the same
    name would silently restyle our widget. Every selector in this file is
-   .lets-pp*, so matching on the class prefix covers all of them and leaks none. */
-[class*="lets-pp"] {
+   .lets-pp* or .lets-loyalty-*, so matching on the class prefixes covers all of
+   them and leaks none. */
+[class*="lets-pp"],
+[class*="lets-loyalty"] {
   --lets-pp-fg: #1a1a1a;
   --lets-pp-muted: #6b7280;
   --lets-pp-border: #d1d5db;
@@ -39,7 +41,11 @@
   background: #fff;
 }
 
-.lets-pp-sub {
+/* The one-liner under "Subscribe & save" in the calculator panel. Its own class:
+   .lets-pp-sub is the cart subscription-choice BOX further down, and the two
+   used to share a name — which dressed this paragraph in a border it never
+   asked for, and that box in 13px muted type. */
+.lets-pp-sublabel {
   margin: 0 0 12px;
   font-size: 13px;
   color: var(--lets-pp-muted);
@@ -183,3 +189,63 @@
 .lets-pp-sub__opt input { margin-inline-end: 8px; }
 .lets-pp-sub__note { margin: 0; font-weight: 600; }
 .lets-pp-sub__cadence { opacity: 0.7; font-size: 0.9em; }
+
+/* ==================== MEMBERS CLUB ([lets_loyalty]) ====================
+   The iframe wrapper, and the signed-out prompt. The prompt is an invitation,
+   not an error, so it reads like a small hero: a centred card, a heading, one
+   line of copy, one button. The iframe's height is a floor — the club page
+   reports its real height over postMessage and the script stretches it. */
+
+.lets-loyalty-wrap {
+  margin: 12px 0;
+}
+
+.lets-loyalty-frame {
+  display: block;
+  width: 100%;
+  border: 0;
+  /* Mirrors LETS_PAYPLUS_LOYALTY_MIN_HEIGHT until the page reports its own. */
+  min-height: 900px;
+}
+
+.lets-loyalty-prompt {
+  margin: 12px 0;
+  padding: 44px 28px;
+  text-align: center;
+  border: 1px solid var(--lets-pp-border);
+  border-radius: var(--lets-pp-radius);
+  background: var(--lets-pp-bg);
+}
+
+.lets-loyalty-prompt h3 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--lets-pp-fg);
+}
+
+.lets-loyalty-prompt p {
+  margin: 0 auto 22px;
+  max-width: 46ch;
+  color: var(--lets-pp-muted);
+  line-height: 1.6;
+}
+
+/* .button is WooCommerce's own class on the link, which keeps the prompt
+   working with no stylesheet at all; these rules dress it in the widget's
+   accent when the stylesheet IS there. */
+.lets-loyalty-prompt .button {
+  display: inline-block;
+  padding: 11px 30px;
+  border: 1px solid var(--lets-pp-accent);
+  border-radius: var(--lets-pp-radius);
+  background: var(--lets-pp-accent);
+  color: #fff;
+  text-decoration: none;
+  transition: opacity 0.2s ease;
+}
+
+.lets-loyalty-prompt .button:hover {
+  opacity: 0.85;
+  color: #fff;
+}

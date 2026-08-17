@@ -13,8 +13,10 @@ use App\Services\Sms\SmsSenderFactory;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -86,9 +88,129 @@ final class LoginCodeServiceTest extends TestCase
         ]);
 
         $this->assertNotSame(
-            CustomerLoginCode::hashDestination((int) $this->shop->getKey(), 'dana@example.com'),
-            CustomerLoginCode::hashDestination((int) $other->getKey(), 'dana@example.com'),
+            CustomerLoginCode::hashDestination((int) $this->shop->getKey(), CustomerLoginCode::CHANNEL_EMAIL, 'dana@example.com'),
+            CustomerLoginCode::hashDestination((int) $other->getKey(), CustomerLoginCode::CHANNEL_EMAIL, 'dana@example.com'),
         );
+    }
+
+    /**
+     * One handset is one destination however the shopper punctuates it. Without
+     * this, a code issued for `050-123 4567` cannot be verified as `0501234567`,
+     * asking for a new code does not retire the old one, and the per-destination
+     * throttle becomes per-FORMATTING — five spellings, five times the SMS spend.
+     */
+    #[DataProvider('phoneSpellings')]
+    public function test_a_phone_number_hashes_the_same_however_it_is_typed(string $typed): void
+    {
+        $shopId = (int) $this->shop->getKey();
+
+        $this->assertSame(
+            CustomerLoginCode::hashDestination($shopId, CustomerLoginCode::CHANNEL_SMS, '0501234567'),
+            CustomerLoginCode::hashDestination($shopId, CustomerLoginCode::CHANNEL_SMS, $typed),
+        );
+    }
+
+    /** @return array<string, list<string>> */
+    public static function phoneSpellings(): array
+    {
+        return [
+            'dashes' => ['050-123-4567'],
+            'spaces' => ['050 123 4567'],
+            'mixed' => ['050-123 4567'],
+            'international' => ['+972501234567'],
+            'international spaced' => ['+972 50 123 4567'],
+            'bare country code' => ['972501234567'],
+            'dialled out' => ['00972501234567'],
+            'trailing space' => ['0501234567 '],
+        ];
+    }
+
+    public function test_a_code_asked_for_one_way_verifies_when_typed_another(): void
+    {
+        $code = $this->issue('050-123 4567', CustomerLoginCode::CHANNEL_SMS);
+
+        // The shopper tidied the number up while waiting for the message. It is
+        // the same phone, so it is the same code.
+        $this->assertSame(
+            LoginCodeService::VERIFIED,
+            $this->verify('0501234567', $code, CustomerLoginCode::CHANNEL_SMS),
+        );
+    }
+
+    public function test_the_per_destination_throttle_counts_one_handset_once(): void
+    {
+        $spellings = ['0501234567', '050-1234567', '050 123 4567', '+972501234567', '972-50-123-4567'];
+
+        foreach ($spellings as $spelling) {
+            $this->codes->request($this->shop, CustomerLoginCode::CHANNEL_SMS, $spelling);
+        }
+
+        // Five spellings of one number are five requests against ONE bucket, and
+        // each issue retires the last — so exactly one code is live.
+        $this->assertSame(count($spellings), CustomerLoginCode::query()->count());
+        $this->assertSame(1, CustomerLoginCode::query()->whereNull('consumed_at')->count());
+    }
+
+    public function test_yesterdays_codes_are_pruned_and_a_live_one_is_not(): void
+    {
+        $this->issue('dana@example.com');
+        $live = CustomerLoginCode::query()->firstOrFail();
+
+        $stale = $this->issue('yesterday@example.com');
+        CustomerLoginCode::query()
+            ->where('id', '!=', $live->getKey())
+            ->update(['expires_at' => now()->subDays(2)]);
+
+        // The trait only says WHICH rows may go; without the scheduled command
+        // nothing deletes them and a table the migration calls short-lived
+        // becomes the largest one in the database.
+        $this->artisan('model:prune', ['--model' => [CustomerLoginCode::class]])->assertSuccessful();
+
+        $this->assertSame(1, CustomerLoginCode::query()->count());
+        $this->assertTrue(CustomerLoginCode::query()->whereKey($live->getKey())->exists());
+        $this->assertNotSame('', $stale);
+    }
+
+    public function test_the_prune_reaches_every_shops_rows(): void
+    {
+        $other = Shop::create([
+            'shopify_domain' => 'prune-other.myshopify.com',
+            'name' => 'Other',
+            'status' => Shop::STATUS_ACTIVE,
+            'platform' => Shop::PLATFORM_WOOCOMMERCE,
+        ]);
+
+        Tenant::run($other, function (): void {
+            MerchantPortalAppearance::current()->forceFill([
+                'login_code_enabled' => true,
+                'login_code_channel' => MerchantPortalAppearance::CHANNEL_BOTH,
+            ])->save();
+        });
+
+        $this->codes->request($other, CustomerLoginCode::CHANNEL_EMAIL, 'other@example.com');
+        CustomerLoginCode::query()->withoutGlobalScopes()->update(['expires_at' => now()->subDays(2)]);
+
+        // The scheduler runs with NO tenant bound. A prune that respected the
+        // tenant scope would silently delete nothing at all.
+        Tenant::clear();
+        $this->artisan('model:prune', ['--model' => [CustomerLoginCode::class]])->assertSuccessful();
+        Tenant::set($this->shop);
+
+        $this->assertSame(0, CustomerLoginCode::query()->withoutGlobalScopes()->count());
+    }
+
+    public function test_the_sms_channel_with_no_gateway_account_leaves_a_trace(): void
+    {
+        Log::spy();
+
+        // The merchant offers SMS but never finished the 019 account: the code is
+        // issued and can never arrive. The shopper is still told the same thing —
+        // but a silent no-op here is how a shop stays un-signable-into for weeks.
+        $this->codes->request($this->shop, CustomerLoginCode::CHANNEL_SMS, '0501234567');
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(static fn (string $message): bool => $message === 'account.login_code.no_sms_sender')
+            ->once();
     }
 
     public function test_a_correct_code_verifies_once_and_cannot_be_replayed(): void
@@ -224,19 +346,19 @@ final class LoginCodeServiceTest extends TestCase
      * is as expensive for a test as for an attacker — so `generateCode()` is the
      * documented substitution seam, and this pins it to a fresh value per call.
      */
-    private function issue(string $destination): string
+    private function issue(string $destination, string $channel = CustomerLoginCode::CHANNEL_EMAIL): string
     {
         $this->codes->pinned = str_pad((string) (++$this->counter), 6, '0', STR_PAD_LEFT);
-        $this->codes->request($this->shop, CustomerLoginCode::CHANNEL_EMAIL, $destination);
+        $this->codes->request($this->shop, $channel, $destination);
 
         return $this->codes->pinned;
     }
 
     private int $counter = 100000;
 
-    private function verify(string $destination, string $code): string
+    private function verify(string $destination, string $code, string $channel = CustomerLoginCode::CHANNEL_EMAIL): string
     {
-        return $this->codes->verify($this->shop, CustomerLoginCode::CHANNEL_EMAIL, $destination, $code);
+        return $this->codes->verify($this->shop, $channel, $destination, $code);
     }
 }
 

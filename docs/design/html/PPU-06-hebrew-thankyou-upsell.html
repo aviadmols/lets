@@ -154,13 +154,6 @@
   white-space: nowrap;
 }
 .lets-ppu__timer.is-urgent { color: var(--lets-ppu-warn); border-block-end-color: var(--lets-ppu-warn); }
-.lets-ppu__timer-label {
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  color: var(--lets-ppu-muted);
-}
 
 /* ============================ MEDIA ============================ */
 .lets-ppu__media {
@@ -172,36 +165,33 @@
 }
 
 /* ==================== SIDE-BY-SIDE LAYOUT ("media_side") ====================
-   The renderer has always emitted .lets-ppu__body/.lets-ppu__content for this
-   layout — the stylesheet had no rule for either, so choosing "image beside the
-   text" produced exactly the stacked card it was meant to replace.
-
-   Desktop: the product beside its copy, the way a product page presents it.
-   Mobile: one above the other, because two columns on a phone is two cramped
-   columns. The grid does both with one declaration and no JS.
+   The product beside its copy, the way a product page presents it — but only
+   where there is width for two columns; on a phone the card stacks and the
+   image keeps its usual banner spacing. ONE block, all of it scoped to the
+   layout attribute: this section used to be written twice (an unscoped grid
+   here and a scoped one further down), and the second silently won.
    ========================================================================== */
-.lets-ppu[data-layout="media_side"] {
-  /* The stacked card is a narrow column; a two-column one needs the room. */
-  max-inline-size: 780px;
-}
-.lets-ppu__body {
-  display: grid;
-  gap: 28px;
-  align-items: center;
-}
-.lets-ppu__content {
-  min-inline-size: 0; /* let long product names wrap instead of stretching the grid */
-}
-/* Side by side only where there is width for it. */
-@media (min-width: 640px) {
-  .lets-ppu__body {
-    grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+@media (min-width: 440px) {
+  .lets-ppu[data-layout="media_side"] {
+    /* The stacked card is a narrow column; a two-column one needs the room. */
+    max-inline-size: 620px;
   }
-}
-/* In the two-column layout the image is a column, not a banner with a gap under it. */
-.lets-ppu__body .lets-ppu__media {
-  margin-block-end: 0;
-  align-self: start;
+  .lets-ppu[data-layout="media_side"] .lets-ppu__body {
+    display: grid;
+    /* minmax keeps long product names wrapping instead of stretching the grid. */
+    grid-template-columns: 200px minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+  }
+  /* Belt to the minmax braces: the content column must never propagate a long
+     word's intrinsic width into the grid. */
+  .lets-ppu[data-layout="media_side"] .lets-ppu__content {
+    min-inline-size: 0;
+  }
+  /* The image is a column here, not a banner with a gap under it. */
+  .lets-ppu[data-layout="media_side"] .lets-ppu__media {
+    margin-block-end: 0;
+  }
 }
 .lets-ppu__img {
   display: block;
@@ -460,21 +450,6 @@
 .lets-ppu__skel--price { block-size: 40px; inline-size: 55%; margin-block: 8px 20px; }
 .lets-ppu__skel--btn { block-size: 48px; }
 
-/* ============================ LAYOUT: media beside content ============================ */
-@media (min-width: 440px) {
-  .lets-ppu[data-layout="media_side"] {
-    max-inline-size: 620px;
-  }
-  .lets-ppu[data-layout="media_side"] .lets-ppu__body {
-    display: grid;
-    grid-template-columns: 200px 1fr;
-    gap: 24px;
-    align-items: start;
-  }
-  .lets-ppu[data-layout="media_side"] .lets-ppu__media {
-    margin-block-end: 0;
-  }
-}
 
 /* ===== plugins/lets-payplus-woocommerce/assets/css/lets.css ===== */
 /*
@@ -486,8 +461,10 @@
    loads inside the merchant's theme, and a --lets-pp-* on :root is a global the
    theme did not ask for; more to the point, a theme that happens to use the same
    name would silently restyle our widget. Every selector in this file is
-   .lets-pp*, so matching on the class prefix covers all of them and leaks none. */
-[class*="lets-pp"] {
+   .lets-pp* or .lets-loyalty-*, so matching on the class prefixes covers all of
+   them and leaks none. */
+[class*="lets-pp"],
+[class*="lets-loyalty"] {
   --lets-pp-fg: #1a1a1a;
   --lets-pp-muted: #6b7280;
   --lets-pp-border: #d1d5db;
@@ -518,7 +495,11 @@
   background: #fff;
 }
 
-.lets-pp-sub {
+/* The one-liner under "Subscribe & save" in the calculator panel. Its own class:
+   .lets-pp-sub is the cart subscription-choice BOX further down, and the two
+   used to share a name — which dressed this paragraph in a border it never
+   asked for, and that box in 13px muted type. */
+.lets-pp-sublabel {
   margin: 0 0 12px;
   font-size: 13px;
   color: var(--lets-pp-muted);
@@ -662,6 +643,66 @@
 .lets-pp-sub__opt input { margin-inline-end: 8px; }
 .lets-pp-sub__note { margin: 0; font-weight: 600; }
 .lets-pp-sub__cadence { opacity: 0.7; font-size: 0.9em; }
+
+/* ==================== MEMBERS CLUB ([lets_loyalty]) ====================
+   The iframe wrapper, and the signed-out prompt. The prompt is an invitation,
+   not an error, so it reads like a small hero: a centred card, a heading, one
+   line of copy, one button. The iframe's height is a floor — the club page
+   reports its real height over postMessage and the script stretches it. */
+
+.lets-loyalty-wrap {
+  margin: 12px 0;
+}
+
+.lets-loyalty-frame {
+  display: block;
+  width: 100%;
+  border: 0;
+  /* Mirrors LETS_PAYPLUS_LOYALTY_MIN_HEIGHT until the page reports its own. */
+  min-height: 900px;
+}
+
+.lets-loyalty-prompt {
+  margin: 12px 0;
+  padding: 44px 28px;
+  text-align: center;
+  border: 1px solid var(--lets-pp-border);
+  border-radius: var(--lets-pp-radius);
+  background: var(--lets-pp-bg);
+}
+
+.lets-loyalty-prompt h3 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--lets-pp-fg);
+}
+
+.lets-loyalty-prompt p {
+  margin: 0 auto 22px;
+  max-width: 46ch;
+  color: var(--lets-pp-muted);
+  line-height: 1.6;
+}
+
+/* .button is WooCommerce's own class on the link, which keeps the prompt
+   working with no stylesheet at all; these rules dress it in the widget's
+   accent when the stylesheet IS there. */
+.lets-loyalty-prompt .button {
+  display: inline-block;
+  padding: 11px 30px;
+  border: 1px solid var(--lets-pp-accent);
+  border-radius: var(--lets-pp-radius);
+  background: var(--lets-pp-accent);
+  color: #fff;
+  text-decoration: none;
+  transition: opacity 0.2s ease;
+}
+
+.lets-loyalty-prompt .button:hover {
+  opacity: 0.85;
+  color: #fff;
+}
 
 </style>
 

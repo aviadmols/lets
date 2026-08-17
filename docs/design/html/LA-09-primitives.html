@@ -1421,6 +1421,31 @@ a.la-banner:focus-visible {
     color: var(--la-fg);
 }
 
+/* The same receipt on the SINGLE order page. The section used to have no rule
+   at all, so the link arrived in the theme's default link colour while its
+   sibling in the history table was dressed; it now reads as the same quiet
+   secondary verb in both places. */
+.lets-shell.lets-shell .lets-order-document p {
+    margin: 8px 0 0;
+}
+
+.lets-shell.lets-shell .lets-order-document a {
+    display: inline-block;
+    padding: 8px 16px;
+    border: 1px solid var(--la-border-strong);
+    border-radius: var(--la-radius-sm);
+    background: var(--la-card);
+    color: var(--la-fg);
+    text-decoration: none;
+    transition: background 0.2s ease;
+}
+
+.lets-shell.lets-shell .lets-order-document a:hover {
+    background: var(--la-card-2);
+    color: var(--la-fg);
+    text-decoration: none;
+}
+
 /* --- Links inside WooCommerce's own tables ------------------------------
    The order number identifies the row; it is not a link out into the theme's
    palette. It takes the page's ink, and earns an underline on hover — where an
@@ -1748,6 +1773,95 @@ a.la-banner:focus-visible {
     inline-size: auto;
     max-inline-size: none;
     float: none;
+}
+
+/* =========================================================================
+   The sign-in panel on the login form: one-time codes, and — when the
+   merchant configured a client id — Google. The card should read as ONE way
+   in with three doors, not three stacked widgets: Google first (a single
+   click beats typing a code), a quiet "or" line, then the code flow with the
+   channel chips. Google's own button is an iframe GIS renders; we only own
+   the box it sits in, so the centring happens on the container.
+   ========================================================================= */
+
+.lets-acct .la-login {
+    max-inline-size: 420px;
+    margin-block-start: var(--la-gap);
+}
+
+.lets-acct .la-login .la-section__title {
+    margin-block-end: 6px;
+}
+
+.la-login__google {
+    display: flex;
+    justify-content: center;
+    margin-block-start: 14px;
+    /* GIS pops in async; reserving the button's height keeps the card from
+       jumping when it lands. */
+    min-block-size: 44px;
+}
+
+.la-login__divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-block: 18px 4px;
+    color: var(--la-faint);
+}
+
+.la-login__divider::before,
+.la-login__divider::after {
+    content: '';
+    block-size: 1px;
+    flex: 1;
+    background: var(--la-border);
+}
+
+.la-login__divider-word {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+}
+
+/* Email / SMS as one segmented control: the choice is a mode, not two links. */
+.la-login__channels {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px;
+    margin-block: 4px 14px;
+    border: 1px solid var(--la-border);
+    border-radius: calc(var(--la-radius-sm) + 4px);
+    background: var(--la-card-2);
+}
+
+.la-chip {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--la-muted);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+    padding: 8px 18px;
+    border-radius: var(--la-radius-sm);
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.la-chip:hover {
+    color: var(--la-fg);
+}
+
+.la-chip.is-active {
+    background: var(--la-accent);
+    color: var(--la-accent-fg);
+}
+
+.la-chip:focus-visible {
+    outline: none;
+    box-shadow: var(--la-ring);
 }
 
 </style>

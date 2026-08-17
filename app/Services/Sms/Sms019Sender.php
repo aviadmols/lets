@@ -2,6 +2,7 @@
 
 namespace App\Services\Sms;
 
+use App\Support\PhoneNumber;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -90,24 +91,16 @@ final class Sms019Sender implements SmsSender
     }
 
     /**
-     * 019 wants a local Israeli number (`05xxxxxxxx` or `5xxxxxxxx`). Shoppers
-     * type `+972`, `972`, spaces and dashes, so normalise rather than reject: a
-     * number the merchant already has on the order is not the place to be strict.
+     * 019 wants a local Israeli number (`05xxxxxxxx`). Shoppers type `+972`, `972`,
+     * spaces and dashes, so normalise rather than reject: a number the merchant
+     * already has on the order is not the place to be strict.
+     *
+     * The rule itself lives in PhoneNumber because the code table hashes its
+     * destination with the SAME rule — if the two ever disagreed, a code would be
+     * delivered to a handset and then looked up under a different key.
      */
     public static function normalisePhone(string $phone): ?string
     {
-        $digits = preg_replace('/\D+/', '', $phone) ?? '';
-
-        if (str_starts_with($digits, '972')) {
-            $digits = '0'.substr($digits, 3);
-        }
-
-        // A local mobile is 10 digits starting 05; anything else we hand over as
-        // typed only when it is plausibly a number at all.
-        if (preg_match('/^05\d{8}$/', $digits) === 1) {
-            return $digits;
-        }
-
-        return strlen($digits) >= 9 && strlen($digits) <= 15 ? $digits : null;
+        return PhoneNumber::canonical($phone);
     }
 }

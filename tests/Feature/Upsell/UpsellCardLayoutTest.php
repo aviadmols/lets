@@ -20,8 +20,11 @@ final class UpsellCardLayoutTest extends TestCase
 {
     // === CONSTANTS ===
     private const PLUGIN_CSS = 'plugins/lets-payplus-woocommerce/assets/css/lets-ppu.css';
+
     private const PLUGIN_JS = 'plugins/lets-payplus-woocommerce/assets/js/lets-ppu.js';
+
     private const SAAS_CSS = 'public/upsell/lets-ppu.css';
+
     private const SAAS_JS = 'public/upsell/lets-ppu.js';
 
     public function test_the_two_copies_of_the_card_are_byte_identical(): void
@@ -58,9 +61,10 @@ final class UpsellCardLayoutTest extends TestCase
         $css = (string) file_get_contents(base_path(self::PLUGIN_CSS));
 
         // Two columns are declared INSIDE a min-width query, so the default — what a
-        // phone gets — is a single column, image above the copy.
+        // phone gets — is a single column, image above the copy. The selector may
+        // carry the [data-layout] scope in front; what matters is the gate.
         $this->assertMatchesRegularExpression(
-            '/@media\s*\(min-width:[^)]+\)\s*\{\s*\.lets-ppu__body\s*\{[^}]*grid-template-columns/s',
+            '/@media\s*\(min-width:[^)]+\)\s*\{[^@]*?\.lets-ppu__body\s*\{[^}]*grid-template-columns/s',
             $css,
             'the two-column rule must be gated behind a min-width, or phones get two cramped columns',
         );

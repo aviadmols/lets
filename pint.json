@@ -1,0 +1,11 @@
+{
+    "preset": "laravel",
+    "exclude": [
+        "plugins",
+        "docs"
+    ],
+    "notPath": [
+        "bootstrap/cache",
+        "bootstrap/providers.php"
+    ]
+}

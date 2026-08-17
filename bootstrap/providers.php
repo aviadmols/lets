@@ -9,4 +9,5 @@ return [
     App\Domain\ShopifySubscriptions\ShopifySubscriptionsServiceProvider::class,
     App\Domain\Campaigns\CampaignsServiceProvider::class,
     App\Domain\Loyalty\LoyaltyServiceProvider::class,
+    App\Domain\Account\AccountServiceProvider::class,
 ];

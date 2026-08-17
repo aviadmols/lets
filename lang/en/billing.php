@@ -147,6 +147,14 @@ return [
             'allow_pause_help' => 'Let customers pause (and resume) their own plans.',
             'allow_cancel' => 'Allow customers to cancel',
             'allow_cancel_help' => 'Let customers cancel their own plans.',
+            'allow_skip' => 'Allow skipping the next delivery',
+            'allow_skip_help' => 'Adds a "Skip next delivery" button. Turn it off if every cycle ships on a fixed date.',
+            'allow_reschedule' => 'Allow changing the next charge date',
+            'allow_reschedule_help' => 'Lets a customer move their next charge to a date they choose.',
+            'allow_edit_items' => 'Allow editing the next order',
+            'allow_edit_items_help' => 'Lets a customer add or change the products in their next order.',
+            'single_subscription' => 'One subscription per customer',
+            'single_subscription_help' => 'Refuses a second subscription at checkout when the customer already has a live one, and points them to their account area. It never touches subscriptions they already hold.',
         ],
 
         'policy' => [

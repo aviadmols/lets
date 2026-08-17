@@ -193,6 +193,37 @@ final class CustomerAreaSettingsTest extends TestCase
         $this->assertSame('secret', MerchantSmsSettings::current()->refresh()->apiToken());
     }
 
+    public function test_saving_with_code_sign_in_switched_off_keeps_the_019_account(): void
+    {
+        $sms = MerchantSmsSettings::current();
+        $sms->forceFill(['enabled' => true, 'username' => 'shop', 'api_token' => 'secret', 'sender' => 'LETS'])->save();
+
+        $settings = MerchantPortalAppearance::current();
+        $settings->login_code_enabled = true;
+        $settings->login_code_channel = MerchantPortalAppearance::CHANNEL_SMS;
+        $settings->save();
+
+        // The 019 fields and the channel picker are both hidden behind this
+        // toggle, and Filament does not submit a hidden field at all. Writing
+        // them from an input that never carried them deleted the merchant's
+        // gateway account — and silently moved them back to email — every time
+        // they saved this page with the login tab collapsed.
+        Livewire::test(ManageCustomerArea::class)
+            ->set('data.login_code_enabled', false)
+            ->set('data.accent_color', '#123456')
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $stored = MerchantSmsSettings::current()->refresh();
+        $this->assertSame('shop', $stored->accountName());
+        $this->assertSame('secret', $stored->apiToken());
+        $this->assertSame('LETS', $stored->senderName());
+        $this->assertSame(
+            MerchantPortalAppearance::CHANNEL_SMS,
+            MerchantPortalAppearance::current()->refresh()->loginCodeChannel(),
+        );
+    }
+
     public function test_the_form_rejects_a_non_https_banner_before_it_is_stored(): void
     {
         Livewire::test(ManageCustomerArea::class)
@@ -201,6 +232,43 @@ final class CustomerAreaSettingsTest extends TestCase
             ])
             ->call('save')
             ->assertHasFormErrors(['banners.0.image_url']);
+    }
+
+    public function test_a_stored_google_client_id_that_is_not_one_never_reaches_a_page(): void
+    {
+        $settings = MerchantPortalAppearance::current();
+
+        // Stored garbage (a row written before the rule, or a tampered save):
+        // the value lands in GIS button markup and an `aud` comparison, so
+        // anything not shaped like a client id must read as absent.
+        $settings->login_google_client_id = 'javascript:alert(1)';
+        $settings->save();
+        $this->assertNull($settings->refresh()->loginGoogleClientId());
+
+        $settings->login_google_client_id = '1234567890-abc123.apps.googleusercontent.com';
+        $settings->save();
+        $this->assertSame(
+            '1234567890-abc123.apps.googleusercontent.com',
+            $settings->refresh()->loginGoogleClientId(),
+        );
+    }
+
+    public function test_the_screen_saves_a_google_client_id_and_rejects_a_malformed_one(): void
+    {
+        Livewire::test(ManageCustomerArea::class)
+            ->set('data.login_google_client_id', '1234567890-abc123.apps.googleusercontent.com')
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $this->assertSame(
+            '1234567890-abc123.apps.googleusercontent.com',
+            MerchantPortalAppearance::current()->refresh()->loginGoogleClientId(),
+        );
+
+        Livewire::test(ManageCustomerArea::class)
+            ->set('data.login_google_client_id', 'not-a-client-id')
+            ->call('save')
+            ->assertHasFormErrors(['login_google_client_id']);
     }
 
     // === The payload ===

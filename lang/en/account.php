@@ -64,6 +64,35 @@ return [
     ],
 
     /*
+     * Shown in the STORE, not the account page: the shop allows one subscription
+     * per customer and this shopper already has one. The plugin turns the link
+     * label into a link to their own area — it knows the URL, we do not.
+     */
+    'purchase' => [
+        'blocked' => 'You already have an active subscription, so a second one cannot be added. You can change or cancel the one you have in your account area.',
+        'blocked_link' => 'Go to my subscription',
+    ],
+
+    /*
+     * How often a subscription bills, as a sentence. The unit is a CHOICE string
+     * (singular|plural) because Hebrew must agree with the count — "כל חודש" but
+     * "כל 3 חודשים" — which a flat frequency→word map cannot express.
+     */
+    'cycle' => [
+        'every' => 'every :unit',
+        'every_n' => 'every :count :unit',
+
+        'unit' => [
+            'daily' => 'day|days',
+            'weekly' => 'week|weeks',
+            'biweekly' => '2 weeks|2 weeks',
+            'monthly' => 'month|months',
+            'quarterly' => 'quarter|quarters',
+            'yearly' => 'year|years',
+        ],
+    ],
+
+    /*
      * Plan AND payment statuses share one bag: the renderer looks up
      * `status_{value}` without knowing which enum produced it, and a value with
      * no entry falls back to the raw string rather than rendering blank.
@@ -204,6 +233,11 @@ return [
             'sms_token' => '019 API token',
             'sms_sender' => 'Sender name',
             'sms_sender_help' => 'Up to 11 letters or digits, no spaces — this is what appears as the sender.',
+            'sms_incomplete' => 'SMS sign-in is not ready yet',
+            'sms_incomplete_help' => 'You chose to send codes by SMS, but the 019 account is not complete. Until the username, token and sender name are all filled in, a customer who asks for a code by SMS will never receive one.',
+            'google_client_id' => 'Google sign-in — OAuth client ID',
+            'google_client_id_help' => 'Paste the client ID from your own Google Cloud project to show a "Sign in with Google" button. Your store\'s address must be listed under the OAuth client\'s authorized JavaScript origins. Leave blank to hide the button.',
+            'google_client_id_invalid' => 'This does not look like a Google OAuth client ID (it ends with .apps.googleusercontent.com).',
         ],
 
         'copy' => [
