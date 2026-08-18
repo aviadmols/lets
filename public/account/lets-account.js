@@ -151,6 +151,9 @@
         }
 
         var banners = Array.isArray(model.banners) ? model.banners : [];
+        // A LETS that predates placement sends no top_banners at all; an empty
+        // list then draws nothing, which is exactly the old behaviour.
+        var topBanners = Array.isArray(model.top_banners) ? model.top_banners : [];
         var sections = model.sections || [];
 
         // The header first, then two columns. The merchant's own section ORDER
@@ -158,6 +161,17 @@
         // a section lands in, never whether it appears.
         if (sections.indexOf(HERO_SECTION) !== -1) {
             append(mount, renderWelcome(state));
+        }
+
+        // The full-width strip sits between the greeting and the columns: it is
+        // an announcement, so it comes before the cards — but after being told
+        // whose page this is.
+        if (topBanners.length) {
+            var strip = el('div', 'la-topbanners');
+            topBanners.forEach(function (banner) {
+                strip.appendChild(renderBanner(banner, 'la-banner--top'));
+            });
+            append(mount, strip);
         }
 
         var grid = el('div', 'lets-acct__grid');
@@ -695,10 +709,13 @@
 
     // === Banners ===
 
-    function renderBanner(banner) {
+    function renderBanner(banner, modifier) {
         // A banner with a link is an anchor so it is keyboard-reachable; one
         // without is a plain div rather than a fake button that goes nowhere.
-        var node = banner.link_url ? el('a', 'la-banner') : el('div', 'la-banner');
+        // The markup is identical in both placements — only a modifier class
+        // separates them, so the two can never drift into two designs.
+        var cls = modifier ? 'la-banner ' + modifier : 'la-banner';
+        var node = banner.link_url ? el('a', cls) : el('div', cls);
         if (banner.link_url) {
             attr(node, 'href', banner.link_url);
             attr(node, 'rel', 'noopener');

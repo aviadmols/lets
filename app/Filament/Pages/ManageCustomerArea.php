@@ -201,6 +201,20 @@ class ManageCustomerArea extends Page implements HasForms
                             ->startsWith('https://')
                             ->validationMessages(['starts_with' => __('account.admin.banners.https_only')])
                             ->maxLength(500),
+                        ToggleButtons::make('placement')
+                            ->label(__('account.admin.banners.placement'))
+                            ->options($this->options(
+                                MerchantPortalAppearance::BANNER_PLACEMENTS, 'placement_option', 'banners',
+                            ))
+                            ->default(MerchantPortalAppearance::BANNER_RAIL)
+                            ->inline()->live(),
+                        ToggleButtons::make('audience')
+                            ->label(__('account.admin.banners.audience'))
+                            ->options($this->options(
+                                MerchantPortalAppearance::BANNER_AUDIENCES, 'audience_option', 'banners',
+                            ))
+                            ->default(MerchantPortalAppearance::AUDIENCE_EVERYONE)
+                            ->inline()->live(),
                     ])
                     ->columns(2)
                     ->reorderable()
@@ -429,6 +443,10 @@ class ManageCustomerArea extends Page implements HasForms
                 'subtext' => $row['subtext'] ?? null,
                 'image_url' => $row['image_url'] ?? null,
                 'link_url' => $row['link_url'] ?? null,
+                // A row saved before targeting existed carries neither key; the
+                // form must still mount on the defaults the model reads it as.
+                'placement' => $row['placement'] ?? MerchantPortalAppearance::BANNER_RAIL,
+                'audience' => $row['audience'] ?? MerchantPortalAppearance::AUDIENCE_EVERYONE,
             ];
         }
 
@@ -495,12 +513,16 @@ class ManageCustomerArea extends Page implements HasForms
         }
 
         return array_values(array_map(
+            // placement/audience pass through raw — the model guard is the one
+            // place that decides what an unknown value falls back to.
             static fn ($row): array => [
                 'enabled' => (bool) ($row['enabled'] ?? true),
                 'heading' => $row['heading'] ?? null,
                 'subtext' => $row['subtext'] ?? null,
                 'image_url' => $row['image_url'] ?? null,
                 'link_url' => $row['link_url'] ?? null,
+                'placement' => $row['placement'] ?? null,
+                'audience' => $row['audience'] ?? null,
             ],
             is_array($rows) ? $rows : [],
         ));

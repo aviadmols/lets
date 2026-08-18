@@ -319,11 +319,14 @@ class MerchantPortalAppearance extends Model
     // === Side banners ===
 
     /**
-     * The side rail, sanitised. A banner with neither a heading nor an image is
-     * not a banner. Only https survives on both the image and the link — a
-     * merchant-typed `javascript:` would ship straight onto a customer page.
+     * Every banner the merchant configured, sanitised. A banner with neither a
+     * heading nor an image is not a banner. Only https survives on both the image
+     * and the link — a merchant-typed `javascript:` would ship straight onto a
+     * customer page. An unreadable placement or audience falls back to the widest
+     * answer (rail / everyone) rather than hiding the banner: a merchant who has
+     * seen their banner in the preview must not lose it to a typo in the column.
      *
-     * @return list<array{heading: ?string, subtext: ?string, image_url: ?string, link_url: ?string}>
+     * @return list<array{heading: ?string, subtext: ?string, image_url: ?string, link_url: ?string, placement: string, audience: string}>
      */
     public function banners(): array
     {
@@ -339,6 +342,8 @@ class MerchantPortalAppearance extends Model
                 'subtext' => $this->trimmedOrNull($row['subtext'] ?? null, self::MAX_SUBTEXT),
                 'image_url' => $this->httpsOrNull($row['image_url'] ?? null),
                 'link_url' => $this->httpsOrNull($row['link_url'] ?? null),
+                'placement' => $this->oneOf($row['placement'] ?? null, self::BANNER_PLACEMENTS, self::BANNER_RAIL),
+                'audience' => $this->oneOf($row['audience'] ?? null, self::BANNER_AUDIENCES, self::AUDIENCE_EVERYONE),
             ];
 
             if ($banner['heading'] === null && $banner['image_url'] === null) {
@@ -353,6 +358,48 @@ class MerchantPortalAppearance extends Model
         }
 
         return $out;
+    }
+
+    /**
+     * The banners for ONE slot on the page, in front of ONE reader.
+     *
+     * `$isSubscriber` is deliberately nullable rather than a bool: an
+     * unidentified visitor is not a non-subscriber, they are an unknown, and
+     * "join the club" aimed at somebody who may already be paying is the exact
+     * mistake the audience setting exists to prevent. null therefore sees only
+     * `everyone`.
+     *
+     * @return list<array{heading: ?string, subtext: ?string, image_url: ?string, link_url: ?string, placement: string, audience: string}>
+     */
+    public function bannersFor(string $placement, ?bool $isSubscriber): array
+    {
+        $audiences = [self::AUDIENCE_EVERYONE];
+        if ($isSubscriber === true) {
+            $audiences[] = self::AUDIENCE_SUBSCRIBERS;
+        } elseif ($isSubscriber === false) {
+            $audiences[] = self::AUDIENCE_NON_SUBSCRIBERS;
+        }
+
+        return array_values(array_filter(
+            $this->banners(),
+            static fn (array $banner): bool => $banner['placement'] === $placement
+                && in_array($banner['audience'], $audiences, true),
+        ));
+    }
+
+    /**
+     * The same split WITHOUT the audience filter — the merchant's own preview,
+     * where every banner they configured has to be visible or they cannot see
+     * what they just wrote.
+     *
+     * @return list<array{heading: ?string, subtext: ?string, image_url: ?string, link_url: ?string, placement: string, audience: string}>
+     */
+    public function bannersAt(string $placement): array
+    {
+        return array_values(array_filter(
+            $this->banners(),
+            static fn (array $banner): bool => $banner['placement'] === $placement,
+        ));
     }
 
     // === Appearance (guarded reads) ===

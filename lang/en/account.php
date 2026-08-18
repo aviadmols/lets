@@ -213,13 +213,24 @@ return [
         ],
 
         'banners' => [
-            'help' => 'Up to three promos in the side column. A banner needs a heading or an image to show at all.',
+            'help' => 'Up to three promos. Choose where each one sits and who sees it. A banner needs a heading or an image to show at all.',
             'heading' => 'Heading',
             'subtext' => 'Subtext',
             'image_url' => 'Image URL',
             'link_url' => 'Links to',
             'enabled' => 'Show',
             'https_only' => 'Must start with https://',
+            'placement' => 'Placement',
+            'placement_option' => [
+                'rail' => 'Side column',
+                'top' => 'Top of the page',
+            ],
+            'audience' => 'Who sees it',
+            'audience_option' => [
+                'everyone' => 'Everyone',
+                'subscribers' => 'Subscribers',
+                'non_subscribers' => 'Non-subscribers',
+            ],
         ],
 
         'login' => [

@@ -190,6 +190,51 @@ final class WooPortalSettingsTest extends TestCase
         $this->assertCount(MerchantPortalAppearance::BANNER_SLOTS, $response->json('settings.banners'));
     }
 
+    /**
+     * Placement and audience are set in the LETS dashboard. A save from the
+     * WordPress screens — which do not carry those fields — must not quietly
+     * move a merchant's top banner back into the side rail.
+     */
+    public function test_a_plugin_save_keeps_the_targeting_set_in_the_dashboard(): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop('portal-targeting.example.com');
+
+        Tenant::run($shop, function (): void {
+            $settings = MerchantPortalAppearance::current();
+            $settings->banners = [[
+                'enabled' => true,
+                'heading' => 'Join the club',
+                'placement' => MerchantPortalAppearance::BANNER_TOP,
+                'audience' => MerchantPortalAppearance::AUDIENCE_NON_SUBSCRIBERS,
+            ]];
+            $settings->save();
+        });
+
+        $this->signed('POST', $key, $secret, self::PATH, [
+            'banners' => [['enabled' => true, 'heading' => 'Join the club today']],
+        ])->assertOk();
+
+        Tenant::run($shop, function (): void {
+            $banner = MerchantPortalAppearance::current()->banners()[0];
+
+            $this->assertSame('Join the club today', $banner['heading']);
+            $this->assertSame(MerchantPortalAppearance::BANNER_TOP, $banner['placement']);
+            $this->assertSame(MerchantPortalAppearance::AUDIENCE_NON_SUBSCRIBERS, $banner['audience']);
+        });
+
+        // A value that IS sent but is not one of ours still falls back.
+        $this->signed('POST', $key, $secret, self::PATH, [
+            'banners' => [['enabled' => true, 'heading' => 'Join the club', 'placement' => 'sideways']],
+        ])->assertOk();
+
+        Tenant::run($shop, function (): void {
+            $this->assertSame(
+                MerchantPortalAppearance::BANNER_RAIL,
+                MerchantPortalAppearance::current()->banners()[0]['placement'],
+            );
+        });
+    }
+
     public function test_a_locked_section_cannot_be_switched_off_and_unknown_keys_vanish(): void
     {
         [$shop, $key, $secret] = $this->connectedShop('portal-sections.example.com');

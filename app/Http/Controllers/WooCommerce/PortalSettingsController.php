@@ -74,7 +74,10 @@ final class PortalSettingsController extends WooStorefrontController
             }
 
             if ($request->has('banners')) {
-                $settings->banners = $this->cleanBanners((array) $request->input('banners', []));
+                $settings->banners = $this->cleanBanners(
+                    (array) $request->input('banners', []),
+                    (array) ($settings->banners ?? []),
+                );
             }
 
             if ($request->has('login_code_enabled')) {
@@ -196,23 +199,32 @@ final class PortalSettingsController extends WooStorefrontController
     }
 
     /**
-     * The side rail. Empty slots are kept as rows so the plugin's three forms
+     * The banners. Empty slots are kept as rows so the plugin's three forms
      * stay stable across a save, but a slot with neither heading nor image can
      * never reach a shopper — the model drops it on read.
      *
+     * Placement and audience are edited in the LETS dashboard, not here. A body
+     * that never carried them therefore keeps what the SLOT already had — the
+     * plugin posts three fixed slots, so the index is the slot — or a merchant
+     * who saved a colour in WordPress would find their top banner back in the
+     * rail. A value that IS sent but is not one of ours falls back.
+     *
      * @param  array<int, mixed>  $rows
-     * @return list<array{enabled: bool, heading: ?string, subtext: ?string, image_url: ?string, link_url: ?string}>
+     * @param  array<int, mixed>  $stored
+     * @return list<array{enabled: bool, heading: ?string, subtext: ?string, image_url: ?string, link_url: ?string, placement: string, audience: string}>
      */
-    private function cleanBanners(array $rows): array
+    private function cleanBanners(array $rows, array $stored = []): array
     {
         $out = [];
+        $stored = array_values($stored);
 
-        foreach (array_values($rows) as $row) {
+        foreach (array_values($rows) as $index => $row) {
             if (count($out) >= MerchantPortalAppearance::BANNER_SLOTS) {
                 break;
             }
 
             $row = is_array($row) ? $row : [];
+            $was = is_array($stored[$index] ?? null) ? $stored[$index] : [];
 
             $out[] = [
                 'enabled' => (bool) ($row['enabled'] ?? false),
@@ -220,10 +232,28 @@ final class PortalSettingsController extends WooStorefrontController
                 'subtext' => $this->textOrNull($row['subtext'] ?? null, self::MAX_BANNER_SUBTEXT),
                 'image_url' => $this->httpsOrNull($row['image_url'] ?? null),
                 'link_url' => $this->httpsOrNull($row['link_url'] ?? null),
+                'placement' => $this->oneOf(
+                    $row['placement'] ?? $was['placement'] ?? null,
+                    MerchantPortalAppearance::BANNER_PLACEMENTS,
+                    MerchantPortalAppearance::BANNER_RAIL,
+                ),
+                'audience' => $this->oneOf(
+                    $row['audience'] ?? $was['audience'] ?? null,
+                    MerchantPortalAppearance::BANNER_AUDIENCES,
+                    MerchantPortalAppearance::AUDIENCE_EVERYONE,
+                ),
             ];
         }
 
         return $out;
+    }
+
+    /** @param list<string> $allowed */
+    private function oneOf(mixed $value, array $allowed, string $fallback): string
+    {
+        $value = is_string($value) ? $value : '';
+
+        return in_array($value, $allowed, true) ? $value : $fallback;
     }
 
     /**
@@ -247,6 +277,8 @@ final class PortalSettingsController extends WooStorefrontController
                     'subtext' => $row['subtext'] ?? null,
                     'image_url' => $row['image_url'] ?? null,
                     'link_url' => $row['link_url'] ?? null,
+                    'placement' => $row['placement'] ?? MerchantPortalAppearance::BANNER_RAIL,
+                    'audience' => $row['audience'] ?? MerchantPortalAppearance::AUDIENCE_EVERYONE,
                 ];
             }
 
@@ -290,6 +322,8 @@ final class PortalSettingsController extends WooStorefrontController
                 'available_fonts' => MerchantPortalAppearance::FONTS,
                 'available_locales' => self::locales(),
                 'available_login_channels' => MerchantPortalAppearance::LOGIN_CHANNELS,
+                'available_banner_placements' => MerchantPortalAppearance::BANNER_PLACEMENTS,
+                'available_banner_audiences' => MerchantPortalAppearance::BANNER_AUDIENCES,
                 'banner_slots' => MerchantPortalAppearance::BANNER_SLOTS,
             ];
         });

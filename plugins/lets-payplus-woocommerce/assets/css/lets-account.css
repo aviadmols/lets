@@ -895,6 +895,55 @@ a.la-banner:focus-visible {
 }
 
 /* =========================================================================
+   Top banners — the same banner, full width, above the two columns
+
+   Nothing here restyles the banner: it is the rail card laid on its side, so
+   the two placements cannot drift into two designs. Direction is left to the
+   page — a flex row follows the writing direction, so the image leads on the
+   right in Hebrew and on the left in English without a single LTR rule.
+   ========================================================================= */
+
+.la-topbanners {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-block: var(--la-gap);
+}
+
+.la-banner--top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+}
+
+.la-banner--top .la-banner__body {
+    flex: 1 1 260px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-inline-size: 0;
+}
+
+.la-banner--top .la-banner__heading {
+    font-size: 1.0625rem;
+}
+
+.la-banner--top .la-banner__subtext {
+    font-size: 0.875rem;
+}
+
+/* Narrow: it stacks exactly like a rail banner. Wide: the image takes a
+   share of the row and is cropped rather than stretched. */
+@media (min-width: 720px) {
+    .la-banner--top .la-banner__img {
+        flex: 0 0 auto;
+        align-self: stretch;
+        inline-size: clamp(200px, 32%, 360px);
+        object-fit: cover;
+    }
+}
+
+/* =========================================================================
    Sign-in prompt (logged out)
    ========================================================================= */
 

@@ -65,6 +65,36 @@ final class AccountLayoutTest extends TestCase
         );
     }
 
+    /**
+     * The full-width strip is a PLACEMENT, not a second component: it draws the
+     * same banner markup with a modifier class, above the grid, and it tolerates
+     * a payload from a LETS that predates the key.
+     */
+    public function test_top_banners_are_drawn_above_the_two_columns(): void
+    {
+        $js = (string) file_get_contents(base_path(self::PLUGIN_JS));
+        $css = (string) file_get_contents(base_path(self::PLUGIN_CSS));
+
+        $this->assertStringContainsString('model.top_banners', $js);
+        $this->assertStringContainsString("renderBanner(banner, 'la-banner--top')", $js);
+
+        // The strip is appended before the grid is built, or it is not a top banner.
+        $this->assertMatchesRegularExpression(
+            "/la-topbanners.*?append\(mount, strip\);.*?var grid = el\('div', 'lets-acct__grid'\)/s",
+            $js,
+        );
+
+        // An old payload has no key at all: the guard must leave the page as it was.
+        $this->assertStringContainsString(
+            'Array.isArray(model.top_banners) ? model.top_banners : []',
+            $js,
+        );
+
+        foreach (['.la-topbanners', '.la-banner--top'] as $selector) {
+            $this->assertStringContainsString($selector, $css, "{$selector} is not styled");
+        }
+    }
+
     public function test_the_hero_stats_only_show_numbers_the_server_sent(): void
     {
         $js = (string) file_get_contents(base_path(self::PLUGIN_JS));

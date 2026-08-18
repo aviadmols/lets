@@ -3,11 +3,16 @@
 namespace Tests\Feature\Account;
 
 use App\Domain\Account\AccountPresenter;
+use App\Domain\Account\AccountVisitor;
 use App\Filament\Pages\ManageCustomerArea;
+use App\Models\InstallmentPlan;
 use App\Models\MerchantPortalAppearance;
 use App\Models\MerchantSmsSettings;
 use App\Models\Shop;
 use App\Models\User;
+use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
+use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
+use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -306,11 +311,151 @@ final class CustomerAreaSettingsTest extends TestCase
         // The preview is only trustworthy while it is the same object the live
         // page renders; a missing key here is a preview that silently omits a
         // section the merchant is trying to tune.
-        foreach (['sections', 'appearance', 'banners', 'login', 'support', 'copy',
+        foreach (['sections', 'appearance', 'banners', 'top_banners', 'login', 'support', 'copy',
             'identified', 'greeting', 'subscriptions', 'upcoming', 'benefits',
             'loyalty', 'payment_methods'] as $key) {
             $this->assertArrayHasKey($key, $model);
         }
+    }
+
+    // === Banner targeting ===
+
+    public function test_an_unreadable_placement_or_audience_falls_back_to_the_widest_answer(): void
+    {
+        $settings = MerchantPortalAppearance::current();
+        $settings->banners = [
+            ['heading' => 'Sale', 'placement' => 'sideways', 'audience' => 'vips'],
+            // A row written before targeting existed carries neither key.
+            ['heading' => 'Older'],
+        ];
+        $settings->save();
+
+        foreach ($settings->refresh()->banners() as $banner) {
+            $this->assertSame(MerchantPortalAppearance::BANNER_RAIL, $banner['placement']);
+            $this->assertSame(MerchantPortalAppearance::AUDIENCE_EVERYONE, $banner['audience']);
+        }
+    }
+
+    public function test_the_audience_matrix_decides_who_gets_which_banner(): void
+    {
+        $settings = MerchantPortalAppearance::current();
+        $settings->banners = [
+            ['heading' => 'Everyone', 'audience' => MerchantPortalAppearance::AUDIENCE_EVERYONE],
+            ['heading' => 'Members', 'audience' => MerchantPortalAppearance::AUDIENCE_SUBSCRIBERS],
+            ['heading' => 'Join us', 'audience' => MerchantPortalAppearance::AUDIENCE_NON_SUBSCRIBERS],
+        ];
+        $settings->save();
+        $settings = $settings->refresh();
+
+        $headings = static fn (array $rows): array => array_column($rows, 'heading');
+
+        // An unidentified visitor is an UNKNOWN, not a non-subscriber: we cannot
+        // make a claim about somebody we have not identified.
+        $this->assertSame(
+            ['Everyone'],
+            $headings($settings->bannersFor(MerchantPortalAppearance::BANNER_RAIL, null)),
+        );
+        $this->assertSame(
+            ['Everyone', 'Members'],
+            $headings($settings->bannersFor(MerchantPortalAppearance::BANNER_RAIL, true)),
+        );
+        $this->assertSame(
+            ['Everyone', 'Join us'],
+            $headings($settings->bannersFor(MerchantPortalAppearance::BANNER_RAIL, false)),
+        );
+
+        // Every one of them is a rail banner, so the top slot is empty.
+        $this->assertSame([], $settings->bannersFor(MerchantPortalAppearance::BANNER_TOP, true));
+    }
+
+    public function test_a_subscriber_and_a_stranger_read_different_banners(): void
+    {
+        $this->targetedBanners();
+
+        $this->plan('cust-sub', PlanStatus::ACTIVE);
+
+        $model = app(AccountPresenter::class)->present($this->visitor('cust-sub'));
+
+        $this->assertSame(['Members'], array_column($model['banners'], 'heading'));
+        // Placement, not audience, decides the slot.
+        $this->assertSame(['Announcement'], array_column($model['top_banners'], 'heading'));
+    }
+
+    public function test_an_identified_shopper_with_no_live_plan_is_a_non_subscriber(): void
+    {
+        $this->targetedBanners();
+
+        $model = app(AccountPresenter::class)->present($this->visitor('cust-none'));
+
+        $this->assertSame(['Join us'], array_column($model['banners'], 'heading'));
+    }
+
+    /** A paused plan is still a subscription; telling its owner to subscribe is an insult. */
+    public function test_a_paused_plan_still_makes_a_subscriber(): void
+    {
+        $this->targetedBanners();
+
+        $this->plan('cust-paused', PlanStatus::PAUSED);
+        $paused = app(AccountPresenter::class)->present($this->visitor('cust-paused'));
+        $this->assertSame(['Members'], array_column($paused['banners'], 'heading'));
+
+        // A checkout that was never paid for is not one.
+        $this->plan('cust-abandoned', PlanStatus::AWAITING_FIRST_PAYMENT);
+        $abandoned = app(AccountPresenter::class)->present($this->visitor('cust-abandoned'));
+        $this->assertSame(['Join us'], array_column($abandoned['banners'], 'heading'));
+    }
+
+    public function test_a_logged_out_visitor_is_shown_only_the_banners_aimed_at_everyone(): void
+    {
+        $this->targetedBanners();
+
+        $model = app(AccountPresenter::class)->present(AccountVisitor::make(
+            shop: $this->shop,
+            customerRef: null,
+            source: AccountVisitor::SOURCE_WOOCOMMERCE,
+        ));
+
+        $this->assertSame([], $model['banners']);
+        $this->assertSame(['Announcement'], array_column($model['top_banners'], 'heading'));
+    }
+
+    /** The merchant is previewing their own design, so nothing is filtered away. */
+    public function test_the_admin_preview_shows_every_banner_split_by_placement(): void
+    {
+        $settings = $this->targetedBanners();
+
+        $model = app(AccountPresenter::class)->sample($settings);
+
+        $this->assertSame(['Members', 'Join us'], array_column($model['banners'], 'heading'));
+        $this->assertSame(['Announcement'], array_column($model['top_banners'], 'heading'));
+    }
+
+    public function test_the_screen_round_trips_a_placement_and_an_audience(): void
+    {
+        Livewire::test(ManageCustomerArea::class)
+            ->set('data.banners', [[
+                'enabled' => true,
+                'heading' => 'Join the club',
+                'subtext' => null,
+                'image_url' => null,
+                'link_url' => null,
+                'placement' => MerchantPortalAppearance::BANNER_TOP,
+                'audience' => MerchantPortalAppearance::AUDIENCE_NON_SUBSCRIBERS,
+            ]])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $banner = MerchantPortalAppearance::current()->refresh()->banners()[0];
+
+        $this->assertSame(MerchantPortalAppearance::BANNER_TOP, $banner['placement']);
+        $this->assertSame(MerchantPortalAppearance::AUDIENCE_NON_SUBSCRIBERS, $banner['audience']);
+
+        // …and the form mounts back on what was saved, not on the defaults. The
+        // Repeater keys its rows by uuid, so the row is read positionally.
+        $mounted = array_values((array) Livewire::test(ManageCustomerArea::class)->get('data.banners'));
+
+        $this->assertSame(MerchantPortalAppearance::BANNER_TOP, $mounted[0]['placement']);
+        $this->assertSame(MerchantPortalAppearance::AUDIENCE_NON_SUBSCRIBERS, $mounted[0]['audience']);
     }
 
     public function test_the_preview_is_not_reachable_without_an_admin_session(): void
@@ -335,5 +480,65 @@ final class CustomerAreaSettingsTest extends TestCase
             ->assertSee('account/lets-account.css', escape: false)
             ->assertSee('account/lets-account.js', escape: false)
             ->assertSee('LetsAccount.render', escape: false);
+    }
+
+    // === Helpers ===
+
+    /** One banner per audience, plus one in the top slot. */
+    private function targetedBanners(): MerchantPortalAppearance
+    {
+        $settings = MerchantPortalAppearance::current();
+        $settings->banners = [
+            [
+                'heading' => 'Members',
+                'placement' => MerchantPortalAppearance::BANNER_RAIL,
+                'audience' => MerchantPortalAppearance::AUDIENCE_SUBSCRIBERS,
+            ],
+            [
+                'heading' => 'Join us',
+                'placement' => MerchantPortalAppearance::BANNER_RAIL,
+                'audience' => MerchantPortalAppearance::AUDIENCE_NON_SUBSCRIBERS,
+            ],
+            [
+                'heading' => 'Announcement',
+                'placement' => MerchantPortalAppearance::BANNER_TOP,
+                'audience' => MerchantPortalAppearance::AUDIENCE_EVERYONE,
+            ],
+        ];
+        $settings->save();
+
+        return $settings->refresh();
+    }
+
+    private function visitor(string $ref): AccountVisitor
+    {
+        return AccountVisitor::make(
+            shop: $this->shop,
+            customerRef: $ref,
+            source: AccountVisitor::SOURCE_WOOCOMMERCE,
+            email: $ref.'@example.com',
+        );
+    }
+
+    private function plan(string $ref, PlanStatus $status): InstallmentPlan
+    {
+        $plan = new InstallmentPlan;
+        $plan->forceFill([
+            'shop_id' => $this->shop->getKey(),
+            'public_id' => 'PLN-'.$ref.'-'.uniqid(),
+            'external_customer_id' => $ref,
+            'customer_email' => $ref.'@example.com',
+            'plan_kind' => PlanKind::RECURRING->value,
+            'status' => $status->value,
+            'total_amount' => 0,
+            'total_charged' => 0,
+            'installment_amount' => 89,
+            'currency' => 'ILS',
+            'billing_frequency' => BillingFrequency::MONTHLY->value,
+            'interval_count' => 1,
+            'next_charge_at' => now()->addDays(10)->startOfDay(),
+        ])->save();
+
+        return $plan;
     }
 }

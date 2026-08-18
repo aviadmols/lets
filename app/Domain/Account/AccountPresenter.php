@@ -73,6 +73,14 @@ final class AccountPresenter
     private const STATUS_ORDER_DEFAULT = 2;
 
     /**
+     * What makes a reader a SUBSCRIBER for banner targeting. A paused plan still
+     * is one — the shopper pays again the moment they resume, and telling them to
+     * "start subscribing" while they hold a live plan reads as an insult. An
+     * abandoned checkout (awaiting_first_payment) never paid, so it is not one.
+     */
+    private const SUBSCRIBER_STATUSES = [PlanStatus::ACTIVE, PlanStatus::PAUSED];
+
+    /**
      * What a shopper should SEE instead of a three-letter currency code. "ILS 1"
      * is a code beside a number; "1 ₪" is a price. Anything not listed keeps its
      * code, which is the correct fallback for a currency we have no symbol for.
@@ -104,8 +112,10 @@ final class AccountPresenter
 
         if (! $visitor->isIdentified()) {
             // A logged-out visitor gets the shell and a sign-in prompt — never a
-            // fail-closed blank, and never somebody else's subscriptions.
-            return $this->shell($settings, $loyaltySettings) + [
+            // fail-closed blank, and never somebody else's subscriptions. They are
+            // an UNKNOWN rather than a non-subscriber, so they see only the
+            // banners aimed at everyone.
+            return $this->shell($settings, $loyaltySettings, $this->banners($settings, null)) + [
                 'identified' => false,
                 'greeting' => null,
                 'subscriptions' => [],
@@ -125,7 +135,7 @@ final class AccountPresenter
 
         $account = $visitor->loyaltyAccount();
 
-        return $this->shell($settings, $loyaltySettings) + [
+        return $this->shell($settings, $loyaltySettings, $this->banners($settings, $this->isSubscriber($plans))) + [
             'identified' => true,
             'greeting' => $visitor->displayName(),
             'subscriptions' => $plans->map(fn (InstallmentPlan $p): array => $this->plan($p))->all(),
@@ -198,6 +208,10 @@ final class AccountPresenter
      * own sections, colours and banners, so those are real while the shopper is
      * not. Nothing here touches the tenant's data, and nothing is persisted.
      *
+     * The banners are split by placement but NOT filtered by audience: the sample
+     * shopper is nobody in particular, and a merchant who cannot see the banner
+     * they just wrote assumes it is broken.
+     *
      * @return array<string, mixed>
      */
     public function sample(?MerchantPortalAppearance $settings = null): array
@@ -207,7 +221,7 @@ final class AccountPresenter
 
         $nextDate = now()->addDays(9)->toDateString();
 
-        return $this->shell($settings, $loyaltySettings) + [
+        return $this->shell($settings, $loyaltySettings, $this->everyBanner($settings)) + [
             'identified' => true,
             'preview' => true,
             'greeting' => __('account.sample.name'),
@@ -262,10 +276,13 @@ final class AccountPresenter
         ];
     }
 
-    // === Shell (identical for every visitor) ===
+    // === Shell (identical for every visitor but the banners) ===
 
-    /** @return array<string, mixed> */
-    private function shell(MerchantPortalAppearance $settings, MerchantLoyaltySettings $loyalty): array
+    /**
+     * @param  array{banners: list<array<string, mixed>>, top_banners: list<array<string, mixed>>}  $banners
+     * @return array<string, mixed>
+     */
+    private function shell(MerchantPortalAppearance $settings, MerchantLoyaltySettings $loyalty, array $banners): array
     {
         $sections = $settings->visibleSections();
 
@@ -296,7 +313,12 @@ final class AccountPresenter
                 'locale' => app()->getLocale(),
                 'dir' => in_array(app()->getLocale(), ['he', 'ar'], true) ? 'rtl' : 'ltr',
             ],
-            'banners' => $settings->banners(),
+            // `banners` keeps its name and its shape: it is the SIDE RAIL, which
+            // is what every plugin build already deployed renders from it. The
+            // full-width strip arrives beside it under a new key, so an old
+            // renderer simply draws nothing new instead of breaking.
+            'banners' => $banners['banners'],
+            'top_banners' => $banners['top_banners'],
             // Read by the plugin's login form, which needs to know whether to draw
             // the code panel at all — including for a logged-OUT caller, which is
             // why it rides the shell rather than the identified half of the payload.
@@ -322,6 +344,56 @@ final class AccountPresenter
             ],
             'copy' => $this->copy($settings),
         ];
+    }
+
+    // === Banners ===
+
+    /**
+     * The two banner slots, targeted at this reader. Both are always present, so
+     * the renderer never has to ask whether a key exists.
+     *
+     * @return array{banners: list<array<string, mixed>>, top_banners: list<array<string, mixed>>}
+     */
+    private function banners(MerchantPortalAppearance $settings, ?bool $isSubscriber): array
+    {
+        return [
+            'banners' => $settings->bannersFor(MerchantPortalAppearance::BANNER_RAIL, $isSubscriber),
+            'top_banners' => $settings->bannersFor(MerchantPortalAppearance::BANNER_TOP, $isSubscriber),
+        ];
+    }
+
+    /**
+     * Split by placement, shown to everyone — the admin preview only.
+     *
+     * @return array{banners: list<array<string, mixed>>, top_banners: list<array<string, mixed>>}
+     */
+    private function everyBanner(MerchantPortalAppearance $settings): array
+    {
+        return [
+            'banners' => $settings->bannersAt(MerchantPortalAppearance::BANNER_RAIL),
+            'top_banners' => $settings->bannersAt(MerchantPortalAppearance::BANNER_TOP),
+        ];
+    }
+
+    /**
+     * Does this reader hold a live subscription? A plan that is merely queued or
+     * long cancelled does not make one.
+     *
+     * @param  Collection<int, InstallmentPlan>  $plans
+     */
+    private function isSubscriber(Collection $plans): bool
+    {
+        foreach ($plans as $plan) {
+            $status = $plan->status instanceof PlanStatus
+                ? $plan->status
+                : PlanStatus::tryFrom((string) $plan->status);
+
+            if ($status !== null && in_array($status, self::SUBSCRIBER_STATUSES, true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
