@@ -63,6 +63,19 @@ class InstallmentPlan extends Model
     public const META_INTRO_WINDOW_ENDED = 'intro_window_ended';
 
     /**
+     * meta key holding the customer's address as EDITED in the admin. The import
+     * keeps its own copy under meta.import.address — that one is the audit trail
+     * of what the migration file said and is never rewritten; this key is what an
+     * admin correction writes, and contactAddress() prefers it.
+     */
+    public const META_CONTACT_ADDRESS = 'contact_address';
+
+    /** The address field keys, in display/CSV order (matches SubscriptionCsvSchema). */
+    public const ADDRESS_FIELDS = [
+        'street', 'building_number', 'apartment_number', 'city', 'zip_code', 'country',
+    ];
+
+    /**
      * Hardened mass-assignment: shop_id (auto-stamped by BelongsToShop) and
      * status (the state machine is the ONLY legal mutation path) are guarded so a
      * raw Model::create()/update() cannot set them and bypass tenancy or the
@@ -275,6 +288,38 @@ class InstallmentPlan extends Model
         }
 
         return __('common.none');
+    }
+
+    /**
+     * The customer's address, as known to this plan: the admin-edited copy when
+     * one exists, else what the migration file carried. Keys are ADDRESS_FIELDS;
+     * only non-empty strings survive, so `[]` means "no address on record".
+     *
+     * @return array<string, string>
+     */
+    public function contactAddress(): array
+    {
+        $meta = (array) ($this->meta ?? []);
+        $stored = (array) ($meta[self::META_CONTACT_ADDRESS]
+            ?? (($meta['import'] ?? [])['address'] ?? []));
+
+        $out = [];
+        foreach (self::ADDRESS_FIELDS as $field) {
+            $value = trim((string) ($stored[$field] ?? ''));
+            if ($value !== '') {
+                $out[$field] = $value;
+            }
+        }
+
+        return $out;
+    }
+
+    /** The national id the migration file carried, or null (display only). */
+    public function nationalId(): ?string
+    {
+        $value = trim((string) ((($this->meta ?? [])['import'] ?? [])['national_id'] ?? ''));
+
+        return $value !== '' ? $value : null;
     }
 
     // === Relations ===

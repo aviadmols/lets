@@ -26,6 +26,33 @@
             </div>
         </div>
 
+        {{-- Contact details — the plan's own record of who it reaches. For an
+             imported member this is the ONLY place their address exists (their
+             legacy person-id resolves to no store account), and it is editable
+             via the "Edit contact details" header action. --}}
+        @php $contact = $this->contactDetails(); @endphp
+        <div class="rc-section">
+            <div class="rc-section__title">{{ __('subscriptions.detail.contact.title') }}</div>
+            <div class="rc-kv">
+                <span class="rc-kv__k">{{ __('subscriptions.detail.contact.name') }}</span>
+                <span class="rc-kv__v">{{ $contact['name'] ?? '—' }}</span>
+
+                <span class="rc-kv__k">{{ __('subscriptions.detail.contact.email') }}</span>
+                <span class="rc-kv__v rc-ltr">{{ $contact['email'] ?? '—' }}</span>
+
+                <span class="rc-kv__k">{{ __('subscriptions.detail.contact.phone') }}</span>
+                <span class="rc-kv__v rc-ltr">{{ $contact['phone'] ?? '—' }}</span>
+
+                @if($contact['national_id'])
+                    <span class="rc-kv__k">{{ __('subscriptions.detail.contact.national_id') }}</span>
+                    <span class="rc-kv__v rc-ltr">{{ $contact['national_id'] }}</span>
+                @endif
+
+                <span class="rc-kv__k">{{ __('subscriptions.detail.contact.address') }}</span>
+                <span class="rc-kv__v">{{ $contact['address'] ?? '—' }}</span>
+            </div>
+        </div>
+
         {{-- Billing schedule: two renderings by plan_kind --}}
         <div class="rc-section">
             <div class="rc-section__title">{{ __('subscriptions.detail.billing_schedule') }}</div>

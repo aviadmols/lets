@@ -94,6 +94,21 @@ return [
             'qty' => 'Qty',
             'document' => 'Invoice',
         ],
+        'contact' => [
+            'title' => 'Contact details',
+            'name' => 'Name',
+            'email' => 'Email',
+            'phone' => 'Phone',
+            'national_id' => 'National ID',
+            'address' => 'Address',
+            'street' => 'Street',
+            'building' => 'Building no.',
+            'apartment' => 'Apartment',
+            'apartment_short' => 'Apt. :number',
+            'city' => 'City',
+            'zip' => 'Zip code',
+            'country' => 'Country',
+        ],
         'note' => [
             'paid' => 'Paid',
             'refunded' => 'Refunded',
@@ -150,6 +165,14 @@ return [
         ],
         'export' => [
             'label' => 'Export these',
+        ],
+
+        'contact' => [
+            'label' => 'Edit contact details',
+            'heading' => 'Edit contact details',
+            'body' => 'Updates what this subscription knows about the customer. The store\'s own customer record is not changed.',
+            'save' => 'Save details',
+            'success' => 'Contact details updated.',
         ],
 
         'edit_next' => [

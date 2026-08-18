@@ -28,6 +28,7 @@ final class EventPresenter
         // map it to the same label so a real transition isn't shown as a humanized fallback.
         'status_changed' => ['info', 'timeline.kind.state_changed'],
         'plan_edited' => ['info', 'timeline.kind.plan_edited'],
+        'customer_details_updated' => ['info', 'timeline.kind.customer_details_updated'],
         'plan_completed' => ['success', 'timeline.kind.plan_completed'],
         'plan_cancelled' => ['info', 'timeline.kind.plan_cancelled'],
         'plan_paused' => ['info', 'timeline.kind.plan_paused'],

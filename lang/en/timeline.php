@@ -10,6 +10,7 @@ return [
         'refund_succeeded' => 'Refund issued',
         'state_changed' => 'Status changed',
         'plan_edited' => 'Subscription edited',
+        'customer_details_updated' => 'Contact details updated',
         'plan_completed' => 'Plan completed',
         'plan_cancelled' => 'Plan cancelled',
         'plan_paused' => 'Plan paused',

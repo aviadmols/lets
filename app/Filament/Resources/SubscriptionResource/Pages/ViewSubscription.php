@@ -269,7 +269,155 @@ class ViewSubscription extends Page
                         ->required(),
                 ])
                 ->action(fn (array $data) => $this->changeFrequency($data)),
+
+            /*
+             * WHO this plan reaches, editable. The plan row is the source of
+             * truth for an imported member — their legacy person-id resolves to
+             * no store account, so the store cannot answer for them — and the
+             * merchant needs one place where name, email, phone and address can
+             * be read and corrected. Editing writes the plan columns and the
+             * META_CONTACT_ADDRESS key; the import's own copy stays untouched
+             * as the audit trail of what the file said.
+             */
+            Actions\Action::make('editContact')
+                ->label(__('subscriptions.action.contact.label'))
+                ->icon('heroicon-m-identification')
+                ->color('gray')
+                ->fillForm(fn (): array => $this->contactDefaults())
+                ->modalHeading(__('subscriptions.action.contact.heading'))
+                ->modalDescription(__('subscriptions.action.contact.body'))
+                ->modalSubmitActionLabel(__('subscriptions.action.contact.save'))
+                ->form([
+                    TextInput::make('customer_name')
+                        ->label(__('subscriptions.detail.contact.name'))
+                        ->maxLength(200),
+                    TextInput::make('customer_email')
+                        ->label(__('subscriptions.detail.contact.email'))
+                        ->email()
+                        ->maxLength(255),
+                    TextInput::make('customer_phone')
+                        ->label(__('subscriptions.detail.contact.phone'))
+                        ->maxLength(50),
+                    TextInput::make('street')
+                        ->label(__('subscriptions.detail.contact.street'))
+                        ->maxLength(200),
+                    TextInput::make('building_number')
+                        ->label(__('subscriptions.detail.contact.building'))
+                        ->maxLength(20),
+                    TextInput::make('apartment_number')
+                        ->label(__('subscriptions.detail.contact.apartment'))
+                        ->maxLength(20),
+                    TextInput::make('city')
+                        ->label(__('subscriptions.detail.contact.city'))
+                        ->maxLength(120),
+                    TextInput::make('zip_code')
+                        ->label(__('subscriptions.detail.contact.zip'))
+                        ->maxLength(20),
+                    TextInput::make('country')
+                        ->label(__('subscriptions.detail.contact.country'))
+                        ->maxLength(120),
+                ])
+                ->action(fn (array $data) => $this->saveContact($data)),
         ];
+    }
+
+    // === Contact details ===
+
+    /**
+     * The contact card's display rows — plan columns + the merged address.
+     *
+     * @return array{name: ?string, email: ?string, phone: ?string, national_id: ?string, address: ?string}
+     */
+    public function contactDetails(): array
+    {
+        $address = $this->record->contactAddress();
+
+        // street + building read as one token ("אליהו הנביא 18"); apartment gets
+        // its own translated label so the line reads as an address, not a CSV row.
+        $streetLine = trim(($address['street'] ?? '').' '.($address['building_number'] ?? ''));
+        $apartment = isset($address['apartment_number'])
+            ? __('subscriptions.detail.contact.apartment_short', ['number' => $address['apartment_number']])
+            : null;
+
+        $line = implode(', ', array_filter([
+            $streetLine !== '' ? $streetLine : null,
+            $apartment,
+            $address['city'] ?? null,
+            $address['zip_code'] ?? null,
+            $address['country'] ?? null,
+        ]));
+
+        $trimmed = fn (?string $v): ?string => trim((string) $v) !== '' ? trim((string) $v) : null;
+
+        return [
+            'name' => $trimmed($this->record->customer_name),
+            'email' => $trimmed($this->record->customer_email),
+            'phone' => $trimmed($this->record->customer_phone),
+            'national_id' => $this->record->nationalId(),
+            'address' => $line !== '' ? $line : null,
+        ];
+    }
+
+    /** @return array<string, string> the edit form's current values */
+    private function contactDefaults(): array
+    {
+        $address = $this->record->contactAddress();
+
+        return [
+            'customer_name' => (string) ($this->record->customer_name ?? ''),
+            'customer_email' => (string) ($this->record->customer_email ?? ''),
+            'customer_phone' => (string) ($this->record->customer_phone ?? ''),
+            'street' => (string) ($address['street'] ?? ''),
+            'building_number' => (string) ($address['building_number'] ?? ''),
+            'apartment_number' => (string) ($address['apartment_number'] ?? ''),
+            'city' => (string) ($address['city'] ?? ''),
+            'zip_code' => (string) ($address['zip_code'] ?? ''),
+            'country' => (string) ($address['country'] ?? ''),
+        ];
+    }
+
+    /**
+     * Write the edited contact details onto the plan + record the change.
+     * Protected so only the header action can invoke it (not Livewire-callable).
+     *
+     * @param  array<string, mixed>  $data
+     */
+    protected function saveContact(array $data): void
+    {
+        $trimmed = fn (string $key): ?string => trim((string) ($data[$key] ?? '')) !== ''
+            ? trim((string) $data[$key])
+            : null;
+
+        $address = [];
+        foreach (InstallmentPlan::ADDRESS_FIELDS as $field) {
+            $value = $trimmed($field);
+            if ($value !== null) {
+                $address[$field] = $value;
+            }
+        }
+
+        $was = $this->contactDetails();
+
+        $meta = (array) ($this->record->meta ?? []);
+        $meta[InstallmentPlan::META_CONTACT_ADDRESS] = $address;
+
+        $this->record->fill([
+            'customer_name' => $trimmed('customer_name'),
+            'customer_email' => $trimmed('customer_email'),
+            'customer_phone' => $trimmed('customer_phone'),
+            'meta' => $meta,
+        ])->save();
+
+        $this->record->refresh();
+
+        Timeline::record(
+            kind: 'customer_details_updated',
+            details: ['was' => $was, 'now' => $this->contactDetails()],
+            planId: $this->record->getKey(),
+            shopId: (int) $this->record->shop_id,
+        );
+
+        Notification::make()->title(__('subscriptions.action.contact.success'))->success()->send();
     }
 
     /** A cadence belongs to a recurring plan; installments bill a fixed schedule. */

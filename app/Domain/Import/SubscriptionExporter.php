@@ -132,7 +132,9 @@ final class SubscriptionExporter
     private function line(InstallmentPlan $plan, ?InstallmentPaymentMethod $method, array $history): array
     {
         $import = (array) (($plan->meta ?? [])[SubscriptionImporter::META_IMPORT] ?? []);
-        $address = (array) ($import['address'] ?? []);
+        // The merged view (admin edit wins over the imported copy) — an address a
+        // merchant corrected on the detail page must ride the next export.
+        $address = $plan->contactAddress();
         [$first, $last] = $this->splitName((string) ($plan->customer_name ?? ''));
 
         $cancelled = $plan->status === PlanStatus::CANCELLED;
