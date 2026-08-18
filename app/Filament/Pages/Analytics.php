@@ -43,9 +43,6 @@ class Analytics extends Page
 
     public const DEFAULT_RANGE = 'month';
 
-    /** How far ahead the upcoming-charges table looks. */
-    public const UPCOMING_DAYS = 30;
-
     // --- SVG geometry (viewBox units; CSS scales the box responsively) ---
     private const W = 1000;
 
@@ -193,7 +190,9 @@ class Analytics extends Page
     }
 
     /**
-     * The next month of scheduled charges, by day.
+     * EVERY scheduled charge ahead, by day — not a 30-day window. A store of
+     * yearly members has most of its money past any window, and a table that
+     * stopped at day 30 read as "this is everything" while hiding it.
      *
      * Each row links into the subscriptions list with the date filter already
      * set to that single day — which is the whole point: a number is only useful
@@ -211,7 +210,7 @@ class Analytics extends Page
             'url' => SubscriptionResource::getUrl('index', [
                 'tableFilters' => ['next_charge_at' => ['from' => $day['date'], 'until' => $day['date']]],
             ]),
-        ], PaymentMetrics::upcoming(self::UPCOMING_DAYS));
+        ], PaymentMetrics::upcoming(null));
     }
 
     /** @return list<array{label: string, value: string}> */

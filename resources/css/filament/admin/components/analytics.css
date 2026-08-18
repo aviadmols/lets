@@ -20,6 +20,12 @@
 .rc-chart__zero { stroke: var(--rc-border-strong); }
 .rc-chart__tick { fill: var(--rc-ink-muted); font: var(--rc-type-caption); }
 
+/* The all-future upcoming-charges table: a year of yearly members is hundreds
+   of day-rows, so the region scrolls instead of stretching the page. The
+   header row stays put while the body scrolls under it. */
+.rc-scroll-region { max-block-size: 480px; overflow-y: auto; }
+.rc-scroll-region .rc-table thead th { position: sticky; inset-block-start: 0; background: var(--rc-card); z-index: 1; }
+
 /* legend chips under the chart */
 .rc-chart-legend { display: flex; gap: var(--rc-space-5); margin-block-start: var(--rc-space-3); flex-wrap: wrap; }
 .rc-chart-legend__item { display: inline-flex; align-items: center; gap: var(--rc-space-2); font: var(--rc-type-caption); color: var(--rc-ink-muted); }

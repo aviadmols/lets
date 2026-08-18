@@ -27,7 +27,7 @@ return [
         'note' => 'Every charge opens a ledger row before the gateway is called, so an attempt that died mid-flight is counted here too. The rate is measured against settled money only.',
         'chart_title' => 'Collected vs lost (last 12 months)',
         'empty' => 'No charges yet.',
-        'upcoming_title' => 'Charging in the next :days days',
+        'upcoming_title' => 'Upcoming charges',
         'upcoming_empty' => 'Nothing scheduled in this window.',
         'col_date' => 'Date',
         'col_count' => 'Subscriptions',

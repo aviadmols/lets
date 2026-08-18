@@ -150,35 +150,39 @@
         </div>
 
         {{--
-            WHAT IS ABOUT TO BE CHARGED, by day. Every row is a link into the
-            subscriptions list with the date filter already set to that one day —
-            a number is only useful if you can open it and see the people in it.
+            WHAT IS ABOUT TO BE CHARGED, by day — ALL of it, however far out.
+            Every row is a link into the subscriptions list with the date filter
+            already set to that one day — a number is only useful if you can open
+            it and see the people in it. The list scrolls inside its own region
+            so a year of yearly members does not stretch the page.
         --}}
         <div class="rc-section">
-            <div class="rc-section__title">{{ __('analytics.payments.upcoming_title', ['days' => \App\Filament\Pages\Analytics::UPCOMING_DAYS]) }}</div>
+            <div class="rc-section__title">{{ __('analytics.payments.upcoming_title') }}</div>
 
             @php $days = $this->upcoming(); @endphp
             @if($days === [])
                 <x-rc.empty title="analytics.payments.upcoming_empty" icon="heroicon-o-calendar-days" />
             @else
-                <table class="rc-table">
-                    <thead>
-                        <tr>
-                            <th>{{ __('analytics.payments.col_date') }}</th>
-                            <th>{{ __('analytics.payments.col_count') }}</th>
-                            <th>{{ __('analytics.payments.col_amount') }}</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($days as $day)
-                            <tr wire:key="due-{{ $day['date'] }}">
-                                <td><a href="{{ $day['url'] }}">{{ $day['label'] }}</a></td>
-                                <td class="rc-ltr">{{ $day['count'] }}</td>
-                                <td class="rc-ltr">{{ $day['amount'] }}</td>
+                <div class="rc-scroll-region">
+                    <table class="rc-table">
+                        <thead>
+                            <tr>
+                                <th>{{ __('analytics.payments.col_date') }}</th>
+                                <th>{{ __('analytics.payments.col_count') }}</th>
+                                <th>{{ __('analytics.payments.col_amount') }}</th>
                             </tr>
-                        @endforeach
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            @foreach($days as $day)
+                                <tr wire:key="due-{{ $day['date'] }}">
+                                    <td><a href="{{ $day['url'] }}">{{ $day['label'] }}</a></td>
+                                    <td class="rc-ltr">{{ $day['count'] }}</td>
+                                    <td class="rc-ltr">{{ $day['amount'] }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
             @endif
         </div>
     </div>

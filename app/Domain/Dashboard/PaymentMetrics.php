@@ -123,15 +123,17 @@ final class PaymentMetrics
     }
 
     /**
-     * The next N days of scheduled charges, one row per day — what the shop is
-     * about to bill, and the thing a merchant clicks to see WHO.
+     * The scheduled charges ahead, one row per day — what the shop is about to
+     * bill, and the thing a merchant clicks to see WHO. Null days means ALL of
+     * them: a store of yearly members has charges a year out, and a 30-day
+     * window showed a fraction of the money while looking like the whole.
      *
      * @return list<array{date: string, label: string, count: int, amount: float}>
      */
-    public static function upcoming(int $days = 30): array
+    public static function upcoming(?int $days = 30): array
     {
         $today = CarbonImmutable::now()->startOfDay();
-        $until = $today->addDays(max(1, $days));
+        $until = $days !== null ? $today->addDays(max(1, $days)) : null;
 
         $expression = DB::connection()->getDriverName() === 'sqlite'
             ? 'date(next_charge_at)'
@@ -143,7 +145,8 @@ final class PaymentMetrics
                 PlanStatus::AWAITING_FIRST_PAYMENT->value,
             ])
             ->whereNotNull('next_charge_at')
-            ->whereBetween('next_charge_at', [$today, $until])
+            ->where('next_charge_at', '>=', $today)
+            ->when($until !== null, fn ($q) => $q->where('next_charge_at', '<=', $until))
             ->selectRaw("{$expression} as day, count(*) as n, coalesce(sum(installment_amount), 0) as total")
             ->groupBy('day')
             ->orderBy('day')

@@ -122,6 +122,20 @@ final class PaymentMetricsTest extends TestCase
         $this->assertStringContainsString('next_charge_at', $first['url']);
     }
 
+    /** A yearly member's charge is a year out; the table must not stop at a window. */
+    public function test_the_upcoming_table_reaches_all_future_charges(): void
+    {
+        $farOut = now()->addMonths(11)->startOfDay();
+        $this->plan($farOut);
+
+        $rows = Livewire::test(Analytics::class)->instance()->upcoming();
+
+        $this->assertNotNull(
+            collect($rows)->firstWhere('date', $farOut->toDateString()),
+            'a charge eleven months out is listed',
+        );
+    }
+
     // === Helpers ===
 
     private function ledger(LedgerStatus $status, float $amount, ?\DateTimeInterface $at = null): void
