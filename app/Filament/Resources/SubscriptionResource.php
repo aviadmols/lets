@@ -14,6 +14,7 @@ use App\Support\Tenant;
 use App\Support\Ui\Money;
 use App\Support\Ui\StatusBadge;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -218,6 +219,66 @@ class SubscriptionResource extends Resource
                     ->label(__('subscriptions.filter.product'))
                     ->options(fn (): array => self::productOptions())
                     ->searchable(),
+
+                /*
+                 * What is still owed (installments). The spec's remaining-balance
+                 * range: the merchant chasing "who still owes me more than ₪500"
+                 * should not need a spreadsheet. Activating it implies the
+                 * installments kind — a recurring plan has no balance to pay down,
+                 * so including those rows would answer a different question.
+                 */
+                Tables\Filters\Filter::make('remaining_balance')
+                    ->label(__('subscriptions.filter.balance'))
+                    ->form([
+                        TextInput::make('min')->label(__('subscriptions.filter.balance_min'))->numeric(),
+                        TextInput::make('max')->label(__('subscriptions.filter.balance_max'))->numeric(),
+                    ])
+                    ->query(fn (Builder $query, array $data): Builder => $query
+                        ->when(
+                            ($data['min'] ?? null) !== null || ($data['max'] ?? null) !== null,
+                            fn (Builder $q): Builder => $q->where('plan_kind', PlanKind::INSTALLMENTS->value),
+                        )
+                        ->when($data['min'] ?? null, fn (Builder $q, $v): Builder => $q
+                            ->whereRaw('(total_amount - total_charged) >= ?', [(float) $v]))
+                        ->when($data['max'] ?? null, fn (Builder $q, $v): Builder => $q
+                            ->whereRaw('(total_amount - total_charged) <= ?', [(float) $v])))
+                    ->indicateUsing(function (array $data): ?string {
+                        $min = $data['min'] ?? null;
+                        $max = $data['max'] ?? null;
+
+                        if ($min === null && $max === null) {
+                            return null;
+                        }
+
+                        return __('subscriptions.filter.balance_between', [
+                            'min' => $min ?? '0',
+                            'max' => $max ?? '∞',
+                        ]);
+                    }),
+
+                /* WHEN the subscription was created — the spec's created-date range. */
+                Tables\Filters\Filter::make('created_at')
+                    ->label(__('subscriptions.filter.created'))
+                    ->form([
+                        DatePicker::make('from')->label(__('subscriptions.filter.created_from')),
+                        DatePicker::make('until')->label(__('subscriptions.filter.created_until')),
+                    ])
+                    ->query(fn (Builder $query, array $data): Builder => $query
+                        ->when($data['from'] ?? null, fn (Builder $q, $d): Builder => $q->whereDate('created_at', '>=', $d))
+                        ->when($data['until'] ?? null, fn (Builder $q, $d): Builder => $q->whereDate('created_at', '<=', $d)))
+                    ->indicateUsing(function (array $data): ?string {
+                        $from = $data['from'] ?? null;
+                        $until = $data['until'] ?? null;
+
+                        if ($from === null && $until === null) {
+                            return null;
+                        }
+
+                        return __('subscriptions.filter.created_between', [
+                            'from' => $from ?? '…',
+                            'until' => $until ?? '…',
+                        ]);
+                    }),
 
                 /* How the last attempt went — the failures worth chasing. */
                 Tables\Filters\SelectFilter::make('last_payment_status')

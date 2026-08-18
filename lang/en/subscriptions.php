@@ -43,6 +43,16 @@ return [
         'frequency' => 'Billing frequency',
         'product' => 'Product',
 
+        'balance' => 'Remaining balance',
+        'balance_min' => 'From amount',
+        'balance_max' => 'Up to amount',
+        'balance_between' => 'Balance :min–:max',
+
+        'created' => 'Created date',
+        'created_from' => 'Created from',
+        'created_until' => 'Created until',
+        'created_between' => 'Created :from → :until',
+
         'last_payment' => 'Last payment',
     ],
 

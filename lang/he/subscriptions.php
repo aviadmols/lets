@@ -43,6 +43,16 @@ return [
         'frequency' => 'תדירות חיוב',
         'product' => 'מוצר',
 
+        'balance' => 'יתרה לתשלום',
+        'balance_min' => 'מסכום',
+        'balance_max' => 'עד סכום',
+        'balance_between' => 'יתרה :min–:max',
+
+        'created' => 'תאריך הצטרפות',
+        'created_from' => 'הצטרף מ־',
+        'created_until' => 'הצטרף עד',
+        'created_between' => 'הצטרף :from ← :until',
+
         'last_payment' => 'התשלום האחרון',
     ],
 
