@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.26.0
+Stable tag: 0.27.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,19 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.27.0 =
+* The LETS management system now opens inside WordPress. Click "LETS" in the
+  admin menu and the panel is simply there, already signed in as you — no second
+  tab, no second password, and no chance of landing on the wrong shop. The
+  personal-area editor and the connection screen moved one level in, keeping
+  their own addresses, so every existing bookmark and toolbar shortcut still
+  works.
+* The sign-in behind that screen is minted fresh on every visit, server-side,
+  and is valid once and for sixty seconds. Nothing is cached and nothing reaches
+  the browser that could be replayed. A store that is not connected — or a key
+  the dashboard no longer recognises — gets a plain explanation and a link to
+  the connection screen, instead of an empty frame.
 
 = 0.26.0 =
 * SMS sign-in now works on a store of any size. The phone number a shopper types

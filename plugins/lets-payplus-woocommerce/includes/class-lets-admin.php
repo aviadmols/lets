@@ -39,22 +39,40 @@ define('LETS_ADMIN_TABS', 'appearance|sections|banners|copy');
 
 add_action('admin_menu', 'lets_payplus_admin_menu', 9);
 
+/**
+ * The LETS menu.
+ *
+ * Clicking "LETS" opens the LETS management panel itself, embedded and already
+ * signed in (class-lets-embed.php) — that is what a merchant means when they
+ * click the name of the product. The personal-area editor and the connect screen
+ * stay exactly where they were, one level in, keeping their own slugs so every
+ * existing link, bookmark and toolbar shortcut still lands where it always did.
+ */
 function lets_payplus_admin_menu()
 {
     add_menu_page(
-        lets_payplus_admin_text('LETS — האזור האישי', 'LETS — Personal area'),
+        lets_payplus_admin_text('LETS — מערכת הניהול', 'LETS — Management panel'),
         'LETS',
         LETS_ADMIN_CAPABILITY,
-        LETS_ADMIN_SLUG,
-        'lets_payplus_admin_render',
+        LETS_EMBED_SLUG,
+        'lets_payplus_embed_render',
         'dashicons-id-alt',
         56
     );
 
-    // The connect screen keeps its home under Settings, but a merchant who is
-    // standing in the LETS menu should not have to go hunting for it.
+    // Re-declaring the parent's own slug is how WordPress lets us name the first
+    // submenu row; left alone it repeats the menu title verbatim.
     add_submenu_page(
-        LETS_ADMIN_SLUG,
+        LETS_EMBED_SLUG,
+        lets_payplus_admin_text('LETS — מערכת הניהול', 'LETS — Management panel'),
+        'LETS',
+        LETS_ADMIN_CAPABILITY,
+        LETS_EMBED_SLUG,
+        'lets_payplus_embed_render'
+    );
+
+    add_submenu_page(
+        LETS_EMBED_SLUG,
         lets_payplus_admin_text('האזור האישי', 'Personal area'),
         lets_payplus_admin_text('האזור האישי', 'Personal area'),
         LETS_ADMIN_CAPABILITY,
@@ -62,8 +80,10 @@ function lets_payplus_admin_menu()
         'lets_payplus_admin_render'
     );
 
+    // The connect screen keeps its home under Settings, but a merchant who is
+    // standing in the LETS menu should not have to go hunting for it.
     add_submenu_page(
-        LETS_ADMIN_SLUG,
+        LETS_EMBED_SLUG,
         lets_payplus_admin_text('חיבור והגדרות', 'Connection & settings'),
         lets_payplus_admin_text('חיבור והגדרות', 'Connection & settings'),
         LETS_ADMIN_CAPABILITY,

@@ -1,0 +1,56 @@
+/*
+ * LETS — wp-admin styles for the embedded LETS panel (the LETS menu's first screen).
+ *
+ * Loaded on that ONE screen (class-lets-embed.php checks the hook suffix), so the
+ * rules are free to be about a page that is nothing but a frame. Classes only — no
+ * style attributes anywhere in the markup, which is why the height maths lives here
+ * rather than on the iframe. Nothing here needs an RTL variant: WordPress already
+ * flips .wrap itself, and a full-width frame has no side of its own.
+ *
+ * === TOKENS ===
+ * Scoped to .lets-embed, never :root: this sheet loads inside wp-admin alongside
+ * every other plugin's, and a --lets-* on :root is a global nobody asked for.
+ *   --lets-embed-bar     the wp-admin bar's height (32px, 46px on small screens)
+ *   --lets-embed-chrome  everything else above and below the frame — .wrap's top
+ *                        margin, the h1, and #wpbody-content's 65px bottom padding
+ *   --lets-embed-floor   the height below which the panel stops being usable
+ *   --lets-embed-radius  WordPress's own card corner
+ *   --lets-embed-surface the backdrop the frame shows while the panel loads
+ *   --lets-embed-border  WordPress's standard hairline
+ */
+
+.lets-embed {
+  --lets-embed-bar: 32px;
+  --lets-embed-chrome: 120px;
+  --lets-embed-floor: 560px;
+  --lets-embed-radius: 4px;
+  --lets-embed-surface: #fff;
+  --lets-embed-border: #c3c4c7;
+}
+
+.lets-embed-frame {
+  display: block;
+  width: 100%;
+  height: calc(100vh - var(--lets-embed-bar) - var(--lets-embed-chrome));
+  min-height: var(--lets-embed-floor);
+  border: 1px solid var(--lets-embed-border);
+  border-radius: var(--lets-embed-radius);
+  background: var(--lets-embed-surface);
+}
+
+/* WordPress grows the admin bar to 46px at its responsive breakpoint, and the
+   frame has to give the same height back or the whole page starts scrolling. */
+@media screen and (max-width: 782px) {
+  .lets-embed {
+    --lets-embed-bar: 46px;
+  }
+}
+
+/* A short viewport (a laptop with browser chrome, or devtools docked at the
+   bottom) would otherwise hit a floor taller than the window. Lowering it means
+   the page scrolls once instead of always, which is the lesser evil. */
+@media screen and (max-height: 700px) {
+  .lets-embed {
+    --lets-embed-floor: 420px;
+  }
+}
