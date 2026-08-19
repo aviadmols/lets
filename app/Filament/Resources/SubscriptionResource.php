@@ -17,6 +17,7 @@ use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
 use Filament\Tables;
+use Filament\Tables\Enums\FiltersLayout;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -300,6 +301,14 @@ class SubscriptionResource extends Resource
                             ->whereRaw('sequence = (select max(sequence) from installment_payments p2 where p2.plan_id = installment_payments.plan_id)'));
                     }),
             ])
+            /*
+             * The filters sit ABOVE the table, in the open, not behind the funnel
+             * icon. Eight filters in a dropdown is a feature nobody finds — the
+             * merchant asked twice where the frequency filter was while it was
+             * deployed and working. Collapsible so a wide screen can fold them.
+             */
+            ->filtersLayout(FiltersLayout::AboveContentCollapsible)
+            ->filtersFormColumns(4)
             ->recordUrl(fn (InstallmentPlan $record): string => Pages\ViewSubscription::getUrl(['plan' => $record->getKey()]))
             ->defaultSort('id', 'desc')
             ->emptyStateHeading(__('subscriptions.list.empty.first_run'))
