@@ -27,6 +27,7 @@
             @php
                 $tone = EventPresenter::tone($event);
                 $summary = EventPresenter::summarize($event);
+                $note = EventPresenter::note($event);
             @endphp
             <div class="rc-timeline__row">
                 <span class="rc-timeline__dot rc-timeline__dot--{{ $tone }}"></span>
@@ -34,6 +35,10 @@
                     <span class="rc-timeline__title">{{ EventPresenter::label($event) }}</span>
                     @if($summary)
                         <span class="rc-timeline__summary rc-ltr">{{ $summary }}</span>
+                    @endif
+                    {{-- A merchant's note is prose in their own language — no rc-ltr. --}}
+                    @if($note)
+                        <p class="rc-timeline__note">{{ $note }}</p>
                     @endif
                     <span class="rc-timeline__meta">
                         <span class="rc-timeline__actor">{{ EventPresenter::actorLabel($event) }}</span>

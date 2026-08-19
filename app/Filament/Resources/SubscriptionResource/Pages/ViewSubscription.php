@@ -65,6 +65,9 @@ class ViewSubscription extends Page
      */
     public const MAX_INTERVAL = 12;
 
+    /** A timeline note is a remark, not a document. */
+    public const MAX_NOTE_LENGTH = 2000;
+
     /**
      * #[Locked] — the record may NEVER be re-pointed from the browser. Livewire re-hydrates a
      * model property via Model::newQueryForRestoration(), which uses newQueryWithoutScopes() and
@@ -142,6 +145,28 @@ class ViewSubscription extends Page
     protected function getHeaderActions(): array
     {
         return [
+            /*
+             * A NOTE on the timeline. "Called, promised to update the card on
+             * Sunday" is the kind of thing a merchant otherwise keeps in their
+             * head or a sticky note; here it lands next to the events it
+             * explains, with the author's name and the time, where the next
+             * person to open this plan will read it.
+             */
+            Actions\Action::make('addNote')
+                ->label(__('subscriptions.action.note.label'))
+                ->icon('heroicon-m-plus')
+                ->color('gray')
+                ->modalHeading(__('subscriptions.action.note.heading'))
+                ->modalSubmitActionLabel(__('subscriptions.action.note.save'))
+                ->form([
+                    Textarea::make('note')
+                        ->label(__('subscriptions.action.note.field'))
+                        ->rows(4)
+                        ->required()
+                        ->maxLength(self::MAX_NOTE_LENGTH),
+                ])
+                ->action(fn (array $data) => $this->addNote((string) ($data['note'] ?? ''))),
+
             Actions\Action::make('pause')
                 ->label(__('subscriptions.action.pause.label'))
                 ->icon('heroicon-m-pause')
@@ -319,6 +344,24 @@ class ViewSubscription extends Page
                 ])
                 ->action(fn (array $data) => $this->saveContact($data)),
         ];
+    }
+
+    /** Pin a merchant note to this plan's timeline. Protected: only the header action calls it. */
+    protected function addNote(string $note): void
+    {
+        $note = trim($note);
+        if ($note === '') {
+            return;
+        }
+
+        Timeline::record(
+            kind: Timeline::KIND_ADMIN_NOTE,
+            details: ['note' => mb_substr($note, 0, self::MAX_NOTE_LENGTH)],
+            planId: $this->record->getKey(),
+            shopId: (int) $this->record->shop_id,
+        );
+
+        Notification::make()->title(__('subscriptions.action.note.success'))->success()->send();
     }
 
     // === Contact details ===
@@ -707,11 +750,9 @@ class ViewSubscription extends Page
     public function summaryLine(): string
     {
         if ($this->record->plan_kind === PlanKind::RECURRING) {
-            $freq = $this->record->interval_count > 1
-                ? $this->record->interval_count.'d'
-                : ($this->record->billing_frequency?->value ?? '');
-
-            return __('subscriptions.detail.every_frequency', ['frequency' => $freq]);
+            // The label is already a full phrase ("חודשי", "כל 3 חודשים") —
+            // wrapping it in "Every …" would read "every every 3 months".
+            return SubscriptionResource::cadenceLabel($this->record);
         }
 
         return __('subscriptions.detail.remaining_of_total', [

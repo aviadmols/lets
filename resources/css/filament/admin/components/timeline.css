@@ -42,6 +42,10 @@
 }
 .rc-timeline__summary { font: var(--rc-type-body); color: var(--rc-ink-muted); }
 
+/* A merchant's free-text note: full ink (it is the content, not metadata),
+   wraps as prose, keeps the author's line breaks. */
+.rc-timeline__note { font: var(--rc-type-body); color: var(--rc-ink); white-space: pre-wrap; margin: 0; }
+
 /* "Preview email" trigger on an email-previewable Timeline row (§6.6). A text
    button (no chrome) tinted with the brand so it reads as an inline link, not a
    CTA. RTL-safe: no left/right, inherits the row's logical flow. */

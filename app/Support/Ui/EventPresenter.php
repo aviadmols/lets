@@ -29,6 +29,7 @@ final class EventPresenter
         'status_changed' => ['info', 'timeline.kind.state_changed'],
         'plan_edited' => ['info', 'timeline.kind.plan_edited'],
         'customer_details_updated' => ['info', 'timeline.kind.customer_details_updated'],
+        'admin_note' => ['info', 'timeline.kind.admin_note'],
         'plan_completed' => ['success', 'timeline.kind.plan_completed'],
         'plan_cancelled' => ['info', 'timeline.kind.plan_cancelled'],
         'plan_paused' => ['info', 'timeline.kind.plan_paused'],
@@ -140,6 +141,22 @@ final class EventPresenter
             ActivityEvent::ACTOR_WEBHOOK => __('common.actor.webhook'),
             default => __('common.actor.system'),
         };
+    }
+
+    /**
+     * The merchant's own words on an admin_note event, or null for any other
+     * kind. Rendered as prose (not the LTR summary line) — a note is written in
+     * whatever language the merchant types.
+     */
+    public static function note(ActivityEvent $event): ?string
+    {
+        if ($event->kind !== 'admin_note') {
+            return null;
+        }
+
+        $note = trim((string) (((array) ($event->details ?? []))['note'] ?? ''));
+
+        return $note !== '' ? $note : null;
     }
 
     /** Plain-language one-line summary built ONLY from whitelisted detail keys. */

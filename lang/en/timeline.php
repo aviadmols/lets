@@ -11,6 +11,7 @@ return [
         'state_changed' => 'Status changed',
         'plan_edited' => 'Subscription edited',
         'customer_details_updated' => 'Contact details updated',
+        'admin_note' => 'Note',
         'plan_completed' => 'Plan completed',
         'plan_cancelled' => 'Plan cancelled',
         'plan_paused' => 'Plan paused',

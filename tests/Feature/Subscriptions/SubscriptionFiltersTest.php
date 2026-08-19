@@ -97,6 +97,36 @@ final class SubscriptionFiltersTest extends TestCase
     }
 
     /**
+     * A migration file's "description" was the product CODE ("2675 שנתי"). A
+     * code is not a name: when the catalog knows the product, its name wins.
+     */
+    public function test_a_code_shaped_title_yields_to_the_catalog_name(): void
+    {
+        $product = new \App\Models\Product;
+        $product->forceFill([
+            'shop_id' => $this->shop->getKey(),
+            'source' => \App\Models\Product::SOURCE_WOOCOMMERCE,
+            'external_id' => '2675',
+            'title' => 'מנוי שיבולת פלוס',
+            'status' => \App\Models\Product::STATUS_ACTIVE,
+        ])->save();
+
+        $coded = $this->plan('coded');
+        $coded->forceFill(['external_product_id' => '2675', 'meta' => ['item_title' => '2675  שנתי']])->save();
+
+        $named = $this->plan('named');
+        $named->forceFill(['external_product_id' => '2675', 'meta' => ['item_title' => 'מנוי לנסיון']])->save();
+
+        // 26750 is not 2675 — the code must match whole, not as a prefix.
+        $other = $this->plan('other');
+        $other->forceFill(['external_product_id' => '26750', 'meta' => ['item_title' => '26750 מיוחד']])->save();
+
+        $this->assertSame('מנוי שיבולת פלוס', $coded->fresh()->productTitle());
+        $this->assertSame('מנוי לנסיון', $named->fresh()->productTitle(), 'a real name is kept');
+        $this->assertSame('26750 מיוחד', $other->fresh()->productTitle(), 'no catalog row → the title stands');
+    }
+
+    /**
      * The tab that replaced the card one. A plan that failed LONG ago and has
      * billed cleanly since is not failing — only the latest attempt counts, or
      * the tab fills with history and buries the ones that need work today.

@@ -56,6 +56,21 @@ return [
         'last_payment' => 'Last payment',
     ],
 
+    // How often a recurring plan bills, as a phrase. The single-unit labels
+    // ("Monthly") live in billing.settings.frequency; these are the plural nouns
+    // for "every N …".
+    'cadence' => [
+        'every_n' => 'Every :n :unit',
+        'plural' => [
+            'daily' => 'days',
+            'weekly' => 'weeks',
+            'biweekly' => 'fortnights',
+            'monthly' => 'months',
+            'quarterly' => 'quarters',
+            'yearly' => 'years',
+        ],
+    ],
+
     'detail' => [
         'missing' => 'That subscription no longer exists, or it belongs to another store.',
         'customer' => 'Customer',
@@ -175,6 +190,15 @@ return [
         ],
         'export' => [
             'label' => 'Export these',
+        ],
+
+        'note' => [
+            'label' => 'Add note',
+            'heading' => 'Add a note to the timeline',
+            'field' => 'Note',
+            'plan' => 'Subscription',
+            'save' => 'Add note',
+            'success' => 'Note added to the timeline.',
         ],
 
         'contact' => [

@@ -11,6 +11,7 @@ return [
         'state_changed' => 'הסטטוס השתנה',
         'plan_edited' => 'המנוי נערך',
         'customer_details_updated' => 'פרטי ההתקשרות עודכנו',
+        'admin_note' => 'הערה',
         'plan_completed' => 'התוכנית הושלמה',
         'plan_cancelled' => 'התוכנית בוטלה',
         'plan_paused' => 'התוכנית הושהתה',

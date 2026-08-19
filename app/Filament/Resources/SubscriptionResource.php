@@ -342,14 +342,31 @@ class SubscriptionResource extends Resource
     public static function amountBalance(InstallmentPlan $record): string
     {
         if ($record->plan_kind === PlanKind::RECURRING) {
-            $freq = $record->interval_count > 1
-                ? $record->interval_count.'d'
-                : ($record->billing_frequency?->value ?? '');
+            $cadence = self::cadenceLabel($record);
 
-            return Money::format($record->installment_amount).($freq ? ' / '.$freq : '');
+            return Money::format($record->installment_amount).($cadence !== '' ? ' / '.$cadence : '');
         }
 
         return Money::format($record->total_charged).' / '.Money::format($record->total_amount);
+    }
+
+    /**
+     * The cadence as a merchant reads it — "חודשי", "שנתי", "כל 3 חודשים" — never
+     * the enum's raw English value and never the old "3d" shorthand, which named
+     * neither a unit nor a language the screen was in.
+     */
+    public static function cadenceLabel(InstallmentPlan $record): string
+    {
+        $unit = $record->billing_frequency;
+        if ($unit === null) {
+            return '';
+        }
+
+        $count = max(1, (int) $record->interval_count);
+
+        return $count > 1
+            ? __('subscriptions.cadence.every_n', ['n' => $count, 'unit' => __('subscriptions.cadence.plural.'.$unit->value)])
+            : __('billing.settings.frequency.'.$unit->value);
     }
 
     /** Maps a status to the Filament color name used by its native ->color(). */

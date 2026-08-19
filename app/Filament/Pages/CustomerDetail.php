@@ -8,6 +8,7 @@ use App\Domain\Customers\CustomerContactReader;
 use App\Domain\Customers\CustomerContactWriter;
 use App\Domain\Customers\CustomerOrdersReader;
 use App\Filament\Concerns\ShopScopedScreen;
+use App\Filament\Resources\SubscriptionResource\Pages\ViewSubscription;
 use App\Models\ActivityEvent;
 use App\Models\InstallmentPlan;
 use App\Models\PaymentLedger;
@@ -16,6 +17,9 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Support\Tenant;
 use App\Support\Ui\Money;
+use Filament\Actions\Action as HeaderAction;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
@@ -58,6 +62,74 @@ class CustomerDetail extends Page
     public function mount(string $customer): void
     {
         $this->customer = $customer;
+    }
+
+    /**
+     * "+ Add note": pin a remark to this customer's timeline. A note lives on a
+     * PLAN (the timeline is plan events aggregated), so when the customer has
+     * several the merchant picks which; with one, it is chosen for them. Hidden
+     * when there is no plan to attach to (a Shopify-rail-only customer).
+     */
+    protected function getHeaderActions(): array
+    {
+        return [
+            HeaderAction::make('addNote')
+                ->label(__('subscriptions.action.note.label'))
+                ->icon('heroicon-m-plus')
+                ->color('gray')
+                ->visible(fn (): bool => $this->plans()->isNotEmpty())
+                ->modalHeading(__('subscriptions.action.note.heading'))
+                ->modalSubmitActionLabel(__('subscriptions.action.note.save'))
+                ->form([
+                    Select::make('plan_id')
+                        ->label(__('subscriptions.action.note.plan'))
+                        ->options(fn (): array => $this->planOptions())
+                        ->default(fn (): ?int => $this->plans()->first()?->getKey())
+                        ->visible(fn (): bool => $this->plans()->count() > 1)
+                        ->required(),
+                    Textarea::make('note')
+                        ->label(__('subscriptions.action.note.field'))
+                        ->rows(4)
+                        ->required()
+                        ->maxLength(ViewSubscription::MAX_NOTE_LENGTH),
+                ])
+                ->action(fn (array $data) => $this->addNote($data)),
+        ];
+    }
+
+    /** @return array<int, string> plan id → "product · status" */
+    private function planOptions(): array
+    {
+        return $this->plans()
+            ->mapWithKeys(fn (InstallmentPlan $p): array => [
+                (int) $p->getKey() => trim(($p->productTitle() ?: $p->public_id).' · '.__('billing.status.'.$p->status->value)),
+            ])
+            ->all();
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function addNote(array $data): void
+    {
+        $note = trim((string) ($data['note'] ?? ''));
+        $planId = (int) ($data['plan_id'] ?? 0) ?: (int) $this->plans()->first()?->getKey();
+
+        // The plan must be THIS customer's — plans() is tenant-scoped and pinned
+        // to the customer, so an id from outside that set is simply refused.
+        $plan = $this->plans()->firstWhere('id', $planId);
+        if ($note === '' || $plan === null) {
+            return;
+        }
+
+        Timeline::record(
+            kind: Timeline::KIND_ADMIN_NOTE,
+            details: ['note' => mb_substr($note, 0, ViewSubscription::MAX_NOTE_LENGTH)],
+            planId: $plan->getKey(),
+            shopId: (int) $plan->shop_id,
+        );
+
+        Notification::make()->title(__('subscriptions.action.note.success'))->success()->send();
     }
 
     /**

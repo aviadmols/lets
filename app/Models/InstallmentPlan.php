@@ -159,16 +159,34 @@ class InstallmentPlan extends Model
      */
     public function productTitle(): ?string
     {
-        foreach ([data_get($this->meta, 'product_title'), data_get($this->meta, 'item_title')] as $title) {
-            $title = trim((string) ($title ?? ''));
-            if ($title !== '') {
-                return $title;
-            }
-        }
-
         $catalog = trim((string) ($this->product?->title ?? ''));
 
+        foreach ([data_get($this->meta, 'product_title'), data_get($this->meta, 'item_title')] as $title) {
+            $title = trim((string) ($title ?? ''));
+            if ($title === '') {
+                continue;
+            }
+
+            // A migration file's "description" was often just the product CODE
+            // ("2675", "2675 שנתי", "2666 - שנתי"). A code is not a name: when the
+            // catalog knows the product, its name wins. The cadence that trailed
+            // the code has its own column, so nothing is lost by dropping it.
+            if ($this->startsWithProductCode($title) && $catalog !== '') {
+                return $catalog;
+            }
+
+            return $title;
+        }
+
         return $catalog !== '' ? $catalog : null;
+    }
+
+    /** Does this title open with the plan's own product code ("2675 …")? */
+    private function startsWithProductCode(string $title): bool
+    {
+        $code = trim((string) ($this->externalProductId() ?? ''));
+
+        return $code !== '' && preg_match('/^'.preg_quote($code, '/').'(?![0-9])/u', $title) === 1;
     }
 
     /**

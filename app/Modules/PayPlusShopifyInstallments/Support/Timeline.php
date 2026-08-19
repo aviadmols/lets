@@ -66,6 +66,9 @@ final class Timeline
     /** A coupon/discount was captured from the checkout order at activation. */
     public const KIND_CHECKOUT_DISCOUNT_CAPTURED = 'checkout_discount_captured';
 
+    /** A free-text note a merchant pinned to the plan's timeline. details: {note}. */
+    public const KIND_ADMIN_NOTE = 'admin_note';
+
     /**
      * Record a Timeline event. Never throws.
      *
