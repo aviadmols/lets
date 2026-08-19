@@ -143,6 +143,18 @@ function lets_payplus_invoicing_on_status_changed($order_id, $old_status, $new_s
         return;
     }
 
+    // Wall 1a: the same rule, asked of the CART LINE instead of the plan meta.
+    //
+    // That meta is stamped by the SaaS when it links the plan to the order, which
+    // happens moments AFTER WooCommerce flips the order to paid — and this hook
+    // runs on exactly that flip. On a real store the gap was five seconds, and in
+    // it a subscription order was reported as a plain order: the shopper received
+    // two tax invoices for one payment. The line meta is written at checkout,
+    // before any of this, so it is the answer that is already true when asked.
+    if (lets_payplus_invoicing_has_subscription_line($order)) {
+        return;
+    }
+
     // Wall 1b: a LETS loyalty GIFT. Nothing was sold and nothing was paid, so
     // there is no income to declare — a tax document here would report revenue the
     // merchant never received.
@@ -157,6 +169,28 @@ function lets_payplus_invoicing_on_status_changed($order_id, $old_status, $new_s
     }
 
     lets_payplus_invoicing_report($order);
+}
+
+/**
+ * Does this order sell a LETS subscription? Read from the line meta the cart
+ * stamps at checkout (class-lets-subscriptions), so it is true from the moment
+ * the order exists — unlike the plan meta, which the SaaS writes back later.
+ *
+ * @param  WC_Order  $order
+ * @return bool
+ */
+function lets_payplus_invoicing_has_subscription_line(WC_Order $order)
+{
+    foreach ($order->get_items() as $item) {
+        if (! is_object($item) || ! method_exists($item, 'get_meta')) {
+            continue;
+        }
+        if ($item->get_meta('_lets_subscription')) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /** Normalise "wc-processing" / " Processing " to the bare lowercase status. */

@@ -12,6 +12,7 @@ use App\Models\PaymentLedger;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Support\ResponseMasker;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
+use App\Support\Tenant;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -177,6 +178,28 @@ final class DocumentIssuer
                 return $existing;
             }
 
+            // THE PLAN WALL, RE-ASKED HERE — and this is the load-bearing one.
+            //
+            // The callers check it too, but they check it when the request ARRIVES
+            // and this runs when the queued job EXECUTES, and a subscription order
+            // fills that gap: WooCommerce flips the order to paid, the plugin
+            // reports it, and only a moment later does the gateway finalizer link
+            // the order id onto the plan. On a real store the two landed five
+            // seconds apart and the shopper got two tax invoices for one payment —
+            // one keyed `order:{id}`, one keyed on the plan's deposit, so the
+            // unique index had no way to see them as the same money.
+            //
+            // Asked again at issue time, the link is there and the second document
+            // is never requested. It costs one indexed lookup per plain order.
+            if ($this->orderBelongsToPlan($shopId, $orderId)) {
+                Log::info('invoicing.platform_order.skipped_plan_order', [
+                    'shop_id' => $shopId,
+                    'order_id' => $orderId,
+                ]);
+
+                return null;
+            }
+
             $settings = MerchantInvoicingSettings::forShop($shopId);
             $lines = $this->linesFromPlatformOrder($order);
 
@@ -217,6 +240,36 @@ final class DocumentIssuer
         } catch (Throwable $e) {
             return $this->recordBuildFailure($shopId, $context, $e);
         }
+    }
+
+    /**
+     * Does a LETS plan own this store order? Then the plan pipeline declares its
+     * income and the `all_orders` scope must keep its hands off it.
+     *
+     * Both id columns, because the two rails fill different ones: WooCommerce
+     * writes external_order_id on some paths and the legacy shopify_order_id on
+     * others (plan 1371 carried the WooCommerce order in shopify_order_id — a
+     * wall that read one column would have been blind to it).
+     *
+     * Tenant-scoped through Tenant::run, so BelongsToShop confines the lookup
+     * rather than a hand-written where.
+     */
+    private function orderBelongsToPlan(int $shopId, string $orderId): bool
+    {
+        if ($orderId === '') {
+            return false;
+        }
+
+        $shop = $this->shop($shopId);
+        if ($shop === null) {
+            return false;
+        }
+
+        return Tenant::run($shop, static fn (): bool => InstallmentPlan::query()
+            ->where(static fn ($q) => $q
+                ->where('external_order_id', $orderId)
+                ->orWhere('shopify_order_id', $orderId))
+            ->exists());
     }
 
     // === Idempotency keys (deterministic — the double-issue wall) ===

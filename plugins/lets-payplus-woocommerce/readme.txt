@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.29.0
+Stable tag: 0.30.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,15 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.30.0 =
+* A subscription purchase can no longer produce TWO tax invoices. Stores that
+  invoice every order reported a subscription order as a plain order the instant
+  WooCommerce marked it paid — a moment before LETS linked that order to the
+  plan — so the same payment was declared once by the order pipeline and once by
+  the subscription pipeline. The order is now recognised as a subscription from
+  its own cart line, which is true from checkout, and LETS refuses the second
+  document as well.
 
 = 0.29.0 =
 * "One subscription per customer" now holds on the block checkout too. The rule

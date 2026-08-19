@@ -133,6 +133,48 @@ final class DocumentIssuerTest extends TestCase
         $this->assertSame(1, IssuedDocument::acrossAllTenants()->count());
     }
 
+    /**
+     * The duplicate-tax-document bug, reproduced.
+     *
+     * A subscription order is reported as a plain order the instant WooCommerce
+     * flips it to paid — BEFORE the gateway finalizer links the order id onto the
+     * plan. The caller's wall passed (no link yet), the job ran a moment later,
+     * and the shopper received two tax invoices for one payment: one keyed
+     * `order:{id}`, one keyed on the plan's deposit, so the unique index could
+     * not see them as the same money.
+     *
+     * Asking again HERE, at issue time, is what closes it — by then the link
+     * exists. Both id columns are checked because the WooCommerce rail writes
+     * the order into shopify_order_id on the deposit path.
+     */
+    public function test_an_order_owned_by_a_plan_is_never_invoiced_as_a_plain_order(): void
+    {
+        foreach (['external_order_id', 'shopify_order_id'] as $column) {
+            $shop = $this->connectedShop($column.'.example.com', platform: Shop::PLATFORM_WOOCOMMERCE);
+            $this->fakeProvider();
+            $this->issued = [];
+
+            \App\Support\Tenant::run($shop, function () use ($shop, $column): void {
+                $plan = new \App\Models\InstallmentPlan;
+                $plan->fill([
+                    'plan_kind' => 'recurring',
+                    'charge_context' => 'recurring',
+                    'public_id' => (string) \Illuminate\Support\Str::ulid(),
+                    'total_amount' => 100,
+                    'installment_amount' => 100,
+                    'currency' => 'ILS',
+                    $column => '5501',
+                ]);
+                $plan->forceFill(['shop_id' => (int) $shop->getKey(), 'status' => 'active'])->save();
+            });
+
+            $result = (new DocumentIssuer())->issueForPlatformOrder((int) $shop->getKey(), $this->orderPayload());
+
+            $this->assertNull($result, "a plan order must not be invoiced again via {$column}");
+            $this->assertCount(0, $this->issued, 'the provider must never be called');
+        }
+    }
+
     public function test_a_partial_line_breakdown_is_balanced_to_the_order_total(): void
     {
         $shop = $this->connectedShop('balance.example.com', platform: Shop::PLATFORM_WOOCOMMERCE);
