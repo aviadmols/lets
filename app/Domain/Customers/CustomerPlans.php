@@ -26,8 +26,24 @@ use Illuminate\Database\Eloquent\Builder;
 final class CustomerPlans
 {
     // === CONSTANTS ===
-    /** The columns a rail may have written the customer's reference into. */
-    public const REF_COLUMNS = ['shopify_customer_id', 'external_customer_id', 'customer_id'];
+    /**
+     * String columns a rail may have written the customer's reference into. Both
+     * are varchar and hold whatever the platform calls a customer — a numeric
+     * WooCommerce user id, a Shopify id, or the UUID an imported member came
+     * with.
+     */
+    public const REF_COLUMNS = ['shopify_customer_id', 'external_customer_id'];
+
+    /**
+     * The numeric one, kept apart because it is an unsignedBigInteger.
+     *
+     * Comparing it to a non-numeric reference is not merely fruitless — Postgres
+     * refuses to read "2883bb96-31e5-…" as a bigint and aborts the whole query,
+     * which is how the customer page 500'd for every imported member (their
+     * reference IS a UUID). A reference that is not digits can never match this
+     * column, so it is simply not asked.
+     */
+    public const NUMERIC_REF_COLUMN = 'customer_id';
 
     /** A query for every plan belonging to this customer, newest first. */
     public static function query(string $reference): Builder
@@ -80,6 +96,11 @@ final class CustomerPlans
             $i === 0
                 ? $query->where($column, $reference)
                 : $query->orWhere($column, $reference);
+        }
+
+        // Only when it could possibly match — see NUMERIC_REF_COLUMN.
+        if (ctype_digit($reference)) {
+            $query->orWhere(self::NUMERIC_REF_COLUMN, $reference);
         }
 
         return $query;

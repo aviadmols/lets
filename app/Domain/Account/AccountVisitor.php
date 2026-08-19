@@ -29,6 +29,9 @@ use Illuminate\Database\Eloquent\Builder;
 final class AccountVisitor
 {
     // === CONSTANTS ===
+    /** The one reference column that is a bigint, not a string (see narrow()). */
+    public const NUMERIC_REF_COLUMN = 'customer_id';
+
     public const SOURCE_WOOCOMMERCE = 'woocommerce';  // plugin server → HMAC
     public const SOURCE_PROXY = 'proxy';              // Shopify App Proxy (signed query)
     public const SOURCE_PREVIEW = 'preview';          // the admin's appearance preview
@@ -144,6 +147,15 @@ final class AccountVisitor
 
         return $query->where(function (Builder $q) use ($refColumns, $emailColumn, $ref, $email): void {
             foreach ($refColumns as $column) {
+                // `customer_id` is an unsignedBigInteger. Postgres refuses to read
+                // a non-numeric reference as one and aborts the whole query rather
+                // than not matching — and an imported member's reference is the
+                // UUID their old system gave them. It cannot match a bigint, so it
+                // is not asked.
+                if ($column === self::NUMERIC_REF_COLUMN && ! ctype_digit($ref)) {
+                    continue;
+                }
+
                 $q->orWhere($column, $ref);
                 if (str_ends_with($column, '_gid')) {
                     $q->orWhere($column, 'gid://shopify/Customer/'.$ref);
