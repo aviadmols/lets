@@ -563,6 +563,15 @@
     color: var(--la-muted);
 }
 
+/* The minimum term, said where the missing pause/cancel buttons would be.
+   Muted rather than a warning colour: it is a term of the plan the shopper
+   agreed to, not an error they have made. */
+.la-sub__commitment {
+    margin-block: 12px 0;
+    font-size: 0.875rem;
+    color: var(--la-muted);
+}
+
 .la-facts {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));

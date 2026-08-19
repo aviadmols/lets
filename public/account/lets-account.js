@@ -402,6 +402,13 @@
         if (actions) { append(card, actions); }
         if (dateEditor) { append(card, dateEditor); }
 
+        // --- the commitment, when one is holding the exits shut. Said in words
+        // beside the buttons that are missing: a button that is simply absent
+        // reads as a broken page, or as a shop hiding the way out.
+        if (sub.commitment_note) {
+            append(card, el('p', 'la-sub__commitment', sub.commitment_note));
+        }
+
         // --- offers that apply to THIS plan, last: an offer to switch it only
         // makes sense once the shopper has read what they are switching from.
         // It sits below the date editor rather than between it and its own

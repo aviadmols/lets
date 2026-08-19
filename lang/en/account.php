@@ -67,6 +67,9 @@ return [
          * puts the resolved day in the payload's `first_charge_at` and the
          * renderer composes the sentence, so one string serves every offer.
          */
+        // Why the pause/cancel buttons are not there yet, when the plan was sold
+        // with a minimum term. Never shown to a subscriber who is free to leave.
+        'commitment_note' => 'You can pause or cancel after :required payments — :paid so far.',
         'offer_accept' => 'Choose this plan',
         'offer_from' => 'from',
         'offer_replaces' => 'Replaces your current subscription',

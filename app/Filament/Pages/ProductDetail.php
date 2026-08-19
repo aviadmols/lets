@@ -93,6 +93,14 @@ class ProductDetail extends Page
 
     public int $expireAfterCharges = 1;
 
+    /**
+     * The minimum term: how many cycles a subscriber pays before THEY may pause
+     * or cancel. Off by default — a commitment nobody set must never appear.
+     */
+    public bool $commitmentEnabled = false;
+
+    public int $minCyclesBeforeExit = 3;
+
     /** @var list<string> channel values currently checked. */
     public array $channels = [];
 
@@ -621,6 +629,8 @@ class ProductDetail extends Page
         $this->chargeDayOfMonth = $plan->charge_day_of_month !== null ? (int) $plan->charge_day_of_month : null;
         $this->expireEnabled = $plan->expire_after_charges !== null;
         $this->expireAfterCharges = max(1, (int) ($plan->expire_after_charges ?? 1));
+        $this->commitmentEnabled = $plan->minCyclesBeforeExit() > 0;
+        $this->minCyclesBeforeExit = max(1, $plan->minCyclesBeforeExit() ?: 3);
         $this->channels = collect($plan->channels ?? [])
             ->filter(fn (string $c): bool => in_array($c, ProductSubscriptionPlan::CHANNELS, true))
             ->values()
@@ -724,6 +734,12 @@ class ProductDetail extends Page
             'discount_cycles' => $isSub ? $discountCycles : null,
             'charge_day_of_month' => $isSub ? $chargeDay : null,
             'expire_after_charges' => $isSub && $this->expireEnabled ? max(1, (int) $this->expireAfterCharges) : null,
+            // min_cycles_before_exit ∈ {null} ∪ [1..120]. Subscriptions only: a
+            // one-time purchase has nothing to stay committed to. Bounded like
+            // its neighbours, so a typo cannot tie somebody in for a decade.
+            'min_cycles_before_exit' => $isSub && $this->commitmentEnabled
+                ? max(1, min(120, (int) $this->minCyclesBeforeExit))
+                : null,
             'channels' => $channels,
         ])->save();
 

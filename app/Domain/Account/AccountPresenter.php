@@ -689,9 +689,32 @@ final class AccountPresenter
             'next_order' => $this->nextOrderSummary($plan),
             'card' => $this->card($plan->activePaymentMethod()),
             'actions' => array_keys(array_filter($actions)),
+            // WHY the exit buttons are missing, when a commitment is what is
+            // holding them. A button that simply is not there reads as a bug, or
+            // worse as a shop hiding the way out; the sentence says how many
+            // more cycles and stops the support call.
+            'commitment_note' => $this->commitmentNote($plan),
             'payments' => $this->payments($plan),
             'offers' => $offers,
         ];
+    }
+
+    /**
+     * "You can cancel after 3 payments (1 so far)" — or null when the subscriber
+     * is free to leave, which is every plan sold without a commitment.
+     */
+    private function commitmentNote(InstallmentPlan $plan): ?string
+    {
+        $remaining = $plan->cyclesUntilExit();
+
+        if ($remaining === 0) {
+            return null;
+        }
+
+        return __('account.ui.commitment_note', [
+            'required' => max(0, (int) $plan->min_cycles_before_exit),
+            'paid' => $plan->paidCycles(),
+        ]);
     }
 
     /**
@@ -888,6 +911,10 @@ final class AccountPresenter
             // The preview obeys the merchant's own switches: a shop that turned
             // "skip" off must not see a sample card offering it.
             'actions' => $this->sampleActions(),
+            // The sample subscriber is long past any commitment — a preview that
+            // showed the note would be describing a plan the merchant is not
+            // looking at.
+            'commitment_note' => null,
             'payments' => [
                 ['sequence' => 2, 'amount' => 89.0, 'status' => 'succeeded', 'at' => now()->subDays(21)->toDateString()],
                 ['sequence' => 1, 'amount' => 89.0, 'status' => 'succeeded', 'at' => now()->subDays(51)->toDateString()],

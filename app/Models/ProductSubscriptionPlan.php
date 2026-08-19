@@ -161,6 +161,20 @@ class ProductSubscriptionPlan extends Model
         return $cycles > 0 ? $cycles : null;
     }
 
+    /**
+     * How many cycles a subscriber must pay before they may pause or cancel it
+     * themselves — 0 for "no commitment", which is what every template that
+     * never sets it means.
+     *
+     * It belongs to the TEMPLATE because it is a property of the deal that was
+     * sold, not of the shop: "three months minimum" is part of this plan's
+     * terms, and the shop next door to it may have none.
+     */
+    public function minCyclesBeforeExit(): int
+    {
+        return max(0, (int) ($this->min_cycles_before_exit ?? 0));
+    }
+
     public function isSubscription(): bool
     {
         return $this->plan_type === self::TYPE_SUBSCRIPTION;

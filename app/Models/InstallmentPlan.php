@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToShop;
 use App\Modules\PayPlusShopifyInstallments\Concerns\HasGuardedStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
+use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use BackedEnum;
@@ -392,6 +393,45 @@ class InstallmentPlan extends Model
         $history = (array) (((array) ($this->meta ?? []))['import']['history'] ?? []);
 
         return max(0, (int) ($history['charges_succeeded'] ?? 0));
+    }
+
+    /**
+     * Cycles this subscriber has actually paid for — ours plus the ones their
+     * old system recorded.
+     *
+     * The migrated half counts. A member who paid eleven years of dues before
+     * the move has paid them, and a commitment that ignored that would tell
+     * somebody who has been with the shop since 2015 that they may not leave
+     * for another three months. Same reading the gift campaigns use.
+     */
+    public function paidCycles(): int
+    {
+        return (int) $this->payments()
+            ->where('status', PaymentStatus::SUCCEEDED->value)
+            ->count() + $this->importedCycles();
+    }
+
+    /**
+     * How many more cycles before this subscriber may pause or cancel it
+     * themselves — 0 when they are free to, which is the answer for every plan
+     * created without a commitment.
+     *
+     * Read from the plan's OWN snapshot, never from the template: a merchant
+     * who raises the minimum has changed what they offer, not what somebody
+     * already agreed to (the same law that keeps price and discount window on
+     * the plan row).
+     */
+    public function cyclesUntilExit(): int
+    {
+        $required = max(0, (int) ($this->min_cycles_before_exit ?? 0));
+
+        return $required === 0 ? 0 : max(0, $required - $this->paidCycles());
+    }
+
+    /** May the CUSTOMER end this themselves yet? The admin always may. */
+    public function customerMayExit(): bool
+    {
+        return $this->cyclesUntilExit() === 0;
     }
 
     /** The national id the migration file carried, or null (display only). */

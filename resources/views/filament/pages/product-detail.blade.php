@@ -470,6 +470,23 @@
                                                     <input id="rc-plan-expire" type="number" min="1" class="rc-input rc-ltr rc-plan-ship__count" wire:model="expireAfterCharges">
                                                 </div>
                                             @endif
+
+                                            {{-- The minimum term. It withholds the CUSTOMER's own pause and
+                                                 cancel buttons until the agreed cycles are paid; the merchant
+                                                 can still cancel from the admin at any time. --}}
+                                            <label class="rc-check">
+                                                <input type="checkbox" wire:model.live="commitmentEnabled">
+                                                <span class="rc-check__body">
+                                                    <span class="rc-check__title">{{ __('products.plan_drawer.commitment_label') }}</span>
+                                                    <span class="rc-drawer__subtitle">{{ __('products.plan_drawer.commitment_help') }}</span>
+                                                </span>
+                                            </label>
+                                            @if($commitmentEnabled)
+                                                <div class="rc-field">
+                                                    <label class="rc-field__label" for="rc-plan-commitment">{{ __('products.plan_drawer.commitment_count_label') }}</label>
+                                                    <input id="rc-plan-commitment" type="number" min="1" max="120" class="rc-input rc-ltr rc-plan-ship__count" wire:model="minCyclesBeforeExit">
+                                                </div>
+                                            @endif
                                         </div>
                                     </div>
                                 </div>

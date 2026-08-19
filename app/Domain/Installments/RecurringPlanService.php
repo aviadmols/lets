@@ -220,9 +220,11 @@ final class RecurringPlanService
      * paths keep writing byte-identical rows (RecurringPlanServiceTest asserts it).
      *
      * Pricing snapshot (consent law): when the caller resolved a template, its
-     * pricing_mode / discount_cycles land HERE as the plan's own copy, together
-     * with regular_amount (the undiscounted per-cycle amount, quantity included)
-     * — a later template edit must never retroactively reprice a live plan.
+     * pricing_mode / discount_cycles / min_cycles_before_exit land HERE as the
+     * plan's own copy, together with regular_amount (the undiscounted per-cycle
+     * amount, quantity included) — a later template edit must never
+     * retroactively reprice a live plan, nor re-negotiate how long its
+     * subscriber is tied to it.
      *
      * @param  array<string, mixed>  $context
      */
@@ -237,6 +239,10 @@ final class RecurringPlanService
             $plan->fill([
                 'pricing_mode' => $template?->pricing_mode,
                 'discount_cycles' => $template?->introWindow(),
+                // The commitment, snapshotted for the same reason as the price:
+                // raising the template's minimum changes what the shop OFFERS,
+                // never what a live subscriber already agreed to.
+                'min_cycles_before_exit' => $template?->minCyclesBeforeExit() ?: null,
                 'regular_amount' => $regular > 0 ? $regular : null,
                 'product_subscription_plan_id' => $template?->getKey(),
                 // Identity: the checkout paths know only an external customer id;

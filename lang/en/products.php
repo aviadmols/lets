@@ -209,6 +209,9 @@ return [
         'charge_on_day' => 'Day :day of the month',
         'expire_label' => 'Expire after a number of charges',
         'expire_count_label' => 'Number of charges',
+        'commitment_label' => 'Minimum term before the customer can leave',
+        'commitment_help' => 'Until these charges are paid, the customer cannot pause or cancel from their own account. You still can, from here. Changing it later applies to new subscriptions only.',
+        'commitment_count_label' => 'Number of charges',
 
         'channels_heading' => 'Channels',
         'channels_hint' => 'Where this plan can be offered.',

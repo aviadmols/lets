@@ -169,10 +169,20 @@ final class CustomerSubscriptionActions
         $settings = MerchantBillingSettings::current();
         $recurring = $plan->plan_kind === PlanKind::RECURRING;
 
+        // The commitment the plan was sold with. It withholds the two ways OUT —
+        // pausing and cancelling — until the agreed cycles are paid, and nothing
+        // else: skipping a cycle is a postponement, and RESUMING must stay open
+        // or a commitment could trap somebody in a paused subscription.
+        //
+        // Customer-facing only. The merchant cancels from the admin whenever
+        // they like; support that cannot end a subscription is a fault, not a
+        // policy.
+        $mayExit = $plan->customerMayExit();
+
         return [
-            self::ACTION_PAUSE => $settings->allowsCustomerPause() && in_array($plan->status, self::PAUSABLE, true),
+            self::ACTION_PAUSE => $mayExit && $settings->allowsCustomerPause() && in_array($plan->status, self::PAUSABLE, true),
             self::ACTION_RESUME => $settings->allowsCustomerPause() && in_array($plan->status, self::RESUMABLE, true),
-            self::ACTION_CANCEL => $settings->allowsCustomerCancel() && in_array($plan->status, self::CANCELLABLE, true),
+            self::ACTION_CANCEL => $mayExit && $settings->allowsCustomerCancel() && in_array($plan->status, self::CANCELLABLE, true),
             self::ACTION_SKIP => $settings->allowsCustomerSkip() && $recurring && $plan->status === PlanStatus::ACTIVE,
             self::ACTION_RESCHEDULE => $settings->allowsCustomerReschedule() && $recurring && $plan->status === PlanStatus::ACTIVE,
             self::ACTION_ITEMS => $settings->allowsCustomerEditItems() && $recurring && $plan->status === PlanStatus::ACTIVE,
@@ -184,6 +194,11 @@ final class CustomerSubscriptionActions
     private function pause(InstallmentPlan $plan): array
     {
         if (! MerchantBillingSettings::current()->allowsCustomerPause()) {
+            return $this->fail(self::RESULT_NOT_ALLOWED);
+        }
+        // Re-asked here, not only in availableFor(): a hidden button is a hint,
+        // and this endpoint is reachable without one.
+        if (! $plan->customerMayExit()) {
             return $this->fail(self::RESULT_NOT_ALLOWED);
         }
         // Idempotent: already paused is a no-op success (re-submit, double-tap).
@@ -217,6 +232,10 @@ final class CustomerSubscriptionActions
     private function cancel(InstallmentPlan $plan): array
     {
         if (! MerchantBillingSettings::current()->allowsCustomerCancel()) {
+            return $this->fail(self::RESULT_NOT_ALLOWED);
+        }
+        // The commitment, enforced on the server as well as in the layout.
+        if (! $plan->customerMayExit()) {
             return $this->fail(self::RESULT_NOT_ALLOWED);
         }
         if ($plan->status === PlanStatus::CANCELLED) {
