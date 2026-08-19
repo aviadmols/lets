@@ -120,24 +120,26 @@ final class GiftEligibility
             // Gifts reward CURRENT subscribers: someone who cancelled last year met
             // the threshold once, but they are not who this campaign is thanking.
             ->where('status', PlanStatus::ACTIVE->value)
-            ->whereHas(
-                'payments',
-                fn ($q) => $q->where('status', PaymentStatus::SUCCEEDED->value),
-                '>=',
-                $minCycles,
-            )
             ->withCount(['payments as succeeded_cycles' => fn ($q) => $q->where('status', PaymentStatus::SUCCEEDED->value)])
             ->orderBy('id')
             ->get()
+            // The threshold is applied HERE, not as a whereHas, because a migrated
+            // member's paid cycles are not rows in our payments table — they are the
+            // count their old system reported, kept in meta (see importedCycles()).
+            // A whereHas alone answered "zero" for every imported subscriber, so a
+            // campaign asking for one paid cycle matched none of the 1,154 members a
+            // store had just brought in. Their loyalty predates us; it still counts.
             ->map(fn (InstallmentPlan $plan): array => [
                 'source_type' => GiftRecipient::SOURCE_PLAN,
                 'source_id' => (int) $plan->getKey(),
                 'label' => $plan->customerLabel(),
                 'email' => $this->clean($plan->customer_email),
                 'rail' => 'payplus',
-                'cycles' => (int) $plan->succeeded_cycles,
+                'cycles' => (int) $plan->succeeded_cycles + $plan->importedCycles(),
                 'already_gifted' => false,
-            ]);
+            ])
+            ->filter(static fn (array $row): bool => $row['cycles'] >= $minCycles)
+            ->values();
     }
 
     /**

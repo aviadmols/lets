@@ -332,6 +332,23 @@ class InstallmentPlan extends Model
         return $out;
     }
 
+    /**
+     * Cycles this member paid in the system they came FROM, as their migration
+     * file recorded them.
+     *
+     * The importer deliberately writes no payment rows for that history — those
+     * charges were another system's, and inventing ledger rows for them would be
+     * claiming money we never moved. But a member who paid eleven years of dues
+     * elsewhere has still paid them, so anything that asks "how long have they
+     * been with us" (loyalty, gifts) has to read this beside our own count.
+     */
+    public function importedCycles(): int
+    {
+        $history = (array) (((array) ($this->meta ?? []))['import']['history'] ?? []);
+
+        return max(0, (int) ($history['charges_succeeded'] ?? 0));
+    }
+
     /** The national id the migration file carried, or null (display only). */
     public function nationalId(): ?string
     {

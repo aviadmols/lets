@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.28.0
+Stable tag: 0.29.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,14 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.29.0 =
+* "One subscription per customer" now holds on the block checkout too. The rule
+  was enforced by a classic-checkout hook that a store using the Checkout block
+  never fires, so a shopper who was not logged in when they added to the cart
+  could reach payment with a second subscription. The Store API path refuses it
+  with the same message.
+* The first row of the LETS admin menu reads "ראשי" instead of repeating "LETS".
 
 = 0.28.0 =
 * The code panel is now the sign-in screen, not a box under it. On a store that

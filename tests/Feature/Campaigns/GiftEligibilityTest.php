@@ -63,6 +63,38 @@ final class GiftEligibilityTest extends TestCase
         $this->assertCount(1, app(GiftEligibility::class)->qualifying(1));
     }
 
+    /**
+     * A migrated member's cycles are not rows in our payments table — they are
+     * the count their old system reported, kept in meta by the importer. Reading
+     * only our own table answered "zero" for every imported subscriber, so a
+     * campaign asking for one paid cycle matched none of a store's 1,154 members
+     * the week they moved in.
+     */
+    public function test_cycles_paid_before_the_migration_still_count(): void
+    {
+        $shop = $this->shop();
+        Tenant::set($shop);
+
+        $migrated = $this->plan($shop, 'Migrated', succeeded: 0, email: 'migrated@example.com');
+        $migrated->forceFill(['meta' => ['import' => ['history' => ['charges_succeeded' => 11]]]])->save();
+
+        // One cycle here, ten there — the member has paid eleven.
+        $both = $this->plan($shop, 'Both', succeeded: 1, email: 'both@example.com');
+        $both->forceFill(['meta' => ['import' => ['history' => ['charges_succeeded' => 10]]]])->save();
+
+        $this->plan($shop, 'Fresh', succeeded: 1, email: 'fresh@example.com');
+
+        $this->assertSame(
+            ['Migrated', 'Both'],
+            app(GiftEligibility::class)->qualifying(11)->pluck('label')->all(),
+            'eleven paid cycles is eleven, wherever they were paid',
+        );
+
+        $rows = app(GiftEligibility::class)->qualifying(1);
+        $this->assertCount(3, $rows);
+        $this->assertSame(11, $rows->firstWhere('label', 'Both')['cycles'], 'both halves are counted');
+    }
+
     public function test_a_cancelled_subscriber_is_not_thanked(): void
     {
         $shop = $this->shop();

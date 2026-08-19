@@ -291,6 +291,67 @@ add_action('woocommerce_after_checkout_validation', function ($data, $errors) {
     }
 }, 10, 2);
 
+/**
+ * The same refusal, for the BLOCK checkout.
+ *
+ * `woocommerce_after_checkout_validation` is a CLASSIC-checkout hook. A store on
+ * the Checkout block posts to the Store API instead and that hook never fires —
+ * so on a modern store the rule above was enforced only on the add-to-cart path,
+ * i.e. only for a shopper who was already logged in. Everyone else walked to the
+ * payment page with a second subscription in the basket.
+ *
+ * `woocommerce_store_api_checkout_update_order_from_request` runs after the order
+ * is built and can still throw; a RouteException here is what the block renders
+ * as the checkout error notice. The message is HTML from the SaaS, so it is
+ * stripped back to text — the Store API prints the string, it does not render it.
+ */
+add_action('woocommerce_store_api_checkout_update_order_from_request', function ($order) {
+    if (! function_exists('lets_payplus_account_subscription_block_notice') || ! is_object($order)) {
+        return;
+    }
+
+    // WooCommerce only ships the exception from the version that ships the Store
+    // API checkout route; without it there is nothing to throw and nothing to
+    // enforce here, so the classic hook above remains the only gate.
+    if (! class_exists('\Automattic\WooCommerce\StoreApi\Exceptions\RouteException')) {
+        return;
+    }
+
+    // Read the CART, exactly as the classic hook does. The order's line meta is
+    // written by a hook that may run after this one, and a rule that depends on
+    // hook order is a rule that fails silently.
+    $has_subscription_line = false;
+    if (WC()->cart) {
+        foreach (WC()->cart->get_cart() as $item) {
+            if (! empty($item['_lets_subscription'])) {
+                $has_subscription_line = true;
+                break;
+            }
+        }
+    }
+
+    if (! $has_subscription_line) {
+        return;
+    }
+
+    $user_id = (int) $order->get_customer_id();
+    $email = (string) $order->get_billing_email();
+    $ref = $user_id > 0 ? (string) $user_id : $email;
+
+    $notice = lets_payplus_account_subscription_block_notice($email, $ref);
+    if (null === $notice) {
+        return;
+    }
+
+    // The SaaS copy carries a link; the Store API prints the string rather than
+    // rendering it, so the tags come off and the words stay.
+    throw new \Automattic\WooCommerce\StoreApi\Exceptions\RouteException(
+        'lets_single_subscription',
+        wp_strip_all_tags($notice),
+        400
+    );
+}, 10, 1);
+
 // ============================================================================
 // Cart — carry the subscription intent + the server per-cycle price
 // ============================================================================
