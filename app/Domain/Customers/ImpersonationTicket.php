@@ -35,8 +35,17 @@ final class ImpersonationTicket
     /** Cache key namespace. The key is the PREFIX + sha256(token), never the token. */
     public const CACHE_PREFIX = 'impersonate:woocommerce:';
 
-    /** Seconds a minted ticket stays redeemable. */
-    public const TTL_SECONDS = 120;
+    /**
+     * Seconds a minted ticket stays redeemable.
+     *
+     * Five minutes, not one: the merchant is HANDED this link rather than
+     * followed through it. They open it in a new tab — or copy it into a private
+     * window, which is the only way to hold an admin session and a customer
+     * session at once — and either can take a moment. Still single use, still
+     * short enough that a link left in a chat window is spent long before
+     * anybody reads it.
+     */
+    public const TTL_SECONDS = 300;
 
     /** 48 random alphanumeric characters (Str::random's alphabet). */
     public const TOKEN_LENGTH = 48;

@@ -25,6 +25,8 @@ use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
+use Illuminate\Contracts\View\View;
+use Livewire\Attributes\Locked;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
@@ -65,6 +67,15 @@ class CustomerDetail extends Page
     /** @var Collection<int, InstallmentPlan>|null per-render memo (see plans()). */
     private ?Collection $plansMemo = null;
 
+    /**
+     * The one-shot store URL the "log in as customer" modal hands over, minted on
+     * mount. #[Locked] so the browser cannot substitute a destination: a tampered
+     * value could only point somewhere the ticket does not verify, but a URL this
+     * page vouches for should come from this page.
+     */
+    #[Locked]
+    public ?string $loginAsUrl = null;
+
     public function mount(string $customer): void
     {
         $this->customer = $customer;
@@ -97,11 +108,24 @@ class CustomerDetail extends Page
                 ->icon('heroicon-m-arrow-right-on-rectangle')
                 ->color('gray')
                 ->visible(fn (): bool => $this->plans()->isNotEmpty() && $this->wooShop() !== null)
-                ->requiresConfirmation()
+                // The link is HANDED OVER, never followed for you. Redirecting
+                // this window was wrong twice: inside the wp-admin iframe it
+                // swapped the merchant's own WordPress session for the
+                // customer's — so the store's admin bar, and every wp-admin tab
+                // beside it, quietly became that shopper — and even standalone
+                // it left no way to hold both sessions at once. A new tab (or a
+                // private window, via the copyable link) keeps the two apart.
+                ->mountUsing(fn () => $this->prepareLoginAs())
                 ->modalHeading(__('customers.detail.login_as.heading'))
                 ->modalDescription(__('customers.detail.login_as.body'))
-                ->modalSubmitActionLabel(__('customers.detail.login_as.confirm'))
-                ->action(fn (): mixed => $this->loginAsCustomer()),
+                ->modalSubmitAction(false)
+                ->modalCancelActionLabel(__('customers.detail.login_as.close'))
+                ->modalContent(fn (): ?View => $this->loginAsUrl === null
+                    ? null
+                    : view('filament.pages.partials.login-as-link', [
+                        'url' => $this->loginAsUrl,
+                        'customer' => $this->displayName(),
+                    ])),
 
             HeaderAction::make('addNote')
                 ->label(__('subscriptions.action.note.label'))
@@ -184,27 +208,33 @@ class CustomerDetail extends Page
     }
 
     /**
-     * Mint the ticket and send this browser to the store with it.
+     * Mint the ticket and put the link in the merchant's hands.
      *
      * WHAT LEAVES HERE IS A TICKET, NOT AN IDENTITY. The customer's address is
      * stored against the ticket on OUR side and answered only to the plugin over
-     * the signed channel; the URL the merchant's browser follows carries nothing
-     * but 48 random characters, worth one redemption for two minutes.
+     * the signed channel; the URL carries nothing but 48 random characters,
+     * worth one redemption for five minutes.
+     *
+     * Runs on MOUNT, i.e. once when the modal opens — which is the moment the
+     * capability is actually handed over, and therefore the moment worth logging.
+     * A ticket minted on every re-render would be a Timeline entry per repaint.
      *
      * The email is read from the newest subscription that carries one, because
      * that is the address the store knows this person by. Without one there is
      * nobody for WordPress to resolve, and saying so beats a link that fails
      * silently on the other side.
      */
-    protected function loginAsCustomer(): mixed
+    protected function prepareLoginAs(): void
     {
+        $this->loginAsUrl = null;
+
         $shop = $this->wooShop();
         $base = rtrim((string) ($shop?->wooConfig()['base_url'] ?? ''), '/');
 
         if ($shop === null || $base === '') {
             Notification::make()->title(__('customers.detail.login_as.unavailable'))->danger()->send();
 
-            return null;
+            return;
         }
 
         $email = trim((string) $this->plans()
@@ -214,7 +244,7 @@ class CustomerDetail extends Page
         if ($email === '') {
             Notification::make()->title(__('customers.detail.login_as.no_email'))->danger()->send();
 
-            return null;
+            return;
         }
 
         // PERSONAL-DATA ACCESS LOG (docs/security/security-policies.md §5): becoming
@@ -239,9 +269,8 @@ class CustomerDetail extends Page
             shopId: (int) $shop->getKey(),
         );
 
-        return redirect()->away(
-            $base.'/?lets_login_as='.urlencode(ImpersonationTicket::issue($shop, $this->customer, $email))
-        );
+        $this->loginAsUrl = $base.'/?lets_login_as='
+            .urlencode(ImpersonationTicket::issue($shop, $this->customer, $email));
     }
 
     /**

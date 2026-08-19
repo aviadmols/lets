@@ -34,8 +34,11 @@ return [
         'login_as' => [
             'label' => 'Log in as customer',
             'heading' => 'Log in to the store as this customer',
-            'body' => 'This browser will be signed in to the store as this customer, on their account page. Your own WordPress admin session in this browser ends — sign in again to return to it. The action is recorded on this customer’s timeline.',
-            'confirm' => 'Log in as them',
+            'body' => 'Opens the store in a new tab, signed in as this customer, on their account page. That tab replaces your own WordPress session — use a private window to keep both. The action is recorded on this customer’s timeline.',
+            'open' => 'Open the store as :customer',
+            'copy_help' => 'Or copy the link — paste it into a private window to stay signed in as yourself here.',
+            'expires' => 'Single use, valid for five minutes.',
+            'close' => 'Close',
             'no_email' => 'No subscription of this customer carries an email address, so the store cannot tell who they are.',
             'unavailable' => 'This store is not connected to WooCommerce.',
         ],

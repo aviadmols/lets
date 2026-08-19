@@ -104,20 +104,40 @@ final class LoginAsCustomerTest extends TestCase
         $this->assertSame('expired', $response->json('reason'));
     }
 
-    public function test_a_two_minute_old_ticket_is_too_old(): void
+    /**
+     * Long enough to paste into a private window, short enough that a link left
+     * in a chat is spent before anybody reads it. Both ends are pinned so the
+     * window cannot drift open unnoticed.
+     */
+    public function test_a_ticket_outlives_a_paste_but_not_the_window(): void
     {
         [$shop, $key, $secret] = $this->connectedShop('loginas-slow.example.com');
 
-        $ticket = Tenant::run($shop, fn (): string => ImpersonationTicket::issue($shop, '77', 'dana@example.com'));
+        $issue = fn (): string => Tenant::run(
+            $shop,
+            fn (): string => ImpersonationTicket::issue($shop, '77', 'dana@example.com'),
+        );
 
-        $this->travel(3)->minutes();
+        $fresh = $issue();
+        $this->travel(4)->minutes();
+        $this->assertTrue($this->signed($key, $secret, ['ticket' => $fresh])->json('ok'), 'four minutes still redeems');
 
-        $this->assertFalse($this->signed($key, $secret, ['ticket' => $ticket])->json('ok'));
+        $stale = $issue();
+        $this->travel(ImpersonationTicket::TTL_SECONDS + 60)->seconds();
+        $this->assertFalse($this->signed($key, $secret, ['ticket' => $stale])->json('ok'), 'past the TTL it is gone');
     }
 
     // === The admin action ===
 
-    public function test_the_action_mints_a_ticket_and_sends_the_browser_to_the_store(): void
+    /**
+     * The link is HANDED OVER, not followed.
+     *
+     * Redirecting the panel's own window swapped the merchant's WordPress
+     * session for the customer's — and inside the wp-admin iframe it did that to
+     * every other wp-admin tab too. The modal offers a new-tab link and a
+     * copyable URL instead; nothing here may navigate.
+     */
+    public function test_the_action_mints_a_ticket_and_hands_over_a_link(): void
     {
         [$shop, $key, $secret] = $this->connectedShop('loginas-action.example.com');
         Tenant::set($shop);
@@ -128,9 +148,15 @@ final class LoginAsCustomerTest extends TestCase
 
         Str::createRandomStringsUsing(static fn (): string => self::FIXED_TOKEN);
 
+        $expected = 'https://loginas-action.example.com/?lets_login_as='.self::FIXED_TOKEN;
+
         Livewire::test(CustomerDetail::class, ['customer' => '77'])
-            ->callAction('loginAsCustomer')
-            ->assertRedirect('https://loginas-action.example.com/?lets_login_as='.self::FIXED_TOKEN);
+            ->mountAction('loginAsCustomer')
+            ->assertNoRedirect()
+            ->assertSet('loginAsUrl', $expected)
+            ->assertSee($expected, escape: false)
+            // The tab is what keeps the two sessions apart.
+            ->assertSee('target="_blank"', escape: false);
 
         Str::createRandomStringsNormally();
 
