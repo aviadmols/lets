@@ -6,6 +6,7 @@ use App\Casts\EncryptedCredentials;
 use App\Casts\EncryptedString;
 use App\Domain\Billing\BillingPlan;
 use App\Services\Shopify\ShopifyToken;
+use App\Support\Ui\EmbeddedMenu;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -23,7 +24,9 @@ class Shop extends Model
 {
     // === CONSTANTS ===
     public const STATUS_INSTALLED = 'installed';
+
     public const STATUS_ACTIVE = 'active';
+
     public const STATUS_UNINSTALLED = 'uninstalled';
 
     /**
@@ -32,7 +35,9 @@ class Shop extends Model
      * source in Stage 1; WooCommerce is the Stage-2 placeholder.
      */
     public const PLATFORM_SHOPIFY = 'shopify';
+
     public const PLATFORM_WOOCOMMERCE = 'woocommerce';
+
     public const PLATFORMS = [self::PLATFORM_SHOPIFY, self::PLATFORM_WOOCOMMERCE];
 
     /** Statuses for which background charge dispatch + Shopify API calls are allowed. */
@@ -47,7 +52,9 @@ class Shop extends Model
      * test stores install through. ShopifyApps resolves credentials from this.
      */
     public const APP_PUBLIC = 'public';
+
     public const APP_CUSTOM = 'custom';
+
     public const APP_KEYS = [self::APP_PUBLIC, self::APP_CUSTOM];
 
     /**
@@ -58,7 +65,9 @@ class Shop extends Model
      * regardless — they require a PayPlus token.
      */
     public const RAIL_PAYPLUS = 'payplus';
+
     public const RAIL_SHOPIFY_PAYMENTS = 'shopify_payments';
+
     public const SUBSCRIPTION_RAILS = [self::RAIL_PAYPLUS, self::RAIL_SHOPIFY_PAYMENTS];
 
     /**
@@ -67,7 +76,9 @@ class Shop extends Model
      * app may not be granted, and no screen may be hidden on a guess.
      */
     public const SHOPIFY_PAYMENTS_UNKNOWN = 'unknown';
+
     public const SHOPIFY_PAYMENTS_ACTIVE = 'active';
+
     public const SHOPIFY_PAYMENTS_INACTIVE = 'inactive';
 
     /**
@@ -104,6 +115,7 @@ class Shop extends Model
 
     /** Invoicing environments — production is the default; sandbox is opt-in. */
     public const INVOICING_ENV_PRODUCTION = 'production';
+
     public const INVOICING_ENV_SANDBOX = 'sandbox';
 
     protected $fillable = [
@@ -151,7 +163,30 @@ class Shop extends Model
             'shopify_payments_checked_at' => 'datetime',
             'installed_at' => 'datetime',
             'uninstalled_at' => 'datetime',
+            // The platform owner's per-shop embedded-menu allow-list (null = all).
+            'embedded_menu' => 'array',
         ];
+    }
+
+    // === Embedded (wp-admin) menu ===
+
+    /**
+     * The areas this shop may see when the admin is rendered inside wp-admin, or
+     * NULL for "no restriction". Normalised on READ against EmbeddedMenu's key
+     * list, so a stale key left by a removed screen can never hide a live one and
+     * a garbage value can never be mistaken for an empty (= Home-only) list.
+     *
+     * @return list<string>|null
+     */
+    public function embeddedMenu(): ?array
+    {
+        $stored = $this->embedded_menu;
+
+        if (! is_array($stored)) {
+            return null;
+        }
+
+        return array_values(array_intersect(EmbeddedMenu::keys(), $stored));
     }
 
     // === Catalog source ===

@@ -2,8 +2,10 @@
 
 use App\Filament\Pages\HomeDashboard;
 use App\Filament\Resources\ShopResource;
+use App\Http\Controllers\WooCommerce\EmbedLoginController;
 use App\Models\Shop;
 use App\Models\User;
+use App\Providers\Filament\AdminPanelProvider;
 use App\Support\PlatformContext;
 use App\Support\Ui\PanelAccess;
 use Database\Seeders\DemoShopSeeder;
@@ -35,7 +37,7 @@ Route::get('/', function () {
  */
 Route::get('/privacy', function () {
     $requested = (string) request()->query('lang', '');
-    if (in_array($requested, \App\Providers\Filament\AdminPanelProvider::LOCALES, true)) {
+    if (in_array($requested, AdminPanelProvider::LOCALES, true)) {
         app()->setLocale($requested);
     }
 
@@ -58,6 +60,24 @@ Route::get('/subscriptions', function () {
 
     return redirect('/admin/shopify-subscriptions'.($qs !== null && $qs !== '' ? '?'.$qs : ''));
 })->name('shopify.subscriptions.deeplink');
+
+/*
+ * "LETS" in wp-admin, step 2: redeem the one-shot token minted over the plugin's
+ * signed API (POST /api/woocommerce/embed/session) into a normal admin cookie
+ * session, then land on the dashboard inside the merchant's iframe.
+ *
+ * In the WEB group deliberately — a WooCommerce embed is a plain cookie session,
+ * not the Shopify App-Bridge/session-token dance (EnsureEmbeddedSession and
+ * EmbeddedAuthenticate stay Shopify-only and are untouched by this route). The
+ * iframe works because production already serves the session cookie as
+ * SameSite=None; Secure; Partitioned.
+ *
+ * The token is the whole credential and it is spent on first read, so a miss is a
+ * 410 page telling the merchant to click LETS again — never a login form, which a
+ * passwordless merchant could not complete.
+ */
+Route::get('/embed/woocommerce/{token}', EmbedLoginController::class)
+    ->name('woocommerce.embed.login');
 
 /*
  * Platform-admin "Exit shop": clear the entered-shop session selection and return
@@ -98,19 +118,19 @@ Route::post('/admin/platform/enter/{shop}', function (Shop $shop) {
  */
 Route::get('/admin/woocommerce/plugin/download', function () {
     $src = base_path('plugins/lets-payplus-woocommerce');
-    if (! is_dir($src) || ! class_exists(\ZipArchive::class)) {
+    if (! is_dir($src) || ! class_exists(ZipArchive::class)) {
         abort(404, 'The WooCommerce plugin package is not available.');
     }
 
     $tmp = (string) tempnam(sys_get_temp_dir(), 'lets-plugin');
-    $zip = new \ZipArchive;
-    if ($zip->open($tmp, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
+    $zip = new ZipArchive;
+    if ($zip->open($tmp, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
         abort(500, 'Could not build the plugin package.');
     }
 
-    $files = new \RecursiveIteratorIterator(
-        new \RecursiveDirectoryIterator($src, \FilesystemIterator::SKIP_DOTS),
-        \RecursiveIteratorIterator::LEAVES_ONLY,
+    $files = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($src, FilesystemIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::LEAVES_ONLY,
     );
     foreach ($files as $file) {
         $relative = 'lets-payplus-woocommerce/'.str_replace('\\', '/', ltrim(substr($file->getPathname(), strlen($src)), '/\\'));

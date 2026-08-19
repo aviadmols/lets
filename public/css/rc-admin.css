@@ -277,6 +277,12 @@
 .rc-chart__zero { stroke: var(--rc-border-strong); }
 .rc-chart__tick { fill: var(--rc-ink-muted); font: var(--rc-type-caption); }
 
+/* The all-future upcoming-charges table: a year of yearly members is hundreds
+   of day-rows, so the region scrolls instead of stretching the page. The
+   header row stays put while the body scrolls under it. */
+.rc-scroll-region { max-block-size: 480px; overflow-y: auto; }
+.rc-scroll-region .rc-table thead th { position: sticky; inset-block-start: 0; background: var(--rc-card); z-index: 1; }
+
 /* legend chips under the chart */
 .rc-chart-legend { display: flex; gap: var(--rc-space-5); margin-block-start: var(--rc-space-3); flex-wrap: wrap; }
 .rc-chart-legend__item { display: inline-flex; align-items: center; gap: var(--rc-space-2); font: var(--rc-type-caption); color: var(--rc-ink-muted); }
@@ -993,6 +999,77 @@ a.rc-railed:hover { background: var(--rc-blue-bg); }
 
 /* small inline icon sizing (used by the lock chip) without per-call styles. */
 .rc-icon-sm { inline-size: 14px; block-size: 14px; }
+
+/* =============================================================================
+   embedded.css — the admin as it renders INSIDE somebody else's page (wp-admin).
+
+   TOKENS: --rc-bg --rc-card --rc-border --rc-ink --rc-ink-muted --rc-font
+           --rc-space-* --rc-radius-card --rc-shadow-card
+           --rc-type-title --rc-type-body --rc-type-caption
+
+   Two jobs, no more:
+     1. Drop the chrome the HOST page already owns. WordPress supplies the account
+        menu and the site language; a second logout/profile control and a second
+        language switch inside the iframe are duplicates that lead a merchant out
+        of the frame. Both render as .fi-user-menu (the language-switch package
+        reuses that class), so one rule covers them.
+     2. Style the 410 "link expired" page, which renders standalone in the iframe
+        and therefore has to set its own page frame.
+
+   The embed is signalled by a <meta name="lets-embedded"> emitted at HEAD_END
+   (resources/views/filament/embedded/woocommerce.blade.php) — the panel offers no
+   hook that can put a class on <html>, and inline CSS/JS is not an option here.
+   ========================================================================== */
+
+html:has(meta[name="lets-embedded"]) .fi-user-menu {
+    display: none;
+}
+
+/* ------------------------------------------- 410: the link is used up --- */
+
+.rc-embed-notice {
+    margin: 0;
+    min-block-size: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--rc-space-5);
+    background: var(--rc-bg);
+    color: var(--rc-ink);
+    font: var(--rc-type-body);
+    font-family: var(--rc-font);
+}
+
+.rc-embed-notice__card {
+    max-inline-size: 30rem;
+    inline-size: 100%;
+    text-align: center;
+    padding: var(--rc-space-6);
+    background: var(--rc-card);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-card);
+    box-shadow: var(--rc-shadow-card);
+}
+
+.rc-embed-notice__logo {
+    font-size: 1.25rem;
+}
+
+.rc-embed-notice__title {
+    font: var(--rc-type-title);
+    margin-block: var(--rc-space-5) var(--rc-space-3);
+}
+
+.rc-embed-notice__body {
+    font: var(--rc-type-body);
+    margin-block: 0 var(--rc-space-3);
+}
+
+.rc-embed-notice__hint {
+    font: var(--rc-type-caption);
+    color: var(--rc-ink-muted);
+    margin: 0;
+}
 
 /* =============================================================================
    form.css — stacked form layout (component §4.x)

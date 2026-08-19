@@ -3,10 +3,10 @@
 namespace App\Providers\Filament;
 
 use App\Domain\Loyalty\Http\Controllers\AdminLoyaltyPreviewController;
-use App\Http\Controllers\Admin\AdminAccountPreviewController;
 use App\Domain\Upsell\Http\Controllers\AdminUpsellPreviewController;
 use App\Domain\Upsell\Http\Controllers\PostPurchaseController;
 use App\Domain\Upsell\Rendering\UpsellCardPresenter;
+use App\Http\Controllers\Admin\AdminAccountPreviewController;
 use App\Http\Middleware\BindDevTenant;
 use App\Http\Middleware\BindTenantFromUser;
 use App\Http\Middleware\DevAutoLogin;
@@ -14,12 +14,11 @@ use App\Http\Middleware\EmbeddedAuthenticate;
 use App\Http\Middleware\EnsureEmbeddedSession;
 use App\Http\Middleware\PersistEmbeddedContext;
 use App\Http\Middleware\SetAdminLocale;
-use Illuminate\Support\Facades\Route;
+use App\Support\Ui\PanelAccess;
 use BezhanSalleh\FilamentLanguageSwitch\LanguageSwitch;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
-use App\Support\Ui\PanelAccess;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Filament\Navigation\NavigationGroup;
 use Filament\Navigation\NavigationItem;
@@ -30,13 +29,14 @@ use Filament\Support\Colors\Color;
 use Filament\Support\Facades\FilamentAsset;
 use Filament\View\PanelsRenderHook;
 use Illuminate\Contracts\View\View;
-use Illuminate\Support\Facades\URL;
-use Illuminate\Support\Facades\View as ViewFacade;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Facades\View as ViewFacade;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 /**
@@ -54,11 +54,16 @@ class AdminPanelProvider extends PanelProvider
     // === CONSTANTS ===
     /** The app ships as LETS; this is the accessible name behind the logo lockup. */
     public const BRAND_NAME = 'LETS';
+
     public const THEME_ASSET_ID = 'rc-admin-theme';
+
     public const THEME_ASSET_PATH = 'css/rc-admin.css';
+
     /** Standalone brand files for slots that cannot render Blade (favicon, docs). */
     public const LOGO_PATH = 'images/lets-logo.svg';
+
     public const MARK_PATH = 'images/lets-mark.svg';
+
     public const LOCALES = ['en', 'he'];
 
     /**
@@ -169,6 +174,15 @@ class AdminPanelProvider extends PanelProvider
             ->renderHook(
                 PanelsRenderHook::HEAD_START,
                 fn (): View => ViewFacade::make('filament.embedded.app-bridge'),
+            )
+            // WordPress (WooCommerce) embed marker. Emits a single inert <meta> for
+            // a session that arrived through /embed/woocommerce/{token}; the theme
+            // sheet keys on it to drop the chrome wp-admin already provides (the
+            // user menu + the language switch). Renders NOTHING for a standalone
+            // login or the Shopify embed, so those are untouched.
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): View => ViewFacade::make('filament.embedded.woocommerce'),
             )
             // Platform-admin SHOP SWITCHER in the top bar, just left of the user menu.
             // The Blade renders nothing for a merchant (one shop, no switching), so only

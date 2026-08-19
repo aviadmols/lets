@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ShopResource\Pages;
 
+use App\Filament\Pages\HomeDashboard;
 use App\Filament\Resources\ShopResource;
 use App\Models\ActivityEvent;
 use App\Models\Shop;
@@ -9,9 +10,11 @@ use App\Services\WooCommerce\WooCommerceShopProvisioner;
 use App\Services\WooCommerce\WooConnectionTester;
 use App\Support\PlatformContext;
 use App\Support\Tenant;
+use App\Support\Ui\EmbeddedMenu;
 use App\Support\Ui\Money;
 use App\Support\Ui\PanelAccess;
 use Filament\Actions;
+use Filament\Forms\Components\CheckboxList;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
@@ -34,6 +37,7 @@ class ViewShop extends Page
 {
     // === CONSTANTS ===
     protected static string $resource = ShopResource::class;
+
     protected static string $view = 'filament.resources.shop-resource.pages.view-shop';
 
     public const ACTIVITY_LIMIT = 15;
@@ -126,8 +130,58 @@ class ViewShop extends Page
             $this->isWoo() ? $this->wooTestAction() : null,
             $this->isWoo() ? $this->wooTokenAction() : null,
             $this->isWoo() ? $this->wooDownloadAction() : null,
+            $this->isWoo() ? $this->embeddedMenuAction() : null,
             $this->isWoo() ? $this->revealWooConnectionAction() : null,
         ]));
+    }
+
+    /**
+     * WHICH AREAS this shop sees when the merchant opens LETS from wp-admin.
+     *
+     * The platform owner's call, not the merchant's — a WordPress-embedded LETS is
+     * sold as a slice of the product, and the slice is per contract. Saving the
+     * FULL list stores null ("no restriction") rather than a frozen snapshot, so a
+     * screen shipped next release still appears for a shop whose owner ticked
+     * everything today (EmbeddedMenu::sanitize).
+     *
+     * Gated twice: the whole resource is platform-admin-only, and the action
+     * re-checks before it writes — a header action is a Livewire call, and a
+     * mounted action is not the same thing as a rendered one.
+     */
+    private function embeddedMenuAction(): Actions\Action
+    {
+        return Actions\Action::make('embeddedMenu')
+            ->label(__('platform.embedded.action'))
+            ->icon('heroicon-o-bars-3')
+            ->color('gray')
+            ->visible(fn (): bool => PanelAccess::isPlatformAdmin())
+            ->modalHeading(__('platform.embedded.heading'))
+            ->modalDescription(__('platform.embedded.intro'))
+            ->modalSubmitActionLabel(__('platform.embedded.submit'))
+            ->fillForm(fn (): array => [
+                'areas' => $this->record->embeddedMenu() ?? EmbeddedMenu::keys(),
+            ])
+            ->form([
+                CheckboxList::make('areas')
+                    ->label(__('platform.embedded.areas_label'))
+                    ->helperText(__('platform.embedded.areas_help'))
+                    ->options(EmbeddedMenu::options())
+                    ->columns(2)
+                    ->bulkToggleable(),
+            ])
+            ->action(function (array $data): void {
+                if (! PanelAccess::isPlatformAdmin()) {
+                    return; // platform-admin only (defensive; the resource already gates)
+                }
+
+                $this->record->forceFill([
+                    'embedded_menu' => EmbeddedMenu::sanitize($data['areas'] ?? []),
+                ])->save();
+
+                $this->record->refresh();
+
+                Notification::make()->title(__('platform.embedded.saved'))->success()->send();
+            });
     }
 
     /**
@@ -182,7 +236,7 @@ class ViewShop extends Page
                     ->success()
                     ->send();
 
-                return redirect(\App\Filament\Pages\HomeDashboard::getUrl());
+                return redirect(HomeDashboard::getUrl());
             });
     }
 

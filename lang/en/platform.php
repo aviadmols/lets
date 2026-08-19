@@ -122,6 +122,18 @@ return [
         ],
     ],
 
+    // Per-shop control of the menu the merchant sees when LETS is opened INSIDE
+    // wp-admin (the area labels themselves live in lang/*/embedded.php).
+    'embedded' => [
+        'action' => 'Embedded menu',
+        'heading' => 'Menu inside WordPress',
+        'intro' => 'Choose which areas this shop sees when the merchant opens LETS from wp-admin. Nothing here changes the full admin at app.lets.co.il.',
+        'areas_label' => 'Visible areas',
+        'areas_help' => 'Home is always available. The PayPlus connection and team logins are never shown inside WordPress.',
+        'saved' => 'The embedded menu was updated.',
+        'submit' => 'Save menu',
+    ],
+
     // Top-bar shop switcher (W12): the platform admin sees/changes the entered shop.
     'switcher' => [
         'select' => 'Select a shop',

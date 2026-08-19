@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Domain\Billing\BillingPlan;
+use App\Filament\Pages\HomeDashboard;
 use App\Filament\Resources\ShopResource\Pages;
 use App\Models\InstallmentPlan;
 use App\Models\PaymentLedger;
@@ -39,8 +40,11 @@ class ShopResource extends Resource
 {
     // === CONSTANTS ===
     protected static ?string $model = Shop::class;
+
     protected static ?string $slug = 'shops';
+
     protected static ?string $navigationIcon = 'heroicon-o-building-storefront';
+
     protected static ?int $navigationSort = 10;
 
     /** status => rc badge tone (the StatusBadge map covers plan/ledger, not shop status). */
@@ -52,19 +56,30 @@ class ShopResource extends Resource
 
     // === Hard role gate (merchant gets nothing) ===
 
+    /**
+     * Platform admin AND not inside somebody else's admin. The embedded clause is
+     * belt-and-braces: the WordPress embed only ever signs in a merchant user of
+     * that shop (never a platform admin), but the platform's own directory must
+     * not be reachable from a merchant's iframe even if that ever changed.
+     */
+    private static function gate(): bool
+    {
+        return PanelAccess::canSeePlatform() && PanelAccess::embeddedAllows(self::class);
+    }
+
     public static function canAccess(): bool
     {
-        return PanelAccess::canSeePlatform();
+        return self::gate();
     }
 
     public static function canViewAny(): bool
     {
-        return PanelAccess::canSeePlatform();
+        return self::gate();
     }
 
     public static function shouldRegisterNavigation(): bool
     {
-        return PanelAccess::canSeePlatform();
+        return self::gate();
     }
 
     public static function canCreate(): bool
@@ -111,12 +126,12 @@ class ShopResource extends Resource
                 Tables\Columns\TextColumn::make('platform')
                     ->label(__('platform.shops.col.platform'))
                     ->badge()
-                    ->formatStateUsing(fn (string $state): string => __('platform.platform.' . $state)),
+                    ->formatStateUsing(fn (string $state): string => __('platform.platform.'.$state)),
 
                 Tables\Columns\TextColumn::make('status')
                     ->label(__('platform.shops.col.status'))
                     ->badge()
-                    ->formatStateUsing(fn (string $state): string => __('platform.status.' . $state))
+                    ->formatStateUsing(fn (string $state): string => __('platform.status.'.$state))
                     ->color(fn (string $state): string => self::STATUS_TONES[$state] ?? 'gray'),
 
                 Tables\Columns\TextColumn::make('plan')
@@ -164,15 +179,15 @@ class ShopResource extends Resource
                 Tables\Filters\SelectFilter::make('status')
                     ->label(__('platform.shops.col.status'))
                     ->options([
-                        Shop::STATUS_INSTALLED => __('platform.status.' . Shop::STATUS_INSTALLED),
-                        Shop::STATUS_ACTIVE => __('platform.status.' . Shop::STATUS_ACTIVE),
-                        Shop::STATUS_UNINSTALLED => __('platform.status.' . Shop::STATUS_UNINSTALLED),
+                        Shop::STATUS_INSTALLED => __('platform.status.'.Shop::STATUS_INSTALLED),
+                        Shop::STATUS_ACTIVE => __('platform.status.'.Shop::STATUS_ACTIVE),
+                        Shop::STATUS_UNINSTALLED => __('platform.status.'.Shop::STATUS_UNINSTALLED),
                     ]),
                 Tables\Filters\SelectFilter::make('platform')
                     ->label(__('platform.shops.col.platform'))
                     ->options([
-                        Shop::PLATFORM_SHOPIFY => __('platform.platform.' . Shop::PLATFORM_SHOPIFY),
-                        Shop::PLATFORM_WOOCOMMERCE => __('platform.platform.' . Shop::PLATFORM_WOOCOMMERCE),
+                        Shop::PLATFORM_SHOPIFY => __('platform.platform.'.Shop::PLATFORM_SHOPIFY),
+                        Shop::PLATFORM_WOOCOMMERCE => __('platform.platform.'.Shop::PLATFORM_WOOCOMMERCE),
                     ]),
                 Tables\Filters\SelectFilter::make('plan')
                     ->label(__('platform.shops.col.plan'))
@@ -230,7 +245,7 @@ class ShopResource extends Resource
             ->success()
             ->send();
 
-        return redirect(\App\Filament\Pages\HomeDashboard::getUrl());
+        return redirect(HomeDashboard::getUrl());
     }
 
     /**

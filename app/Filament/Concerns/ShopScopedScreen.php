@@ -21,19 +21,26 @@ use App\Support\Ui\PanelAccess;
  * Detail pages that opt out of the sidebar still set
  * `protected static bool $shouldRegisterNavigation = false;`; this trait honours
  * that flag (a hidden page stays hidden) while ALSO requiring a bound tenant.
+ *
+ * SECOND GATE — the WordPress embed. When the panel renders inside wp-admin
+ * (EmbeddedSession), the platform owner's per-shop allow-list decides which areas
+ * exist at all (PanelAccess::embeddedAllows → EmbeddedMenu). It is applied to
+ * canAccess() as well as the sidebar, because a hidden link that still answers on
+ * its URL is decoration, not a menu. Outside an embedded session it is a no-op.
  */
 trait ShopScopedScreen
 {
     /** A direct URL hit is denied unless a tenant shop is bound. */
     public static function canAccess(): bool
     {
-        return PanelAccess::canSeeShopScoped();
+        return PanelAccess::canSeeShopScoped()
+            && PanelAccess::embeddedAllows(static::class);
     }
 
     /** Show in the sidebar only when bound AND the screen hasn't opted out. */
     public static function shouldRegisterNavigation(): bool
     {
-        if (! PanelAccess::canSeeShopScoped()) {
+        if (! PanelAccess::canSeeShopScoped() || ! PanelAccess::embeddedAllows(static::class)) {
             return false;
         }
 

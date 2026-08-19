@@ -47,8 +47,11 @@ class ManagePayPlusConnection extends Page implements HasForms
 
     // === CONSTANTS ===
     protected static ?string $navigationIcon = 'heroicon-o-link';
+
     protected static string $view = 'filament.pages.payplus-connection';
+
     protected static ?string $slug = 'settings/payplus';
+
     protected static ?int $navigationSort = 10;
 
     /** Credential keys that are sensitive → masked after save, never re-shown. */
@@ -68,15 +71,22 @@ class ManagePayPlusConnection extends Page implements HasForms
         return $shop instanceof Shop && $shop->hidesPayplusSettings();
     }
 
-    /** A direct URL is denied too — not merely hidden from the sidebar. */
+    /**
+     * A direct URL is denied too — not merely hidden from the sidebar. The
+     * embedded check is re-stated here because this page overrides the trait:
+     * gateway credentials are never managed from inside somebody else's admin
+     * (EmbeddedMenu::ALWAYS_HIDDEN), whatever the shop's allow-list says.
+     */
     public static function canAccess(): bool
     {
-        return ! self::hiddenForShop() && PanelAccess::canSeeShopScoped();
+        return ! self::hiddenForShop()
+            && PanelAccess::canSeeShopScoped()
+            && PanelAccess::embeddedAllows(self::class);
     }
 
     public static function shouldRegisterNavigation(): bool
     {
-        if (self::hiddenForShop()) {
+        if (self::hiddenForShop() || ! PanelAccess::embeddedAllows(self::class)) {
             return false;
         }
 
@@ -116,6 +126,7 @@ class ManagePayPlusConnection extends Page implements HasForms
 
     /** Human names for the connected summary line. */
     public ?string $connectedTerminalName = null;
+
     public ?string $connectedPageName = null;
 
     public static function getNavigationGroup(): ?string

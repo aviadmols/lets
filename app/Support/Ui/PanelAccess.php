@@ -2,6 +2,7 @@
 
 namespace App\Support\Ui;
 
+use App\Support\EmbeddedSession;
 use App\Support\Tenant;
 use Illuminate\Support\Facades\Auth;
 
@@ -56,5 +57,25 @@ final class PanelAccess
     public static function canSeeShopScoped(): bool
     {
         return self::tenantBound();
+    }
+
+    /**
+     * EMBEDDED MENU GATE. When the panel is rendered inside wp-admin, the platform
+     * owner decides which areas this shop sees (Shop::embeddedMenu(); null = all).
+     * Outside an embedded session this is always true, so the standalone admin is
+     * completely unchanged.
+     *
+     * Called from BOTH shouldRegisterNavigation() and canAccess(): hiding a link
+     * is not security, so a direct URL to a hidden area must 403 as well.
+     *
+     * @param  class-string  $screenClass  the Page/Resource being gated (static::class)
+     */
+    public static function embeddedAllows(string $screenClass): bool
+    {
+        if (! EmbeddedSession::isWooCommerce()) {
+            return true;
+        }
+
+        return EmbeddedMenu::allows(Tenant::current()?->embeddedMenu(), $screenClass);
     }
 }

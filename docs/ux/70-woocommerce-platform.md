@@ -19,7 +19,8 @@ PayPlus hosted payment page ("דף סליקה") inside WooCommerce.
 - Target = **WooCommerce** (WC REST API; PayPlus already runs there as a WC gateway).
 - **Both** payment modes: (A) deposit/subscription/upsell surfaces ALONGSIDE the store's existing checkout
   (first); (B) LETS as a full `WC_Payment_Gateway` (later).
-- WooCommerce merchants access the dashboard via **direct login** at app.lets.co.il (no wp-admin embedding yet).
+- WooCommerce merchants access the dashboard via **direct login** at app.lets.co.il **or** embedded in wp-admin
+  (see "The LETS admin inside wp-admin" below — shipped later; the direct login still works unchanged).
 - Build **all three pillars together**.
 
 ## Access & auth model (vs Shopify)
@@ -28,7 +29,7 @@ PayPlus hosted payment page ("דף סליקה") inside WooCommerce.
 | Connect | App Store → OAuth | Paste LETS `api_key`/`api_secret` in the plugin Settings |
 | Per-request auth | session-token JWT | HMAC-SHA256(timestamp+method+path+body, api_secret), `X-LETS-*` |
 | Credential lifespan | offline token (refreshable) | stable API key (merchant rotates in plugin Settings) |
-| Dashboard | embedded iframe | direct login at app.lets.co.il (same panel) |
+| Dashboard | embedded iframe (App Bridge + session token) | direct login at app.lets.co.il, or embedded in wp-admin via a one-shot cookie-session link (same panel) |
 | Webhook auth | app-level HMAC (platform secret) | per-shop HMAC (`wc_webhook_secret`) |
 | Order creation | Admin API draft-order-completed-as-paid | WC REST `POST /orders` |
 
@@ -57,6 +58,54 @@ PayPlus hosted payment page ("דף סליקה") inside WooCommerce.
 | installment final | parent order `completed` (release), final document via `DocumentPolicy` |
 | recurring | new paid WC order per cycle, linked by meta; failed cycle → no order |
 | upsell | linked child WC order after `UpsellChargeService` charges the saved token |
+
+## The LETS admin inside wp-admin (embedded dashboard)
+
+A WooCommerce merchant clicks **LETS** in wp-admin and gets the LETS Filament admin in an **iframe, already
+signed in**, with a menu the platform owner decided. It supersedes the "direct login at app.lets.co.il" row in
+the table above for merchants who never want a second login (the direct login still works and is unchanged).
+
+**The handshake (two steps, one shot).**
+
+| Step | Route | Auth | What happens |
+|---|---|---|---|
+| 1 | `POST /api/woocommerce/embed/session` (`woocommerce.embed.session`) | plugin HMAC (`VerifyWooCommerceSignature`) | Body `{wp_user_email, wp_user_name, wp_user_id, locale, return_url}` → `{url, expires_in: 60}`. Mints `Str::random(48)` into the cache under `embed:woocommerce:<token>` for **60s** with the SIGNATURE'S shop id. |
+| 2 | `GET /embed/woocommerce/{token}` (`woocommerce.embed.login`) | the token itself | `Cache::pull` → **single use**. Signs in a merchant user of that shop, regenerates the session, marks it embedded, sets the locale, redirects to the dashboard. A miss/expiry is a plain **410** page telling the merchant to click LETS again — never a login form. |
+
+- **The shop is never taken from the body.** A `shop_id` in the request is ignored; the tenant is the
+  HMAC-verified shop, so a merchant editing their own plugin can only ever open a door into their own store.
+- **Who is signed in:** (a) a `User` with that email whose `shop_id` is this shop; else (b) the shop's oldest
+  merchant user (the owner); else (c) a new user created for the shop with a random unusable password. A
+  **platform admin is excluded from every branch**, and an email already belonging to another shop's user is
+  refused (410) rather than borrowed.
+- **Cookies:** production already serves the session cookie `SameSite=None; Secure; Partitioned`, which is what
+  makes a cookie session work in the WordPress iframe. No config change is part of this feature.
+- **Not the Shopify path:** `EmbeddedAuthenticate` / `EnsureEmbeddedSession` (App Bridge, session tokens,
+  bouncing) stay Shopify-only. A WooCommerce embed is a plain cookie session.
+- Every redemption logs `admin.embedded_login` with `shop_id` + `user_id`.
+
+**Embedded mode in the panel.** While `session('embedded_platform') === 'woocommerce'`:
+- The user menu (logout/profile) and the language switch are hidden — WordPress owns that chrome. Implemented as
+  a `<meta name="lets-embedded">` at `HEAD_END` plus one rule in `resources/css/filament/admin/components/embedded.css`
+  (both controls render as `.fi-user-menu`). Zero inline CSS/JS.
+- Navigation is filtered to the areas the platform owner allowed, through ONE seam:
+  `PanelAccess::embeddedAllows($screenClass)` consulted by `ShopScopedScreen::shouldRegisterNavigation()` **and**
+  `canAccess()` — a hidden area also **403s on its URL**, because hiding is not security.
+
+**Platform-owner control, per shop.** `shops.embedded_menu` (nullable JSON; **null = everything allowed**) is
+edited from the platform admin's shop page (`/admin/shops/{id}` → header action **Embedded menu**, WooCommerce
+shops only, platform admin only). The area catalogue lives once in `App\Support\Ui\EmbeddedMenu` and is read by
+both the checkbox list and the filter:
+
+`home · customers · subscriptions · loyalty · gift_orders · import · products · payments · documents · upsell ·
+storefront · analytics · observability · settings_billing · settings_invoicing · settings_mail ·
+settings_customer_area · settings_upsell_appearance`
+
+Rules the map encodes: **Home is always allowed** (a menu item that 403s is a bug report); the **PayPlus
+connection**, **Team logins** and the **platform Shops list** are never shown inside WordPress whatever the list
+says (credentials and logins belong in the full admin); a screen **not** in the map is **allowed** — failing open
+so a newly shipped screen does not silently vanish; and ticking every box stores `null`, so next release's screen
+appears for that shop too. Labels: `lang/{en,he}/embedded.php`; the action's own copy: `platform.embedded.*`.
 
 ## States / copy (per surface — to be filled per phase by product-ux-architect)
 - WooCommerce Connection (Settings): not-connected / generating-key / connected (health) / key-rotated / error.

@@ -29,12 +29,16 @@ class ObservabilityDashboard extends Page
 {
     // === CONSTANTS ===
     protected static ?string $navigationIcon = 'heroicon-o-signal';
+
     protected static string $view = 'filament.pages.observability-dashboard';
+
     protected static ?string $slug = 'observability';
+
     protected static ?int $navigationSort = 90;
 
     /** Charge-health windows surfaced as hero cards + the table header. */
     public const WINDOW_24H = ObservabilityMetrics::WINDOW_24H;
+
     public const WINDOW_7D = ObservabilityMetrics::WINDOW_7D;
 
     /** Success-rate target (percent) — at/above is healthy (green), below is warn. */
@@ -43,11 +47,13 @@ class ObservabilityDashboard extends Page
     /**
      * Same gate as the Home dashboard: a bound user (merchant / entered admin) or a
      * platform admin in platform mode may load it. A shopless non-platform user is
-     * denied (fail closed).
+     * denied (fail closed). Inside the WordPress embed the platform owner's
+     * per-shop allow-list applies as well (this page does not use the trait).
      */
     public static function canAccess(): bool
     {
-        return PanelAccess::canSeeShopScoped() || PanelAccess::isPlatformAdmin();
+        return (PanelAccess::canSeeShopScoped() || PanelAccess::isPlatformAdmin())
+            && PanelAccess::embeddedAllows(self::class);
     }
 
     public static function shouldRegisterNavigation(): bool
@@ -116,7 +122,7 @@ class ObservabilityDashboard extends Page
     /** A success-rate value → "94.2%" or an em-dash when there is no baseline. */
     public function rateDisplay(?float $rate): string
     {
-        return $rate === null ? '—' : Money::number($rate, 1) . '%';
+        return $rate === null ? '—' : Money::number($rate, 1).'%';
     }
 
     /** Success-rate → rc tone: target+ is healthy, anything below is a warning. */

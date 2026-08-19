@@ -7,6 +7,7 @@ use App\Http\Controllers\WooCommerce\Account\AccountOtpController;
 use App\Http\Controllers\WooCommerce\Account\SubscriptionEligibilityController;
 use App\Http\Controllers\WooCommerce\CheckoutSettingsController;
 use App\Http\Controllers\WooCommerce\DiagnosticsController;
+use App\Http\Controllers\WooCommerce\EmbedSessionController;
 use App\Http\Controllers\WooCommerce\InstallController;
 use App\Http\Controllers\WooCommerce\InvoicingController;
 use App\Http\Controllers\WooCommerce\PortalSettingsController;
@@ -66,6 +67,19 @@ Route::middleware(VerifyWooCommerceSignature::class)
             ->name('woocommerce.checkout_settings.show');
         Route::post('/checkout-settings', [CheckoutSettingsController::class, 'update'])
             ->name('woocommerce.checkout_settings.update');
+
+        /*
+        |----------------------------------------------------------------------
+        | "LETS" inside wp-admin — the embedded admin handshake
+        |----------------------------------------------------------------------
+        | The plugin's SERVER asks for a one-shot, 60-second URL and renders it in
+        | an iframe; the merchant is signed into the Filament panel without ever
+        | having a password. The shop is the HMAC-verified shop — a shop_id in the
+        | body is ignored — so a merchant can only ever mint a door into their own
+        | store. Redemption is the WEB route embed/woocommerce/{token}.
+        */
+        Route::post('/embed/session', EmbedSessionController::class)
+            ->name('woocommerce.embed.session');
 
         /*
         |----------------------------------------------------------------------
