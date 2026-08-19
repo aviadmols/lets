@@ -932,16 +932,11 @@ a.la-banner:focus-visible {
     font-size: 0.875rem;
 }
 
-/* Narrow: it stacks exactly like a rail banner. Wide: the image takes a
-   share of the row and is cropped rather than stretched. */
-@media (min-width: 720px) {
-    .la-banner--top .la-banner__img {
-        flex: 0 0 auto;
-        align-self: stretch;
-        inline-size: clamp(200px, 32%, 360px);
-        object-fit: cover;
-    }
-}
+/* The image spans the full width at every size, with the text beneath it —
+   the base .la-banner__img rule (inline-size: 100%, block-size: auto) already
+   says exactly that, so there is no wide-screen override to make. It used to
+   take a third of the row and crop; a top banner is an announcement, and an
+   announcement's picture is not a thumbnail beside the words. */
 
 /* =========================================================================
    Sign-in prompt (logged out)
