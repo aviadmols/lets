@@ -31,6 +31,13 @@ return [
         'recent_orders' => 'Recent orders',
         'timeline' => 'Timeline',
         'timeline_empty' => 'No activity recorded yet.',
+        'view_as' => [
+            'label' => 'View as customer',
+            'heading' => 'Their personal area',
+            'body' => 'Exactly what this customer sees when they sign in.',
+            'read_only' => 'Read-only — nothing here can be changed from this view.',
+            'close' => 'Close',
+        ],
         'panel' => [
             'overview' => 'Customer overview',
             'comm_prefs' => 'Communication preferences',

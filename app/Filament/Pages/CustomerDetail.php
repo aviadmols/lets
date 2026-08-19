@@ -6,6 +6,7 @@ use App\Domain\Campaigns\GiftShippingAddress;
 use App\Domain\Customers\CustomerContact;
 use App\Domain\Customers\CustomerContactReader;
 use App\Domain\Customers\CustomerContactWriter;
+use App\Domain\Customers\CustomerPlans;
 use App\Domain\Customers\CustomerOrdersReader;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Filament\Resources\SubscriptionResource\Pages\ViewSubscription;
@@ -23,6 +24,7 @@ use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
+use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
@@ -77,6 +79,32 @@ class CustomerDetail extends Page
     protected function getHeaderActions(): array
     {
         return [
+            /*
+             * "See what they see." The customer's own personal area, drawn by the
+             * same stylesheet and renderer their storefront ships, with their real
+             * subscriptions behind it — for the support call where the merchant
+             * needs to know what the person on the phone is looking at.
+             *
+             * It is a VIEW, not a login: no session is minted for the shopper, and
+             * the page renders inert (preview mode, no endpoint), so nothing can be
+             * cancelled from inside somebody else's screen by accident. Acting on a
+             * subscription stays on the admin's own screens, where it is confirmed
+             * and written to the Timeline with a name against it.
+             */
+            HeaderAction::make('viewAsCustomer')
+                ->label(__('customers.detail.view_as.label'))
+                ->icon('heroicon-m-eye')
+                ->color('gray')
+                ->visible(fn (): bool => $this->plans()->isNotEmpty())
+                ->modalHeading(__('customers.detail.view_as.heading'))
+                ->modalDescription(__('customers.detail.view_as.body'))
+                ->modalSubmitAction(false)
+                ->modalCancelActionLabel(__('customers.detail.view_as.close'))
+                ->modalWidth('5xl')
+                ->modalContent(fn (): View => view('filament.pages.partials.account-view-as', [
+                    'url' => route('filament.admin.account.preview', ['customer' => $this->customer]),
+                ])),
+
             HeaderAction::make('addNote')
                 ->label(__('subscriptions.action.note.label'))
                 ->icon('heroicon-m-plus')
@@ -320,43 +348,7 @@ class CustomerDetail extends Page
      */
     public function plans(): Collection
     {
-        return $this->plansMemo ??= InstallmentPlan::query()
-            ->where(fn (Builder $q): Builder => $this->matchesCustomer($q))
-            ->latest('id')
-            ->get();
-    }
-
-    /**
-     * Narrow a plan query to this customer: any id column carrying the
-     * reference, plus every email those plans are known by.
-     */
-    private function matchesCustomer(Builder $query): Builder
-    {
-        $ref = trim($this->customer);
-
-        $byRef = static fn (Builder $q): Builder => $q
-            ->where('shopify_customer_id', $ref)
-            ->orWhere('external_customer_id', $ref)
-            ->orWhere('customer_id', $ref);
-
-        // The reference IS an email for a guest — and it is also the email of the
-        // account rows, so it is matched both ways.
-        $emails = InstallmentPlan::query()
-            ->where($byRef)
-            ->pluck('customer_email')
-            ->push(filter_var($ref, FILTER_VALIDATE_EMAIL) !== false ? $ref : null)
-            ->map(static fn ($email): string => mb_strtolower(trim((string) $email)))
-            ->filter(static fn (string $email): bool => $email !== '')
-            ->unique()
-            ->values();
-
-        return $query->where(function (Builder $q) use ($byRef, $emails): void {
-            $byRef($q);
-
-            foreach ($emails as $email) {
-                $q->orWhereRaw('LOWER(customer_email) = ?', [$email]);
-            }
-        });
+        return $this->plansMemo ??= CustomerPlans::query($this->customer)->get();
     }
 
     /**
