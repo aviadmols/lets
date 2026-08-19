@@ -21,6 +21,7 @@ use App\Filament\Pages\ObservabilityDashboard;
 use App\Filament\Pages\PostPurchaseOffers;
 use App\Filament\Pages\ProductDetail;
 use App\Filament\Pages\StorefrontElements;
+use App\Filament\Resources\AccountOfferResource;
 use App\Filament\Resources\IssuedDocumentResource;
 use App\Filament\Resources\PaymentLedgerResource;
 use App\Filament\Resources\ProductResource;
@@ -146,6 +147,7 @@ final class EmbeddedMenu
 
         PostPurchaseOffers::class => self::AREA_UPSELL,
         FlowBuilder::class => self::AREA_UPSELL,
+        AccountOfferResource::class => self::AREA_UPSELL,
 
         StorefrontElements::class => self::AREA_STOREFRONT,
         Analytics::class => self::AREA_ANALYTICS,
