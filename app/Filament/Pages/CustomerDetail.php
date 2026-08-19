@@ -6,8 +6,9 @@ use App\Domain\Campaigns\GiftShippingAddress;
 use App\Domain\Customers\CustomerContact;
 use App\Domain\Customers\CustomerContactReader;
 use App\Domain\Customers\CustomerContactWriter;
-use App\Domain\Customers\CustomerPlans;
 use App\Domain\Customers\CustomerOrdersReader;
+use App\Domain\Customers\CustomerPlans;
+use App\Domain\Customers\ImpersonationTicket;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Filament\Resources\SubscriptionResource\Pages\ViewSubscription;
 use App\Models\ActivityEvent;
@@ -24,9 +25,8 @@ use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
-use Illuminate\Contracts\View\View;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Customer detail (docs/ux/20-customers.md Part B). v1 derived-from-plans:
@@ -80,30 +80,28 @@ class CustomerDetail extends Page
     {
         return [
             /*
-             * "See what they see." The customer's own personal area, drawn by the
-             * same stylesheet and renderer their storefront ships, with their real
-             * subscriptions behind it — for the support call where the merchant
-             * needs to know what the person on the phone is looking at.
+             * "Log in as this customer." The support call where nothing else will
+             * do: the merchant lands on the store signed in AS the person on the
+             * phone, on their own account page, seeing what they see and able to
+             * act where they act.
              *
-             * It is a VIEW, not a login: no session is minted for the shopper, and
-             * the page renders inert (preview mode, no endpoint), so nothing can be
-             * cancelled from inside somebody else's screen by accident. Acting on a
-             * subscription stays on the admin's own screens, where it is confirmed
-             * and written to the Timeline with a name against it.
+             * IT IS A REAL SESSION, and the confirmation says so in those words —
+             * this browser stops being the merchant's WordPress admin and becomes
+             * the customer, and the act is written to the customer's Timeline with
+             * a name against it. LETS only mints a ticket; WORDPRESS resolves who
+             * that is and refuses to hand over a privileged account, so this can
+             * never be a back door into the merchant's own admin.
              */
-            HeaderAction::make('viewAsCustomer')
-                ->label(__('customers.detail.view_as.label'))
-                ->icon('heroicon-m-eye')
+            HeaderAction::make('loginAsCustomer')
+                ->label(__('customers.detail.login_as.label'))
+                ->icon('heroicon-m-arrow-right-on-rectangle')
                 ->color('gray')
-                ->visible(fn (): bool => $this->plans()->isNotEmpty())
-                ->modalHeading(__('customers.detail.view_as.heading'))
-                ->modalDescription(__('customers.detail.view_as.body'))
-                ->modalSubmitAction(false)
-                ->modalCancelActionLabel(__('customers.detail.view_as.close'))
-                ->modalWidth('5xl')
-                ->modalContent(fn (): View => view('filament.pages.partials.account-view-as', [
-                    'url' => route('filament.admin.account.preview', ['customer' => $this->customer]),
-                ])),
+                ->visible(fn (): bool => $this->plans()->isNotEmpty() && $this->wooShop() !== null)
+                ->requiresConfirmation()
+                ->modalHeading(__('customers.detail.login_as.heading'))
+                ->modalDescription(__('customers.detail.login_as.body'))
+                ->modalSubmitActionLabel(__('customers.detail.login_as.confirm'))
+                ->action(fn (): mixed => $this->loginAsCustomer()),
 
             HeaderAction::make('addNote')
                 ->label(__('subscriptions.action.note.label'))
@@ -162,6 +160,88 @@ class CustomerDetail extends Page
         );
 
         Notification::make()->title(__('subscriptions.action.note.success'))->success()->send();
+    }
+
+    // === Log in as customer ===
+
+    /**
+     * The WooCommerce store this customer shops in, or null.
+     *
+     * Only WooCommerce: the plugin is what turns a ticket into a session, and a
+     * Shopify shop has nothing on the other end of the link. A connected store is
+     * required for the same reason — an unconnected one has no plugin talking to
+     * us, so the ticket would land on a page that does not know what it is.
+     */
+    private function wooShop(): ?Shop
+    {
+        $shop = Tenant::current();
+
+        return $shop instanceof Shop
+            && $shop->platform === Shop::PLATFORM_WOOCOMMERCE
+            && $shop->hasWooConnection()
+                ? $shop
+                : null;
+    }
+
+    /**
+     * Mint the ticket and send this browser to the store with it.
+     *
+     * WHAT LEAVES HERE IS A TICKET, NOT AN IDENTITY. The customer's address is
+     * stored against the ticket on OUR side and answered only to the plugin over
+     * the signed channel; the URL the merchant's browser follows carries nothing
+     * but 48 random characters, worth one redemption for two minutes.
+     *
+     * The email is read from the newest subscription that carries one, because
+     * that is the address the store knows this person by. Without one there is
+     * nobody for WordPress to resolve, and saying so beats a link that fails
+     * silently on the other side.
+     */
+    protected function loginAsCustomer(): mixed
+    {
+        $shop = $this->wooShop();
+        $base = rtrim((string) ($shop?->wooConfig()['base_url'] ?? ''), '/');
+
+        if ($shop === null || $base === '') {
+            Notification::make()->title(__('customers.detail.login_as.unavailable'))->danger()->send();
+
+            return null;
+        }
+
+        $email = trim((string) $this->plans()
+            ->first(fn (InstallmentPlan $p): bool => trim((string) $p->customer_email) !== '')
+            ?->customer_email);
+
+        if ($email === '') {
+            Notification::make()->title(__('customers.detail.login_as.no_email'))->danger()->send();
+
+            return null;
+        }
+
+        // PERSONAL-DATA ACCESS LOG (docs/security/security-policies.md §5): becoming
+        // somebody is the widest read of their data there is, so it goes on the
+        // record with the admin's id against it — the same rule (and the same
+        // shape) CustomerContactReader follows for a contact-details read.
+        Log::info('privacy.personal_data_accessed', [
+            'shop_id' => (int) $shop->getKey(),
+            'customer_ref' => $this->customer,
+            'surface' => 'account_login_as',
+            'user_id' => auth()->id(),
+        ]);
+
+        // And on the CUSTOMER's own record, where the merchant will look first when
+        // something on this account changed and nobody remembers doing it. The
+        // ticket is never written down — only who was entered as, and by whom
+        // (Timeline stamps the acting admin as the actor).
+        Timeline::record(
+            kind: Timeline::KIND_CUSTOMER_IMPERSONATED,
+            details: ['customer' => $this->customer],
+            planId: $this->plans()->first()?->getKey(),
+            shopId: (int) $shop->getKey(),
+        );
+
+        return redirect()->away(
+            $base.'/?lets_login_as='.urlencode(ImpersonationTicket::issue($shop, $this->customer, $email))
+        );
     }
 
     /**

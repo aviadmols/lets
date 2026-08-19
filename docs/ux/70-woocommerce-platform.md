@@ -48,6 +48,7 @@ PayPlus hosted payment page ("דף סליקה") inside WooCommerce.
 | `/wc/installments/start` | POST · HMAC | `/installments/start` | `{product_id, variant_id, knobs, customer_*}` → `{plan_public_id, invoice_url, deposit_amount, currency}` | `DepositPlanService::create` → `WooCommerceDepositInvoiceService` (`generateLink`) |
 | `/wc/upsell/offer` | GET · HMAC | `/upsell/offer` (session-token) | `{order_id, customer}` → `{offer, reason?}` | `UpsellResolver` |
 | `/wc/upsell/accept` | POST · HMAC | `/upsell/accept-api` (signed) | `{flow, offer, parent_order, customer}` → `{result, charged, transaction_uid, next_offer}` | `UpsellChargeService::accept` |
+| `/api/woocommerce/account/impersonate/verify` | POST · HMAC | (none — Shopify has no store login) | `{ticket}` → `{ok, customer_ref, email}` \| `{ok: false, reason: 'expired'}` | `ImpersonationTicket::verify` |
 | `/woocommerce/webhooks/{wc_shop_token}` | POST · WC HMAC | `/shopify/webhooks` | WC webhook body → 202 | `WooWebhookRouter` → `WooOrderPaidHandler` |
 
 ## Order strategy per `charge_context` (WooCommerce)
@@ -83,6 +84,27 @@ the table above for merchants who never want a second login (the direct login st
 - **Not the Shopify path:** `EmbeddedAuthenticate` / `EnsureEmbeddedSession` (App Bridge, session tokens,
   bouncing) stay Shopify-only. A WooCommerce embed is a plain cookie session.
 - Every redemption logs `admin.embedded_login` with `shop_id` + `user_id`.
+
+## "Log in as customer" (the other direction: LETS admin → the merchant's storefront)
+
+From the LETS customer page, **Log in as customer** signs the admin's browser into the merchant's WooCommerce
+store AS that shopper, on My Account. The action is visible only for a **connected WooCommerce** shop that has
+at least one plan, and it confirms first — the copy says plainly that this browser's WordPress admin session
+ends and that the act is recorded.
+
+| Step | Route / hook | Auth | What happens |
+|---|---|---|---|
+| 1 | `CustomerDetail::loginAsCustomer` | the admin's own panel session | `ImpersonationTicket::issue` → `Str::random(48)` stored under `impersonate:woocommerce:<sha256(token)>` for **120s** with `{shop_id, customer_ref, email, issued_by_user_id}`. Logs `privacy.personal_data_accessed` (`surface: account_login_as`), writes the `customer_impersonated` Timeline event on the customer's newest plan, then redirects to `{base_url}/?lets_login_as=<ticket>`. |
+| 2 | plugin `init` (priority 1), `class-lets-impersonate.php` | the ticket, over the plugin's signed channel | `POST /api/woocommerce/account/impersonate/verify` → `{customer_ref, email}`. `Cache::pull` makes it **single use**, and the ticket resolves ONLY for the shop the signature resolved. |
+| 3 | `lets_payplus_account_sign_in()` | WordPress | The email is resolved to a WP user (`get_user_by`, then `lets_payplus_account_find_user`). **A privileged user is refused** — a LETS admin can never become a WordPress administrator this way. Success redirects to My Account **without the ticket in the URL**. |
+
+- **The key stored is the HASH.** A cache dump carries no replayable ticket; the token itself is never written down.
+- **Refusals leak nothing.** Expired, forged, wrong shop, no such user and "privileged" all redirect to My Account
+  with the same generic notice ("That link is no longer valid" / "הקישור אינו תקף יותר"). The real reason goes to the
+  plugin's own activity log (Settings → LETS), never to the browser.
+- **The way back** is a red WordPress admin-bar node, "Signed in as {name} — exit", whose link logs out and returns
+  to `/wp-admin`. The flag lives in user meta and is cleared on `wp_logout` and on any genuine `wp_login`.
+- Same trust split as the sign-in codes: **LETS attests, WordPress decides identity and issues the session.**
 
 **Embedded mode in the panel.** While `session('embedded_platform') === 'woocommerce'`:
 - The user menu (logout/profile) and the language switch are hidden — WordPress owns that chrome. Implemented as

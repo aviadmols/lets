@@ -30,6 +30,10 @@ final class EventPresenter
         'plan_edited' => ['info', 'timeline.kind.plan_edited'],
         'customer_details_updated' => ['info', 'timeline.kind.customer_details_updated'],
         'admin_note' => ['info', 'timeline.kind.admin_note'],
+        // WARNING, not info: an admin was signed into the store AS this customer.
+        // It is the one entry that explains an action nobody on the team remembers
+        // taking, so it must stand out in the scan somebody runs to find it.
+        'customer_impersonated' => ['warning', 'timeline.kind.customer_impersonated'],
         'plan_completed' => ['success', 'timeline.kind.plan_completed'],
         'plan_cancelled' => ['info', 'timeline.kind.plan_cancelled'],
         'plan_paused' => ['info', 'timeline.kind.plan_paused'],

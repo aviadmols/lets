@@ -70,6 +70,14 @@ final class Timeline
     public const KIND_ADMIN_NOTE = 'admin_note';
 
     /**
+     * An admin signed into the STORE as this customer ("Log in as customer").
+     * details: {customer} — the reference only, never the ticket that was minted.
+     * Its own kind because becoming somebody is not an edit, and the merchant
+     * looking for "who did this to my customer's account" must find it in one scan.
+     */
+    public const KIND_CUSTOMER_IMPERSONATED = 'customer_impersonated';
+
+    /**
      * Record a Timeline event. Never throws.
      *
      * ACTOR ATTRIBUTION (W2): when the caller does NOT pass an explicit actor, the

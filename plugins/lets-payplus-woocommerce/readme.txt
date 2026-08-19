@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.30.0
+Stable tag: 0.31.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,17 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.31.0 =
+* "Log in as customer" — from the customer page in LETS, a merchant now lands on
+  their own store already signed in as that shopper, on My Account, instead of
+  reading a copy of the page. A red bar across the top says who they are signed
+  in as, and one click leaves it and returns to the dashboard.
+* WordPress decides who that is, not LETS: the link carries a single-use ticket
+  worth two minutes, WordPress resolves it to one of its OWN users, and an
+  account that can edit the site is refused outright — so this can never become a
+  way into a store's back office. Every attempt, granted or refused, is written
+  to the activity log on Settings → LETS, and to the customer's timeline.
 
 = 0.30.0 =
 * A subscription purchase can no longer produce TWO tax invoices. Stores that

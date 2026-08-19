@@ -12,6 +12,7 @@ return [
         'plan_edited' => 'המנוי נערך',
         'customer_details_updated' => 'פרטי ההתקשרות עודכנו',
         'admin_note' => 'הערה',
+        'customer_impersonated' => 'כניסה לחנות בתור הלקוח',
         'plan_completed' => 'התוכנית הושלמה',
         'plan_cancelled' => 'התוכנית בוטלה',
         'plan_paused' => 'התוכנית הושהתה',

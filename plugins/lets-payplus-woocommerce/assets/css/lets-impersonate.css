@@ -1,0 +1,39 @@
+/* =========================================================================
+   LETS — the "you are signed in as somebody else" admin-bar node.
+
+   ONE node, in the bar WordPress already draws, and it is also the way out.
+   A fixed banner was the alternative and was rejected: it would cover the
+   merchant's own storefront while they are trying to look at it.
+
+   TOKENS DECLARED HERE (locally, on the node itself — the WordPress admin bar
+   is not the personal area and owns none of the --la-* tokens):
+     --lets-imp-bg    the warning surface, so the state cannot be mistaken
+                      for an ordinary admin-bar item
+     --lets-imp-fg    ink on that surface
+     --lets-imp-hover the surface under the pointer
+
+   The colours are literal because this sheet paints WordPress chrome, not the
+   merchant's brand: this node must look the same on every store, since its whole
+   job is to say "this is not a normal session".
+
+   RTL needs nothing — the admin bar mirrors itself, and no physical direction
+   is named below.
+   ========================================================================= */
+
+#wpadminbar #wp-admin-bar-lets-impersonation {
+    --lets-imp-bg: #b42318;
+    --lets-imp-fg: #fff;
+    --lets-imp-hover: #912018;
+}
+
+#wpadminbar #wp-admin-bar-lets-impersonation > .ab-item {
+    background: var(--lets-imp-bg);
+    color: var(--lets-imp-fg);
+    font-weight: 600;
+}
+
+#wpadminbar #wp-admin-bar-lets-impersonation:hover > .ab-item,
+#wpadminbar #wp-admin-bar-lets-impersonation > .ab-item:focus {
+    background: var(--lets-imp-hover);
+    color: var(--lets-imp-fg);
+}

@@ -4,6 +4,7 @@ use App\Domain\Account\CustomerSubscriptionActions;
 use App\Http\Controllers\WooCommerce\Account\AccountActionController;
 use App\Http\Controllers\WooCommerce\Account\AccountBootstrapController;
 use App\Http\Controllers\WooCommerce\Account\AccountOtpController;
+use App\Http\Controllers\WooCommerce\Account\ImpersonateVerifyController;
 use App\Http\Controllers\WooCommerce\Account\SubscriptionEligibilityController;
 use App\Http\Controllers\WooCommerce\CheckoutSettingsController;
 use App\Http\Controllers\WooCommerce\DiagnosticsController;
@@ -223,6 +224,14 @@ Route::middleware(VerifyWooCommerceSignature::class)
             ->name('woocommerce.account.otp.request');
         Route::post('/account/otp/verify', [AccountOtpController::class, 'verify'])
             ->name('woocommerce.account.otp.verify');
+
+        // "Log in as this customer", from the LETS customer page. The admin's
+        // browser arrives at the store carrying a ticket; the plugin hands it back
+        // here and we answer WHO it stands for. It is an attestation, never a
+        // session: WordPress resolves its own user and refuses privileged accounts.
+        // Single use, two minutes, and only for the shop the signature resolved.
+        Route::post('/account/impersonate/verify', ImpersonateVerifyController::class)
+            ->name('woocommerce.account.impersonate.verify');
 
         Route::post('/account/subscriptions/{action}', AccountActionController::class)
             ->whereIn('action', CustomerSubscriptionActions::ACTIONS)

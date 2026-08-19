@@ -31,12 +31,13 @@ return [
         'recent_orders' => 'Recent orders',
         'timeline' => 'Timeline',
         'timeline_empty' => 'No activity recorded yet.',
-        'view_as' => [
-            'label' => 'View as customer',
-            'heading' => 'Their personal area',
-            'body' => 'Exactly what this customer sees when they sign in.',
-            'read_only' => 'Read-only — nothing here can be changed from this view.',
-            'close' => 'Close',
+        'login_as' => [
+            'label' => 'Log in as customer',
+            'heading' => 'Log in to the store as this customer',
+            'body' => 'This browser will be signed in to the store as this customer, on their account page. Your own WordPress admin session in this browser ends — sign in again to return to it. The action is recorded on this customer’s timeline.',
+            'confirm' => 'Log in as them',
+            'no_email' => 'No subscription of this customer carries an email address, so the store cannot tell who they are.',
+            'unavailable' => 'This store is not connected to WooCommerce.',
         ],
         'panel' => [
             'overview' => 'Customer overview',
