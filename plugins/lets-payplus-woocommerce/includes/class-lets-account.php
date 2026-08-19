@@ -97,6 +97,35 @@ define('LETS_ACCOUNT_PRIVILEGED_CAPS', array(
 define('LETS_ACCOUNT_TEMPLATE_DIR', plugin_dir_path(LETS_PAYPLUS_FILE) . 'templates/');
 define('LETS_ACCOUNT_TEMPLATES', 'myaccount/my-account.php|myaccount/dashboard.php');
 
+/**
+ * WooCommerce's login screen — overridden SEPARATELY from the two above.
+ *
+ * The shell and the dashboard are ours whenever the store is connected. This one
+ * is ours only while the merchant actually offers passwordless sign-in: a shop
+ * that has not switched it on must keep WooCommerce's own form untouched, and a
+ * shop that has switched it on wants the code panel to BE the sign-in screen
+ * rather than a second box under a username/password form nobody uses.
+ */
+define('LETS_ACCOUNT_LOGIN_TEMPLATE', 'myaccount/form-login.php');
+
+/**
+ * Quick registration — the "you proved you own this address, now tell us who you
+ * are" ticket.
+ *
+ * The ticket is a random string handed to the browser; what it maps to (the
+ * channel and the VERIFIED destination) never leaves the server. Ten minutes is
+ * long enough to type a name and short enough that a ticket left in a history
+ * entry is worthless.
+ */
+define('LETS_ACCOUNT_REG_TICKET_TTL', 600);
+define('LETS_ACCOUNT_REG_TICKET_PREFIX', 'lets_reg_');
+
+/** Longest first/last name accepted at quick registration. */
+define('LETS_ACCOUNT_NAME_MAX', 60);
+
+/** Seconds before "send again" is offered on the code step. */
+define('LETS_ACCOUNT_RESEND_SECONDS', 30);
+
 /** Shop-wide shell config (appearance + sign-in), cached apart from any shopper. */
 define('LETS_ACCOUNT_SHELL_CACHE', 'lets_account_shell_cfg');
 define('LETS_ACCOUNT_SHELL_TTL', 300);
@@ -688,6 +717,25 @@ function lets_payplus_account_locate_template($template, $template_name)
         return $template;
     }
 
+    // THE SIGN-IN SCREEN, on its own condition. A merchant who never switched
+    // code sign-in on keeps WooCommerce's login form exactly as it was — this
+    // override exists to REPLACE that form with the code panel, and replacing it
+    // with nothing would be a store with no way in.
+    if (LETS_ACCOUNT_LOGIN_TEMPLATE === $template_name) {
+        if (! lets_payplus_account_login_takeover()) {
+            return $template;
+        }
+
+        /** @see the filter documented above — the same escape hatch covers this file. */
+        if (! apply_filters('lets_payplus_account_own_template', true, $template_name)) {
+            return $template;
+        }
+
+        $login_template = LETS_ACCOUNT_TEMPLATE_DIR . $template_name;
+
+        return file_exists($login_template) ? $login_template : $template;
+    }
+
     if (! in_array($template_name, explode('|', LETS_ACCOUNT_TEMPLATES), true)) {
         return $template;
     }
@@ -705,6 +753,47 @@ function lets_payplus_account_locate_template($template, $template_name)
     $ours = LETS_ACCOUNT_TEMPLATE_DIR . $template_name;
 
     return file_exists($ours) ? $ours : $template;
+}
+
+/**
+ * The sign-in screen, decided AFTER WooCommerce's template cache.
+ *
+ * wc_get_template() remembers which file a template name resolved to — in an
+ * OBJECT cache, which on a store running Redis or Memcached survives the
+ * request. `woocommerce_locate_template` runs on the miss only, so on such a
+ * store the answer from before this feature existed would keep being served and
+ * the new sign-in screen would never appear (and, the other way round, a shop
+ * that switched code sign-in off would keep getting ours until somebody flushed
+ * a cache they do not know about).
+ *
+ * This filter runs after the cache is consulted, so it is the one that actually
+ * decides. The other two templates keep the older seam: they are ours whenever
+ * the store is connected, which is a condition that does not change between
+ * requests, so a cached answer is never the wrong one.
+ *
+ * @param  string  $template
+ * @param  string  $template_name
+ * @return string
+ */
+add_filter('wc_get_template', 'lets_payplus_account_login_template', 99, 2);
+
+function lets_payplus_account_login_template($template, $template_name)
+{
+    if (LETS_ACCOUNT_LOGIN_TEMPLATE !== $template_name || null === lets_payplus_connection()) {
+        return $template;
+    }
+
+    if (! lets_payplus_account_login_takeover()) {
+        return $template;
+    }
+
+    if (! apply_filters('lets_payplus_account_own_template', true, $template_name)) {
+        return $template;
+    }
+
+    $login_template = LETS_ACCOUNT_TEMPLATE_DIR . $template_name;
+
+    return file_exists($login_template) ? $login_template : $template;
 }
 
 /**
@@ -966,6 +1055,13 @@ add_action('rest_api_init', function () {
         'callback'            => 'lets_payplus_account_rest_code_verify',
         'permission_callback' => 'lets_payplus_rest_permission',
     ));
+    // The second half of a verify that found nobody: the shopper proved the
+    // address is theirs, and now names themselves so the store has a customer.
+    register_rest_route(LETS_PAYPLUS_REST_NS, '/account/code/register', array(
+        'methods'             => 'POST',
+        'callback'            => 'lets_payplus_account_rest_code_register',
+        'permission_callback' => 'lets_payplus_rest_permission',
+    ));
     register_rest_route(LETS_PAYPLUS_REST_NS, '/account/google', array(
         'methods'             => 'POST',
         'callback'            => 'lets_payplus_account_rest_google',
@@ -1050,11 +1146,21 @@ function lets_payplus_account_clean_items($rows)
 /**
  * Ask LETS to send a code.
  *
- * We resolve the typed address or phone to a WP user FIRST and only then call
- * LETS — so a code is never sent to an address with no account. The response is
- * the SAME either way: "if that matches an account, a code is on its way". An
- * endpoint that distinguishes the two is an account-enumeration oracle, and it
- * would leak the merchant's customer list to anyone with a browser.
+ * A CODE IS SENT WHETHER OR NOT THE ADDRESS HAS AN ACCOUNT. It used to be sent
+ * only to a resolved WP user, which meant a shopper the store had never seen was
+ * told "a code is on its way" and then waited for an SMS that was never sent —
+ * the polite lie the enumeration defence required, and a dead end. Now the code
+ * goes out either way: an address that turns out to have no user finishes at the
+ * quick-registration step instead, so the sentence is true for everyone.
+ *
+ * The answer is still the SAME for every caller. An endpoint that distinguishes
+ * "we know you" from "we do not" is an account-enumeration oracle, and it would
+ * leak the merchant's customer list to anyone with a browser.
+ *
+ * The two things that DO stop a send: a destination that is not a plausible
+ * address or handset at all (a code there is pure cost), and a destination that
+ * resolves to a privileged account (a six-digit code must never be a route into
+ * the back office — see lets_payplus_account_is_privileged()).
  */
 function lets_payplus_account_rest_code_request(WP_REST_Request $request)
 {
@@ -1068,11 +1174,15 @@ function lets_payplus_account_rest_code_request(WP_REST_Request $request)
         return rest_ensure_response(array('ok' => true));
     }
 
+    if (! lets_payplus_account_destination_is_plausible($channel, $destination)) {
+        return rest_ensure_response(array('ok' => true));
+    }
+
     $user = lets_payplus_account_find_user($channel, $destination);
 
-    // A code to an account that could never use it is pure cost — and the shop
-    // owner's own address is the one an attacker knows. Same answer as a stranger.
-    if (! $user || lets_payplus_account_is_privileged($user)) {
+    // The shop owner's own address is the one an attacker knows. Same answer as
+    // a stranger's, and nothing sent.
+    if ($user && lets_payplus_account_is_privileged($user)) {
         return rest_ensure_response(array('ok' => true));
     }
 
@@ -1086,11 +1196,39 @@ function lets_payplus_account_rest_code_request(WP_REST_Request $request)
 }
 
 /**
- * Verify a code and, on success, log the WordPress user in.
+ * Could this string reach anybody at all?
+ *
+ * Not validation for the shopper's benefit — the panel does that in the browser —
+ * but a floor under the SMS bill. `asdf` is not a handset and `07` is not a phone
+ * number, and every send costs the merchant money.
+ *
+ * @param  string  $channel
+ * @param  string  $destination
+ * @return bool
+ */
+function lets_payplus_account_destination_is_plausible($channel, $destination)
+{
+    $destination = trim((string) $destination);
+
+    if ('email' === $channel) {
+        return '' !== $destination && (bool) is_email($destination);
+    }
+
+    $digits = lets_payplus_account_digits($destination);
+    $length = strlen($digits);
+
+    return $length >= 9 && $length <= 15;
+}
+
+/**
+ * Verify a code and, on success, log the WordPress user in — or open the door to
+ * quick registration when the verified address belongs to nobody yet.
  *
  * LETS attests only that the code matched the destination. WORDPRESS decides who
  * that destination belongs to and issues the session — which is why a leaked
- * shared secret cannot mint a login on its own.
+ * shared secret cannot mint a login on its own. The same split holds for the new
+ * account: LETS says "this handset answered", and only then does WordPress agree
+ * to create a customer for it.
  */
 function lets_payplus_account_rest_code_verify(WP_REST_Request $request)
 {
@@ -1105,9 +1243,10 @@ function lets_payplus_account_rest_code_verify(WP_REST_Request $request)
     }
 
     $user = lets_payplus_account_find_user($channel, $destination);
-    if (! $user) {
-        // Same shape as a wrong code: a "no such account" here would undo the
-        // enumeration protection the request endpoint just paid for.
+
+    // Checked BEFORE the code is even offered up: a privileged account is not a
+    // sign-in this endpoint performs, so there is nothing to verify.
+    if ($user && lets_payplus_account_is_privileged($user)) {
         return rest_ensure_response(array('ok' => false, 'reason' => 'rejected'));
     }
 
@@ -1123,7 +1262,319 @@ function lets_payplus_account_rest_code_verify(WP_REST_Request $request)
         return rest_ensure_response(array('ok' => false, 'reason' => $reason));
     }
 
+    if ($user) {
+        return lets_payplus_account_sign_in($user, $request->get_param('redirect'));
+    }
+
+    if (! lets_payplus_account_quick_registration_allowed()) {
+        // A store that only wants customers it already has. The answer is shaped
+        // like a wrong code, because "correct code, no account" is the one
+        // sentence this endpoint must never say out loud.
+        return rest_ensure_response(array('ok' => false, 'reason' => 'rejected'));
+    }
+
+    // Verified, and nobody owns it. Hand back a ticket rather than the address:
+    // the browser never gets to name the destination the next call will trust.
+    return rest_ensure_response(array(
+        'ok'       => true,
+        'register' => true,
+        'ticket'   => lets_payplus_account_issue_ticket($channel, $destination),
+    ));
+}
+
+/**
+ * May a verified stranger open an account here?
+ *
+ * YES BY DEFAULT, and deliberately so: the whole point of the change is that a
+ * shopper the store has never seen stops being told "a code is on its way" and
+ * then left waiting for one that leads nowhere. A merchant who really does run a
+ * closed store turns it off in one line:
+ *
+ *     add_filter('lets_payplus_account_quick_registration', '__return_false');
+ *
+ * It is deliberately NOT tied to WooCommerce's "allow customer registration"
+ * checkbox. That box governs a form with a password on it; this is a different
+ * door, opened only by a code the store itself sent, and a merchant who switched
+ * passwordless sign-in ON has already said who may come in.
+ *
+ * @return bool
+ */
+function lets_payplus_account_quick_registration_allowed()
+{
+    /**
+     * Filters whether a verified destination with no WordPress user may become
+     * a customer.
+     *
+     * @param  bool  $allowed
+     */
+    return (bool) apply_filters('lets_payplus_account_quick_registration', true);
+}
+
+/**
+ * Mint a single-use registration ticket for a destination LETS just verified.
+ *
+ * The DESTINATION stays on the server. What travels is an opaque random string,
+ * and what is stored is its sha256 — so a ticket read out of a transient dump
+ * cannot be replayed, and a ticket read out of the browser cannot be turned into
+ * "register me as somebody else's phone number".
+ *
+ * @param  string  $channel
+ * @param  string  $destination
+ * @return string
+ */
+function lets_payplus_account_issue_ticket($channel, $destination)
+{
+    $ticket = wp_generate_password(48, false, false);
+
+    set_transient(
+        LETS_ACCOUNT_REG_TICKET_PREFIX . hash('sha256', $ticket),
+        array(
+            'channel'     => $channel,
+            'destination' => $destination,
+            'issued_at'   => time(),
+        ),
+        LETS_ACCOUNT_REG_TICKET_TTL
+    );
+
+    return $ticket;
+}
+
+/**
+ * Create the customer behind a verified ticket, then sign them in.
+ *
+ * WHY THIS IS SAFE TO EXPOSE. Nothing here trusts the caller for identity. The
+ * ticket is proof that a code sent to a specific destination came back correct,
+ * and the destination it stands for is read from the SERVER's copy, never from
+ * the request. The shopper may choose their name; on the verified channel they
+ * may not choose their address.
+ *
+ * THE TICKET IS SPENT BEFORE THE USER IS CREATED, so two clicks on a slow
+ * connection cannot become two accounts. Shape errors (an empty name, a
+ * malformed email) are answered BEFORE the ticket is spent — a typo should cost
+ * a correction, not the whole flow.
+ */
+function lets_payplus_account_rest_code_register(WP_REST_Request $request)
+{
+    if (! lets_payplus_account_quick_registration_allowed()) {
+        return rest_ensure_response(array('ok' => false, 'reason' => 'rejected'));
+    }
+
+    $ticket = (string) $request->get_param('ticket');
+    $key = lets_payplus_account_ticket_key($ticket);
+    if ('' === $key) {
+        return rest_ensure_response(array('ok' => false, 'reason' => 'ticket_expired'));
+    }
+
+    $first = lets_payplus_account_clean_name($request->get_param('first_name'));
+    $last = lets_payplus_account_clean_name($request->get_param('last_name'));
+
+    // The budget is keyed on the ticket rather than an address: the address is
+    // not the caller's to name here, and the coarse per-IP bucket inside
+    // spend_budget() is what actually caps a script.
+    if (! lets_payplus_account_spend_budget('rg', $ticket)) {
+        return rest_ensure_response(array('ok' => false, 'reason' => 'rejected'));
+    }
+
+    $data = get_transient($key);
+    if (! is_array($data) || empty($data['channel']) || empty($data['destination'])) {
+        return rest_ensure_response(array('ok' => false, 'reason' => 'ticket_expired'));
+    }
+
+    $channel = 'sms' === $data['channel'] ? 'sms' : 'email';
+    $verified = (string) $data['destination'];
+
+    if ('' === $first || '' === $last) {
+        return rest_ensure_response(array('ok' => false, 'reason' => 'name_required'));
+    }
+    if (lets_payplus_account_name_too_long($first) || lets_payplus_account_name_too_long($last)) {
+        return rest_ensure_response(array('ok' => false, 'reason' => 'name_long'));
+    }
+
+    // On the email channel the address is the one that answered the code; the
+    // field the browser sent is decoration. On SMS it is the shopper's to type.
+    $email = 'email' === $channel
+        ? sanitize_email($verified)
+        : sanitize_email((string) $request->get_param('email'));
+
+    if ('' === $email || ! is_email($email)) {
+        return rest_ensure_response(array('ok' => false, 'reason' => 'email_invalid'));
+    }
+
+    // Same rule the other way round: an SMS sign-in owns the handset it proved.
+    $phone = 'sms' === $channel
+        ? $verified
+        : sanitize_text_field((string) $request->get_param('phone'));
+    $phone = lets_payplus_account_digits($phone);
+
+    delete_transient($key);
+
+    if (email_exists($email)) {
+        // Not an enumeration leak: they just proved they hold the OTHER
+        // destination, and the panel sends them back to sign in with this one.
+        return rest_ensure_response(array('ok' => false, 'reason' => 'email_taken'));
+    }
+
+    $user_id = lets_payplus_account_create_customer($email, $first, $last);
+    if ($user_id <= 0) {
+        return rest_ensure_response(array('ok' => false, 'reason' => 'rejected'));
+    }
+
+    lets_payplus_account_store_profile($user_id, $first, $last, $email, $phone);
+
+    $user = get_userdata($user_id);
+    if (! $user) {
+        return rest_ensure_response(array('ok' => false, 'reason' => 'rejected'));
+    }
+
     return lets_payplus_account_sign_in($user, $request->get_param('redirect'));
+}
+
+/**
+ * The transient key a ticket stands for, or '' when the string cannot be one.
+ *
+ * Shape-checked before it is hashed so a caller cannot use this endpoint to
+ * write arbitrary lookups, and length-capped so a megabyte of "ticket" is not
+ * hashed on every request.
+ *
+ * @param  string  $ticket
+ * @return string
+ */
+function lets_payplus_account_ticket_key($ticket)
+{
+    $ticket = trim((string) $ticket);
+
+    if (! preg_match('/^[A-Za-z0-9]{32,128}$/', $ticket)) {
+        return '';
+    }
+
+    return LETS_ACCOUNT_REG_TICKET_PREFIX . hash('sha256', $ticket);
+}
+
+/**
+ * One typed name, trimmed and stripped of markup.
+ *
+ * @param  mixed  $value
+ * @return string
+ */
+function lets_payplus_account_clean_name($value)
+{
+    return trim(sanitize_text_field((string) $value));
+}
+
+/**
+ * Longer than a name has any business being? Counted in CHARACTERS, not bytes —
+ * "אביאד" is ten bytes and five letters, and a byte cap would refuse Hebrew
+ * names at half the length it refuses English ones.
+ *
+ * @param  string  $name
+ * @return bool
+ */
+function lets_payplus_account_name_too_long($name)
+{
+    $length = function_exists('mb_strlen') ? mb_strlen($name, 'UTF-8') : strlen($name);
+
+    return $length > LETS_ACCOUNT_NAME_MAX;
+}
+
+/**
+ * Create the WooCommerce customer, or 0.
+ *
+ * WooCommerce's own factory where it exists: it picks a unique username from the
+ * address, applies the store's registration rules and fires
+ * `woocommerce_created_customer`, which is what sends the merchant's own new
+ * account email. A password IS generated even though nobody will use it — an
+ * account with an empty password is one `wp_signon` away from being anyone's.
+ *
+ * @param  string  $email
+ * @param  string  $first
+ * @param  string  $last
+ * @return int
+ */
+function lets_payplus_account_create_customer($email, $first, $last)
+{
+    $password = wp_generate_password(32);
+
+    if (function_exists('wc_create_new_customer')) {
+        $created = wc_create_new_customer($email, '', $password, array(
+            'first_name' => $first,
+            'last_name'  => $last,
+        ));
+
+        return is_wp_error($created) ? 0 : (int) $created;
+    }
+
+    // WooCommerce inactive (the REST routes register regardless): a plain
+    // customer, with a username derived from the address the same way.
+    $created = wp_insert_user(array(
+        'user_login'   => lets_payplus_account_username_for($email),
+        'user_email'   => $email,
+        'user_pass'    => $password,
+        'first_name'   => $first,
+        'last_name'    => $last,
+        'display_name' => trim($first . ' ' . $last),
+        'role'         => 'customer',
+    ));
+
+    return is_wp_error($created) ? 0 : (int) $created;
+}
+
+/**
+ * A free username derived from an address.
+ *
+ * @param  string  $email
+ * @return string
+ */
+function lets_payplus_account_username_for($email)
+{
+    $base = sanitize_user((string) substr($email, 0, (int) strpos($email, '@')), true);
+    if ('' === $base) {
+        $base = 'customer';
+    }
+
+    $candidate = $base;
+    $suffix = 1;
+    while (username_exists($candidate) && $suffix < 100) {
+        $candidate = $base . $suffix;
+        $suffix++;
+    }
+
+    return $candidate;
+}
+
+/**
+ * Write the profile the rest of the store reads.
+ *
+ * Both halves matter: WordPress's own first/last name (which is what the
+ * navigation and the greeting show) AND WooCommerce's billing fields (which is
+ * what checkout prefills, and what the phone index mirrors). Writing only one of
+ * them produces a customer whose name the shop knows and whose checkout is empty.
+ *
+ * @param  int  $user_id
+ * @param  string  $first
+ * @param  string  $last
+ * @param  string  $email
+ * @param  string  $phone  canonical digits, or ''
+ */
+function lets_payplus_account_store_profile($user_id, $first, $last, $email, $phone)
+{
+    update_user_meta($user_id, 'first_name', $first);
+    update_user_meta($user_id, 'last_name', $last);
+    update_user_meta($user_id, 'billing_first_name', $first);
+    update_user_meta($user_id, 'billing_last_name', $last);
+    update_user_meta($user_id, 'billing_email', $email);
+
+    if ('' !== $phone) {
+        // The index is kept by the meta watcher above, but it is called
+        // explicitly too: a store where the watcher was unhooked would otherwise
+        // create a customer who can never sign in by SMS again.
+        update_user_meta($user_id, LETS_ACCOUNT_PHONE_META, $phone);
+        lets_payplus_account_index_phone($user_id);
+    }
+
+    $display = trim($first . ' ' . $last);
+    if ('' !== $display) {
+        wp_update_user(array('ID' => $user_id, 'display_name' => $display));
+    }
 }
 
 /**
@@ -1635,13 +2086,89 @@ function lets_payplus_account_is_privileged($user)
 }
 
 /* -------------------------------------------------------------------------
- * 6. The sign-in panel on the login form
+ * 6. The sign-in screen
+ *
+ * THIS IS THE SIGN-IN, NOT A BOX BESIDE ONE. The panel used to render under
+ * WooCommerce's username/password form, which put the shop's actual way in
+ * second on its own login page: a shopper who has never had a password scrolled
+ * past a form they could not use to reach the one they could. When the merchant
+ * offers code sign-in, the panel REPLACES that form through the same
+ * `woocommerce_locate_template` seam the rest of the area uses — and the
+ * password form stays one quiet link away, because site staff, anyone with a
+ * password manager, and any two-factor plugin the merchant installed all still
+ * need it.
+ *
+ * THREE STEPS, ONE AT A TIME. Destination → code → (only when nobody owns the
+ * address) name. Each step replaces the one before it rather than unfolding
+ * below it: a form that grows as you answer it reads as a form you have not
+ * finished, and the code step should look like the only thing on the screen,
+ * because it is the only thing left to do.
  * ---------------------------------------------------------------------- */
 
+/**
+ * Does the LETS panel REPLACE WooCommerce's login form on this store?
+ *
+ * True only while there is something to replace it WITH — a merchant who never
+ * switched code sign-in on (and configured no Google client) keeps WooCommerce's
+ * own form untouched, because the alternative is a login page with no way in.
+ *
+ * @return bool
+ */
+function lets_payplus_account_login_takeover()
+{
+    if (null === lets_payplus_connection() || is_user_logged_in()) {
+        return false;
+    }
+
+    $settings = lets_payplus_account_login_settings();
+
+    return ! empty($settings['enabled']) || '' !== lets_payplus_account_google_client_id();
+}
+
+/** The merchant's Google client id, trimmed, or ''. */
+function lets_payplus_account_google_client_id()
+{
+    $settings = lets_payplus_account_login_settings();
+
+    return isset($settings['google_client_id']) ? trim((string) $settings['google_client_id']) : '';
+}
+
+/**
+ * Has the panel already been drawn on this page?
+ *
+ * ONE sign-in screen per page. The takeover renders the panel and then renders
+ * WooCommerce's own form (hidden) beneath it — and that form fires
+ * `woocommerce_login_form_end`, which is where the panel is hooked. Without this
+ * latch the screen would carry two copies of itself, the second one inside the
+ * first's escape hatch.
+ *
+ * @param  bool  $mark  set the latch
+ * @return bool
+ */
+function lets_payplus_account_login_drawn($mark = false)
+{
+    static $drawn = false;
+
+    if ($mark) {
+        $drawn = true;
+    }
+
+    return $drawn;
+}
+
+/**
+ * The panel on any OTHER login form — checkout's "returning customer?", a theme
+ * that calls woocommerce_login_form() itself. The my-account screen goes through
+ * the template instead, and the latch above keeps the two from doubling up.
+ */
 add_action('woocommerce_login_form_end', 'lets_payplus_account_login_panel');
 
 function lets_payplus_account_login_panel()
 {
+    if (lets_payplus_account_login_drawn()) {
+        return;
+    }
+
     if (null === lets_payplus_connection() || is_user_logged_in()) {
         return;
     }
@@ -1655,15 +2182,31 @@ function lets_payplus_account_login_panel()
         return;
     }
 
+    echo lets_payplus_account_login_markup('inline'); // phpcs:ignore WordPress.Security.EscapeOutput -- built from escaped parts.
+}
+
+/**
+ * The sign-in card, as markup.
+ *
+ * @param  string  $context  'page' when it IS the screen (the template override),
+ *                           'inline' when it sits inside somebody else's form.
+ * @return string
+ */
+function lets_payplus_account_login_markup($context = 'inline')
+{
     $settings = lets_payplus_account_login_settings();
     $codes = ! empty($settings['enabled']);
-    $google = isset($settings['google_client_id']) ? trim((string) $settings['google_client_id']) : '';
+    $google = lets_payplus_account_google_client_id();
 
     if (! $codes && '' === $google) {
-        return;
+        return '';
     }
 
+    lets_payplus_account_login_enqueue();
+    lets_payplus_account_login_drawn(true);
+
     $he = lets_payplus_account_is_he();
+    $page = 'page' === $context;
 
     // The channel the merchant offers decides what the shopper first sees: an
     // SMS-only shop must not open on an email field it will never send to.
@@ -1671,323 +2214,352 @@ function lets_payplus_account_login_panel()
     $both = 'both' === $channel_setting;
     $initial = 'sms' === $channel_setting ? 'sms' : 'email';
 
-    if ($codes && $google) {
-        $title = $he ? 'כניסה מהירה' : 'Quick sign-in';
-    } elseif ($google) {
-        $title = $he ? 'כניסה עם Google' : 'Sign in with Google';
+    $title = $he ? 'כניסה לחשבון' : 'Sign in';
+    if ($codes) {
+        $subtitle = $he
+            ? 'בלי סיסמה. נשלח לכם קוד חד-פעמי ותיכנסו איתו.'
+            : 'No password. We send you a one-time code and you are in.';
     } else {
-        $title = $he ? 'כניסה עם קוד' : 'Sign in with a code';
+        $subtitle = $he
+            ? 'התחברו עם חשבון Google שלכם.'
+            : 'Continue with your Google account.';
     }
 
-    wp_enqueue_style('lets-payplus-account', LETS_PAYPLUS_URL . 'assets/css/lets-account.css', array(), LETS_PAYPLUS_VERSION);
+    $dest_label = 'sms' === $initial
+        ? ($he ? 'מספר נייד' : 'Mobile number')
+        : ($he ? 'כתובת מייל' : 'Email address');
 
+    ob_start();
     ?>
-    <div class="lets-acct" data-lets-login data-lets-initial-channel="<?php echo esc_attr($initial); ?>">
-        <div class="la-card la-login">
-            <h3 class="la-section__title"><?php echo esc_html($title); ?></h3>
+    <div class="lets-acct la-auth"
+         data-lets-login
+         data-lets-context="<?php echo esc_attr($context); ?>"
+         data-lets-initial-channel="<?php echo esc_attr($initial); ?>"
+         <?php echo lets_payplus_account_shell_attributes(); // phpcs:ignore WordPress.Security.EscapeOutput -- fixed enum attributes, escaped at source.?><?php echo lets_payplus_account_dir_attribute(); // phpcs:ignore WordPress.Security.EscapeOutput -- fixed enum attribute.?>>
+        <div class="la-auth__card">
 
-            <?php if ('' !== $google) : ?>
-                <div class="la-login__google" data-lets-google
-                     data-client-id="<?php echo esc_attr($google); ?>"></div>
-            <?php endif; ?>
+            <?php /* ---------- step 1 — who are you ---------- */ ?>
+            <section class="la-auth__step" data-lets-step="dest">
+                <h2 class="la-auth__title"><?php echo esc_html($title); ?></h2>
+                <p class="la-auth__sub"><?php echo esc_html($subtitle); ?></p>
 
-            <?php if ('' !== $google && $codes) : ?>
-                <div class="la-login__divider" aria-hidden="true">
-                    <span class="la-login__divider-word"><?php echo esc_html($he ? 'או' : 'or'); ?></span>
-                </div>
-            <?php endif; ?>
+                <?php if ('' !== $google) : ?>
+                    <div class="la-auth__google" data-lets-google
+                         data-client-id="<?php echo esc_attr($google); ?>"></div>
+                <?php endif; ?>
 
-            <?php if ($codes) : ?>
-                <p class="la-muted"><?php echo esc_html($he ? 'נשלח לכם קוד חד-פעמי.' : 'We will send you a one-time code.'); ?></p>
-
-                <?php if ($both) : ?>
-                    <div class="la-login__channels" role="group"
-                         aria-label="<?php echo esc_attr($he ? 'איך לשלוח את הקוד' : 'How to send the code'); ?>">
-                        <button type="button"
-                                class="la-chip<?php echo 'email' === $initial ? ' is-active' : ''; ?>"
-                                data-lets-channel="email" aria-pressed="<?php echo 'email' === $initial ? 'true' : 'false'; ?>">
-                            <?php echo esc_html($he ? 'מייל' : 'Email'); ?>
-                        </button>
-                        <button type="button"
-                                class="la-chip<?php echo 'sms' === $initial ? ' is-active' : ''; ?>"
-                                data-lets-channel="sms" aria-pressed="<?php echo 'sms' === $initial ? 'true' : 'false'; ?>">
-                            <?php echo esc_html('SMS'); ?>
-                        </button>
+                <?php if ('' !== $google && $codes) : ?>
+                    <div class="la-auth__or" aria-hidden="true">
+                        <span class="la-auth__or-word"><?php echo esc_html($he ? 'או' : 'or'); ?></span>
                     </div>
                 <?php endif; ?>
 
-                <label class="la-field">
-                    <span class="la-field__label" data-lets-dest-label>
-                        <?php echo esc_html('sms' === $initial ? ($he ? 'מספר נייד' : 'Mobile number') : ($he ? 'כתובת מייל' : 'Email address')); ?>
-                    </span>
-                    <input type="text" class="la-input" data-lets-dest
-                           autocomplete="<?php echo 'sms' === $initial ? 'tel' : 'email'; ?>"
-                           inputmode="<?php echo 'sms' === $initial ? 'tel' : 'email'; ?>">
-                </label>
+                <?php if ($codes) : ?>
+                    <?php if ($both) : ?>
+                        <div class="la-auth__switch" role="group"
+                             aria-label="<?php echo esc_attr($he ? 'איך לשלוח את הקוד' : 'How to send the code'); ?>">
+                            <button type="button"
+                                    class="la-auth__seg<?php echo 'sms' === $initial ? ' is-active' : ''; ?>"
+                                    data-lets-channel="sms" aria-pressed="<?php echo 'sms' === $initial ? 'true' : 'false'; ?>">
+                                <?php echo esc_html($he ? 'סמס' : 'SMS'); ?>
+                            </button>
+                            <button type="button"
+                                    class="la-auth__seg<?php echo 'email' === $initial ? ' is-active' : ''; ?>"
+                                    data-lets-channel="email" aria-pressed="<?php echo 'email' === $initial ? 'true' : 'false'; ?>">
+                                <?php echo esc_html($he ? 'מייל' : 'Email'); ?>
+                            </button>
+                        </div>
+                    <?php endif; ?>
 
-                <div class="la-editor__actions">
-                    <button type="button" class="la-btn la-btn--primary" data-lets-send>
+                    <label class="la-auth__field">
+                        <span class="la-auth__label" data-lets-dest-label><?php echo esc_html($dest_label); ?></span>
+                        <input type="text" class="la-auth__input<?php echo 'sms' === $initial ? ' la-ltr' : ''; ?>"
+                               data-lets-dest
+                               autocomplete="<?php echo 'sms' === $initial ? 'tel' : 'email'; ?>"
+                               inputmode="<?php echo 'sms' === $initial ? 'tel' : 'email'; ?>">
+                    </label>
+
+                    <p class="la-auth__msg" data-lets-msg role="status" aria-live="polite"></p>
+
+                    <button type="button" class="la-auth__submit" data-lets-send>
                         <?php echo esc_html($he ? 'שליחת קוד' : 'Send code'); ?>
                     </button>
-                </div>
+                <?php else : ?>
+                    <p class="la-auth__msg" data-lets-msg role="status" aria-live="polite"></p>
+                <?php endif; ?>
+            </section>
 
-                <div class="la-editor" data-lets-code hidden>
-                    <label class="la-field">
-                        <span class="la-field__label"><?php echo esc_html($he ? 'קוד אימות' : 'Verification code'); ?></span>
-                        <input type="text" class="la-input la-ltr" inputmode="numeric" autocomplete="one-time-code" data-lets-code-input>
+            <?php if ($codes) : ?>
+                <?php /* ---------- step 2 — the code ---------- */ ?>
+                <section class="la-auth__step" data-lets-step="code" hidden>
+                    <h2 class="la-auth__title"><?php echo esc_html($he ? 'הזינו את הקוד' : 'Enter the code'); ?></h2>
+                    <p class="la-auth__sub" data-lets-sent></p>
+
+                    <label class="la-auth__field">
+                        <span class="la-auth__label"><?php echo esc_html($he ? 'קוד בן 6 ספרות' : '6-digit code'); ?></span>
+                        <input type="text" class="la-auth__input la-auth__input--code la-ltr"
+                               data-lets-code-input
+                               inputmode="numeric" autocomplete="one-time-code"
+                               maxlength="6" pattern="[0-9]*"
+                               aria-label="<?php echo esc_attr($he ? 'קוד אימות' : 'Verification code'); ?>">
                     </label>
-                    <div class="la-editor__actions">
-                        <button type="button" class="la-btn la-btn--primary" data-lets-verify>
-                            <?php echo esc_html($he ? 'כניסה' : 'Sign in'); ?>
+
+                    <p class="la-auth__msg" data-lets-msg role="status" aria-live="polite"></p>
+
+                    <button type="button" class="la-auth__submit" data-lets-verify>
+                        <?php echo esc_html($he ? 'כניסה' : 'Sign in'); ?>
+                    </button>
+
+                    <div class="la-auth__links">
+                        <button type="button" class="la-auth__link" data-lets-back>
+                            <?php echo esc_html($he ? 'שינוי פרטים' : 'Change details'); ?>
+                        </button>
+                        <button type="button" class="la-auth__link" data-lets-resend>
+                            <?php echo esc_html($he ? 'שליחה חוזרת' : 'Send again'); ?>
                         </button>
                     </div>
-                </div>
+                </section>
+
+                <?php /* ---------- step 3 — quick registration ---------- */ ?>
+                <section class="la-auth__step" data-lets-step="register" hidden>
+                    <h2 class="la-auth__title"><?php echo esc_html($he ? 'כמעט סיימנו' : 'Almost done'); ?></h2>
+                    <p class="la-auth__sub">
+                        <?php echo esc_html($he ? 'עוד שני פרטים ופותחים לכם חשבון.' : 'Two details and your account is ready.'); ?>
+                    </p>
+
+                    <div class="la-auth__row">
+                        <label class="la-auth__field">
+                            <span class="la-auth__label"><?php echo esc_html($he ? 'שם פרטי' : 'First name'); ?></span>
+                            <input type="text" class="la-auth__input" data-lets-first
+                                   autocomplete="given-name" maxlength="<?php echo esc_attr((string) LETS_ACCOUNT_NAME_MAX); ?>">
+                        </label>
+                        <label class="la-auth__field">
+                            <span class="la-auth__label"><?php echo esc_html($he ? 'שם משפחה' : 'Last name'); ?></span>
+                            <input type="text" class="la-auth__input" data-lets-last
+                                   autocomplete="family-name" maxlength="<?php echo esc_attr((string) LETS_ACCOUNT_NAME_MAX); ?>">
+                        </label>
+                    </div>
+
+                    <label class="la-auth__field">
+                        <span class="la-auth__label" data-lets-email-label><?php echo esc_html($he ? 'כתובת מייל' : 'Email address'); ?></span>
+                        <input type="email" class="la-auth__input" data-lets-email
+                               autocomplete="email" inputmode="email">
+                    </label>
+
+                    <label class="la-auth__field">
+                        <span class="la-auth__label" data-lets-phone-label><?php echo esc_html($he ? 'מספר נייד' : 'Mobile number'); ?></span>
+                        <input type="text" class="la-auth__input la-ltr" data-lets-phone
+                               autocomplete="tel" inputmode="tel">
+                    </label>
+
+                    <p class="la-auth__msg" data-lets-msg role="status" aria-live="polite"></p>
+
+                    <button type="button" class="la-auth__submit" data-lets-create>
+                        <?php echo esc_html($he ? 'יצירת חשבון וכניסה' : 'Create account and sign in'); ?>
+                    </button>
+
+                    <div class="la-auth__links">
+                        <button type="button" class="la-auth__link" data-lets-back>
+                            <?php echo esc_html($he ? 'חזרה' : 'Back'); ?>
+                        </button>
+                    </div>
+                </section>
             <?php endif; ?>
 
-            <p class="la-muted" data-lets-msg role="status" aria-live="polite"></p>
+            <?php if ($page) : ?>
+                <?php /* The way in for everyone who HAS a password — staff included. */ ?>
+                <p class="la-auth__alt">
+                    <button type="button" class="la-auth__link" data-lets-classic
+                            aria-controls="lets-login-classic" aria-expanded="false">
+                        <?php echo esc_html($he ? 'כניסה עם סיסמה' : 'Sign in with a password'); ?>
+                    </button>
+                </p>
+            <?php endif; ?>
+
         </div>
     </div>
     <?php
 
-    lets_payplus_account_login_script($he);
+    return (string) ob_get_clean();
 }
 
 /**
- * The panel's behaviour. Inline rather than a file: it is ~40 lines, it only
- * exists on the login form, and it needs the localized strings anyway.
+ * Register + enqueue the panel's stylesheet and behaviour, once per request.
  *
- * @param  bool  $he
+ * The login sheet is a LAYER on the personal area's, never a fork: the tokens it
+ * paints with — the merchant's accent, the radius, the dark palette — are
+ * declared on `.lets-acct` in lets-account.css and written over it by
+ * wp_add_inline_style(). Ordering the dependency is what makes the sign-in card
+ * the same product as the account page behind it.
  */
-function lets_payplus_account_login_script($he)
+function lets_payplus_account_login_enqueue()
 {
-    $config = array(
-        'request' => esc_url_raw(rest_url(LETS_PAYPLUS_REST_NS . '/account/code/request')),
-        'verify'  => esc_url_raw(rest_url(LETS_PAYPLUS_REST_NS . '/account/code/verify')),
-        'google'  => esc_url_raw(rest_url(LETS_PAYPLUS_REST_NS . '/account/google')),
-        'nonce'   => wp_create_nonce('wp_rest'),
-        'locale'  => $he ? 'he' : 'en',
-        'strings' => array(
-            'sent'         => $he ? 'אם יש חשבון תואם, הקוד בדרך.' : 'If that matches an account, a code is on its way.',
-            'rejected'     => $he ? 'הקוד שגוי.' : 'That code is not right.',
-            'expired'      => $he ? 'הקוד פג. בקשו קוד חדש.' : 'That code has expired. Ask for a new one.',
-            'exhausted'    => $he ? 'יותר מדי ניסיונות. בקשו קוד חדש.' : 'Too many attempts. Ask for a new code.',
-            'phone'        => $he ? 'מספר נייד' : 'Mobile number',
-            'email'        => $he ? 'כתובת מייל' : 'Email address',
-            'no_account'   => $he ? 'לא מצאנו חשבון עם הכתובת הזו.' : 'We could not find an account for that email.',
-            'google_error' => $he ? 'הכניסה עם Google לא הצליחה. נסו שוב.' : 'Google sign-in did not go through. Please try again.',
-            'unreachable'  => $he ? 'משהו השתבש. רעננו את העמוד ונסו שוב.' : 'Something went wrong. Refresh the page and try again.',
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+
+    wp_enqueue_style(
+        'lets-payplus-account',
+        LETS_PAYPLUS_URL . 'assets/css/lets-account.css',
+        array(),
+        LETS_PAYPLUS_VERSION
+    );
+
+    wp_enqueue_style(
+        'lets-payplus-login',
+        LETS_PAYPLUS_URL . 'assets/css/lets-login.css',
+        array('lets-payplus-account'),
+        LETS_PAYPLUS_VERSION
+    );
+
+    wp_register_script(
+        'lets-payplus-login',
+        LETS_PAYPLUS_URL . 'assets/js/lets-login.js',
+        array(),
+        LETS_PAYPLUS_VERSION,
+        true
+    );
+    wp_localize_script('lets-payplus-login', 'LetsLoginCfg', lets_payplus_account_login_config());
+    wp_enqueue_script('lets-payplus-login');
+}
+
+/**
+ * The assets go out with the HEAD, not with the panel.
+ *
+ * The panel renders deep inside the body, and a stylesheet enqueued there lands
+ * in the footer — the sign-in card would paint unstyled and then snap into
+ * shape. So the page is recognised early and the assets are queued then; the
+ * enqueue is latched, so the panel's own call is a no-op when this one ran.
+ */
+add_action('wp_enqueue_scripts', 'lets_payplus_account_login_assets', 20);
+
+function lets_payplus_account_login_assets()
+{
+    if (is_user_logged_in() || null === lets_payplus_connection()) {
+        return;
+    }
+
+    $ours = lets_payplus_account_is_ours();
+    $on_checkout = function_exists('is_checkout') && is_checkout();
+
+    // Some themes put [woocommerce_my_account] on a page of their own choosing,
+    // where is_account_page() is false — the panel still renders there.
+    $on_shortcode = ! $ours
+        && function_exists('wc_post_content_has_shortcode')
+        && wc_post_content_has_shortcode('woocommerce_my_account');
+
+    if (! $ours && ! $on_checkout && ! $on_shortcode) {
+        return;
+    }
+
+    // CHECKOUT NEVER WAITS ON US — the same rule the shell assets follow.
+    if ($on_checkout && ! $ours && ! lets_payplus_account_shell_config_cached()) {
+        return;
+    }
+
+    $settings = lets_payplus_account_login_settings();
+    if (empty($settings['enabled']) && '' === lets_payplus_account_google_client_id()) {
+        return;
+    }
+
+    lets_payplus_account_login_enqueue();
+}
+
+/**
+ * Everything the panel's script needs, in one localized object.
+ *
+ * Bilingual the way the rest of this file is: the merchant picks the personal
+ * area's language in the LETS dashboard, lets_payplus_account_is_he() reports
+ * what it resolved to, and both catalogs are literals here — the plugin ships no
+ * translation files and must not depend on the site's.
+ *
+ * @return array
+ */
+function lets_payplus_account_login_config()
+{
+    $he = lets_payplus_account_is_he();
+
+    return array(
+        'request'  => esc_url_raw(rest_url(LETS_PAYPLUS_REST_NS . '/account/code/request')),
+        'verify'   => esc_url_raw(rest_url(LETS_PAYPLUS_REST_NS . '/account/code/verify')),
+        'register' => esc_url_raw(rest_url(LETS_PAYPLUS_REST_NS . '/account/code/register')),
+        'google'   => esc_url_raw(rest_url(LETS_PAYPLUS_REST_NS . '/account/google')),
+        'nonce'    => wp_create_nonce('wp_rest'),
+        'locale'   => $he ? 'he' : 'en',
+        'resend'   => (string) LETS_ACCOUNT_RESEND_SECONDS,
+        'strings'  => array(
+            'phone'          => $he ? 'מספר נייד' : 'Mobile number',
+            'email'          => $he ? 'כתובת מייל' : 'Email address',
+            'phone_optional' => $he ? 'מספר נייד (לא חובה)' : 'Mobile number (optional)',
+            // The channel that answered the code is shown as read-only, and says
+            // WHY it cannot be edited rather than leaving a greyed-out field.
+            'phone_verified' => $he ? 'מספר נייד (מאומת)' : 'Mobile number (verified)',
+            'email_verified' => $he ? 'כתובת מייל (מאומתת)' : 'Email address (verified)',
+            'sending'        => $he ? 'שולחים…' : 'Sending…',
+            'checking'       => $he ? 'בודקים…' : 'Checking…',
+            'creating'       => $he ? 'פותחים חשבון…' : 'Creating your account…',
+            // %s is the masked destination — substituted as a NODE, never as HTML.
+            'sent_to'        => $he ? 'שלחנו קוד ל-%s' : 'We sent a code to %s',
+            'resent'         => $he ? 'שלחנו קוד חדש.' : 'A new code is on its way.',
+            'resend'         => $he ? 'שליחה חוזרת' : 'Send again',
+            'resend_in'      => $he ? 'שליחה חוזרת בעוד %s' : 'Send again in %s',
+            'bad_phone'      => $he ? 'המספר לא נראה תקין. בדקו ונסו שוב.' : 'That number does not look right. Check it and try again.',
+            'bad_email'      => $he ? 'הכתובת לא נראית תקינה. בדקו ונסו שוב.' : 'That address does not look right. Check it and try again.',
+            'code_short'     => $he ? 'הזינו את כל שש הספרות.' : 'Enter all six digits.',
+            'rejected'       => $he ? 'הקוד שגוי.' : 'That code is not right.',
+            'expired'        => $he ? 'הקוד פג. בקשו קוד חדש.' : 'That code has expired. Ask for a new one.',
+            'exhausted'      => $he ? 'יותר מדי ניסיונות. בקשו קוד חדש.' : 'Too many attempts. Ask for a new code.',
+            'name_required'  => $he ? 'שם פרטי ושם משפחה הם שדות חובה.' : 'First and last name are both needed.',
+            'name_long'      => $he ? 'השם ארוך מדי.' : 'That name is too long.',
+            'email_invalid'  => $he ? 'צריך כתובת מייל תקינה.' : 'A valid email address is needed.',
+            'email_taken'    => $he ? 'לכתובת הזו כבר יש חשבון — היכנסו איתה.' : 'That address already has an account — sign in with it.',
+            'email_taken_cta' => $he ? 'כניסה עם המייל' : 'Sign in with that email',
+            'ticket_expired' => $he ? 'האימות פג. נתחיל מחדש.' : 'That verification expired. Let us start again.',
+            'no_account'     => $he ? 'לא מצאנו חשבון עם הכתובת הזו.' : 'We could not find an account for that email.',
+            'google_error'   => $he ? 'הכניסה עם Google לא הצליחה. נסו שוב.' : 'Google sign-in did not go through. Please try again.',
+            'unreachable'    => $he ? 'משהו השתבש. רעננו את העמוד ונסו שוב.' : 'Something went wrong. Refresh the page and try again.',
+            'password_show'  => $he ? 'כניסה עם סיסמה' : 'Sign in with a password',
+            'password_hide'  => $he ? 'הסתרת הכניסה עם סיסמה' : 'Hide the password form',
         ),
     );
-    ?>
-    <script>
-    (function () {
-        // The panel renders on every WooCommerce login form on the page — My
-        // Account and the checkout's "returning customer?" can both be present —
-        // and each one brings its own copy of this script. The first copy wires
-        // ALL of them; the rest stand down, or the second panel would be inert
-        // markup and the second Google button would never be drawn.
-        if (window.LetsLoginWired) { return; }
-        window.LetsLoginWired = true;
+}
 
-        var cfg = <?php echo wp_json_encode($config); ?>;
+/**
+ * Render WooCommerce's OWN login screen — the one our template replaced.
+ *
+ * WHY IT IS INCLUDED RATHER THAN REBUILT. The password form is not ours to
+ * reimplement: it carries WooCommerce's nonce, its remember-me, its lost-password
+ * link, the registration column, and every hook a security plugin uses to bolt a
+ * captcha or a second factor onto the login. Copying that markup into our
+ * template would freeze it at today's WooCommerce and quietly break the next one.
+ *
+ * WHY NOT wc_get_template(). It caches the located path for the request, so the
+ * second call would hand back OUR file and recurse until the stack ran out. We
+ * stand our filter down for the length of one wc_locate_template() instead, which
+ * is exactly "what would WooCommerce have used", theme override included.
+ */
+function lets_payplus_account_render_classic_login()
+{
+    if (! function_exists('wc_locate_template')) {
+        return;
+    }
 
-        /**
-         * A POST that tells success from failure. The earlier version parsed the
-         * body and shrugged at the status, so a 403 from a cached-page nonce read
-         * exactly like a delivered code — the shopper was told to watch for an SMS
-         * that was never requested, and on verify was told their correct code was
-         * wrong. A rejected request now rejects.
-         */
-        function post(url, body) {
-            return fetch(url, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': cfg.nonce },
-                body: JSON.stringify(body)
-            }).then(function (r) {
-                if (!r.ok) { throw new Error('http ' + r.status); }
-                return r.json();
-            });
-        }
+    remove_filter('woocommerce_locate_template', 'lets_payplus_account_locate_template', 99);
+    $original = (string) wc_locate_template(LETS_ACCOUNT_LOGIN_TEMPLATE);
+    add_filter('woocommerce_locate_template', 'lets_payplus_account_locate_template', 99, 2);
 
-        function wire(root) {
-            var channel = root.getAttribute('data-lets-initial-channel') === 'sms' ? 'sms' : 'email';
-            var dest = root.querySelector('[data-lets-dest]');
-            var destLabel = root.querySelector('[data-lets-dest-label]');
-            var codeBox = root.querySelector('[data-lets-code]');
-            var codeInput = root.querySelector('[data-lets-code-input]');
-            var msg = root.querySelector('[data-lets-msg]');
+    if ('' === $original || ! file_exists($original)) {
+        return;
+    }
 
-            function say(key) {
-                if (msg) { msg.textContent = cfg.strings[key] || cfg.strings.rejected; }
-            }
+    // Belt and braces against the one thing that must never happen here.
+    if (0 === strpos(wp_normalize_path($original), wp_normalize_path(LETS_ACCOUNT_TEMPLATE_DIR))) {
+        return;
+    }
 
-            // Land back where the shopper was. From the checkout's login form that
-            // is the checkout — signing in should not evict them from it.
-            function here() { return window.location.href; }
-
-            // A sign-in with nowhere to send them is still a sign-in: reload, and
-            // the page comes back as the signed-in shopper.
-            function land(url) {
-                if (url) {
-                    window.location.href = url;
-
-                    return;
-                }
-                window.location.reload();
-            }
-
-            // --- channel chips (rendered only when the merchant offers both) ---
-            var chips = root.querySelectorAll('[data-lets-channel]');
-            Array.prototype.forEach.call(chips, function (chip) {
-                chip.addEventListener('click', function () {
-                    channel = chip.getAttribute('data-lets-channel') === 'sms' ? 'sms' : 'email';
-                    Array.prototype.forEach.call(chips, function (c) {
-                        var active = c === chip;
-                        c.classList.toggle('is-active', active);
-                        c.setAttribute('aria-pressed', active ? 'true' : 'false');
-                    });
-                    if (destLabel) { destLabel.textContent = channel === 'sms' ? cfg.strings.phone : cfg.strings.email; }
-                    if (dest) {
-                        dest.setAttribute('inputmode', channel === 'sms' ? 'tel' : 'email');
-                        dest.setAttribute('autocomplete', channel === 'sms' ? 'tel' : 'email');
-                        dest.focus();
-                    }
-                });
-            });
-
-            function send() {
-                if (!dest || !dest.value) { return; }
-                post(cfg.request, { channel: channel, destination: dest.value }).then(function () {
-                    // Same answer whether or not the address exists — but only
-                    // once the request itself actually got through.
-                    say('sent');
-                    if (codeBox) { codeBox.hidden = false; }
-                    if (codeInput) { codeInput.focus(); }
-                }).catch(function () {
-                    say('unreachable');
-                });
-            }
-
-            function verify() {
-                if (!codeInput || !codeInput.value) { return; }
-                post(cfg.verify, { channel: channel, destination: dest ? dest.value : '', code: codeInput.value, redirect: here() })
-                    .then(function (body) {
-                        // `ok` is the sign-in; the redirect is only where to go
-                        // next. Reading them together would tell a shopper who IS
-                        // now signed in that their code was wrong.
-                        if (body && body.ok) {
-                            land(body.redirect);
-
-                            return;
-                        }
-                        say((body && body.reason) || 'rejected');
-                    })
-                    .catch(function () {
-                        say('unreachable');
-                    });
-            }
-
-            var sendBtn = root.querySelector('[data-lets-send]');
-            if (sendBtn) { sendBtn.addEventListener('click', send); }
-
-            var verifyBtn = root.querySelector('[data-lets-verify]');
-            if (verifyBtn) { verifyBtn.addEventListener('click', verify); }
-
-            // This panel sits INSIDE WooCommerce's login <form>, so Enter would
-            // otherwise submit that form with an empty username and answer a
-            // shopper asking for a code with "Username is required".
-            function enterRuns(field, action) {
-                if (!field) { return; }
-                field.addEventListener('keydown', function (event) {
-                    if (event.key !== 'Enter' && event.keyCode !== 13) { return; }
-                    event.preventDefault();
-                    action();
-                });
-            }
-
-            enterRuns(dest, send);
-            enterRuns(codeInput, verify);
-
-            // --- Sign in with Google ---
-            var googleBox = root.querySelector('[data-lets-google]');
-            if (!googleBox) { return; }
-
-            withGoogle(function () {
-                google.accounts.id.initialize({
-                    client_id: googleBox.getAttribute('data-client-id'),
-                    ux_mode: 'popup',
-                    callback: function (response) {
-                        if (!response || !response.credential) { return; }
-                        post(cfg.google, { credential: response.credential, redirect: here() })
-                            .then(function (body) {
-                                if (body && body.ok) {
-                                    land(body.redirect);
-
-                                    return;
-                                }
-                                say(body && body.reason === 'no_account' ? 'no_account' : 'google_error');
-                            })
-                            .catch(function () {
-                                say('google_error');
-                            });
-                    }
-                });
-                google.accounts.id.renderButton(googleBox, {
-                    type: 'standard',
-                    theme: 'outline',
-                    size: 'large',
-                    text: 'signin_with',
-                    shape: 'pill',
-                    logo_alignment: 'center',
-                    locale: cfg.locale,
-                    width: 320
-                });
-            });
-        }
-
-        /**
-         * Fetch Google's script once for the whole page, whatever the number of
-         * panels, and only when a merchant configured a client id — a shop without
-         * one pays nothing on its login page.
-         */
-        var googleWaiting = [];
-        function withGoogle(callback) {
-            if (window.google && google.accounts && google.accounts.id) {
-                callback();
-
-                return;
-            }
-
-            googleWaiting.push(callback);
-            if (googleWaiting.length > 1) { return; }
-
-            var script = document.createElement('script');
-            script.src = 'https://accounts.google.com/gsi/client';
-            script.async = true;
-            script.defer = true;
-            script.onload = function () {
-                if (!window.google || !google.accounts || !google.accounts.id) { return; }
-                googleWaiting.forEach(function (waiting) { waiting(); });
-                googleWaiting = [];
-            };
-            document.head.appendChild(script);
-        }
-
-        // Wired once the document is parsed, not inline: this script runs where it
-        // sits, and a second login form further down the page does not exist yet.
-        function wireAll() {
-            Array.prototype.forEach.call(document.querySelectorAll('[data-lets-login]'), wire);
-        }
-
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', wireAll);
-        } else {
-            wireAll();
-        }
-    }());
-    </script>
-    <?php
+    include $original;
 }
 
 /**

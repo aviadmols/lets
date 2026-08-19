@@ -1,0 +1,411 @@
+/* =========================================================================
+   LETS — the sign-in screen.
+
+   A LAYER ON lets-account.css, NEVER A FORK. This sheet declares no colour, no
+   radius and no typeface of its own: every value below reads a token the
+   personal area already owns, so a merchant who sets their accent, their radius
+   or a dark palette in the LETS dashboard gets a sign-in card that matches the
+   account page behind it without touching this file.
+
+   TOKENS CONSUMED (all declared on .lets-acct in lets-account.css, and
+   overwritten per shop by wp_add_inline_style):
+     --la-card, --la-card-2      surfaces
+     --la-border, --la-border-strong
+     --la-fg, --la-muted, --la-faint     ink
+     --la-accent, --la-accent-fg, --la-accent-soft   the merchant's brand
+     --la-ok, --la-stop          inline success / failure text
+     --la-radius, --la-radius-sm shape
+     --la-ring                   the focus ring
+   The one thing this sheet adds is a local --la-auth-w: the card's measure.
+
+   NO FONT-FAMILY. The area inherits the shop's type — see the header of
+   lets-account.css. The heading earns its weight from size and weight alone.
+
+   RTL comes from logical properties throughout; there is no mirrored sheet.
+   ========================================================================= */
+
+.la-auth {
+    --la-auth-w: 420px;
+
+    display: flex;
+    justify-content: center;
+    inline-size: 100%;
+    margin-inline: auto;
+}
+
+/* Inside somebody else's form (checkout's "returning customer?", a theme's own
+   login block) the card is a guest: it keeps its shape but gives the host room
+   above it instead of trying to own the screen. */
+.la-auth[data-lets-context='inline'] {
+    margin-block-start: 24px;
+    justify-content: flex-start;
+}
+
+.la-auth__card {
+    inline-size: 100%;
+    max-inline-size: var(--la-auth-w);
+    padding: 28px 22px 26px;
+    background: var(--la-card);
+    border: 1px solid var(--la-border);
+    border-radius: calc(var(--la-radius) + 4px);
+    color: var(--la-fg);
+    text-align: start;
+}
+
+/* The page it owns gets air around it; a phone gets the full width. */
+.la-auth-page {
+    padding-block: clamp(16px, 6vw, 56px);
+}
+
+@media (min-width: 480px) {
+    .la-auth__card {
+        padding: 40px 36px 34px;
+    }
+}
+
+/* --- Steps -------------------------------------------------------------
+   One step is visible at a time. The hidden ones are display:none rather than
+   collapsed, so nothing below the card shifts as the shopper moves through it
+   and no hidden input is ever a tab stop.
+   ---------------------------------------------------------------------- */
+
+.la-auth__step {
+    display: block;
+}
+
+.la-auth__step[hidden] {
+    display: none;
+}
+
+/* --- Type --------------------------------------------------------------- */
+
+.la-auth__title {
+    font-size: 1.625rem;
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    margin: 0 0 6px;
+    color: var(--la-fg);
+}
+
+.la-auth__sub {
+    font-size: 0.9375rem;
+    line-height: 1.5;
+    color: var(--la-muted);
+    margin: 0 0 22px;
+}
+
+/* The masked destination in "we sent a code to …" carries the weight of the
+   page: it is the one thing the shopper has to check. */
+.la-auth__dest {
+    font-weight: 700;
+    color: var(--la-fg);
+}
+
+/* --- Google + the divider ----------------------------------------------- */
+
+.la-auth__google {
+    display: flex;
+    justify-content: center;
+    /* GIS pops in async; reserving its height keeps the card from jumping. */
+    min-block-size: 44px;
+    margin-block-end: 6px;
+}
+
+.la-auth__or {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-block: 18px;
+    color: var(--la-faint);
+}
+
+.la-auth__or::before,
+.la-auth__or::after {
+    content: '';
+    block-size: 1px;
+    flex: 1;
+    background: var(--la-border);
+}
+
+.la-auth__or-word {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+/* --- The SMS / Email switch ---------------------------------------------
+   A real switch: one track, one thumb. Two chips side by side read as two
+   buttons, and a shopper who has to guess which one is "on" has been asked a
+   question the control should have answered.
+   ---------------------------------------------------------------------- */
+
+.la-auth__switch {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    gap: 4px;
+    padding: 4px;
+    margin-block-end: 20px;
+    background: var(--la-card-2);
+    border: 1px solid var(--la-border);
+    border-radius: 999px;
+}
+
+.la-auth__seg {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--la-muted);
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1;
+    padding: 11px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background-color 0.18s ease, color 0.18s ease;
+}
+
+.la-auth__seg:hover {
+    color: var(--la-fg);
+}
+
+.la-auth__seg.is-active {
+    background: var(--la-card);
+    color: var(--la-fg);
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.14);
+}
+
+.la-auth__seg:focus-visible {
+    outline: none;
+    box-shadow: var(--la-ring);
+}
+
+/* --- Fields -------------------------------------------------------------
+   ONE field per step, and it is big. This is the only thing on the screen the
+   shopper has to do, so it should not look like row three of a settings table.
+   ---------------------------------------------------------------------- */
+
+.la-auth__field {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    margin-block-end: 16px;
+}
+
+.la-auth__label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--la-muted);
+}
+
+.la-auth__input {
+    font: inherit;
+    font-size: 1rem;
+    inline-size: 100%;
+    max-inline-size: none;
+    padding: 14px 16px;
+    border: 1px solid var(--la-border-strong);
+    border-radius: var(--la-radius-sm);
+    background: var(--la-card);
+    color: var(--la-fg);
+    box-sizing: border-box;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.la-auth__input::placeholder {
+    color: var(--la-faint);
+}
+
+.la-auth__input:focus,
+.la-auth__input:focus-visible {
+    outline: none;
+    border-color: var(--la-accent);
+    box-shadow: var(--la-ring);
+}
+
+.la-auth__input[readonly] {
+    background: var(--la-card-2);
+    color: var(--la-muted);
+}
+
+/* Six digits, spaced out and centred: the shape of the thing being copied. */
+.la-auth__input--code {
+    text-align: center;
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: 0.42em;
+    /* The tracking is applied after the LAST glyph too, so a centred string sits
+       half a step to the start side. Half of it back the other way re-centres it. */
+    text-indent: 0.21em;
+    padding-block: 15px;
+}
+
+/* First + last name share a row from the width where two fields still breathe. */
+.la-auth__row {
+    display: grid;
+    gap: 0 12px;
+}
+
+@media (min-width: 420px) {
+    .la-auth__row {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+/* --- The primary action ------------------------------------------------- */
+
+.la-auth__submit {
+    appearance: none;
+    display: block;
+    inline-size: 100%;
+    padding: 15px 18px;
+    border: 1px solid var(--la-accent);
+    border-radius: var(--la-radius-sm);
+    background: var(--la-accent);
+    color: var(--la-accent-fg);
+    font: inherit;
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.2;
+    cursor: pointer;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.la-auth__submit:hover:not(:disabled) {
+    opacity: 0.9;
+}
+
+.la-auth__submit:active:not(:disabled) {
+    transform: translateY(1px);
+}
+
+.la-auth__submit:focus-visible {
+    outline: none;
+    box-shadow: var(--la-ring);
+}
+
+.la-auth__submit:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+/* --- Secondary links ----------------------------------------------------
+   "change your number" and "send again" are text, not buttons: giving them a
+   border would put three competing actions on a screen with one job.
+   ---------------------------------------------------------------------- */
+
+.la-auth__links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-block-start: 16px;
+}
+
+.la-auth__link {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    padding: 4px 0;
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--la-muted);
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.la-auth__link:hover:not(:disabled) {
+    color: var(--la-accent);
+}
+
+.la-auth__link:focus-visible {
+    outline: none;
+    box-shadow: var(--la-ring);
+    border-radius: 6px;
+}
+
+.la-auth__link:disabled {
+    color: var(--la-faint);
+    cursor: default;
+}
+
+/* --- Inline feedback ----------------------------------------------------
+   Under the input it belongs to, never a banner at the top of the card and
+   never an alert() — the shopper's eye is already on the field.
+   ---------------------------------------------------------------------- */
+
+.la-auth__msg {
+    font-size: 0.875rem;
+    line-height: 1.45;
+    margin: 0 0 14px;
+    color: var(--la-muted);
+    min-block-size: 0;
+}
+
+.la-auth__msg:empty {
+    display: none;
+}
+
+.la-auth__msg[data-tone='bad'] {
+    color: var(--la-stop);
+}
+
+.la-auth__msg[data-tone='ok'] {
+    color: var(--la-ok);
+}
+
+.la-auth__msg .la-auth__link {
+    font-size: inherit;
+    color: var(--la-accent);
+    text-decoration: underline;
+    margin-inline-start: 6px;
+}
+
+/* --- The password escape hatch ------------------------------------------
+   Quiet on purpose: it exists for staff and for anyone with a password, and it
+   should never look like the recommended way in on a store that sends codes.
+   ---------------------------------------------------------------------- */
+
+.la-auth__alt {
+    margin: 22px 0 0;
+    padding-block-start: 18px;
+    border-block-start: 1px solid var(--la-border);
+    text-align: center;
+}
+
+.la-auth__alt .la-auth__link {
+    font-weight: 500;
+    color: var(--la-faint);
+}
+
+.la-auth__alt .la-auth__link:hover {
+    color: var(--la-muted);
+}
+
+/* WooCommerce's own login + registration screen, revealed. It keeps its own
+   markup and its own theme styling; all we do is give it the same measure as
+   the card and some air. */
+.la-auth__classic {
+    max-inline-size: 720px;
+    margin: 28px auto 0;
+    padding-block-start: 8px;
+}
+
+.la-auth__classic[hidden] {
+    display: none;
+}
+
+/* --- Motion ------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+    .la-auth__seg,
+    .la-auth__submit,
+    .la-auth__input {
+        transition: none;
+    }
+}

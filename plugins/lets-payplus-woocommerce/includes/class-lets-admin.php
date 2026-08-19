@@ -65,7 +65,7 @@ function lets_payplus_admin_menu()
     add_submenu_page(
         LETS_EMBED_SLUG,
         lets_payplus_admin_text('LETS — מערכת הניהול', 'LETS — Management panel'),
-        'LETS',
+        lets_payplus_admin_text('ראשי', 'Home'),
         LETS_ADMIN_CAPABILITY,
         LETS_EMBED_SLUG,
         'lets_payplus_embed_render'

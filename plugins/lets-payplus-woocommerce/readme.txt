@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.27.0
+Stable tag: 0.28.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,27 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.28.0 =
+* The code panel is now the sign-in screen, not a box under it. On a store that
+  offers passwordless sign-in, My Account opens on one centred card in the
+  shop's own accent colour instead of a username/password form almost nobody on
+  the store has a password for. The password form is still there, one quiet link
+  below — staff, password managers and any two-factor plugin are unaffected, and
+  a store that has not switched code sign-in on keeps WooCommerce's login screen
+  exactly as it was.
+* Signing in is a sequence now, not a stack. Enter your number, and the screen
+  becomes the code screen: it says which number the code went to (masked to the
+  last four digits), takes the six digits and submits itself on the sixth, and
+  offers "change details" and a "send again" that unlocks after thirty seconds.
+* A shopper the store has never seen can now sign in. The code is sent whether
+  or not the address already has an account; when it turns out to belong to
+  nobody, the screen asks for a first name, a last name and the one detail it
+  does not yet have, and opens the customer account there and then. Previously
+  those shoppers were told a code was on its way and nothing ever arrived.
+* Registration only ever completes for an address that answered a code, the
+  verified detail cannot be edited on the way through, and an address that
+  already has an account says so and offers to sign in with it instead.
 
 = 0.27.0 =
 * The LETS management system now opens inside WordPress. Click "LETS" in the
