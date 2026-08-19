@@ -23,6 +23,7 @@ use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 /**
@@ -58,6 +59,9 @@ class CustomerDetail extends Page
 
     /** @var array{orders: array<int, array<string, mixed>>, reason: ?string}|null */
     private ?array $ordersMemo = null;
+
+    /** @var Collection<int, InstallmentPlan>|null per-render memo (see plans()). */
+    private ?Collection $plansMemo = null;
 
     public function mount(string $customer): void
     {
@@ -293,13 +297,66 @@ class CustomerDetail extends Page
         return $this->ordersMemo ??= app(CustomerOrdersReader::class)->read($shop, $this->customer);
     }
 
-    /** @return Collection<int, InstallmentPlan> the customer's plans (tenant-scoped) */
+    /**
+     * EVERY subscription this person holds, under every identity they were
+     * written with (tenant-scoped).
+     *
+     * Keying on `shopify_customer_id` alone was too narrow. The rails fill
+     * different columns — the WooCommerce subscribe path writes
+     * external_customer_id and often no Shopify id at all, a guest has neither —
+     * so a person whose plans were created on two different paths appeared here
+     * as two half-customers, and this page's timeline showed half their history.
+     *
+     * The reference matches on any id column; then the EMAIL those plans carry
+     * pulls in the rest, which is what merges a member's imported plan with the
+     * one they bought at checkout. An empty email never merges anyone: a blank
+     * is not an identity, and merging on it would join every guest in the shop
+     * into one person.
+     *
+     * Memoized: this page asks for the plans a dozen times per render (the
+     * heading, the KPIs, the list, the note action, the timeline).
+     *
+     * @return Collection<int, InstallmentPlan>
+     */
     public function plans(): Collection
     {
-        return InstallmentPlan::query()
-            ->where('shopify_customer_id', $this->customer)
+        return $this->plansMemo ??= InstallmentPlan::query()
+            ->where(fn (Builder $q): Builder => $this->matchesCustomer($q))
             ->latest('id')
             ->get();
+    }
+
+    /**
+     * Narrow a plan query to this customer: any id column carrying the
+     * reference, plus every email those plans are known by.
+     */
+    private function matchesCustomer(Builder $query): Builder
+    {
+        $ref = trim($this->customer);
+
+        $byRef = static fn (Builder $q): Builder => $q
+            ->where('shopify_customer_id', $ref)
+            ->orWhere('external_customer_id', $ref)
+            ->orWhere('customer_id', $ref);
+
+        // The reference IS an email for a guest — and it is also the email of the
+        // account rows, so it is matched both ways.
+        $emails = InstallmentPlan::query()
+            ->where($byRef)
+            ->pluck('customer_email')
+            ->push(filter_var($ref, FILTER_VALIDATE_EMAIL) !== false ? $ref : null)
+            ->map(static fn ($email): string => mb_strtolower(trim((string) $email)))
+            ->filter(static fn (string $email): bool => $email !== '')
+            ->unique()
+            ->values();
+
+        return $query->where(function (Builder $q) use ($byRef, $emails): void {
+            $byRef($q);
+
+            foreach ($emails as $email) {
+                $q->orWhereRaw('LOWER(customer_email) = ?', [$email]);
+            }
+        });
     }
 
     /**
@@ -366,23 +423,32 @@ class CustomerDetail extends Page
         return Money::format($plan->total_charged) . ' / ' . Money::format($plan->total_amount);
     }
 
-    /** @return iterable<ActivityEvent> per-customer timeline across BOTH rails */
+    /**
+     * This person's WHOLE history, in one feed: every event of every
+     * subscription they hold — charges, retries, status moves, emails sent, and
+     * the notes a merchant pinned inside any of those subscriptions — plus the
+     * Shopify-rail contract events.
+     *
+     * Read from plans(), so it inherits the full identity resolution: the same
+     * feed on a person whose plans were written under two different references
+     * used to show only the half that matched one of them.
+     *
+     * @return iterable<ActivityEvent>
+     */
     public function timelineEvents(): iterable
     {
-        $planIds = InstallmentPlan::query()
-            ->where('shopify_customer_id', $this->customer)
-            ->pluck('id');
+        $planIds = $this->plans()->modelKeys();
 
         // Contract events carry no plan_id — they key on details->contract_gid.
         $contractGids = $this->contracts()->pluck('shopify_gid')->filter()->values();
 
-        if ($planIds->isEmpty() && $contractGids->isEmpty()) {
+        if ($planIds === [] && $contractGids->isEmpty()) {
             return [];
         }
 
         return ActivityEvent::query()
             ->where(function ($q) use ($planIds, $contractGids): void {
-                if ($planIds->isNotEmpty()) {
+                if ($planIds !== []) {
                     $q->whereIn('plan_id', $planIds);
                 }
                 if ($contractGids->isNotEmpty()) {

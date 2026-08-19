@@ -108,6 +108,59 @@ final class TimelineNoteTest extends TestCase
         );
     }
 
+    /**
+     * The customer page shows the WHOLE person: every subscription they hold,
+     * however it was written, and every note inside any of them.
+     *
+     * The rails fill different id columns — the WooCommerce subscribe path
+     * writes external_customer_id and no Shopify id — so a page that keyed on
+     * one column showed half a history and hid notes the merchant had written.
+     */
+    public function test_the_customer_timeline_covers_every_subscription_of_that_person(): void
+    {
+        $viaShopifyId = $this->plan('77');
+        $viaShopifyId->forceFill(['customer_email' => 'same@example.com'])->save();
+
+        // Same human, written by the other rail: no Shopify id at all.
+        $viaExternalId = $this->plan('');
+        $viaExternalId->forceFill([
+            'shopify_customer_id' => null,
+            'external_customer_id' => '77',
+            'customer_email' => 'same@example.com',
+        ])->save();
+
+        // Same human again, reachable only by their email (a guest checkout).
+        $viaEmail = $this->plan('');
+        $viaEmail->forceFill([
+            'shopify_customer_id' => null,
+            'external_customer_id' => null,
+            'customer_email' => 'same@example.com',
+        ])->save();
+
+        $stranger = $this->plan('99');
+        $stranger->forceFill(['customer_email' => 'other@example.com'])->save();
+
+        foreach ([
+            [$viaShopifyId, 'note on the shopify-id plan'],
+            [$viaExternalId, 'note on the external-id plan'],
+            [$viaEmail, 'note on the guest plan'],
+            [$stranger, 'note belonging to somebody else'],
+        ] as [$plan, $note]) {
+            Timeline::record(
+                kind: Timeline::KIND_ADMIN_NOTE,
+                details: ['note' => $note],
+                planId: $plan->getKey(),
+                shopId: (int) $this->shop->getKey(),
+            );
+        }
+
+        Livewire::test(CustomerDetail::class, ['customer' => '77'])
+            ->assertSee('note on the shopify-id plan')
+            ->assertSee('note on the external-id plan')
+            ->assertSee('note on the guest plan')
+            ->assertDontSee('note belonging to somebody else');
+    }
+
     private function plan(string $customerId): InstallmentPlan
     {
         $plan = new InstallmentPlan;
