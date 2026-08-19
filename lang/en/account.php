@@ -61,6 +61,28 @@ return [
         'saved' => 'Saved',
         'failed' => 'That did not work. Please try again.',
         'loading' => 'Loading…',
+
+        /*
+         * Account offers. `offer_from` is deliberately date-less: the presenter
+         * puts the resolved day in the payload's `first_charge_at` and the
+         * renderer composes the sentence, so one string serves every offer.
+         */
+        'offer_accept' => 'Choose this plan',
+        'offer_from' => 'from',
+        'offer_replaces' => 'Replaces your current subscription',
+        'offer_price_label' => 'Price',
+        'offer_unavailable' => 'This offer is no longer available.',
+
+        /*
+         * The disclosure a shopper reads BEFORE their saved card is used — the
+         * amount, when it is taken, and what happens to what they already have.
+         * The `_replace` variants add that second sentence; an `add` offer ends
+         * nothing and must not claim to.
+         */
+        'offer_disclosure_now' => ':amount will be charged to your saved card now.',
+        'offer_disclosure_now_replace' => ':amount will be charged to your saved card now. Your current subscription ends.',
+        'offer_disclosure_later' => ':amount will be charged to your saved card on :date.',
+        'offer_disclosure_later_replace' => ':amount will be charged to your saved card on :date. Your current subscription ends now, and nothing is charged today.',
     ],
 
     /*
@@ -134,6 +156,17 @@ return [
         'skip' => 'Next delivery skipped.',
         'reschedule' => 'Date updated.',
         'items' => 'Next order updated.',
+
+        /*
+         * accept_offer answers with more than ok/failed, because "your card was
+         * declined" and "you have already taken this" are not the same news and
+         * a shopper told the wrong one will call support.
+         */
+        'accept_offer' => 'Done — your new plan is set up.',
+        'accept_offer_unavailable' => 'This offer is not available right now. Nothing was charged.',
+        'accept_offer_charge_failed' => 'Your card was declined, so the change was not made. Your current subscription is unchanged.',
+        'accept_offer_not_eligible' => 'This offer no longer applies to your subscription.',
+        'accept_offer_changed' => 'Something changed while you were looking. Please refresh and try again — nothing was charged.',
     ],
 
     'login' => [

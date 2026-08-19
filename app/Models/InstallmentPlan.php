@@ -63,6 +63,25 @@ class InstallmentPlan extends Model
     public const META_INTRO_WINDOW_ENDED = 'intro_window_ended';
 
     /**
+     * meta key holding the ACCEPTANCE that created this plan — the record of a
+     * shopper clicking an offer in their own account area. Shape:
+     * {offer_id, source_plan_public_id, mode, timing, accepted_at, amount,
+     *  one_shot, replace_pending}.
+     *
+     * It lives on the PLAN and not in a table of its own because the plan IS the
+     * acceptance: it is the row a merchant looks at when a customer asks why
+     * their subscription changed, and the row a dispute is answered from. The
+     * offer keeps only counters.
+     *
+     * `one_shot` marks a plan whose whole life is one immediate charge attempt —
+     * if it fails, the plan is cancelled rather than retried, and the
+     * "we will try again" email must not be sent (SendChargeFailedNotification).
+     * `replace_pending` marks the tiny window where the money moved but the old
+     * plan's cancellation did not.
+     */
+    public const META_ACCOUNT_OFFER = 'account_offer';
+
+    /**
      * meta key holding the customer's address as EDITED in the admin. The import
      * keeps its own copy under meta.import.address — that one is the audit trail
      * of what the migration file said and is never rewritten; this key is what an
@@ -284,6 +303,32 @@ class InstallmentPlan extends Model
         $title = trim((string) (($this->meta ?? [])[self::META_ITEM_TITLE] ?? ''));
 
         return $title !== '' ? $title : null;
+    }
+
+    /**
+     * The account-offer acceptance that created this plan, or [] when the plan
+     * was not born from one. Always an array, so a caller can read a key without
+     * first asking whether the bag exists.
+     *
+     * @return array<string, mixed>
+     */
+    public function accountOfferMeta(): array
+    {
+        $meta = ($this->meta ?? [])[self::META_ACCOUNT_OFFER] ?? null;
+
+        return is_array($meta) ? $meta : [];
+    }
+
+    /**
+     * Is this plan a ONE-SHOT offer acceptance — one charge attempt, no retries?
+     *
+     * Read by the failed-charge notifier: the acceptance path cancels the plan
+     * the moment its single attempt fails, so a "we will try again in 4 hours"
+     * email would be a promise nothing is left to keep.
+     */
+    public function isOneShotOffer(): bool
+    {
+        return ($this->accountOfferMeta()['one_shot'] ?? false) === true;
     }
 
     /**

@@ -2,6 +2,8 @@
 
 namespace App\Domain\Account;
 
+use App\Domain\Account\Offers\AccountOfferAcceptService;
+use App\Domain\Account\Offers\AccountOfferOutcome;
 use App\Domain\Lifecycle\SubscriptionEditService;
 use App\Domain\Lifecycle\SubscriptionLifecycleService;
 use App\Models\InstallmentPlan;
@@ -49,6 +51,15 @@ final class CustomerSubscriptionActions
 
     public const ACTION_ITEMS = 'items';
 
+    /**
+     * Take an offer the merchant put in this shopper's account area. The odd one
+     * out: every other verb changes a subscription the shopper already has, while
+     * this one CREATES one — and, when the offer is immediate, charges their saved
+     * card. It is therefore absent from availableFor(): an offer card is not a row
+     * of buttons on a subscription, it draws its own control from its own payload.
+     */
+    public const ACTION_ACCEPT_OFFER = 'accept_offer';
+
     public const ACTIONS = [
         self::ACTION_PAUSE,
         self::ACTION_RESUME,
@@ -56,6 +67,7 @@ final class CustomerSubscriptionActions
         self::ACTION_SKIP,
         self::ACTION_RESCHEDULE,
         self::ACTION_ITEMS,
+        self::ACTION_ACCEPT_OFFER,
     ];
 
     /** Written to the Timeline so an audit can tell a shopper's edit from a merchant's. */
@@ -90,6 +102,27 @@ final class CustomerSubscriptionActions
 
     public const RESULT_INVALID = 'invalid';
 
+    /**
+     * Offer-acceptance outcomes, mirrored from AccountOfferOutcome so the copy
+     * bag and this class agree on one vocabulary. Each has its own sentence in
+     * the account.php copy file under `result.accept_offer_*`.
+     */
+    public const RESULT_UNAVAILABLE = AccountOfferOutcome::RESULT_UNAVAILABLE;
+
+    public const RESULT_CHARGE_FAILED = AccountOfferOutcome::RESULT_CHARGE_FAILED;
+
+    public const RESULT_NOT_ELIGIBLE = AccountOfferOutcome::RESULT_NOT_ELIGIBLE;
+
+    public const RESULT_CHANGED = AccountOfferOutcome::RESULT_CHANGED;
+
+    /** The non-ok answers accept_offer can give, for the copy bag. */
+    public const OFFER_RESULTS = [
+        self::RESULT_UNAVAILABLE,
+        self::RESULT_CHARGE_FAILED,
+        self::RESULT_NOT_ELIGIBLE,
+        self::RESULT_CHANGED,
+    ];
+
     public function __construct(
         private readonly SubscriptionLifecycleService $lifecycle,
         private readonly SubscriptionEditService $edits,
@@ -121,6 +154,12 @@ final class CustomerSubscriptionActions
             self::ACTION_SKIP => $this->skip($plan),
             self::ACTION_RESCHEDULE => $this->reschedule($plan, $input['date'] ?? null),
             self::ACTION_ITEMS => $this->items($plan, (array) ($input['line_items'] ?? [])),
+            self::ACTION_ACCEPT_OFFER => $this->acceptOffer(
+                $visitor,
+                $plan,
+                (string) ($input['offer'] ?? ''),
+                $input['amount'] ?? null,
+            ),
         };
     }
 
@@ -280,6 +319,32 @@ final class CustomerSubscriptionActions
         }
 
         return $this->ok($this->edits->editNextCharge($plan, ['line_items' => $clean]));
+    }
+
+    /**
+     * Take an offer, from the subscription the card sat under.
+     *
+     * Nothing is decided here beyond the ownership wall the caller already
+     * enforced: AccountOfferAcceptService owns the eligibility re-check under a
+     * lock, the price (the shopper's number is a GUARD, never an input), the
+     * consent row, the charge and the replacement.
+     *
+     * Resolved lazily rather than injected: this class is constructed once per
+     * subscription card by the presenter, and that service pulls the whole charge
+     * pipeline behind it — a cost no page render should pay to draw a button.
+     */
+    private function acceptOffer(AccountVisitor $visitor, InstallmentPlan $plan, string $offerId, mixed $shownAmount): array
+    {
+        $outcome = app(AccountOfferAcceptService::class)->accept(
+            visitor: $visitor,
+            source: $plan,
+            offerId: $offerId,
+            shownAmount: is_numeric($shownAmount) ? round((float) $shownAmount, 2) : null,
+        );
+
+        return $outcome->isOk() && $outcome->plan !== null
+            ? $this->ok($outcome->plan)
+            : ['result' => $outcome->result, 'plan' => null];
     }
 
     // === Helpers ===

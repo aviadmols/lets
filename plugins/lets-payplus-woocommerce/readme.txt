@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.31.0
+Stable tag: 0.32.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,20 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.32.0 =
+* Offers in the personal area. A merchant can now put an offer in front of a
+  subscriber where they already are — a full-width strip above their plans, the
+  side rail, or under the one plan it would change — targeted at exactly the
+  subscribers it suits (yearly members on a given product, say).
+* One click, on the card already on file. Accepting switches the plan or adds a
+  new one on the saved PayPlus token, with no checkout and no card re-entry.
+  The shopper is shown what will be charged and when, and must confirm it; a
+  switch can charge today or wait for the current plan's renewal date instead.
+* The merchant may design the card in LETS or write their own HTML. Custom
+  markup is sanitized on the LETS server against an allow-list — scripts,
+  frames, forms and event handlers are removed — and the accept button is put
+  back by the plugin, never taken from the merchant's markup.
 
 = 0.31.0 =
 * "Log in as customer" — from the customer page in LETS, a merchant now lands on

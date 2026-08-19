@@ -27,6 +27,11 @@ return [
         'document_force_issued' => 'Invoice issued after the merchant checked Green Invoice',
         'price_stepped_up' => 'Intro discount ended — price stepped up to the regular price',
         'checkout_discount_captured' => 'Coupon captured from the checkout order',
+        // Account offers. A switch is NOT a cancellation — a churn report that
+        // reads it as one is the reason these have kinds of their own.
+        'account_offer_accepted' => 'Offer accepted in the customer area',
+        'plan_switched' => 'Subscription switched',
+        'account_offer_charge_failed' => 'Offer accepted, but the card was declined',
         'shopify_subscription_resumed' => 'Subscription resumed',
         'shopify_subscription_rescheduled' => 'Next charge date changed',
         'shopify_subscription_bill_now' => 'Immediate charge requested from Shopify',

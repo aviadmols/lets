@@ -62,8 +62,17 @@ final class SubscriptionLifecycleService
      * (next_charge_at = null, defence in depth on top of the status filter) and emails
      * the customer the cancellation notice. Does NOT refund — a refund is a separate,
      * explicit money-out action.
+     *
+     * $notify exists for cancellations the customer must not hear about, because
+     * from where they stand nothing was cancelled. Two of them, both from the
+     * account-offer path: the plan created for a switch that failed at the gateway
+     * (it lived for one attempt and never billed anybody), and the OLD plan a
+     * successful switch replaced (telling somebody "your subscription is
+     * cancelled" a second after they upgraded reads as the upgrade going wrong).
+     * The Timeline still records every one — silence is toward the shopper, never
+     * toward the audit.
      */
-    public function cancel(InstallmentPlan $plan, ?string $reason = null): InstallmentPlan
+    public function cancel(InstallmentPlan $plan, ?string $reason = null, bool $notify = true): InstallmentPlan
     {
         $cancelled = DB::transaction(function () use ($plan, $reason): InstallmentPlan {
             $fresh = InstallmentPlan::query()->lockForUpdate()->findOrFail($plan->getKey());
@@ -76,7 +85,9 @@ final class SubscriptionLifecycleService
             return $fresh;
         });
 
-        $this->sendCancellationEmail($cancelled, $reason);
+        if ($notify) {
+            $this->sendCancellationEmail($cancelled, $reason);
+        }
 
         return $cancelled;
     }

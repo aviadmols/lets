@@ -939,6 +939,136 @@ a.la-banner:focus-visible {
    announcement's picture is not a thumbnail beside the words. */
 
 /* =========================================================================
+   Offers — the one thing on this page that asks for a decision
+
+   Same three placements as the banners (full-width strip, side rail, under the
+   plan it would change) and the same tokens, drawn one notch louder: a banner
+   announces, an offer asks. Nothing here declares a direction — the grid and
+   the logical properties follow the page, so Hebrew needs no second stylesheet.
+
+   The merchant may also write their own markup, which lands inside
+   .la-offer__custom. No rule below reaches into it: their layout is theirs, and
+   a stylesheet that styled their elements would break the next design they
+   wrote. Only the button we put back is ours.
+   ========================================================================= */
+
+.la-offers {
+    display: grid;
+    gap: 14px;
+    margin-block: var(--la-gap);
+    min-inline-size: 0;
+}
+
+/* Side by side when there is room. The driving case is two "switch to monthly"
+   offers that only make sense read against each other. */
+.la-offers--top {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+/* One narrow column, and one card under a plan: both are a single decision in
+   a space too tight to compare anything. */
+.la-offers--rail,
+.la-offers--plan {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+/* Under a subscription card the offer is a continuation of that card, not a
+   new block after it — it takes the card's own rhythm and nothing below. */
+.la-offers--plan {
+    margin-block: 20px 0;
+}
+
+.la-offer {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+    border: 1px solid var(--la-border-strong);
+    border-radius: var(--la-radius);
+    background: var(--la-card);
+    box-shadow: var(--la-shadow);
+    overflow: hidden;
+}
+
+/* The same brand hairline the live plans carry, so an offer reads as part of
+   this product rather than as an advert dropped into it. */
+.la-offer::before {
+    content: '';
+    display: block;
+    block-size: 3px;
+    background: var(--la-accent);
+}
+
+.la-offer__img {
+    display: block;
+    inline-size: 100%;
+    block-size: auto;
+    max-inline-size: 100%;
+}
+
+.la-offer__body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 18px var(--la-pad);
+}
+
+.la-offer__heading {
+    font-size: 1.0625rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0;
+}
+
+.la-offer__subtext {
+    font-size: 0.875rem;
+    color: var(--la-muted);
+    margin: 0;
+}
+
+/* The number the decision turns on, at the weight of the plan's own price. */
+.la-offer__price {
+    font-size: 1.125rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin: 4px 0 0;
+}
+
+.la-offer__from {
+    font-size: 0.8125rem;
+    color: var(--la-muted);
+    margin: 0;
+}
+
+/* "This replaces your current plan" is the one line a shopper must not miss,
+   so it is the one line that is not grey. */
+.la-offer__note {
+    font-size: 0.8125rem;
+    margin: 4px 0 0;
+    padding: 8px 12px;
+    border-radius: var(--la-radius-sm);
+    background: var(--la-warn-soft);
+    color: var(--la-warn);
+}
+
+/* The button sizes to its label and sits at the reading edge — a full-width
+   accept in a 240px card looks like a form's submit, not like a choice. */
+.la-offer__cta {
+    align-self: flex-start;
+    margin-block-start: 10px;
+}
+
+.la-offer__custom {
+    padding: 18px var(--la-pad);
+}
+
+/* The sentinel is swapped for a real button before paint. The rule is for the
+   payload the renderer never touched — a stale cache, a copy of the HTML pasted
+   somewhere else — where an empty inline box would otherwise hold the gap. */
+.la-offer__slot {
+    display: none;
+}
+
+/* =========================================================================
    Sign-in prompt (logged out)
    ========================================================================= */
 

@@ -246,6 +246,17 @@ final class ChargeOrchestrator
             // Recurring never completes — advance the clock by one cycle.
             $plan->next_charge_at = $this->advanceNextChargeAt($plan);
             $plan->save();
+
+            // A recurring plan whose FIRST payment was collected by this engine (no
+            // hosted page, no external checkout — the account-offer path charges a
+            // saved token directly) is still sitting in awaiting_first_payment. The
+            // payment just landed, so it is active: promote it here rather than
+            // leaving a live, billing subscription labelled "awaiting" forever. The
+            // checkout paths never reach this branch in that state — PlanActivation
+            // Service has already activated them.
+            if ($plan->status === PlanStatus::AWAITING_FIRST_PAYMENT) {
+                $plan->transitionTo(PlanStatus::ACTIVE, ['action' => 'first_payment_succeeded']);
+            }
         } else {
             // Installments, not final — schedule the next slot + update parent.
             $plan->next_charge_at = $this->advanceNextChargeAt($plan);

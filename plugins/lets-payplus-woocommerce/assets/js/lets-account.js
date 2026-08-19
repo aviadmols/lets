@@ -7,10 +7,13 @@
    admin preview. That is what makes the preview trustworthy — it is not a
    mock-up of the page, it IS the page with sample data.
 
-   Everything is built with createElement/textContent. There is no innerHTML
-   anywhere in this file: the model carries merchant-authored copy and product
-   titles, and this markup lands inside the merchant's own storefront where a
-   script injection would own the session.
+   Everything is built with createElement/textContent, with exactly ONE
+   sanctioned innerHTML: renderOfferHtml(), where a merchant who wrote their own
+   offer markup gets it back. That one is guaranteed on the SERVER — SafeHtml's
+   allow-list cleans it when it is saved and again when it is read — and is
+   scrubbed a second time here, after parsing. Nowhere else: the model carries
+   merchant-authored copy and product titles, and this markup lands inside the
+   merchant's own storefront where a script injection would own the session.
 
    Public API:
      window.LetsAccount.render(mountEl, model, options)
@@ -57,6 +60,18 @@
         daily: 'day', weekly: 'week', biweekly: '2 weeks',
         monthly: 'month', quarterly: '3 months', yearly: 'year'
     };
+
+    /* An offer whose design the merchant wrote themselves carries this sentinel
+       where {{button}} stood. The renderer swaps the element for a real, wired
+       button — the merchant owns the layout, never the verb. */
+    var OFFER_SLOT_CLASS = 'la-offer__slot';
+
+    /* Elements that never survive merchant markup, and the attribute shapes that
+       never survive an element. The server stripped all of them already; this is
+       the second lock on the same door, applied after the browser has parsed the
+       string, where a mis-nested tag can no longer hide behind a regex. */
+    var OFFER_DROP_TAGS = 'script,style,iframe,object,embed,form,noscript';
+    var OFFER_DROP_ATTRS = ['style', 'srcdoc'];
 
     // === Small DOM helpers ===
 
@@ -174,6 +189,19 @@
             append(mount, strip);
         }
 
+        // Offers come after the announcements and before the cards. A banner
+        // tells the shopper something; an offer asks them for a decision, and a
+        // decision belongs closer to the plans it would change. A LETS that
+        // predates offers sends no key at all — an empty list draws nothing.
+        var topOffers = Array.isArray(model.offers) ? model.offers : [];
+        if (topOffers.length) {
+            var offerStrip = el('div', 'la-offers la-offers--top');
+            topOffers.forEach(function (offer) {
+                offerStrip.appendChild(renderOffer(state, offer, 'la-offer--top'));
+            });
+            append(mount, offerStrip);
+        }
+
         var grid = el('div', 'lets-acct__grid');
         var main = el('div', 'lets-acct__main');
         var rail = el('aside', 'lets-acct__rail');
@@ -187,6 +215,18 @@
             if (!node) { return; }
             (RAIL_SECTIONS.indexOf(key) !== -1 ? rail : main).appendChild(node);
         });
+
+        // In the rail the order is the other way round: the offer is the only
+        // thing in that column a shopper can act on, so it leads and the passive
+        // banners follow it.
+        var railOffers = Array.isArray(model.rail_offers) ? model.rail_offers : [];
+        if (railOffers.length) {
+            var railStrip = el('div', 'la-offers la-offers--rail');
+            railOffers.forEach(function (offer) {
+                railStrip.appendChild(renderOffer(state, offer, 'la-offer--rail'));
+            });
+            rail.appendChild(railStrip);
+        }
 
         banners.forEach(function (banner) { rail.appendChild(renderBanner(banner)); });
 
@@ -361,6 +401,19 @@
         var actions = renderActions(state, sub, dateEditor);
         if (actions) { append(card, actions); }
         if (dateEditor) { append(card, dateEditor); }
+
+        // --- offers that apply to THIS plan, last: an offer to switch it only
+        // makes sense once the shopper has read what they are switching from.
+        // It sits below the date editor rather than between it and its own
+        // button, which would open the editor underneath a foreign card.
+        var offers = Array.isArray(sub.offers) ? sub.offers : [];
+        if (offers.length) {
+            var box = el('div', 'la-offers la-offers--plan');
+            offers.forEach(function (offer) {
+                box.appendChild(renderOffer(state, offer, 'la-offer--plan'));
+            });
+            append(card, box);
+        }
 
         return card;
     }
@@ -556,12 +609,12 @@
         }).then(function (body) {
             state.mount.classList.remove(BUSY_CLASS);
 
-            if (!body || !body.ok) {
-                toast(state, state.model.copy.failed, 'bad');
-                return;
-            }
-
-            if (body.account) {
+            // A REFUSED verb can ship the account too, and when it does the page
+            // is redrawn before the shopper is told why: "that offer is no longer
+            // available" beside an offer still sitting on the page is a page that
+            // disagrees with itself. Responses without the key — every refusal
+            // the server sent before offers existed — are left alone.
+            if (body && body.account) {
                 var options = {
                     endpoint: state.endpoint,
                     nonce: state.nonce,
@@ -570,6 +623,16 @@
                 };
                 render(state.mount, body.account, options);
                 if (state.onUpdate) { state.onUpdate(body.account); }
+            }
+
+            if (!body || !body.ok) {
+                // The server names WHY in `result`; the generic failure is only
+                // the fallback for a refusal this copy catalog has no word for.
+                var reason = body && body.result
+                    ? state.model.copy['result_' + action + '_' + body.result]
+                    : null;
+                toast(state, reason || state.model.copy.failed, 'bad');
+                return;
             }
 
             toast(state, state.model.copy['result_' + action] || state.model.copy.saved, 'good');
@@ -707,6 +770,157 @@
         return append(card, links);
     }
 
+    // === Offers ===
+
+    /**
+     * One offer card: "switch this yearly plan to monthly", "add this to your
+     * box". Two shapes, one contract — either the merchant filled in the admin's
+     * fields (image, heading, subtext, price) or they wrote their own markup —
+     * and both end in the SAME button firing the same verb. The merchant owns
+     * the design; they never own the money, which is why not one number here is
+     * computed in the browser: `price_display`, `cadence` and `amount` are the
+     * server's, resolved from the subscription template.
+     *
+     * The modifier is the placement (top / rail / plan). Like the banners, the
+     * markup itself is identical everywhere so the three cannot drift into three
+     * designs.
+     */
+    function renderOffer(state, offer, modifier) {
+        var m = state.model;
+        var card = el('article', modifier ? 'la-offer ' + modifier : 'la-offer');
+        attr(card, 'data-offer', offer.id);
+        attr(card, 'data-mode', offer.mode);
+
+        var button = offerButton(state, offer);
+
+        if (offer.html) {
+            return append(card, renderOfferHtml(offer, button));
+        }
+
+        var product = offer.product || {};
+        var image = offer.image_url || product.image;
+        if (image) {
+            var img = el('img', 'la-offer__img');
+            attr(img, 'src', image);
+            attr(img, 'alt', offer.heading || product.title || '');
+            attr(img, 'loading', 'lazy');
+            append(card, img);
+        }
+
+        var body = el('div', 'la-offer__body');
+        append(body, el('h3', 'la-offer__heading', offer.heading || product.title || ''));
+        if (offer.subtext) { append(body, el('p', 'la-offer__subtext', offer.subtext)); }
+
+        // The price sentence is two server-written halves joined; neither is
+        // formatted here, so a Hebrew store reads Hebrew and an ILS plan reads ₪.
+        var price = [offer.price_display, offer.cadence].filter(Boolean).join(' · ');
+        if (price) {
+            var priceNode = el('p', 'la-offer__price', price);
+            // Sighted readers have the heading above it for context; a screen
+            // reader hearing "149 ₪ every month" alone does not.
+            if (m.copy.offer_price_label) {
+                attr(priceNode, 'aria-label', m.copy.offer_price_label + ': ' + price);
+            }
+            append(body, priceNode);
+        }
+
+        // WHEN the first charge lands is part of the offer, not a detail: a
+        // period-end switch charges nothing today and must say so.
+        if (offer.first_charge_at) {
+            append(body, el('p', 'la-offer__from', (m.copy.offer_from || '') + ' ' + dateLong(offer.first_charge_at)));
+        }
+
+        // Replacing is not adding. The shopper is about to lose a plan they
+        // already have, and the card says so before the button does.
+        if (offer.mode === 'replace' && m.copy.offer_replaces) {
+            append(body, el('p', 'la-offer__note', m.copy.offer_replaces));
+        }
+
+        append(body, button);
+
+        return append(card, body);
+    }
+
+    /**
+     * The merchant's own markup, and the one place in this file that assigns a
+     * string of HTML.
+     *
+     * The guarantee is the SERVER's: app/Support/SafeHtml.php cleans the markup
+     * against a tag and attribute allow-list when the merchant saves it and
+     * again when the presenter reads it, and the tokens are substituted after
+     * cleaning with escaped values. The pass below is belt and braces for a
+     * payload that reached the browser some other way — a cached response, an
+     * older LETS, a preview posted into the frame. It runs AFTER parsing, where
+     * a mis-nested tag can no longer hide from it.
+     *
+     * The button is never part of the merchant's string: their {{button}} became
+     * an empty sentinel on the server, and the real one — with the confirm and
+     * the verb wired to it — replaces that sentinel here.
+     */
+    function renderOfferHtml(offer, button) {
+        var box = el('div', 'la-offer__custom');
+
+        box.innerHTML = offer.html;
+        scrubOfferHtml(box);
+
+        var slot = box.querySelector('.' + OFFER_SLOT_CLASS);
+        if (slot && slot.parentNode) {
+            slot.parentNode.replaceChild(button, slot);
+        } else {
+            // A design that forgot the token still gets its button, at the end,
+            // rather than an offer nobody can accept.
+            append(box, button);
+        }
+
+        return box;
+    }
+
+    /** Drop the executable elements, then every event handler and style attribute. */
+    function scrubOfferHtml(root) {
+        var doomed = root.querySelectorAll(OFFER_DROP_TAGS);
+        var i;
+        for (i = 0; i < doomed.length; i++) {
+            if (doomed[i].parentNode) { doomed[i].parentNode.removeChild(doomed[i]); }
+        }
+
+        var nodes = root.querySelectorAll('*');
+        for (i = 0; i < nodes.length; i++) {
+            var attrs = nodes[i].attributes;
+            for (var k = attrs.length - 1; k >= 0; k--) {
+                var name = String(attrs[k].name).toLowerCase();
+                if (name.indexOf('on') === 0 || OFFER_DROP_ATTRS.indexOf(name) !== -1) {
+                    nodes[i].removeAttribute(attrs[k].name);
+                }
+            }
+        }
+    }
+
+    /**
+     * Accepting is a CHARGE on a card the shopper cannot see, so it is confirmed
+     * with the server's own disclosure sentence — the one that names the amount
+     * and the date — and the button locks while the request is in flight. The
+     * redraw that follows builds a new button, so the lock needs no release.
+     */
+    function offerButton(state, offer) {
+        var m = state.model;
+        var button = el('button', 'la-btn la-btn--primary la-offer__cta', offer.button_text || m.copy.offer_accept);
+        attr(button, 'type', 'button');
+
+        button.addEventListener('click', function () {
+            if (state.preview) { return; }
+            if (offer.disclosure && !window.confirm(offer.disclosure)) { return; }
+
+            button.disabled = true;
+            perform(state, 'accept_offer', {
+                subscription: offer.source_plan,
+                offer: offer.id,
+                amount: offer.amount
+            });
+        });
+
+        return button;
+    }
+
     // === Banners ===
 
     function renderBanner(banner, modifier) {
@@ -765,7 +979,7 @@
 
     // === Export ===
 
-    window.LetsAccount = { render: render, version: 1 };
+    window.LetsAccount = { render: render, version: 2 };
 
     /**
      * Preview bridge. The admin's iframe posts a draft appearance on every

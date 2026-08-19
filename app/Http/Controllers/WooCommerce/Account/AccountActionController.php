@@ -50,6 +50,14 @@ final class AccountActionController extends WooAccountController
                 input: [
                     'date' => $this->cleanString($request->input('date')),
                     'line_items' => (array) $request->input('line_items', []),
+                    // accept_offer: WHICH offer, and what price the card showed.
+                    // The amount is a GUARD, not an input — the service prices the
+                    // offer from the merchant's template and refuses the click when
+                    // the two disagree, so a tampered body can only ever be refused.
+                    'offer' => $this->cleanString($request->input('offer')),
+                    'amount' => is_numeric($request->input('amount'))
+                        ? (float) $request->input('amount')
+                        : null,
                 ],
             );
 

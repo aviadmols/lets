@@ -2,9 +2,13 @@
 
 namespace App\Domain\Account;
 
+use App\Domain\Account\Offers\AccountOfferEligibility;
+use App\Domain\Account\Offers\AccountOfferPresenter;
+use App\Domain\Account\Offers\AccountOfferQuote;
 use App\Domain\Billing\CycleAmountResolver;
 use App\Domain\Loyalty\Http\LoyaltyVisitor;
 use App\Domain\Loyalty\Rendering\LoyaltyPagePresenter;
+use App\Models\AccountOffer;
 use App\Models\InstallmentPaymentMethod;
 use App\Models\InstallmentPlan;
 use App\Models\MerchantBillingSettings;
@@ -13,6 +17,7 @@ use App\Models\MerchantPortalAppearance;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Support\Tenant;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
@@ -95,9 +100,22 @@ final class AccountPresenter
     /** Payment rows shown per plan. Enough to recognise, few enough to scan. */
     private const MAX_PAYMENTS = 12;
 
+    /** The sample subscription's public id — the preview's only "plan". */
+    private const SAMPLE_PLAN_ID = 'SAMPLE-1';
+
+    /** Days until the sample subscription renews (also its period-end offer date). */
+    private const SAMPLE_NEXT_DAYS = 9;
+
+    /** Chrome the offer cards need, on top of the shared `ui.*` keys. */
+    private const OFFER_COPY_KEYS = [
+        'offer_accept', 'offer_from', 'offer_replaces', 'offer_price_label', 'offer_unavailable',
+    ];
+
     public function __construct(
         private readonly CycleAmountResolver $cycles = new CycleAmountResolver,
         private readonly UpcomingBenefits $benefits = new UpcomingBenefits,
+        private readonly AccountOfferPresenter $offers = new AccountOfferPresenter,
+        private readonly AccountOfferEligibility $offerEligibility = new AccountOfferEligibility,
     ) {}
 
     /**
@@ -123,6 +141,12 @@ final class AccountPresenter
                 'benefits' => [],
                 'loyalty' => null,
                 'payment_methods' => [],
+                // An offer is taken FROM a subscription, on a saved card. We know
+                // neither for somebody we have not identified — so both slots are
+                // present and empty rather than absent, and the renderer never has
+                // to ask whether a key exists.
+                'offers' => [],
+                'rail_offers' => [],
             ];
         }
 
@@ -134,16 +158,104 @@ final class AccountPresenter
         );
 
         $account = $visitor->loyaltyAccount();
+        $offers = $this->offersFor($plans);
 
         return $this->shell($settings, $loyaltySettings, $this->banners($settings, $this->isSubscriber($plans))) + [
             'identified' => true,
             'greeting' => $visitor->displayName(),
-            'subscriptions' => $plans->map(fn (InstallmentPlan $p): array => $this->plan($p))->all(),
+            'subscriptions' => $plans
+                ->map(fn (InstallmentPlan $p): array => $this->plan($p, $offers['by_plan'][(string) $p->public_id] ?? []))
+                ->all(),
             'upcoming' => $this->benefits->for($plans, $account, $loyaltySettings),
             'benefits' => $this->activeBenefits($plans, $account),
             'loyalty' => $this->loyalty($visitor, $loyaltySettings),
             'payment_methods' => $this->paymentMethods($plans),
+            'offers' => $offers[AccountOffer::PLACEMENT_TOP],
+            'rail_offers' => $offers[AccountOffer::PLACEMENT_RAIL],
         ];
+    }
+
+    // === Account offers ===
+
+    /**
+     * The merchant's offers, aimed at THIS shopper and split by placement.
+     *
+     * Placement decides how many cards an offer produces. `plan` draws one under
+     * every subscription it could be taken from — the shopper is being asked
+     * about that specific plan, and the answer differs per plan. `top` and `rail`
+     * draw ONE card for the offer as a whole, taken from the newest subscription
+     * that qualifies, because a full-width strip repeated four times is not a
+     * promotion, it is a wall.
+     *
+     * @param  Collection<int, InstallmentPlan>  $plans
+     * @return array{top: list<array<string, mixed>>, rail: list<array<string, mixed>>, by_plan: array<string, list<array<string, mixed>>>}
+     */
+    private function offersFor(Collection $plans): array
+    {
+        $out = [
+            AccountOffer::PLACEMENT_TOP => [],
+            AccountOffer::PLACEMENT_RAIL => [],
+            'by_plan' => [],
+        ];
+
+        if ($plans->isEmpty()) {
+            return $out;
+        }
+
+        $settings = MerchantBillingSettings::current();
+        $now = now();
+
+        foreach ($this->liveOffers() as $offer) {
+            if (! $this->offerEligibility->isOpen($offer, $now, $settings)) {
+                continue;
+            }
+
+            $quote = AccountOfferQuote::for($offer, $plans->first(), $plans->first()->shop);
+            if ($quote === null) {
+                continue;
+            }
+
+            $sources = $this->offerEligibility->sourcesFor($offer, $plans, $quote);
+            if ($sources === []) {
+                continue;
+            }
+
+            $placement = $offer->placement();
+
+            // `top`/`rail` name exactly one source; `plan` names each of them.
+            foreach ($placement === AccountOffer::PLACEMENT_PLAN ? $sources : [$sources[0]] as $source) {
+                $card = $this->offers->present(
+                    $offer,
+                    $quote->withSource($source),
+                    (string) $source->public_id,
+                    $this->offers->firstChargeAt($offer, $source),
+                );
+
+                if ($placement === AccountOffer::PLACEMENT_PLAN) {
+                    $out['by_plan'][(string) $source->public_id][] = $card;
+                } else {
+                    $out[$placement][] = $card;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * The shop's switched-on offers, best first. Tenant-scoped by BelongsToShop;
+     * the templates ride along because every card has to price itself.
+     *
+     * @return Collection<int, AccountOffer>
+     */
+    private function liveOffers(): Collection
+    {
+        return AccountOffer::query()
+            ->open()
+            ->with(['template.product', 'template.variant'])
+            ->orderBy('priority')
+            ->orderBy('id')
+            ->get();
     }
 
     /**
@@ -219,13 +331,14 @@ final class AccountPresenter
         $settings ??= MerchantPortalAppearance::current();
         $loyaltySettings = MerchantLoyaltySettings::current();
 
-        $nextDate = now()->addDays(9)->toDateString();
+        $nextDate = now()->addDays(self::SAMPLE_NEXT_DAYS)->toDateString();
+        $offers = $this->everyOffer($nextDate);
 
         return $this->shell($settings, $loyaltySettings, $this->everyBanner($settings)) + [
             'identified' => true,
             'preview' => true,
             'greeting' => __('account.sample.name'),
-            'subscriptions' => [$this->sampleSubscription($nextDate)],
+            'subscriptions' => [$this->sampleSubscription($nextDate, $offers[AccountOffer::PLACEMENT_PLAN])],
             'upcoming' => [
                 [
                     'kind' => UpcomingBenefits::KIND_NEXT_DELIVERY,
@@ -273,7 +386,54 @@ final class AccountPresenter
                 'expires' => '09/29',
                 'active' => true,
             ]],
+            'offers' => $offers[AccountOffer::PLACEMENT_TOP],
+            'rail_offers' => $offers[AccountOffer::PLACEMENT_RAIL],
         ];
+    }
+
+    /**
+     * The merchant's REAL offers, drawn against the sample subscription.
+     *
+     * Split by placement but NOT filtered by audience, window or the shop's
+     * charging switch — the same choice everyBanner() makes, and for the same
+     * reason: the sample shopper is nobody in particular, so a merchant who
+     * cannot see the offer they just wrote concludes it is broken and writes it
+     * again. Nothing here can be clicked; the renderer draws the preview inert.
+     *
+     * Offers whose template cannot be priced are still skipped. That is not
+     * targeting, it is the offer genuinely having nothing to sell, and hiding it
+     * from the preview is exactly the feedback the merchant needs.
+     *
+     * @return array{top: list<array<string, mixed>>, rail: list<array<string, mixed>>, plan: list<array<string, mixed>>}
+     */
+    private function everyOffer(string $nextDate): array
+    {
+        $out = [
+            AccountOffer::PLACEMENT_TOP => [],
+            AccountOffer::PLACEMENT_RAIL => [],
+            AccountOffer::PLACEMENT_PLAN => [],
+        ];
+
+        $shop = Tenant::current();
+        if ($shop === null) {
+            return $out;
+        }
+
+        foreach ($this->liveOffers() as $offer) {
+            $quote = AccountOfferQuote::for($offer, null, $shop);
+            if ($quote === null) {
+                continue;
+            }
+
+            $out[$offer->placement()][] = $this->offers->present(
+                $offer,
+                $quote,
+                self::SAMPLE_PLAN_ID,
+                $offer->isImmediate() ? now()->startOfDay() : Carbon::parse($nextDate),
+            );
+        }
+
+        return $out;
     }
 
     // === Shell (identical for every visitor but the banners) ===
@@ -415,6 +575,7 @@ final class AccountPresenter
             'action_reschedule', 'action_items', 'action_update_card', 'confirm_cancel',
             'points_balance', 'points_worth', 'tier', 'sign_in_prompt', 'sign_in_cta',
             'saved', 'failed', 'loading', 'paid_of', 'remaining', 'payments_heading',
+            ...self::OFFER_COPY_KEYS,
         ];
 
         $copy = [];
@@ -432,6 +593,14 @@ final class AccountPresenter
 
         foreach (CustomerSubscriptionActions::ACTIONS as $action) {
             $copy['result_'.$action] = __('account.result.'.$action);
+        }
+
+        // accept_offer is the one verb whose failures each need their own
+        // sentence: "your card was declined" and "you already took this" are not
+        // the same news, and the generic failure toast would say neither.
+        foreach (CustomerSubscriptionActions::OFFER_RESULTS as $result) {
+            $key = 'result_'.CustomerSubscriptionActions::ACTION_ACCEPT_OFFER.'_'.$result;
+            $copy[$key] = __('account.result.'.CustomerSubscriptionActions::ACTION_ACCEPT_OFFER.'_'.$result);
         }
 
         // Plan and payment statuses share the `status_*` prefix: the renderer
@@ -487,8 +656,11 @@ final class AccountPresenter
             ->values();
     }
 
-    /** @return array<string, mixed> */
-    private function plan(InstallmentPlan $plan): array
+    /**
+     * @param  list<array<string, mixed>>  $offers  cards drawn under THIS card
+     * @return array<string, mixed>
+     */
+    private function plan(InstallmentPlan $plan, array $offers = []): array
     {
         $recurring = $plan->plan_kind === PlanKind::RECURRING;
         $status = $plan->status instanceof PlanStatus ? $plan->status->value : (string) $plan->status;
@@ -501,7 +673,7 @@ final class AccountPresenter
             'status' => $status,
             'tone' => self::STATUS_TONES[$status] ?? self::TONE_ATTENTION,
             'currency' => (string) ($plan->currency ?: ''),
-            'currency_symbol' => $this->currencySymbol($plan->currency),
+            'currency_symbol' => self::currencySymbol($plan->currency),
             'amount' => $recurring
                 ? $this->cycles->amountForCharge($plan, $this->cycles->chargeNumberForNext($plan))
                 : round((float) $plan->installment_amount, 2),
@@ -511,13 +683,14 @@ final class AccountPresenter
             'remaining' => $recurring ? null : round((float) $plan->remainingAmount(), 2),
             'frequency' => $plan->billing_frequency?->value,
             'interval_count' => max(1, (int) $plan->interval_count),
-            'cadence' => $this->cadence($plan->billing_frequency?->value, (int) $plan->interval_count),
+            'cadence' => self::cadence($plan->billing_frequency?->value, (int) $plan->interval_count),
             'next_charge_at' => $plan->next_charge_at instanceof Carbon ? $plan->next_charge_at->toDateString() : null,
             'intro' => $this->cycles->introWindowStatus($plan),
             'next_order' => $this->nextOrderSummary($plan),
             'card' => $this->card($plan->activePaymentMethod()),
             'actions' => array_keys(array_filter($actions)),
             'payments' => $this->payments($plan),
+            'offers' => $offers,
         ];
     }
 
@@ -528,8 +701,11 @@ final class AccountPresenter
      * store read "ILS 1 כל month". Hebrew also needs the plural to agree with the
      * count (חודש / חודשים), which a lookup table in JS cannot express — so the
      * unit is a choice string and the sentence is assembled from lang/{en,he}.
+     *
+     * Public + static because the offer cards say the same sentence about the
+     * same cadences, and two implementations of "every 3 months" is one too many.
      */
-    private function cadence(?string $frequency, int $intervalCount): ?string
+    public static function cadence(?string $frequency, int $intervalCount): ?string
     {
         if ($frequency === null || $frequency === '') {
             return null;
@@ -549,7 +725,7 @@ final class AccountPresenter
     }
 
     /** The symbol a price is read with, falling back to the currency's own code. */
-    private function currencySymbol(mixed $currency): string
+    public static function currencySymbol(mixed $currency): string
     {
         $code = strtoupper(trim((string) ($currency ?: '')));
 
@@ -686,16 +862,17 @@ final class AccountPresenter
         ]));
     }
 
-    private function sampleSubscription(string $nextDate): array
+    /** @param list<array<string, mixed>> $offers */
+    private function sampleSubscription(string $nextDate, array $offers = []): array
     {
         return [
-            'id' => 'SAMPLE-1',
+            'id' => self::SAMPLE_PLAN_ID,
             'kind' => 'recurring',
             'title' => __('account.sample.product'),
             'status' => 'active',
             'tone' => self::TONE_ACTIVE,
             'currency' => 'ILS',
-            'currency_symbol' => $this->currencySymbol('ILS'),
+            'currency_symbol' => self::currencySymbol('ILS'),
             'amount' => 89.0,
             'regular_amount' => 119.0,
             'total' => null,
@@ -703,7 +880,7 @@ final class AccountPresenter
             'remaining' => null,
             'frequency' => 'monthly',
             'interval_count' => 1,
-            'cadence' => $this->cadence('monthly', 1),
+            'cadence' => self::cadence('monthly', 1),
             'next_charge_at' => $nextDate,
             'intro' => ['used' => 2, 'total' => 3],
             'next_order' => null,
@@ -715,6 +892,7 @@ final class AccountPresenter
                 ['sequence' => 2, 'amount' => 89.0, 'status' => 'succeeded', 'at' => now()->subDays(21)->toDateString()],
                 ['sequence' => 1, 'amount' => 89.0, 'status' => 'succeeded', 'at' => now()->subDays(51)->toDateString()],
             ],
+            'offers' => $offers,
         ];
     }
 }

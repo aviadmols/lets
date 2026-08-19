@@ -78,6 +78,30 @@ final class Timeline
     public const KIND_CUSTOMER_IMPERSONATED = 'customer_impersonated';
 
     /**
+     * The shopper accepted an offer in their own account area. Written on BOTH
+     * plans — the one it created and the one it was taken from — because the
+     * question a merchant asks is "where did this subscription come from" as
+     * often as "what happened to that one".
+     * details: {offer_id, offer_name, mode, timing, amount, currency,
+     *           source_plan, new_plan}.
+     */
+    public const KIND_ACCOUNT_OFFER_ACCEPTED = 'account_offer_accepted';
+
+    /**
+     * A replacement completed: the old plan ended and the new one took over. Its
+     * own kind rather than two cancellations and a creation, because a switch read
+     * as a cancellation is the single most alarming thing a churn report can show.
+     */
+    public const KIND_PLAN_SWITCHED = 'plan_switched';
+
+    /**
+     * The one-click charge behind an accepted offer failed. The plan it created is
+     * cancelled in the same breath, so this is terminal — there is no retry
+     * coming, and the shopper's existing subscription was never touched.
+     */
+    public const KIND_ACCOUNT_OFFER_CHARGE_FAILED = 'account_offer_charge_failed';
+
+    /**
      * Record a Timeline event. Never throws.
      *
      * ACTOR ATTRIBUTION (W2): when the caller does NOT pass an explicit actor, the

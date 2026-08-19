@@ -95,6 +95,99 @@ final class AccountLayoutTest extends TestCase
         }
     }
 
+    /**
+     * Offers are the only thing on this page that can move money, and they are
+     * drawn in three places at once — a strip above the plans, the rail, and
+     * under the single plan an offer would replace. All three are ONE function
+     * with a modifier class, for the same reason the banners are: three copies
+     * of a card that charges a card is three chances to disagree about what it
+     * says before the shopper confirms it.
+     */
+    public function test_offers_are_drawn_in_all_three_placements(): void
+    {
+        $js = (string) file_get_contents(base_path(self::PLUGIN_JS));
+        $css = (string) file_get_contents(base_path(self::PLUGIN_CSS));
+
+        $this->assertStringContainsString('function renderOffer(', $js);
+        $this->assertStringContainsString("perform(state, 'accept_offer'", $js);
+
+        // Every placement, and every one of them tolerant of a payload from a
+        // LETS that predates offers — a missing key draws nothing, it does not
+        // throw and take the whole area down with it.
+        foreach (['model.offers', 'model.rail_offers', 'sub.offers'] as $key) {
+            $this->assertStringContainsString(
+                'Array.isArray('.$key.') ? '.$key.' : []',
+                $js,
+                "{$key} must be guarded, or an old payload breaks the page",
+            );
+        }
+
+        foreach (['la-offers--top', 'la-offers--rail', 'la-offers--plan'] as $modifier) {
+            $this->assertStringContainsString($modifier, $js, "{$modifier} is never rendered");
+            $this->assertStringContainsString('.'.$modifier, $css, "{$modifier} is not styled");
+        }
+
+        // The accept button is ours: the merchant's {{button}} is only a slot.
+        $this->assertStringContainsString('la-offer__slot', $js);
+        $this->assertStringContainsString('.la-offer__slot', $css);
+
+        // A charge on a card the shopper cannot see is confirmed first, with the
+        // server's own sentence — never a string composed in the browser.
+        $this->assertStringContainsString('window.confirm(offer.disclosure)', $js);
+    }
+
+    /**
+     * The renderer's no-innerHTML law, now with exactly one exemption.
+     *
+     * A merchant may design an offer card in their own HTML, which is cleaned
+     * server-side by SafeHtml and scrubbed again here after parsing. That is one
+     * assignment, in one function. A second one appearing anywhere else in this
+     * file is how the personal area would become a script-injection surface
+     * inside somebody else's storefront — so it is counted, not described.
+     * Comments are stripped first: the header explains the rule and therefore
+     * has to name it.
+     */
+    public function test_the_renderer_assigns_html_exactly_once(): void
+    {
+        $js = (string) file_get_contents(base_path(self::PLUGIN_JS));
+        $code = (string) preg_replace('#/\*.*?\*/#s', '', $js);
+
+        $this->assertSame(
+            1,
+            preg_match_all('/innerHTML/', $code),
+            'the renderer must assign HTML exactly once — in renderOfferHtml(), on server-sanitized markup',
+        );
+
+        // …and that one is followed by the belt-and-braces pass.
+        $this->assertMatchesRegularExpression('/innerHTML = offer\.html;\s*\n\s*scrubOfferHtml\(box\);/', $code);
+        $this->assertStringContainsString("'script,style,iframe,object,embed,form,noscript'", $js);
+    }
+
+    /**
+     * The click reaches LETS or the offer does nothing. The plugin forwards the
+     * id of the offer and the price the CARD showed — the second as evidence,
+     * never as an instruction: the SaaS prices the offer from its own template
+     * and refuses the click when the two disagree.
+     */
+    public function test_the_plugin_forwards_the_offer_and_the_price_it_showed(): void
+    {
+        $php = (string) file_get_contents(base_path(self::PLUGIN_PHP));
+
+        $act = (string) preg_replace(
+            '/^.*function lets_payplus_account_rest_act\(WP_REST_Request \$request\)\s*\{(.*?)\n\}.*$/s',
+            '$1',
+            $php,
+        );
+        $this->assertNotSame('', $act, 'lets_payplus_account_rest_act() not found');
+
+        $this->assertStringContainsString("'offer'", $act);
+        $this->assertStringContainsString("sanitize_text_field((string) \$request->get_param('offer'))", $act);
+        $this->assertStringContainsString("is_numeric(\$request->get_param('amount'))", $act);
+
+        // The identity still comes from the WordPress session, never the body.
+        $this->assertStringContainsString("'customer_ref' => (string) \$user_id", $act);
+    }
+
     public function test_the_hero_stats_only_show_numbers_the_server_sent(): void
     {
         $js = (string) file_get_contents(base_path(self::PLUGIN_JS));

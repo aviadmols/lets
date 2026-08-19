@@ -27,6 +27,11 @@ return [
         'document_force_issued' => 'החשבונית הופקה לאחר שהסוחר בדק בחשבונית ירוקה',
         'price_stepped_up' => 'הנחת הפתיחה הסתיימה — המחיר עלה למחיר הרגיל',
         'checkout_discount_captured' => 'נקלט קופון מהזמנת הרכישה',
+        // הצעות באזור האישי. מעבר מסלול הוא לא ביטול — דוח נטישה שיקרא אותו
+        // ככזה הוא בדיוק הסיבה שיש לאירועים האלה סוג משלהם.
+        'account_offer_accepted' => 'הצעה התקבלה באזור האישי',
+        'plan_switched' => 'המנוי הוחלף',
+        'account_offer_charge_failed' => 'ההצעה התקבלה, אך הכרטיס נדחה',
         'shopify_subscription_resumed' => 'המנוי חודש',
         'shopify_subscription_rescheduled' => 'תאריך החיוב הבא שונה',
         'shopify_subscription_bill_now' => 'נשלחה בקשת חיוב מיידי ל-Shopify',

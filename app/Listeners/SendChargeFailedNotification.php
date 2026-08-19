@@ -34,6 +34,17 @@ final class SendChargeFailedNotification
             $plan = $event->plan;
             $payment = $event->payment;
 
+            // A ONE-SHOT offer acceptance gets no failure email. This listener is
+            // synchronous — it runs INSIDE the charge, before the caller has had a
+            // chance to cancel the plan the attempt was for — so the "we will try
+            // again on the 4th" notice would go out about a subscription that is
+            // about to stop existing, for a shopper whose real subscription was
+            // never touched. Silence is the honest answer; the Timeline still
+            // carries account_offer_charge_failed for the merchant.
+            if ($plan->isOneShotOffer()) {
+                return;
+            }
+
             $guardKey = sprintf(
                 'charge_failed_email_sent_at:payment:%d:attempt:%d',
                 $payment->getKey(),

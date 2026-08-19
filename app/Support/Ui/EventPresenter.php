@@ -61,6 +61,12 @@ final class EventPresenter
         // regular amount. Info, not warning — it is the schedule the customer agreed to.
         'price_stepped_up' => ['info', 'timeline.kind.price_stepped_up'],
         'checkout_discount_captured' => ['info', 'timeline.kind.checkout_discount_captured'],
+        // Account offers: the shopper accepted an upsell inside their own area.
+        // A completed switch is a SUCCESS, not a cancellation — the churn report
+        // is the reason that distinction has to exist in the taxonomy.
+        'account_offer_accepted' => ['info', 'timeline.kind.account_offer_accepted'],
+        'plan_switched' => ['success', 'timeline.kind.plan_switched'],
+        'account_offer_charge_failed' => ['failure', 'timeline.kind.account_offer_charge_failed'],
         // The Shopify-Payments rail's contract verbs (ContractActionService) —
         // without these mappings the contract Timeline reads every row as the
         // humanized "Activity" fallback.

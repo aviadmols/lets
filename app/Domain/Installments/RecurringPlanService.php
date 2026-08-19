@@ -150,9 +150,74 @@ final class RecurringPlanService
     }
 
     /**
-     * Build the awaiting_first_payment recurring plan ROW (shared by create() and
-     * createAwaitingExternalPayment()). No page, no charge — money law: the amount is the
-     * server-trusted per-cycle price; tenant law: shop_id is forceFilled from $shop.
+     * Create a recurring plan for a customer who is ALREADY known to us and already has a
+     * saved PayPlus token — the account-area offer path (W-Offers). No hosted page, no
+     * checkout: the caller charges (or schedules) the saved token itself.
+     *
+     * The identity and the payment method are the CALLER's to supply, and in practice they
+     * are copied verbatim from the subscription the offer was taken from. That is not an
+     * implementation detail but the whole reason this signature exists: an imported member's
+     * reference is the UUID their previous system gave them (shopify_customer_id), with
+     * customer_id null, and the consent gate matches on exactly those two columns. A plan
+     * built from the visitor's WordPress user id instead would be un-chargeable forever.
+     *
+     * Born `awaiting_first_payment` like every other recurring plan, with next_charge_at set
+     * to the day the caller decided the first charge falls — today for an immediate switch,
+     * the old plan's renewal date for one that waits. The existing scheduler bills it either
+     * way; there is no second mechanism.
+     *
+     * @param  array{
+     *     product_gid: string, variant_gid: string, item_title?: string,
+     *     amount: float, frequency: BillingFrequency, interval_count?: int, currency: string,
+     *     template?: \App\Models\ProductSubscriptionPlan, regular_amount?: float,
+     *     customer_email?: ?string, customer_name?: ?string, customer_phone?: ?string,
+     *     customer_id?: ?int, shopify_customer_id?: ?string, external_customer_id?: ?string,
+     *     payment_method_id?: ?int, first_charge_at?: mixed, meta?: array<string, mixed>,
+     *     source?: string
+     * }  $context
+     */
+    public function createForCustomer(Shop $shop, array $context): InstallmentPlan
+    {
+        $amount = round((float) $context['amount'], 2);
+        if ($amount <= 0) {
+            throw new \RuntimeException('Recurring subscription amount must be positive.');
+        }
+
+        $plan = $this->buildPlanRow(
+            $shop,
+            $context,
+            $amount,
+            $context['frequency'],
+            max(1, (int) ($context['interval_count'] ?? 1)),
+            (string) $context['currency'],
+        );
+
+        Timeline::record(
+            kind: 'recurring_plan_created',
+            details: [
+                'plan_public_id' => $plan->public_id,
+                'amount' => $amount,
+                'frequency' => $context['frequency']->value,
+                'interval_count' => (int) $plan->interval_count,
+                'first_charge_at' => $plan->next_charge_at?->toDateString(),
+                'source' => (string) ($context['source'] ?? 'account_offer'),
+            ],
+            planId: $plan->getKey(),
+            shopId: (int) $shop->getKey(),
+        );
+
+        return $plan;
+    }
+
+    /**
+     * Build the awaiting_first_payment recurring plan ROW (shared by create(),
+     * createAwaitingExternalPayment() and createForCustomer()). No page, no charge — money
+     * law: the amount is the server-trusted per-cycle price; tenant law: shop_id is
+     * forceFilled from $shop.
+     *
+     * The identity / payment-method / first-charge-date / extra-meta keys are OPTIONAL and
+     * default to exactly what the two checkout paths produced before they existed, so those
+     * paths keep writing byte-identical rows (RecurringPlanServiceTest asserts it).
      *
      * Pricing snapshot (consent law): when the caller resolved a template, its
      * pricing_mode / discount_cycles land HERE as the plan's own copy, together
@@ -174,9 +239,15 @@ final class RecurringPlanService
                 'discount_cycles' => $template?->introWindow(),
                 'regular_amount' => $regular > 0 ? $regular : null,
                 'product_subscription_plan_id' => $template?->getKey(),
-                'customer_id' => null,
-                'shopify_customer_id' => $context['external_customer_id'] ?? null,
+                // Identity: the checkout paths know only an external customer id;
+                // the account-offer path copies BOTH columns off the source plan,
+                // because those two are what the consent gate matches on.
+                'customer_id' => $context['customer_id'] ?? null,
+                'shopify_customer_id' => $context['shopify_customer_id'] ?? $context['external_customer_id'] ?? null,
                 'external_customer_id' => $context['external_customer_id'] ?? null,
+                // The saved card this plan bills. Null at checkout (the token does
+                // not exist yet); the source plan's token for an offer acceptance.
+                'payment_method_id' => $context['payment_method_id'] ?? null,
                 'shopify_variant_id' => ProductPriceResolver::numericId((string) $context['variant_gid']) ?: null,
                 'shopify_product_id' => ProductPriceResolver::numericId((string) $context['product_gid']) ?: null,
                 'external_variant_id' => ProductPriceResolver::numericId((string) $context['variant_gid']) ?: null,
@@ -191,20 +262,22 @@ final class RecurringPlanService
                 'currency' => $currency,
                 'billing_frequency' => $frequency->value,
                 'interval_count' => $intervalCount,
-                // next_charge_at stays NULL until the first payment activates the plan.
-                'next_charge_at' => null,
+                // NULL until the first payment activates the plan — unless the caller
+                // already knows when the first charge falls (an offer acceptance does:
+                // today, or the day the replaced plan would have renewed).
+                'next_charge_at' => $context['first_charge_at'] ?? null,
                 'requires_manual_payment' => false,
                 'public_id' => (string) Str::ulid(),
                 'customer_email' => $context['customer_email'] ?? null,
                 'customer_name' => $context['customer_name'] ?? null,
                 'customer_phone' => $context['customer_phone'] ?? null,
-                'meta' => [
+                'meta' => array_merge([
                     // The first-payment amount the activation callback records as paid.
                     self::META_RECURRING_AMOUNT => $amount,
                     // Kept so a later accounting document can name the product the
                     // customer actually bought (InstallmentPlan::itemTitle()).
                     InstallmentPlan::META_ITEM_TITLE => (string) ($context['item_title'] ?? ''),
-                ],
+                ], (array) ($context['meta'] ?? [])),
             ]);
 
             $plan->forceFill([

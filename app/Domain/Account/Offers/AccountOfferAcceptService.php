@@ -1,0 +1,577 @@
+<?php
+
+namespace App\Domain\Account\Offers;
+
+use App\Domain\Account\AccountVisitor;
+use App\Domain\Installments\RecurringPlanService;
+use App\Domain\Lifecycle\ChargeNowService;
+use App\Domain\Lifecycle\SubscriptionLifecycleService;
+use App\Models\AccountOffer;
+use App\Models\CustomerConsent;
+use App\Models\InstallmentPlan;
+use App\Models\MerchantBillingSettings;
+use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Modules\PayPlusShopifyInstallments\Services\ChargeOutcome;
+use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Throwable;
+
+/**
+ * One click in a customer's own account page becomes a new subscription on the
+ * card they already saved.
+ *
+ * THE SHAPE, and why it is three steps rather than one transaction:
+ *
+ *   A. (txn) create the plan + write its consent row + record the acceptance.
+ *   B. charge — OUTSIDE any transaction, through ChargeNowService → the
+ *      ChargeOrchestrator, which owns its own transaction, the row lock, the
+ *      ledger row opened before the gateway call, the idempotency key and the
+ *      consent gate. Nesting an HTTP call to PayPlus inside an outer transaction
+ *      would hold a row lock across the network and, worse, make a rollback able
+ *      to erase the record of money that had already moved.
+ *   C. (txn) finish: end the replaced subscription, stamp both plans, count it.
+ *
+ * The consent row is written in A and not in C for the same reason the upsell
+ * path writes it before charging: the law is that a saved-token charge never runs
+ * without a stored consent, and B is the charge.
+ *
+ * A PERIOD-END acceptance skips B entirely. The new plan is born awaiting its
+ * first payment with next_charge_at set to the day the old one would have
+ * renewed, and the ordinary scheduler bills it — there is no second mechanism and
+ * no money moves today, which is why it stays available on a shop that has
+ * switched live charging off.
+ *
+ * FAILURE IS ALWAYS BACKWARDS-SAFE. The shopper's existing subscription is never
+ * touched until the money for the new one has landed. A declined card leaves them
+ * exactly where they started, with a cancelled one-attempt plan behind them that
+ * the scheduler will never look at again — and no cancellation email, because
+ * from where they stand nothing was cancelled.
+ */
+final class AccountOfferAcceptService
+{
+    // === CONSTANTS ===
+    /** One acceptance at a time per (shop, offer, source). Non-blocking. */
+    public const LOCK_PREFIX = 'account_offer';
+
+    public const LOCK_SECONDS = 60;
+
+    /** How far the price on the card may drift from the price we will charge. */
+    public const AMOUNT_EPSILON = 0.005;
+
+    /** Cancellation reasons, written to the Timeline (never shown to a shopper). */
+    public const REASON_REPLACED = 'account_offer';
+
+    public const REASON_CHARGE_FAILED = 'account_offer_charge_failed';
+
+    public const REASON_UNAVAILABLE = 'account_offer_unavailable';
+
+    /** Marks a consent row as taken from an account-area click. */
+    public const CONSENT_VERSION_PREFIX = 'account_offer';
+
+    /** meta key stamped on the REPLACED plan, pointing at what took over. */
+    public const META_REPLACED_BY = 'account_offer_replaced_by';
+
+    public function __construct(
+        private readonly RecurringPlanService $plans,
+        private readonly SubscriptionLifecycleService $lifecycle,
+        private readonly ChargeNowService $charges,
+        private readonly AccountOfferEligibility $eligibility = new AccountOfferEligibility,
+    ) {}
+
+    /**
+     * Accept one offer from one of this visitor's subscriptions.
+     *
+     * $shownAmount is the price the CARD displayed. It is a guard, never an
+     * input: the money always comes from the template through AccountOfferQuote,
+     * and a mismatch means the merchant re-priced between the page render and the
+     * click — which is a "reload and look again", not a charge at either number.
+     */
+    public function accept(
+        AccountVisitor $visitor,
+        InstallmentPlan $source,
+        string $offerId,
+        ?float $shownAmount = null,
+    ): AccountOfferOutcome {
+        $offer = $this->findOffer($offerId);
+        if ($offer === null) {
+            return AccountOfferOutcome::invalid();
+        }
+
+        $shop = $visitor->shop;
+        $quote = AccountOfferQuote::for($offer, $source, $shop);
+        if ($quote === null) {
+            return AccountOfferOutcome::unavailable();
+        }
+
+        $settings = MerchantBillingSettings::current();
+        if (! $this->eligibility->isOpen($offer, now(), $settings)) {
+            return AccountOfferOutcome::unavailable();
+        }
+
+        // THE DOUBLE-CLICK WALL. Non-blocking: a second click that arrives while
+        // the first is still in flight is told the page moved, rather than queued
+        // behind it to create a second subscription a moment later.
+        $lock = Cache::lock(
+            sprintf('%s:%d:%d:%d', self::LOCK_PREFIX, (int) $shop->getKey(), (int) $offer->getKey(), (int) $source->getKey()),
+            self::LOCK_SECONDS,
+        );
+
+        if (! $lock->get()) {
+            return AccountOfferOutcome::changed();
+        }
+
+        try {
+            return $this->acceptUnderLock($visitor, $offer, $quote, $source, $shownAmount, $settings);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    // === The guarded body ===
+
+    private function acceptUnderLock(
+        AccountVisitor $visitor,
+        AccountOffer $offer,
+        AccountOfferQuote $quote,
+        InstallmentPlan $source,
+        ?float $shownAmount,
+        MerchantBillingSettings $settings,
+    ): AccountOfferOutcome {
+        // Repair a half-finished switch before answering anything else — see
+        // finishPendingReplacement(). Then re-read: the repair may have changed
+        // which plans are live.
+        $this->finishPendingReplacement($visitor);
+
+        $plans = $visitor->plans()->get();
+        $quote = $quote->withSource($source);
+
+        // RE-VERIFY under the lock. The eligibility that drew the card is a
+        // snapshot; this is the one that decides.
+        $eligible = collect($this->eligibility->sourcesFor($offer, $plans, $quote))
+            ->firstWhere('id', $source->getKey());
+
+        if (! $eligible instanceof InstallmentPlan) {
+            return AccountOfferOutcome::notEligible();
+        }
+
+        $source = $eligible;
+
+        if ($shownAmount !== null && abs($shownAmount - $quote->amount) > self::AMOUNT_EPSILON) {
+            return AccountOfferOutcome::changed();
+        }
+
+        $immediate = $offer->isImmediate();
+        $firstChargeAt = $this->firstChargeAt($offer, $source);
+
+        // === Step A ===
+        $new = DB::transaction(function () use ($visitor, $offer, $quote, $source, $firstChargeAt, $immediate, $settings): InstallmentPlan {
+            $new = $this->createPlan($visitor, $offer, $quote, $source, $firstChargeAt, $immediate);
+            $this->writeConsent($new, $offer, $quote, $source, $settings);
+            $this->recordAcceptance($offer, $quote, $source, $new);
+
+            return $new;
+        });
+
+        if (! $immediate) {
+            // Nothing to charge today. Close the old subscription now (the new one
+            // picks up on its renewal date) and we are done.
+            DB::transaction(function () use ($offer, $source, $new): void {
+                $this->completeSwitch($offer, $source, $new);
+            });
+
+            return AccountOfferOutcome::ok($new->refresh());
+        }
+
+        // === Step B — outside every transaction ===
+        $outcome = $this->charges->chargeNow($new->fresh());
+
+        // === Step C ===
+        if ($outcome->isSucceeded()) {
+            DB::transaction(function () use ($offer, $source, $new): void {
+                $this->completeSwitch($offer, $source, $new->refresh());
+            });
+
+            return AccountOfferOutcome::ok($new->refresh());
+        }
+
+        return $outcome->result === ChargeOutcome::RESULT_FAILED
+            ? $this->abandon($new, $offer, $source, self::REASON_CHARGE_FAILED, $outcome)
+            : $this->abandon($new, $offer, $source, self::REASON_UNAVAILABLE, $outcome);
+    }
+
+    // === Steps ===
+
+    /**
+     * Birth the new plan, with its identity and its saved card copied verbatim
+     * from the subscription the offer was taken from.
+     *
+     * That copy is the load-bearing line of the whole feature. An imported member
+     * is known by the UUID their previous system gave them (shopify_customer_id,
+     * customer_id null) and the consent gate matches on exactly those columns —
+     * so a plan built from the visitor's WordPress user id would be a subscription
+     * that can never legally be charged again.
+     */
+    private function createPlan(
+        AccountVisitor $visitor,
+        AccountOffer $offer,
+        AccountOfferQuote $quote,
+        InstallmentPlan $source,
+        Carbon $firstChargeAt,
+        bool $immediate,
+    ): InstallmentPlan {
+        return $this->plans->createForCustomer($visitor->shop, [
+            'product_gid' => (string) ($quote->product->external_id ?? ''),
+            'variant_gid' => (string) ($quote->variant?->external_variant_id ?? ''),
+            'item_title' => $quote->itemTitle,
+            'amount' => $quote->amount,
+            'template' => $quote->template,
+            'regular_amount' => $quote->regularAmount,
+            'frequency' => $quote->frequency,
+            'interval_count' => $quote->intervalCount,
+            'currency' => $quote->currency,
+            'customer_email' => $source->customer_email,
+            'customer_name' => $source->customer_name,
+            'customer_phone' => $source->customer_phone,
+            'customer_id' => $source->customer_id,
+            'shopify_customer_id' => $source->shopify_customer_id,
+            'external_customer_id' => $source->external_customer_id,
+            'payment_method_id' => $source->payment_method_id,
+            'first_charge_at' => $firstChargeAt,
+            'meta' => [
+                InstallmentPlan::META_ACCOUNT_OFFER => [
+                    'offer_id' => (string) $offer->getKey(),
+                    'source_plan_public_id' => (string) $source->public_id,
+                    'mode' => $offer->mode(),
+                    'timing' => $offer->timing(),
+                    'accepted_at' => now()->toIso8601String(),
+                    'amount' => $quote->amount,
+                    // One attempt and no more: the caller cancels this plan the
+                    // moment the attempt fails, so the retry ladder — and the
+                    // "we will try again" email — must not engage.
+                    'one_shot' => $immediate,
+                    // True only across the window between the money landing and
+                    // the old plan being closed.
+                    'replace_pending' => $immediate && $offer->isReplace(),
+                ],
+            ],
+        ]);
+    }
+
+    /**
+     * The consent this click IS. Written before any charge, keyed to the NEW plan,
+     * and snapshotting what was actually agreed — the offer's own name, the price,
+     * the cadence and the cancellation policy as it read at that moment.
+     *
+     * The shopper's migrated consent would already satisfy the charge gate on
+     * identity alone. We write this row anyway: a dispute asks what THIS
+     * subscription was agreed to, and "they consented to something else in 2019"
+     * is not an answer.
+     */
+    private function writeConsent(
+        InstallmentPlan $new,
+        AccountOffer $offer,
+        AccountOfferQuote $quote,
+        InstallmentPlan $source,
+        MerchantBillingSettings $settings,
+    ): void {
+        CustomerConsent::query()->firstOrCreate(
+            [
+                'shop_id' => (int) $new->shop_id,
+                'plan_id' => $new->getKey(),
+                'consent_context' => CustomerConsent::CONTEXT_RECURRING,
+            ],
+            [
+                'customer_id' => $new->customer_id,
+                'shopify_customer_id' => $new->shopify_customer_id,
+                'customer_email' => $new->customer_email,
+                'accepted_at' => now(),
+                'accepted_terms_version' => self::CONSENT_VERSION_PREFIX.':'.$settings->termsVersion(),
+                'cancellation_policy_snapshot' => $settings->cancellationPolicyText(),
+                'billing_amount_description' => sprintf(
+                    '%s %s per billing cycle, charged to the saved card — accepted from the account-area offer "%s" on subscription %s',
+                    (string) $quote->amount,
+                    $quote->currency,
+                    (string) $offer->name,
+                    (string) $source->public_id,
+                ),
+                'billing_frequency_description' => $quote->frequency->value,
+            ],
+        );
+    }
+
+    /** The acceptance itself, on BOTH plans. */
+    private function recordAcceptance(
+        AccountOffer $offer,
+        AccountOfferQuote $quote,
+        InstallmentPlan $source,
+        InstallmentPlan $new,
+    ): void {
+        $details = [
+            'offer_id' => (string) $offer->getKey(),
+            'offer_name' => (string) $offer->name,
+            'mode' => $offer->mode(),
+            'timing' => $offer->timing(),
+            'amount' => $quote->amount,
+            'currency' => $quote->currency,
+            'source_plan' => (string) $source->public_id,
+            'new_plan' => (string) $new->public_id,
+        ];
+
+        foreach ([$new->getKey(), $source->getKey()] as $planId) {
+            Timeline::record(
+                kind: Timeline::KIND_ACCOUNT_OFFER_ACCEPTED,
+                details: $details,
+                planId: (int) $planId,
+                shopId: (int) $new->shop_id,
+            );
+        }
+    }
+
+    /**
+     * Close the switch: end the replaced subscription (silently), cross-stamp both
+     * plans, count the acceptance, and write plan_switched on both.
+     *
+     * An ADD keeps the old subscription — there is nothing to end — so only the
+     * counters and the stamp run.
+     */
+    private function completeSwitch(AccountOffer $offer, InstallmentPlan $source, InstallmentPlan $new): void
+    {
+        if ($offer->isReplace() && ! $this->isTerminal($source)) {
+            // notify: false — the shopper upgraded; a cancellation notice about the
+            // subscription they just replaced reads as the upgrade going wrong.
+            $this->lifecycle->cancel($source, self::REASON_REPLACED.':'.$offer->getKey(), notify: false);
+
+            $meta = (array) ($source->meta ?? []);
+            $meta[self::META_REPLACED_BY] = (string) $new->public_id;
+            $source->forceFill(['meta' => $meta])->save();
+        }
+
+        $this->clearPending($new);
+
+        $offer->increment('accepted_count');
+        $offer->forceFill(['last_accepted_at' => now()])->save();
+
+        $details = [
+            'offer_id' => (string) $offer->getKey(),
+            'mode' => $offer->mode(),
+            'timing' => $offer->timing(),
+            'from_plan' => (string) $source->public_id,
+            'to_plan' => (string) $new->public_id,
+        ];
+
+        foreach ([$new->getKey(), $source->getKey()] as $planId) {
+            Timeline::record(
+                kind: Timeline::KIND_PLAN_SWITCHED,
+                details: $details,
+                planId: (int) $planId,
+                shopId: (int) $new->shop_id,
+            );
+        }
+    }
+
+    /**
+     * The attempt did not become a subscription. Close the plan it created without
+     * telling the shopper anything was cancelled — nothing of theirs was — and
+     * leave the merchant a Timeline row that says why.
+     */
+    private function abandon(
+        InstallmentPlan $new,
+        AccountOffer $offer,
+        InstallmentPlan $source,
+        string $reason,
+        ChargeOutcome $outcome,
+    ): AccountOfferOutcome {
+        // Re-read FIRST: the orchestrator wrote to this row (attempt stamps, slot
+        // state) and clearing a meta key off a stale copy would undo that.
+        $new->refresh();
+        $this->clearPending($new);
+
+        try {
+            $this->lifecycle->cancel($new, $reason, notify: false);
+        } catch (Throwable $e) {
+            // The plan is un-chargeable either way (no schedule advances for a
+            // plan whose single attempt failed), but a merchant must be able to
+            // find this.
+            Log::error('account_offer.abandon_failed', [
+                'shop_id' => (int) $new->shop_id,
+                'plan_id' => $new->getKey(),
+                'reason' => $reason,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        Timeline::record(
+            kind: Timeline::KIND_ACCOUNT_OFFER_CHARGE_FAILED,
+            details: [
+                'offer_id' => (string) $offer->getKey(),
+                'reason' => $reason,
+                'charge_result' => $outcome->result,
+                'charge_reason' => $outcome->reason,
+                'error_code' => $outcome->errorCode,
+                'source_plan' => (string) $source->public_id,
+                'new_plan' => (string) $new->public_id,
+            ],
+            planId: (int) $source->getKey(),
+            shopId: (int) $new->shop_id,
+        );
+
+        return $reason === self::REASON_CHARGE_FAILED
+            ? AccountOfferOutcome::chargeFailed()
+            : AccountOfferOutcome::unavailable();
+    }
+
+    /**
+     * Repair a switch that stopped between the money and the cancellation.
+     *
+     * The window is one failed transaction wide: the charge succeeded, step C did
+     * not, and the shopper is left holding two live subscriptions. The presenter
+     * hides every offer while that is true, and the next acceptance attempt — the
+     * next time this shopper is on the page at all — finishes the job.
+     *
+     * The offer's own counter is NOT re-incremented here: the acceptance that got
+     * this far already happened, and a repair path that can run twice must not be
+     * able to inflate a number the merchant reads as sales.
+     */
+    private function finishPendingReplacement(AccountVisitor $visitor): void
+    {
+        $plans = $visitor->plans()->get();
+
+        foreach ($plans as $plan) {
+            $meta = $plan->accountOfferMeta();
+
+            if (($meta['replace_pending'] ?? false) !== true) {
+                continue;
+            }
+
+            if ($this->isTerminal($plan)) {
+                $this->clearPending($plan);
+
+                continue;
+            }
+
+            try {
+                $this->repairOne($plan, $meta, $plans);
+            } catch (Throwable $e) {
+                Log::error('account_offer.replacement_repair_failed', [
+                    'shop_id' => (int) $plan->shop_id,
+                    'plan_id' => $plan->getKey(),
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     * @param  Collection<int, InstallmentPlan>  $plans
+     */
+    private function repairOne(InstallmentPlan $plan, array $meta, Collection $plans): void
+    {
+        $sourcePublicId = trim((string) ($meta['source_plan_public_id'] ?? ''));
+        $source = $sourcePublicId !== '' ? $plans->firstWhere('public_id', $sourcePublicId) : null;
+
+        if ($source instanceof InstallmentPlan
+            && ($meta['mode'] ?? null) === AccountOffer::MODE_REPLACE
+            && ! $this->isTerminal($source)) {
+            DB::transaction(function () use ($plan, $source, $meta): void {
+                $this->lifecycle->cancel($source, self::REASON_REPLACED.':'.($meta['offer_id'] ?? ''), notify: false);
+
+                $sourceMeta = (array) ($source->meta ?? []);
+                $sourceMeta[self::META_REPLACED_BY] = (string) $plan->public_id;
+                $source->forceFill(['meta' => $sourceMeta])->save();
+
+                foreach ([$plan->getKey(), $source->getKey()] as $planId) {
+                    Timeline::record(
+                        kind: Timeline::KIND_PLAN_SWITCHED,
+                        details: [
+                            'offer_id' => (string) ($meta['offer_id'] ?? ''),
+                            'mode' => AccountOffer::MODE_REPLACE,
+                            'from_plan' => (string) $source->public_id,
+                            'to_plan' => (string) $plan->public_id,
+                            'repaired' => true,
+                        ],
+                        planId: (int) $planId,
+                        shopId: (int) $plan->shop_id,
+                    );
+                }
+            });
+        }
+
+        $this->clearPending($plan);
+    }
+
+    // === Helpers ===
+
+    /**
+     * The offer, tenant-scoped, or null.
+     *
+     * The id is checked for digits BEFORE it reaches the query. `account_offers.id`
+     * is a bigint and Postgres aborts the whole statement when it is compared to a
+     * non-numeric string rather than simply not matching — and sqlite, which the
+     * tests run on, tolerates it. That asymmetry is exactly how such a bug ships.
+     */
+    private function findOffer(string $offerId): ?AccountOffer
+    {
+        $offerId = trim($offerId);
+
+        if ($offerId === '' || ! ctype_digit($offerId)) {
+            return null;
+        }
+
+        return AccountOffer::query()
+            ->with(['template.product', 'template.variant'])
+            ->whereKey((int) $offerId)
+            ->first();
+    }
+
+    /**
+     * When the new subscription's first charge falls.
+     *
+     * Immediate: today. Period end: the day the replaced plan would have renewed —
+     * clamped forward to today, because an imported member whose renewal date
+     * passed during a migration hold would otherwise be given a date in the past,
+     * which the scheduler reads as "overdue" and charges anyway. Saying today is
+     * the same outcome, honestly labelled on the shopper's own disclosure.
+     */
+    private function firstChargeAt(AccountOffer $offer, InstallmentPlan $source): Carbon
+    {
+        $today = now()->startOfDay();
+
+        if ($offer->isImmediate()) {
+            return $today;
+        }
+
+        $renewal = $source->next_charge_at instanceof Carbon
+            ? $source->next_charge_at->copy()->startOfDay()
+            : null;
+
+        return $renewal !== null && $renewal->greaterThan($today) ? $renewal : $today;
+    }
+
+    private function clearPending(InstallmentPlan $plan): void
+    {
+        $meta = (array) ($plan->meta ?? []);
+        $offer = (array) ($meta[InstallmentPlan::META_ACCOUNT_OFFER] ?? []);
+
+        if (($offer['replace_pending'] ?? false) !== true) {
+            return;
+        }
+
+        $offer['replace_pending'] = false;
+        $meta[InstallmentPlan::META_ACCOUNT_OFFER] = $offer;
+        $plan->forceFill(['meta' => $meta])->save();
+    }
+
+    private function isTerminal(InstallmentPlan $plan): bool
+    {
+        $status = $plan->status instanceof PlanStatus
+            ? $plan->status
+            : PlanStatus::tryFrom((string) $plan->status);
+
+        return $status === null || $status->isTerminal();
+    }
+}
