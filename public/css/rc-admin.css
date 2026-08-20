@@ -220,6 +220,21 @@
 }
 .rc-accordion + .rc-accordion { margin-block-start: var(--rc-space-4); }
 
+/* Header row: the fold toggle plus an optional action trigger BESIDE it.
+   The action is a sibling of the header button (nested buttons are invalid
+   HTML, and a tap on "add" must not also toggle the fold). */
+.rc-accordion__bar {
+    display: flex;
+    align-items: center;
+    gap: var(--rc-space-3);
+}
+.rc-accordion__bar .rc-accordion__header { flex: 1 1 auto; min-inline-size: 0; }
+.rc-accordion__action {
+    flex: none;
+    white-space: nowrap;
+    margin-inline-end: var(--rc-space-5);
+}
+
 .rc-accordion__header {
     display: flex;
     align-items: center;

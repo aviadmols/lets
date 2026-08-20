@@ -145,28 +145,6 @@ class ViewSubscription extends Page
     protected function getHeaderActions(): array
     {
         return [
-            /*
-             * A NOTE on the timeline. "Called, promised to update the card on
-             * Sunday" is the kind of thing a merchant otherwise keeps in their
-             * head or a sticky note; here it lands next to the events it
-             * explains, with the author's name and the time, where the next
-             * person to open this plan will read it.
-             */
-            Actions\Action::make('addNote')
-                ->label(__('subscriptions.action.note.label'))
-                ->icon('heroicon-m-plus')
-                ->color('gray')
-                ->modalHeading(__('subscriptions.action.note.heading'))
-                ->modalSubmitActionLabel(__('subscriptions.action.note.save'))
-                ->form([
-                    Textarea::make('note')
-                        ->label(__('subscriptions.action.note.field'))
-                        ->rows(4)
-                        ->required()
-                        ->maxLength(self::MAX_NOTE_LENGTH),
-                ])
-                ->action(fn (array $data) => $this->addNote((string) ($data['note'] ?? ''))),
-
             Actions\Action::make('pause')
                 ->label(__('subscriptions.action.pause.label'))
                 ->icon('heroicon-m-pause')
@@ -346,7 +324,35 @@ class ViewSubscription extends Page
         ];
     }
 
-    /** Pin a merchant note to this plan's timeline. Protected: only the header action calls it. */
+    /**
+     * A NOTE on the timeline. "Called, promised to update the card on Sunday" is
+     * the kind of thing a merchant otherwise keeps in their head or a sticky
+     * note; here it lands next to the events it explains, with the author's name
+     * and the time, where the next person to open this plan will read it.
+     *
+     * Defined as a `{name}Action()` method rather than a header action: the
+     * trigger renders BESIDE the Timeline heading (rc.accordion's `action` prop)
+     * — the button lives where the note lands, not in the page chrome.
+     */
+    public function addNoteAction(): Actions\Action
+    {
+        return Actions\Action::make('addNote')
+            ->label(__('subscriptions.action.note.label'))
+            ->icon('heroicon-m-plus')
+            ->color('gray')
+            ->modalHeading(__('subscriptions.action.note.heading'))
+            ->modalSubmitActionLabel(__('subscriptions.action.note.save'))
+            ->form([
+                Textarea::make('note')
+                    ->label(__('subscriptions.action.note.field'))
+                    ->rows(4)
+                    ->required()
+                    ->maxLength(self::MAX_NOTE_LENGTH),
+            ])
+            ->action(fn (array $data) => $this->addNote((string) ($data['note'] ?? '')));
+    }
+
+    /** Pin a merchant note to this plan's timeline. Protected: only the addNote action calls it. */
     protected function addNote(string $note): void
     {
         $note = trim($note);

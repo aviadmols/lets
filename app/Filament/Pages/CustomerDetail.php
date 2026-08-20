@@ -81,12 +81,6 @@ class CustomerDetail extends Page
         $this->customer = $customer;
     }
 
-    /**
-     * "+ Add note": pin a remark to this customer's timeline. A note lives on a
-     * PLAN (the timeline is plan events aggregated), so when the customer has
-     * several the merchant picks which; with one, it is chosen for them. Hidden
-     * when there is no plan to attach to (a Shopify-rail-only customer).
-     */
     protected function getHeaderActions(): array
     {
         return [
@@ -126,29 +120,42 @@ class CustomerDetail extends Page
                         'url' => $this->loginAsUrl,
                         'customer' => $this->displayName(),
                     ])),
-
-            HeaderAction::make('addNote')
-                ->label(__('subscriptions.action.note.label'))
-                ->icon('heroicon-m-plus')
-                ->color('gray')
-                ->visible(fn (): bool => $this->plans()->isNotEmpty())
-                ->modalHeading(__('subscriptions.action.note.heading'))
-                ->modalSubmitActionLabel(__('subscriptions.action.note.save'))
-                ->form([
-                    Select::make('plan_id')
-                        ->label(__('subscriptions.action.note.plan'))
-                        ->options(fn (): array => $this->planOptions())
-                        ->default(fn (): ?int => $this->plans()->first()?->getKey())
-                        ->visible(fn (): bool => $this->plans()->count() > 1)
-                        ->required(),
-                    Textarea::make('note')
-                        ->label(__('subscriptions.action.note.field'))
-                        ->rows(4)
-                        ->required()
-                        ->maxLength(ViewSubscription::MAX_NOTE_LENGTH),
-                ])
-                ->action(fn (array $data) => $this->addNote($data)),
         ];
+    }
+
+    /**
+     * "+ Add note": pin a remark to this customer's timeline. A note lives on a
+     * PLAN (the timeline is plan events aggregated), so when the customer has
+     * several the merchant picks which; with one, it is chosen for them. Hidden
+     * when there is no plan to attach to (a Shopify-rail-only customer).
+     *
+     * Defined as a `{name}Action()` method rather than a header action: the
+     * trigger renders BESIDE the Timeline heading (rc.accordion's `action` prop)
+     * — the button lives where the note lands, not in the page chrome.
+     */
+    public function addNoteAction(): HeaderAction
+    {
+        return HeaderAction::make('addNote')
+            ->label(__('subscriptions.action.note.label'))
+            ->icon('heroicon-m-plus')
+            ->color('gray')
+            ->visible(fn (): bool => $this->plans()->isNotEmpty())
+            ->modalHeading(__('subscriptions.action.note.heading'))
+            ->modalSubmitActionLabel(__('subscriptions.action.note.save'))
+            ->form([
+                Select::make('plan_id')
+                    ->label(__('subscriptions.action.note.plan'))
+                    ->options(fn (): array => $this->planOptions())
+                    ->default(fn (): ?int => $this->plans()->first()?->getKey())
+                    ->visible(fn (): bool => $this->plans()->count() > 1)
+                    ->required(),
+                Textarea::make('note')
+                    ->label(__('subscriptions.action.note.field'))
+                    ->rows(4)
+                    ->required()
+                    ->maxLength(ViewSubscription::MAX_NOTE_LENGTH),
+            ])
+            ->action(fn (array $data) => $this->addNote($data));
     }
 
     /** @return array<int, string> plan id → "product · status" */

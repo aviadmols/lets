@@ -217,8 +217,14 @@
                 @endif
             </div>
 
-            {{-- Timeline --}}
-            <x-rc.accordion title="customers.detail.timeline" :open="true">
+            {{-- Timeline. The add-note trigger sits beside the heading — the note
+                 needs a plan to land on, so no plans (Shopify-rail-only) = no button. --}}
+            <x-rc.accordion
+                title="customers.detail.timeline"
+                :open="true"
+                :action="$this->plans()->isNotEmpty() ? 'addNote' : null"
+                actionLabel="subscriptions.action.note.label"
+            >
                 <x-rc.timeline :events="$this->timelineEvents()" />
             </x-rc.accordion>
         </div>

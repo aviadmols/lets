@@ -274,7 +274,12 @@
         {{-- Timeline (this plan). previewAction wires the per-row "Preview email"
              trigger to the page's previewEmailAction; the action resolves the event
              scoped to THIS plan + shop before rendering the isolated-iframe preview. --}}
-        <x-rc.accordion title="subscriptions.detail.timeline" :open="true">
+        <x-rc.accordion
+            title="subscriptions.detail.timeline"
+            :open="true"
+            action="addNote"
+            actionLabel="subscriptions.action.note.label"
+        >
             <x-rc.timeline :events="$this->timelineEvents()" previewAction="previewEmail" />
         </x-rc.accordion>
     </div>
