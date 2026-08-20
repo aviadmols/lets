@@ -9,6 +9,7 @@ use App\Services\Orders\PlatformOrderStrategy;
 use App\Services\WooCommerce\WooClientFactory;
 use App\Services\WooCommerce\WooCommerceClient;
 use App\Services\WooCommerce\WooCustomerResolver;
+use App\Services\WooCommerce\WooOrderAddress;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -95,12 +96,16 @@ final class WooCommerceOrderStrategy implements PlatformOrderStrategy
             return;
         }
 
+        $customerId = $this->customerIdFor($plan, $client);
+        $address = WooOrderAddress::forOrder($plan, $plan->shop, $customerId);
+
         $order = $client->createOrder([
             'status' => self::STATUS_PROCESSING,        // accepted, fulfillment LOCKED (not completed)
             'set_paid' => false,                        // the deposit was collected on the PayPlus page, not WC
             'currency' => (string) $plan->currency,
-            'customer_id' => $this->customerIdFor($plan, $client),
-            'billing' => $this->billing($plan),
+            'customer_id' => $customerId,
+            'billing' => $address['billing'],
+            'shipping' => $address['shipping'],
             'line_items' => [$this->mainLineItem($plan)],
             'meta_data' => $this->meta([
                 self::META_PLAN_PUBLIC_ID => (string) $plan->public_id,
@@ -176,12 +181,18 @@ final class WooCommerceOrderStrategy implements PlatformOrderStrategy
         $discounted = $plan->regular_amount !== null
             && $amount < round((float) $plan->regular_amount, 2);
 
+        $customerId = $this->customerIdFor($plan, $client);
+        // Read LIVE, every cycle: the address a shopper edits in My Account is
+        // the address their next box must go to.
+        $address = WooOrderAddress::forOrder($plan, $plan->shop, $customerId);
+
         $order = $client->createOrder([
             'status' => self::STATUS_COMPLETED,         // a fulfillable, paid cycle order
             'set_paid' => true,                         // the money already moved through PayPlus
             'currency' => (string) $plan->currency,
-            'customer_id' => $this->customerIdFor($plan, $client),
-            'billing' => $this->billing($plan),
+            'customer_id' => $customerId,
+            'billing' => $address['billing'],
+            'shipping' => $address['shipping'],
             'line_items' => $lineItems,
             'meta_data' => $this->meta([
                 self::META_PLAN_PUBLIC_ID => (string) $plan->public_id,
@@ -327,16 +338,6 @@ final class WooCommerceOrderStrategy implements PlatformOrderStrategy
         }
 
         return $line;
-    }
-
-    /** Billing block from the plan's stored customer fields (empty fields dropped). */
-    private function billing(InstallmentPlan $plan): array
-    {
-        return array_filter([
-            'email' => (string) ($plan->customer_email ?? ''),
-            'first_name' => (string) ($plan->customer_name ?? ''),
-            'phone' => (string) ($plan->customer_phone ?? ''),
-        ], static fn ($v): bool => $v !== '');
     }
 
     /**

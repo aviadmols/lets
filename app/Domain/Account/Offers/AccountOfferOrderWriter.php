@@ -10,6 +10,7 @@ use App\Services\WooCommerce\Orders\WooCommerceOrderStrategy;
 use App\Services\WooCommerce\Orders\WooOrderTags;
 use App\Services\WooCommerce\WooClientFactory;
 use App\Services\WooCommerce\WooCustomerResolver;
+use App\Services\WooCommerce\WooOrderAddress;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -86,7 +87,6 @@ final class AccountOfferOrderWriter
                 'status' => self::STATUS,
                 'set_paid' => true,
                 'currency' => $quote->currency,
-                'billing' => $this->billing($source),
                 'line_items' => [$this->lineItem($quote)],
                 'meta_data' => [
                     ['key' => self::META_ORDER_ROLE, 'value' => self::ROLE_ACCOUNT_OFFER],
@@ -110,7 +110,15 @@ final class AccountOfferOrderWriter
             // than by the plan's reference alone: an imported member's reference
             // is a UUID and a guest checkout's is `0`, and both of those people
             // may hold an account today — the store is asked by email.
-            $payload['customer_id'] = WooCustomerResolver::resolve($source, $client);
+            $customerId = WooCustomerResolver::resolve($source, $client);
+            $payload['customer_id'] = $customerId;
+
+            // A one-off bought from the account area is a PARCEL: it needs the
+            // same address the subscription's own boxes go to, read live from
+            // the store so an address changed this morning is honoured tonight.
+            $address = WooOrderAddress::forOrder($source, $shop, $customerId);
+            $payload['billing'] = $address['billing'];
+            $payload['shipping'] = $address['shipping'];
 
             $order = $client->createOrder($payload);
             $orderId = (string) ($order['id'] ?? '');
@@ -162,16 +170,6 @@ final class AccountOfferOrderWriter
         }
 
         return $line;
-    }
-
-    /** @return array<string, string> */
-    private function billing(InstallmentPlan $plan): array
-    {
-        return array_filter([
-            'email' => (string) ($plan->customer_email ?? ''),
-            'first_name' => (string) ($plan->customer_name ?? ''),
-            'phone' => (string) ($plan->customer_phone ?? ''),
-        ], static fn (string $v): bool => $v !== '');
     }
 
     private function numericId(string $identifier): int
