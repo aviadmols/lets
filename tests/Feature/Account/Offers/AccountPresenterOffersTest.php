@@ -5,6 +5,7 @@ namespace Tests\Feature\Account\Offers;
 use App\Domain\Account\AccountPresenter;
 use App\Domain\Account\AccountVisitor;
 use App\Models\AccountOffer;
+use App\Models\AccountOfferTarget;
 use App\Models\MerchantBillingSettings;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
@@ -20,6 +21,10 @@ use Tests\TestCase;
  * inventing, so the two are asserted to emit the same keys — and the preview is
  * asserted to show the merchant's REAL offers, because a merchant who cannot see
  * the offer they just wrote concludes it is broken and writes it again.
+ *
+ * The shape is split in two on purpose: the PROMOTION at the top level, and the
+ * things it sells in `targets`. The renderer is built against exactly these two
+ * key lists.
  */
 final class AccountPresenterOffersTest extends TestCase
 {
@@ -27,11 +32,16 @@ final class AccountPresenterOffersTest extends TestCase
     use RefreshDatabase;
 
     // === CONSTANTS ===
-    /** Every key an offer card carries. The renderer is built against this list. */
+    /** Every key an offer card carries. */
     private const OFFER_KEYS = [
-        'id', 'placement', 'mode', 'timing', 'product', 'amount', 'currency',
-        'currency_symbol', 'price_display', 'cadence', 'first_charge_at', 'heading',
-        'subtext', 'image_url', 'button_text', 'html', 'source_plan', 'disclosure',
+        'id', 'placement', 'heading', 'subtext', 'image_url', 'html', 'source_plan', 'targets',
+    ];
+
+    /** Every key ONE target carries, in payload order. */
+    private const TARGET_KEYS = [
+        'key', 'index', 'kind', 'mode', 'timing', 'fulfilment', 'product', 'quantity',
+        'amount', 'currency', 'currency_symbol', 'price_display', 'cadence',
+        'first_charge_at', 'next_order_at', 'button_text', 'disclosure',
     ];
 
     protected function tearDown(): void
@@ -81,17 +91,113 @@ final class AccountPresenterOffersTest extends TestCase
             $card = $model['subscriptions'][0]['offers'][0];
             $this->assertSame(self::OFFER_KEYS, array_keys($card));
             $this->assertSame((string) $source->public_id, $card['source_plan']);
-            $this->assertSame(49.0, $card['amount']);
-            $this->assertSame('ILS', $card['currency']);
-            $this->assertSame('₪', $card['currency_symbol']);
-            $this->assertSame('49 ₪', $card['price_display']);
-            $this->assertSame('every month', $card['cadence']);
-            $this->assertSame(AccountOffer::MODE_REPLACE, $card['mode']);
-            $this->assertSame(AccountOffer::TIMING_IMMEDIATE, $card['timing']);
-            $this->assertSame(now()->toDateString(), $card['first_charge_at']);
-            $this->assertSame('Membership 2675', $card['product']['title']);
-            $this->assertStringContainsString('49 ₪', $card['disclosure']);
-            $this->assertStringContainsString('saved card', $card['disclosure']);
+
+            $this->assertCount(1, $card['targets']);
+            $target = $card['targets'][0];
+            $this->assertSame(self::TARGET_KEYS, array_keys($target));
+            $this->assertSame(1, $target['index']);
+            $this->assertSame(AccountOfferTarget::KIND_SUBSCRIPTION, $target['kind']);
+            $this->assertSame(49.0, $target['amount']);
+            $this->assertSame('ILS', $target['currency']);
+            $this->assertSame('₪', $target['currency_symbol']);
+            $this->assertSame('49 ₪', $target['price_display']);
+            $this->assertSame('every month', $target['cadence']);
+            $this->assertSame(AccountOfferTarget::MODE_REPLACE, $target['mode']);
+            $this->assertSame(AccountOfferTarget::TIMING_IMMEDIATE, $target['timing']);
+            $this->assertNull($target['fulfilment'], 'a subscription has no fulfilment to report');
+            $this->assertSame(now()->toDateString(), $target['first_charge_at']);
+            $this->assertNull($target['next_order_at']);
+            $this->assertSame('Membership 2675', $target['product']['title']);
+            $this->assertStringContainsString('49 ₪', $target['disclosure']);
+            $this->assertStringContainsString('saved card', $target['disclosure']);
+        });
+    }
+
+    /**
+     * The headline of this change: ONE card, several things to buy, in the order
+     * the merchant arranged them, each with its own price, its own button text
+     * and its own sentence about what happens.
+     */
+    public function test_one_offer_presents_several_targets_in_order(): void
+    {
+        $shop = $this->makeShop();
+
+        Tenant::run($shop, function () use ($shop): void {
+            $monthly = $this->makeProduct(self::PRODUCT_MONTHLY, 'Membership 2675', 49.0);
+            $mug = $this->makeProduct('4242', 'Club mug', 39.0);
+
+            $offer = $this->makeOffer(null, ['placement' => AccountOffer::PLACEMENT_PLAN]);
+            $this->addTarget($offer, [
+                'product_subscription_plan_id' => $this->makeTemplate($monthly, BillingFrequency::MONTHLY)->getKey(),
+                'token_key' => 'monthly',
+                'button_text' => 'Switch to monthly',
+            ]);
+            $this->addTarget($offer, [
+                'kind' => AccountOfferTarget::KIND_ONE_TIME,
+                'external_product_id' => '4242',
+                'quantity' => 2,
+                'fulfilment' => AccountOfferTarget::FULFILMENT_NEXT_ORDER,
+                'button_text' => 'Add to my next box',
+            ]);
+
+            $source = $this->makeSourcePlan();
+
+            $card = app(AccountPresenter::class)->present($this->visitor($shop))['subscriptions'][0]['offers'][0];
+
+            $this->assertCount(2, $card['targets']);
+            [$first, $second] = $card['targets'];
+
+            $this->assertSame(self::TARGET_KEYS, array_keys($first));
+            $this->assertSame(self::TARGET_KEYS, array_keys($second));
+
+            // The subscription target: priced from the template, cadence and all.
+            $this->assertSame('monthly', $first['key'], 'the merchant slug is the stable key');
+            $this->assertSame(1, $first['index']);
+            $this->assertSame(AccountOfferTarget::KIND_SUBSCRIPTION, $first['kind']);
+            $this->assertSame(49.0, $first['amount']);
+            $this->assertSame(1, $first['quantity']);
+            $this->assertSame('every month', $first['cadence']);
+            $this->assertSame('Switch to monthly', $first['button_text']);
+
+            // The one-time target: priced from the catalog x quantity, no cadence,
+            // and riding the source subscription's own renewal date.
+            $this->assertSame('4242', $second['key'], 'no slug, so the product id addresses it');
+            $this->assertSame(2, $second['index']);
+            $this->assertSame(AccountOfferTarget::KIND_ONE_TIME, $second['kind']);
+            $this->assertSame(AccountOfferTarget::MODE_ADD, $second['mode'], 'a mug replaces nothing');
+            $this->assertNull($second['timing']);
+            $this->assertSame(AccountOfferTarget::FULFILMENT_NEXT_ORDER, $second['fulfilment']);
+            $this->assertSame(2, $second['quantity']);
+            $this->assertSame(78.0, $second['amount'], '39 x 2, priced by the catalog');
+            $this->assertNull($second['cadence']);
+            $this->assertNull($second['first_charge_at']);
+            $this->assertSame($source->next_charge_at->toDateString(), $second['next_order_at']);
+            $this->assertStringContainsString($source->next_charge_at->toDateString(), $second['disclosure']);
+            $this->assertStringContainsString('Nothing is charged today', $second['disclosure']);
+        });
+    }
+
+    public function test_a_buy_now_target_says_the_money_moves_now(): void
+    {
+        $shop = $this->makeShop();
+
+        Tenant::run($shop, function () use ($shop): void {
+            $this->makeProduct('4242', 'Club mug', 39.0);
+            $offer = $this->makeOffer();
+            $this->addTarget($offer, [
+                'kind' => AccountOfferTarget::KIND_ONE_TIME,
+                'external_product_id' => '4242',
+                'fulfilment' => AccountOfferTarget::FULFILMENT_IMMEDIATE,
+            ]);
+            $this->makeSourcePlan();
+
+            $target = app(AccountPresenter::class)
+                ->present($this->visitor($shop))['subscriptions'][0]['offers'][0]['targets'][0];
+
+            $this->assertSame(AccountOfferTarget::FULFILMENT_IMMEDIATE, $target['fulfilment']);
+            $this->assertNull($target['next_order_at']);
+            $this->assertStringContainsString('39 ₪', $target['disclosure']);
+            $this->assertStringContainsString('now', $target['disclosure']);
         });
     }
 
@@ -103,15 +209,16 @@ final class AccountPresenterOffersTest extends TestCase
             $product = $this->makeProduct(self::PRODUCT_MONTHLY, 'Membership 2675', 49.0);
             $this->makeOffer(
                 $this->makeTemplate($product, BillingFrequency::MONTHLY),
-                ['replace_timing' => AccountOffer::TIMING_PERIOD_END],
+                ['replace_timing' => AccountOfferTarget::TIMING_PERIOD_END],
             );
 
             $source = $this->makeSourcePlan();
 
-            $card = app(AccountPresenter::class)->present($this->visitor($shop))['subscriptions'][0]['offers'][0];
+            $target = app(AccountPresenter::class)
+                ->present($this->visitor($shop))['subscriptions'][0]['offers'][0]['targets'][0];
 
-            $this->assertSame($source->next_charge_at->toDateString(), $card['first_charge_at']);
-            $this->assertStringContainsString($source->next_charge_at->toDateString(), $card['disclosure']);
+            $this->assertSame($source->next_charge_at->toDateString(), $target['first_charge_at']);
+            $this->assertStringContainsString($source->next_charge_at->toDateString(), $target['disclosure']);
         });
     }
 
@@ -126,6 +233,7 @@ final class AccountPresenterOffersTest extends TestCase
                 'custom_html' => '<div class="promo" onclick="steal()">'
                     .'<h3>{{heading}}</h3><p>{{product}} — {{price}} {{cadence}}</p>'
                     .'<script>alert(1)</script>{{button}}</div>',
+                'token_key' => 'monthly',
             ]);
 
             $this->makeSourcePlan();
@@ -145,9 +253,43 @@ final class AccountPresenterOffersTest extends TestCase
             $this->assertStringNotContainsString('{{', $html);
 
             // The button is a sentinel the renderer replaces with a control IT
-            // wired: a merchant decides where it goes, never what it does.
-            $this->assertStringContainsString(AccountOffer::BUTTON_SLOT, $html);
+            // wired, carrying the key the click has to post back.
+            $this->assertStringContainsString('<span class="la-offer__slot" data-target="monthly"></span>', $html);
             $this->assertStringContainsString('class="promo"', $html);
+        });
+    }
+
+    /** Several buttons in one block, each wired to the target it names. */
+    public function test_each_button_token_becomes_the_slot_of_the_target_it_names(): void
+    {
+        $shop = $this->makeShop();
+
+        Tenant::run($shop, function () use ($shop): void {
+            $monthly = $this->makeProduct(self::PRODUCT_MONTHLY, 'Membership 2675', 49.0);
+            $this->makeProduct('4242', 'Club mug', 39.0);
+
+            $offer = $this->makeOffer(null, [
+                'custom_html' => '<p>Switch {{button_monthly}}</p><p>Mug {{button_4242}}</p><p>Again {{button_1}}</p>',
+            ]);
+            $this->addTarget($offer, [
+                'product_subscription_plan_id' => $this->makeTemplate($monthly, BillingFrequency::MONTHLY)->getKey(),
+                'token_key' => 'monthly',
+            ]);
+            $this->addTarget($offer, [
+                'kind' => AccountOfferTarget::KIND_ONE_TIME,
+                'external_product_id' => '4242',
+            ]);
+
+            $this->makeSourcePlan();
+
+            $html = app(AccountPresenter::class)->present($this->visitor($shop))['subscriptions'][0]['offers'][0]['html'];
+
+            $this->assertStringContainsString('<span class="la-offer__slot" data-target="monthly"></span>', $html);
+            $this->assertStringContainsString('<span class="la-offer__slot" data-target="4242"></span>', $html);
+            // {{button_1}} is the FIRST target by position — the same one the slug
+            // names, so the block simply carries its button twice.
+            $this->assertSame(2, substr_count($html, 'data-target="monthly"'));
+            $this->assertStringNotContainsString('{{', $html);
         });
     }
 
@@ -159,6 +301,7 @@ final class AccountPresenterOffersTest extends TestCase
             $product = $this->makeProduct(self::PRODUCT_MONTHLY, '<img src=x onerror=alert(1)>', 49.0);
             $this->makeOffer($this->makeTemplate($product, BillingFrequency::MONTHLY), [
                 'custom_html' => '<p>{{product}}</p>{{button}}',
+                'token_key' => 'go',
             ]);
             $this->makeSourcePlan();
 
@@ -169,7 +312,10 @@ final class AccountPresenterOffersTest extends TestCase
             // TEXT — what must not survive is a tag the browser would parse.
             $this->assertStringNotContainsString('<img', $html);
             $this->assertStringContainsString('&lt;img', $html);
-            $this->assertSame('<p>&lt;img src=x onerror=alert(1)&gt;</p>'.AccountOffer::BUTTON_SLOT, $html);
+            $this->assertSame(
+                '<p>&lt;img src=x onerror=alert(1)&gt;</p><span class="la-offer__slot" data-target="go"></span>',
+                $html,
+            );
         });
     }
 
@@ -198,6 +344,7 @@ final class AccountPresenterOffersTest extends TestCase
 
             $card = $model['subscriptions'][0]['offers'][0];
             $this->assertSame(self::OFFER_KEYS, array_keys($card));
+            $this->assertSame(self::TARGET_KEYS, array_keys($card['targets'][0]));
             $this->assertSame('SAMPLE-1', $card['source_plan'], 'The preview has no real plan to take it from.');
         });
     }
@@ -218,9 +365,10 @@ final class AccountPresenterOffersTest extends TestCase
             $preview = $presenter->sample()['offers'][0];
 
             $this->assertSame(array_keys($live), array_keys($preview));
-            $this->assertSame($live['amount'], $preview['amount']);
-            $this->assertSame($live['cadence'], $preview['cadence']);
-            $this->assertSame($live['disclosure'], $preview['disclosure']);
+            $this->assertSame(array_keys($live['targets'][0]), array_keys($preview['targets'][0]));
+            $this->assertSame($live['targets'][0]['amount'], $preview['targets'][0]['amount']);
+            $this->assertSame($live['targets'][0]['cadence'], $preview['targets'][0]['cadence']);
+            $this->assertSame($live['targets'][0]['disclosure'], $preview['targets'][0]['disclosure']);
         });
     }
 
@@ -233,6 +381,7 @@ final class AccountPresenterOffersTest extends TestCase
 
             foreach ([
                 'offer_accept', 'offer_from', 'offer_replaces', 'offer_price_label', 'offer_unavailable',
+                'offer_buy_now', 'offer_one_time', 'offer_add_to_next',
                 'result_accept_offer', 'result_accept_offer_unavailable', 'result_accept_offer_charge_failed',
                 'result_accept_offer_not_eligible', 'result_accept_offer_changed',
             ] as $key) {

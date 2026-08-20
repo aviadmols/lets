@@ -182,17 +182,58 @@ final class AccountOfferEndpointTest extends TestCase
 
         $response->assertJsonStructure([
             'account' => [
-                'offers' => [['id', 'placement', 'mode', 'timing', 'product', 'amount', 'currency',
-                    'currency_symbol', 'price_display', 'cadence', 'first_charge_at', 'heading',
-                    'subtext', 'image_url', 'button_text', 'html', 'source_plan', 'disclosure']],
+                'offers' => [[
+                    'id', 'placement', 'heading', 'subtext', 'image_url', 'html', 'source_plan',
+                    'targets' => [[
+                        'key', 'index', 'kind', 'mode', 'timing', 'fulfilment', 'product', 'quantity',
+                        'amount', 'currency', 'currency_symbol', 'price_display', 'cadence',
+                        'first_charge_at', 'next_order_at', 'button_text', 'disclosure',
+                    ]],
+                ]],
                 'rail_offers',
                 'subscriptions' => [['offers']],
                 'copy' => ['offer_accept', 'offer_from', 'offer_replaces', 'offer_price_label',
-                    'offer_unavailable', 'result_accept_offer', 'result_accept_offer_unavailable',
+                    'offer_unavailable', 'offer_buy_now', 'offer_one_time', 'offer_add_to_next',
+                    'result_accept_offer', 'result_accept_offer_unavailable',
                     'result_accept_offer_charge_failed', 'result_accept_offer_not_eligible',
                     'result_accept_offer_changed'],
             ],
         ]);
+    }
+
+    /**
+     * The click names WHICH of an offer's things it wants, and the endpoint
+     * forwards it. A key that names nothing is a 200 saying "no longer yours",
+     * not a 404 — the offer is real and on their screen.
+     */
+    public function test_the_target_key_reaches_the_service(): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop('offer-target.example.com');
+        [$offer, $source] = $this->scenario($shop, ['token_key' => 'monthly']);
+
+        $this->signedPost($key, $secret, self::PATH, [
+            'customer_ref' => self::MEMBER_REF,
+            'email' => self::MEMBER_EMAIL,
+            'subscription' => (string) $source->public_id,
+            'offer' => (string) $offer->getKey(),
+            'target' => 'no-such-target',
+            'amount' => 49.0,
+        ])->assertOk()
+            ->assertJsonPath('ok', false)
+            ->assertJsonPath('result', AccountOfferOutcome::RESULT_NOT_ELIGIBLE);
+
+        $this->assertSame(0, $this->payplusCalls);
+
+        $this->signedPost($key, $secret, self::PATH, [
+            'customer_ref' => self::MEMBER_REF,
+            'email' => self::MEMBER_EMAIL,
+            'subscription' => (string) $source->public_id,
+            'offer' => (string) $offer->getKey(),
+            'target' => 'monthly',
+            'amount' => 49.0,
+        ])->assertOk()->assertJsonPath('result', AccountOfferOutcome::RESULT_OK);
+
+        $this->assertSame(1, $this->payplusCalls);
     }
 
     // === Fixtures ===

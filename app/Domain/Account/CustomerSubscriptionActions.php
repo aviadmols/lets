@@ -158,6 +158,7 @@ final class CustomerSubscriptionActions
                 $visitor,
                 $plan,
                 (string) ($input['offer'] ?? ''),
+                (string) ($input['target'] ?? ''),
                 $input['amount'] ?? null,
             ),
         };
@@ -341,23 +342,34 @@ final class CustomerSubscriptionActions
     }
 
     /**
-     * Take an offer, from the subscription the card sat under.
+     * Take one TARGET of an offer, from the subscription the card sat under.
+     *
+     * An offer sells a list of things, and $targetKey names which one was clicked
+     * — the stable key the payload carried (the merchant's slug, else the product
+     * id, else the position). An empty key means the first target, which is what
+     * `{{button}}` means and what a renderer that predates targets is asking for.
      *
      * Nothing is decided here beyond the ownership wall the caller already
-     * enforced: AccountOfferAcceptService owns the eligibility re-check under a
-     * lock, the price (the shopper's number is a GUARD, never an input), the
-     * consent row, the charge and the replacement.
+     * enforced: AccountOfferAcceptService owns the target resolution, the
+     * eligibility re-check under a lock, the price (the shopper's number is a
+     * GUARD, never an input), the consent row, the charge and the replacement.
      *
      * Resolved lazily rather than injected: this class is constructed once per
      * subscription card by the presenter, and that service pulls the whole charge
      * pipeline behind it — a cost no page render should pay to draw a button.
      */
-    private function acceptOffer(AccountVisitor $visitor, InstallmentPlan $plan, string $offerId, mixed $shownAmount): array
-    {
+    private function acceptOffer(
+        AccountVisitor $visitor,
+        InstallmentPlan $plan,
+        string $offerId,
+        string $targetKey,
+        mixed $shownAmount,
+    ): array {
         $outcome = app(AccountOfferAcceptService::class)->accept(
             visitor: $visitor,
             source: $plan,
             offerId: $offerId,
+            targetKey: $targetKey,
             shownAmount: is_numeric($shownAmount) ? round((float) $shownAmount, 2) : null,
         );
 

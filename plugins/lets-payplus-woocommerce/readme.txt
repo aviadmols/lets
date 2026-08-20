@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.32.0
+Stable tag: 0.33.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,19 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.33.0 =
+* One offer area can now carry several products. A single card in the personal
+  area can put a choice in front of a subscriber — the bigger plan, the refill,
+  the accessory — each with its own price, its own dates and its own button,
+  instead of one offer per card.
+* A subscriber can buy a plain one-time product with one click, on the card
+  already on file: billed now, or added to their next subscription order so it
+  arrives with the delivery they are already getting. The card says which before
+  they confirm, and the confirmation names the amount and the date.
+* A merchant writing their own offer HTML places each button where they want it;
+  a button whose product is gone is removed rather than left as a gap, and a
+  product the design never mentioned still gets a working button at the end.
 
 = 0.32.0 =
 * Offers in the personal area. A merchant can now put an offer in front of a

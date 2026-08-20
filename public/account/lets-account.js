@@ -62,9 +62,11 @@
     };
 
     /* An offer whose design the merchant wrote themselves carries this sentinel
-       where {{button}} stood. The renderer swaps the element for a real, wired
-       button — the merchant owns the layout, never the verb. */
+       where each {{button}} stood, tagged with the TARGET it belongs to. The
+       renderer swaps every element for a real, wired button — the merchant owns
+       the layout, never the verb. */
     var OFFER_SLOT_CLASS = 'la-offer__slot';
+    var OFFER_SLOT_KEY = 'data-target';
 
     /* Elements that never survive merchant markup, and the attribute shapes that
        never survive an element. The server stripped all of them already; this is
@@ -197,9 +199,11 @@
         if (topOffers.length) {
             var offerStrip = el('div', 'la-offers la-offers--top');
             topOffers.forEach(function (offer) {
-                offerStrip.appendChild(renderOffer(state, offer, 'la-offer--top'));
+                // append() skips a null: an offer with nothing to accept draws
+                // no card, and a strip of nothing but those draws no strip.
+                append(offerStrip, renderOffer(state, offer, 'la-offer--top'));
             });
-            append(mount, offerStrip);
+            if (offerStrip.childNodes.length) { append(mount, offerStrip); }
         }
 
         var grid = el('div', 'lets-acct__grid');
@@ -223,9 +227,9 @@
         if (railOffers.length) {
             var railStrip = el('div', 'la-offers la-offers--rail');
             railOffers.forEach(function (offer) {
-                railStrip.appendChild(renderOffer(state, offer, 'la-offer--rail'));
+                append(railStrip, renderOffer(state, offer, 'la-offer--rail'));
             });
-            rail.appendChild(railStrip);
+            if (railStrip.childNodes.length) { rail.appendChild(railStrip); }
         }
 
         banners.forEach(function (banner) { rail.appendChild(renderBanner(banner)); });
@@ -417,9 +421,9 @@
         if (offers.length) {
             var box = el('div', 'la-offers la-offers--plan');
             offers.forEach(function (offer) {
-                box.appendChild(renderOffer(state, offer, 'la-offer--plan'));
+                append(box, renderOffer(state, offer, 'la-offer--plan'));
             });
-            append(card, box);
+            if (box.childNodes.length) { append(card, box); }
         }
 
         return card;
@@ -781,71 +785,122 @@
 
     /**
      * One offer card: "switch this yearly plan to monthly", "add this to your
-     * box". Two shapes, one contract — either the merchant filled in the admin's
-     * fields (image, heading, subtext, price) or they wrote their own markup —
-     * and both end in the SAME button firing the same verb. The merchant owns
-     * the design; they never own the money, which is why not one number here is
-     * computed in the browser: `price_display`, `cadence` and `amount` are the
-     * server's, resolved from the subscription template.
+     * box", "and take a bag of beans with it, billed today or on your next
+     * delivery". Two shapes, one contract — either the merchant filled in the
+     * admin's fields (image, heading, subtext) or they wrote their own markup —
+     * and both end in the SAME buttons firing the same verb.
+     *
+     * A card carries a LIST of targets now, not one. A target is a subscription
+     * the shopper would move to or add, or a plain one-time product they can buy
+     * on the card already on file; each has its own price, its own dates and its
+     * own button. The merchant owns the design; they never own the money, which
+     * is why not one number here is computed in the browser: `price_display`,
+     * `cadence` and `amount` are the server's.
+     *
+     * An offer with no targets is not a card with nothing to click — it is not a
+     * card at all, and returns null.
      *
      * The modifier is the placement (top / rail / plan). Like the banners, the
      * markup itself is identical everywhere so the three cannot drift into three
      * designs.
      */
     function renderOffer(state, offer, modifier) {
-        var m = state.model;
+        var targets = Array.isArray(offer.targets) ? byIndex(offer.targets) : [];
+        if (!targets.length) { return null; }
+
         var card = el('article', modifier ? 'la-offer ' + modifier : 'la-offer');
         attr(card, 'data-offer', offer.id);
-        attr(card, 'data-mode', offer.mode);
-
-        var button = offerButton(state, offer);
 
         if (offer.html) {
-            return append(card, renderOfferHtml(offer, button));
+            return append(card, renderOfferHtml(state, offer, targets));
         }
 
-        var product = offer.product || {};
-        var image = offer.image_url || product.image;
+        // The picture is the OFFER's. A card with one target may borrow that
+        // product's image, the way the single-target card always did; a card
+        // offering three products has no one product to picture.
+        var only = targets.length === 1 ? (targets[0].product || {}) : {};
+        var image = offer.image_url || only.image;
         if (image) {
             var img = el('img', 'la-offer__img');
             attr(img, 'src', image);
-            attr(img, 'alt', offer.heading || product.title || '');
+            attr(img, 'alt', offer.heading || only.title || '');
             attr(img, 'loading', 'lazy');
             append(card, img);
         }
 
-        var body = el('div', 'la-offer__body');
-        append(body, el('h3', 'la-offer__heading', offer.heading || product.title || ''));
-        if (offer.subtext) { append(body, el('p', 'la-offer__subtext', offer.subtext)); }
+        var heading = offer.heading || only.title || '';
+        if (heading || offer.subtext) {
+            var body = el('div', 'la-offer__body');
+            if (heading) { append(body, el('h3', 'la-offer__heading', heading)); }
+            if (offer.subtext) { append(body, el('p', 'la-offer__subtext', offer.subtext)); }
+            append(card, body);
+        }
 
-        // The price sentence is two server-written halves joined; neither is
-        // formatted here, so a Hebrew store reads Hebrew and an ILS plan reads ₪.
-        var price = [offer.price_display, offer.cadence].filter(Boolean).join(' · ');
+        var list = el('div', 'la-offer__targets');
+        targets.forEach(function (target) {
+            // The heading travels down so a one-target card whose title IS the
+            // product's does not print that title twice, one line apart.
+            append(list, renderOfferTarget(state, offer, target, heading));
+        });
+
+        return append(card, list);
+    }
+
+    /**
+     * One row of the list: what it is, what it costs, when it is charged, and the
+     * button that does it. Every sentence in it is the SERVER's — the row joins
+     * strings, it never formats money and never derives a date.
+     */
+    function renderOfferTarget(state, offer, target, heading) {
+        var m = state.model;
+        var row = el('div', 'la-offer__target');
+        attr(row, 'data-kind', target.kind);
+        attr(row, 'data-mode', target.mode);
+
+        // Which product, with the quantity when it is more than one. Two rows
+        // that both read "149 ₪" and nothing else are two rows a shopper cannot
+        // tell apart — and one of them is about to be charged. The exception is
+        // the card whose own heading is already this product's name.
+        var product = target.product || {};
+        var quantity = Number(target.quantity) > 1 ? Number(target.quantity) : 0;
+        if (product.title && (quantity || product.title !== heading)) {
+            append(row, el('p', 'la-offer__target-name', quantity ? product.title + ' ×' + quantity : product.title));
+        }
+
+        // A subscription's price carries its cadence; a one-time product carries
+        // the word that says it will not come back.
+        var tail = target.kind === 'one_time' ? m.copy.offer_one_time : target.cadence;
+        var price = [target.price_display, tail].filter(Boolean).join(' · ');
         if (price) {
-            var priceNode = el('p', 'la-offer__price', price);
-            // Sighted readers have the heading above it for context; a screen
+            var priceNode = el('p', 'la-offer__target-price', price);
+            // Sighted readers have the row's name above it for context; a screen
             // reader hearing "149 ₪ every month" alone does not.
             if (m.copy.offer_price_label) {
                 attr(priceNode, 'aria-label', m.copy.offer_price_label + ': ' + price);
             }
-            append(body, priceNode);
+            append(row, priceNode);
         }
 
-        // WHEN the first charge lands is part of the offer, not a detail: a
-        // period-end switch charges nothing today and must say so.
-        if (offer.first_charge_at) {
-            append(body, el('p', 'la-offer__from', (m.copy.offer_from || '') + ' ' + dateLong(offer.first_charge_at)));
+        // WHEN the money moves is part of the offer, not a detail: a period-end
+        // switch charges nothing today and must say so, and a product that rides
+        // the next delivery is not a product that ships tomorrow.
+        var from = withDate(m.copy.offer_from, target.first_charge_at);
+        if (target.first_charge_at && from) {
+            append(row, el('p', 'la-offer__target-note', from));
+        }
+
+        var rides = withDate(m.copy.offer_add_to_next, target.next_order_at);
+        if (target.next_order_at && rides) {
+            append(row, el('p', 'la-offer__target-note', rides));
         }
 
         // Replacing is not adding. The shopper is about to lose a plan they
-        // already have, and the card says so before the button does.
-        if (offer.mode === 'replace' && m.copy.offer_replaces) {
-            append(body, el('p', 'la-offer__note', m.copy.offer_replaces));
+        // already have, and the row says so before the button does.
+        if (target.mode === 'replace' && m.copy.offer_replaces) {
+            append(row, el('p', 'la-offer__note', m.copy.offer_replaces));
         }
 
-        append(body, button);
-
-        return append(card, body);
+        return append(row, offerButton(state, offer, target));
     }
 
     /**
@@ -860,26 +915,83 @@
      * older LETS, a preview posted into the frame. It runs AFTER parsing, where
      * a mis-nested tag can no longer hide from it.
      *
-     * The button is never part of the merchant's string: their {{button}} became
-     * an empty sentinel on the server, and the real one — with the confirm and
-     * the verb wired to it — replaces that sentinel here.
+     * No button is ever part of the merchant's string: each {{button}} became an
+     * empty sentinel carrying the key of the target it belongs to, and the real
+     * ones — with the confirm and the verb wired to them — replace those
+     * sentinels here. A sentinel naming a target that no longer exists (the
+     * merchant deleted it, the server dropped it as sold out) is REMOVED rather
+     * than left as a gap, and a target the design never mentioned is appended at
+     * the end, so a merchant who wrote no token at all still ships a card that
+     * can be accepted.
      */
-    function renderOfferHtml(offer, button) {
+    function renderOfferHtml(state, offer, targets) {
         var box = el('div', 'la-offer__custom');
 
         box.innerHTML = offer.html;
         scrubOfferHtml(box);
 
-        var slot = box.querySelector('.' + OFFER_SLOT_CLASS);
-        if (slot && slot.parentNode) {
-            slot.parentNode.replaceChild(button, slot);
-        } else {
-            // A design that forgot the token still gets its button, at the end,
-            // rather than an offer nobody can accept.
-            append(box, button);
+        var placed = [];
+        var slots = box.querySelectorAll('.' + OFFER_SLOT_CLASS);
+        for (var i = 0; i < slots.length; i++) {
+            var slot = slots[i];
+            if (!slot.parentNode) { continue; }
+
+            var target = findTarget(targets, slot.getAttribute(OFFER_SLOT_KEY));
+            if (target && placed.indexOf(target) === -1) {
+                placed.push(target);
+                slot.parentNode.replaceChild(offerButton(state, offer, target), slot);
+            } else {
+                // Unknown key, or the same target's token written twice: one
+                // button per target, and never an empty box holding the gap.
+                slot.parentNode.removeChild(slot);
+            }
+        }
+
+        var missing = targets.filter(function (target) { return placed.indexOf(target) === -1; });
+        if (missing.length) {
+            var rest = el('div', 'la-offer__targets');
+            missing.forEach(function (target) {
+                append(rest, renderOfferTarget(state, offer, target));
+            });
+            append(box, rest);
         }
 
         return box;
+    }
+
+    /** The target a sentinel names, or null — never a positional guess. */
+    function findTarget(targets, key) {
+        if (key === null || key === undefined || key === '') { return null; }
+        for (var i = 0; i < targets.length; i++) {
+            if (String(targets[i].key) === String(key)) { return targets[i]; }
+        }
+        return null;
+    }
+
+    /**
+     * The merchant ordered the targets in the admin; `index` is that order. Sort
+     * a COPY — the model is the server's, and a renderer that reorders it in
+     * place would leave the next redraw reading a different card.
+     */
+    function byIndex(targets) {
+        return targets.slice().sort(function (a, b) {
+            return (Number(a.index) || 0) - (Number(b.index) || 0);
+        });
+    }
+
+    /**
+     * A dated sentence, whichever shape the catalog wrote it in: with a {date}
+     * placeholder, with a :date one, or as a lead-in the date follows. A copy key
+     * this LETS never heard of degrades to the bare date rather than "undefined
+     * 3 Sep".
+     */
+    function withDate(text, iso) {
+        var when = dateLong(iso);
+        if (!text) { return when; }
+        if (!when) { return String(text); }
+        if (String(text).indexOf('{date}') !== -1) { return String(text).replace('{date}', when); }
+        if (String(text).indexOf(':date') !== -1) { return String(text).replace(':date', when); }
+        return text + ' ' + when;
     }
 
     /** Drop the executable elements, then every event handler and style attribute. */
@@ -907,21 +1019,34 @@
      * with the server's own disclosure sentence — the one that names the amount
      * and the date — and the button locks while the request is in flight. The
      * redraw that follows builds a new button, so the lock needs no release.
+     *
+     * The disclosure and the amount belong to the TARGET, not to the card: on a
+     * card offering three things, confirming the wrong sentence would be worse
+     * than confirming none.
+     *
+     * A one-time product is bought, not subscribed to, and the verb on the button
+     * says which. Every label is the server's; a catalog that has not learned the
+     * new keys yet falls back to the accept verb rather than printing nothing.
      */
-    function offerButton(state, offer) {
+    function offerButton(state, offer, target) {
         var m = state.model;
-        var button = el('button', 'la-btn la-btn--primary la-offer__cta', offer.button_text || m.copy.offer_accept);
+        var fallback = target.kind === 'one_time' ? m.copy.offer_buy_now : m.copy.offer_accept;
+        var label = target.button_text || fallback || m.copy.offer_accept || '';
+
+        var button = el('button', 'la-btn la-btn--primary la-offer__cta', label);
         attr(button, 'type', 'button');
+        attr(button, 'data-target', target.key);
 
         button.addEventListener('click', function () {
             if (state.preview) { return; }
-            if (offer.disclosure && !window.confirm(offer.disclosure)) { return; }
+            if (target.disclosure && !window.confirm(target.disclosure)) { return; }
 
             button.disabled = true;
             perform(state, 'accept_offer', {
                 subscription: offer.source_plan,
                 offer: offer.id,
-                amount: offer.amount
+                target: target.key,
+                amount: target.amount
             });
         });
 
@@ -986,7 +1111,7 @@
 
     // === Export ===
 
-    window.LetsAccount = { render: render, version: 2 };
+    window.LetsAccount = { render: render, version: 3 };
 
     /**
      * Preview bridge. The admin's iframe posts a draft appearance on every

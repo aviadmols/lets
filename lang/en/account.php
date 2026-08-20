@@ -77,15 +77,32 @@ return [
         'offer_unavailable' => 'This offer is no longer available.',
 
         /*
+         * A one-time target sells a plain product to somebody who already
+         * subscribes. `offer_buy_now` is its button — "Choose this plan" would be
+         * a lie about a mug — and `offer_add_to_next` labels the date a
+         * ride-along add-on arrives, which the renderer follows with
+         * `next_order_at` from the payload.
+         */
+        'offer_buy_now' => 'Buy now',
+        'offer_one_time' => 'One-time purchase',
+        'offer_add_to_next' => 'Added to your next order on',
+
+        /*
          * The disclosure a shopper reads BEFORE their saved card is used — the
          * amount, when it is taken, and what happens to what they already have.
          * The `_replace` variants add that second sentence; an `add` offer ends
          * nothing and must not claim to.
+         *
+         * The two one-time sentences are the same promise for a plain product.
+         * `next_order` says in as many words that nothing is charged today: a
+         * shopper who believes they have just paid will go looking for the charge.
          */
         'offer_disclosure_now' => ':amount will be charged to your saved card now.',
         'offer_disclosure_now_replace' => ':amount will be charged to your saved card now. Your current subscription ends.',
         'offer_disclosure_later' => ':amount will be charged to your saved card on :date.',
         'offer_disclosure_later_replace' => ':amount will be charged to your saved card on :date. Your current subscription ends now, and nothing is charged today.',
+        'offer_disclosure_buy_now' => ':amount will be charged to your saved card now, and this will be sent to you as a separate order.',
+        'offer_disclosure_next_order' => 'This will be added to your next order on :date, and :amount will be charged with it. Nothing is charged today.',
     ],
 
     /*

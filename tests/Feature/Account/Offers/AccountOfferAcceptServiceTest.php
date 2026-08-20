@@ -7,7 +7,7 @@ use App\Domain\Account\Offers\AccountOfferAcceptService;
 use App\Domain\Account\Offers\AccountOfferOutcome;
 use App\Mail\ChargeFailedMail;
 use App\Mail\PlanCancelledMail;
-use App\Models\AccountOffer;
+use App\Models\AccountOfferTarget;
 use App\Models\CustomerConsent;
 use App\Models\InstallmentPlan;
 use App\Models\MerchantBillingSettings;
@@ -126,7 +126,7 @@ final class AccountOfferAcceptServiceTest extends TestCase
         $this->inShop(function (Shop $shop): void {
             [$offer, $source, $visitor] = $this->scenario();
 
-            $outcome = $this->service()->accept($visitor, $source, (string) $offer->getKey(), 49.0);
+            $outcome = $this->service()->accept($visitor, $source, (string) $offer->getKey(), '', 49.0);
 
             $this->assertSame(AccountOfferOutcome::RESULT_OK, $outcome->result);
             $this->assertSame(1, $this->payplusCalls);
@@ -185,7 +185,7 @@ final class AccountOfferAcceptServiceTest extends TestCase
             [$offer, $source, $visitor] = $this->scenario();
             $this->payplusDeclines = true;
 
-            $outcome = $this->service()->accept($visitor, $source, (string) $offer->getKey(), 49.0);
+            $outcome = $this->service()->accept($visitor, $source, (string) $offer->getKey(), '', 49.0);
 
             $this->assertSame(AccountOfferOutcome::RESULT_CHARGE_FAILED, $outcome->result);
             $this->assertSame(1, $this->payplusCalls);
@@ -217,10 +217,10 @@ final class AccountOfferAcceptServiceTest extends TestCase
             [$offer, $source, $visitor] = $this->scenario();
             $service = $this->service();
 
-            $first = $service->accept($visitor, $source, (string) $offer->getKey(), 49.0);
+            $first = $service->accept($visitor, $source, (string) $offer->getKey(), '', 49.0);
             // The second click arrives after the first finished: the source is now
             // cancelled, so it is no longer a subscription this offer can come from.
-            $second = $service->accept($visitor, $source->fresh(), (string) $offer->getKey(), 49.0);
+            $second = $service->accept($visitor, $source->fresh(), (string) $offer->getKey(), '', 49.0);
 
             $this->assertSame(AccountOfferOutcome::RESULT_OK, $first->result);
             $this->assertSame(AccountOfferOutcome::RESULT_NOT_ELIGIBLE, $second->result);
@@ -237,7 +237,7 @@ final class AccountOfferAcceptServiceTest extends TestCase
             [$offer, $source, $visitor] = $this->scenario();
 
             // The card said 39; the template says 49.
-            $outcome = $this->service()->accept($visitor, $source, (string) $offer->getKey(), 39.0);
+            $outcome = $this->service()->accept($visitor, $source, (string) $offer->getKey(), '', 39.0);
 
             $this->assertSame(AccountOfferOutcome::RESULT_CHANGED, $outcome->result);
             $this->assertSame(0, $this->payplusCalls);
@@ -251,12 +251,12 @@ final class AccountOfferAcceptServiceTest extends TestCase
     {
         $this->inShop(function (Shop $shop): void {
             [$offer, $source, $visitor] = $this->scenario([
-                'replace_timing' => AccountOffer::TIMING_PERIOD_END,
+                'replace_timing' => AccountOfferTarget::TIMING_PERIOD_END,
             ]);
 
             $renewal = $source->next_charge_at->copy()->startOfDay();
 
-            $outcome = $this->service()->accept($visitor, $source, (string) $offer->getKey(), 49.0);
+            $outcome = $this->service()->accept($visitor, $source, (string) $offer->getKey(), '', 49.0);
 
             $this->assertSame(AccountOfferOutcome::RESULT_OK, $outcome->result);
             $this->assertSame(0, $this->payplusCalls, 'Nothing is charged today.');
@@ -284,11 +284,11 @@ final class AccountOfferAcceptServiceTest extends TestCase
         $this->inShop(function (): void {
             // An imported member whose renewal fell due during the migration hold.
             [$offer, $source, $visitor] = $this->scenario(
-                ['replace_timing' => AccountOffer::TIMING_PERIOD_END],
+                ['replace_timing' => AccountOfferTarget::TIMING_PERIOD_END],
                 ['next_charge_at' => now()->subDays(30)->startOfDay()],
             );
 
-            $outcome = $this->service()->accept($visitor, $source, (string) $offer->getKey(), 49.0);
+            $outcome = $this->service()->accept($visitor, $source, (string) $offer->getKey(), '', 49.0);
 
             $this->assertSame(AccountOfferOutcome::RESULT_OK, $outcome->result);
             $this->assertSame(
@@ -306,7 +306,7 @@ final class AccountOfferAcceptServiceTest extends TestCase
             [$offer, $source, $visitor] = $this->scenario();
             MerchantBillingSettings::current()->forceFill(['live_charging_enabled' => false])->save();
 
-            $outcome = $this->service()->accept($visitor, $source, (string) $offer->getKey(), 49.0);
+            $outcome = $this->service()->accept($visitor, $source, (string) $offer->getKey(), '', 49.0);
 
             $this->assertSame(AccountOfferOutcome::RESULT_UNAVAILABLE, $outcome->result);
             $this->assertSame(0, $this->payplusCalls);
@@ -361,11 +361,11 @@ final class AccountOfferAcceptServiceTest extends TestCase
     {
         $this->inShop(function (): void {
             [$offer, $source, $visitor] = $this->scenario([
-                'mode' => AccountOffer::MODE_ADD,
+                'mode' => AccountOfferTarget::MODE_ADD,
                 'replace_timing' => null,
             ]);
 
-            $outcome = $this->service()->accept($visitor, $source, (string) $offer->getKey(), 49.0);
+            $outcome = $this->service()->accept($visitor, $source, (string) $offer->getKey(), '', 49.0);
 
             $this->assertSame(AccountOfferOutcome::RESULT_OK, $outcome->result);
             $this->assertSame(1, $this->payplusCalls);

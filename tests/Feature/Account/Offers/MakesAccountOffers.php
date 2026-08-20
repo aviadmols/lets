@@ -3,6 +3,7 @@
 namespace Tests\Feature\Account\Offers;
 
 use App\Models\AccountOffer;
+use App\Models\AccountOfferTarget;
 use App\Models\CustomerConsent;
 use App\Models\InstallmentPaymentMethod;
 use App\Models\InstallmentPlan;
@@ -105,22 +106,85 @@ trait MakesAccountOffers
         return $template->fresh();
     }
 
-    /** @param array<string, mixed> $attributes */
-    protected function makeOffer(ProductSubscriptionPlan $template, array $attributes = []): AccountOffer
+    /**
+     * Columns that live on a TARGET rather than on the offer.
+     *
+     * makeOffer() takes one flat bag and splits it, so a test that only cares
+     * about "a replace offer at period end" keeps reading as one thought instead
+     * of two objects. Multi-target tests call addTarget() explicitly, which is
+     * where the split stops being convenient and starts being the subject.
+     */
+    protected const TARGET_COLUMNS = [
+        'kind', 'mode', 'replace_timing', 'fulfilment', 'quantity', 'position',
+        'token_key', 'button_text', 'external_product_id', 'external_variant_id',
+        'product_subscription_plan_id',
+    ];
+
+    /**
+     * An offer with ONE subscription target — the shape almost every test wants.
+     *
+     * @param  array<string, mixed>  $attributes  offer + first-target columns, mixed
+     */
+    protected function makeOffer(?ProductSubscriptionPlan $template = null, array $attributes = []): AccountOffer
     {
+        $targetAttributes = array_intersect_key($attributes, array_flip(self::TARGET_COLUMNS));
+        $offerAttributes = array_diff_key($attributes, $targetAttributes);
+
         $offer = new AccountOffer(array_merge([
             'name' => 'Switch to monthly',
-            'product_subscription_plan_id' => $template->getKey(),
-            'mode' => AccountOffer::MODE_REPLACE,
-            'replace_timing' => AccountOffer::TIMING_IMMEDIATE,
             'placement' => AccountOffer::PLACEMENT_PLAN,
             'status' => AccountOffer::STATUS_ACTIVE,
             'priority' => 0,
-        ], $attributes));
+        ], $offerAttributes));
 
         $offer->forceFill(['shop_id' => Tenant::id()])->save();
 
+        if ($template !== null || $targetAttributes !== []) {
+            $this->addTarget($offer, array_merge(
+                $template !== null ? ['product_subscription_plan_id' => $template->getKey()] : [],
+                $targetAttributes,
+            ));
+        }
+
         return $offer->fresh();
+    }
+
+    /**
+     * One more thing this offer sells. Position auto-increments, so the order a
+     * test declares targets in is the order the payload carries them.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    protected function addTarget(AccountOffer $offer, array $attributes = []): AccountOfferTarget
+    {
+        $kind = (string) ($attributes['kind'] ?? AccountOfferTarget::KIND_SUBSCRIPTION);
+
+        $defaults = $kind === AccountOfferTarget::KIND_ONE_TIME
+            ? [
+                'kind' => AccountOfferTarget::KIND_ONE_TIME,
+                'mode' => AccountOfferTarget::MODE_ADD,
+                'replace_timing' => null,
+                'fulfilment' => AccountOfferTarget::FULFILMENT_IMMEDIATE,
+                'quantity' => 1,
+            ]
+            : [
+                'kind' => AccountOfferTarget::KIND_SUBSCRIPTION,
+                'mode' => AccountOfferTarget::MODE_REPLACE,
+                'replace_timing' => AccountOfferTarget::TIMING_IMMEDIATE,
+                'fulfilment' => null,
+                'quantity' => 1,
+            ];
+
+        $target = new AccountOfferTarget(array_merge($defaults, [
+            'offer_id' => $offer->getKey(),
+            'position' => $offer->targets()->count() + 1,
+        ], $attributes));
+
+        $target->forceFill(['shop_id' => Tenant::id()])->save();
+
+        $offer->unsetRelation('targets');
+
+        return $target->fresh();
     }
 
     /**

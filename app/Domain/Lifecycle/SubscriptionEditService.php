@@ -2,6 +2,7 @@
 
 namespace App\Domain\Lifecycle;
 
+use App\Domain\Billing\CycleAmountResolver;
 use App\Models\ActivityEvent;
 use App\Models\InstallmentPlan;
 use App\Models\Product;
@@ -27,7 +28,7 @@ use Illuminate\Support\Facades\DB;
 final class SubscriptionEditService
 {
     /**
-     * @param array{next_charge_at?: string|null, line_items?: array<int, array<string, mixed>>} $input
+     * @param  array{next_charge_at?: string|null, line_items?: array<int, array<string, mixed>>}  $input
      */
     public function editNextCharge(InstallmentPlan $plan, array $input): InstallmentPlan
     {
@@ -79,6 +80,133 @@ final class SubscriptionEditService
 
             return $fresh;
         });
+    }
+
+    /**
+     * ADD lines to the next cycle without disturbing what is already going out.
+     *
+     * The account-area add-on path ("add the mug to my next box") calls this. It is
+     * deliberately not editNextCharge with a merged list, because the two differ on
+     * the one thing that matters: an EDIT states the whole contents of the next
+     * order, while an APPEND states one more thing and must leave the rest exactly
+     * as it was — a merchant's edit and a shopper's add-on both survive, in either
+     * order, and neither silently erases the other.
+     *
+     * THE TRAP THIS AVOIDS. A next-order override REPLACES the cycle's contents:
+     * ChargeOrchestrator prices the charge from it and WooCommerceOrderStrategy
+     * builds the order's lines from it. So appending to a plan that has NO override
+     * cannot simply write the new line — that would bill the shopper for the mug
+     * and quietly drop the subscription they are actually paying for. The first
+     * append therefore SEEDS the override with the plan's own next cycle (its
+     * product, at the amount that cycle would have been charged) and adds the new
+     * line beside it.
+     *
+     * Lines are never merged into each other, even for the same product. Two
+     * add-ons of one thing are two lines at the catalog price; folding them into
+     * the seeded subscription line would re-price the subscription itself.
+     *
+     * @param  array<int, array<string, mixed>>  $lineItems  {product_id, quantity, name?}
+     */
+    public function appendLineItems(InstallmentPlan $plan, array $lineItems): void
+    {
+        DB::transaction(function () use ($plan, $lineItems): void {
+            $fresh = InstallmentPlan::query()->lockForUpdate()->findOrFail($plan->getKey());
+
+            $existing = $fresh->nextOrderOverride();
+            $lines = $existing !== null
+                ? array_values((array) $existing['line_items'])
+                : [$this->baselineLine($fresh)];
+
+            $added = 0;
+            foreach ($lineItems as $row) {
+                $externalId = trim((string) ($row['product_id'] ?? ''));
+                if ($externalId === '') {
+                    continue;
+                }
+                $product = $this->resolveProduct($fresh, $externalId);
+                if ($product === null) {
+                    continue; // foreign / unknown product — fail closed
+                }
+
+                $qty = max(1, (int) ($row['quantity'] ?? 1));
+
+                // The catalog prices this, always. Unlike editNextCharge there is
+                // no merchant `unit_price` seam here: the only caller is a shopper.
+                $lines[] = [
+                    'product_id' => (int) $externalId,
+                    'name' => $product['title'],
+                    'quantity' => $qty,
+                    'unit_price' => $product['price'],
+                ];
+                $added++;
+            }
+
+            if ($added === 0) {
+                return; // nothing resolvable — leave the plan exactly as it was
+            }
+
+            $oldAmount = round((float) ($existing['amount'] ?? $fresh->installment_amount), 2);
+            $total = 0.0;
+            foreach ($lines as $line) {
+                $total = round($total + round((float) ($line['unit_price'] ?? 0) * max(1, (int) ($line['quantity'] ?? 1)), 2), 2);
+            }
+
+            $meta = (array) ($fresh->meta ?? []);
+            $meta[InstallmentPlan::META_NEXT_ORDER] = [
+                'line_items' => array_values($lines),
+                'amount' => $total,
+                'currency' => (string) ($existing['currency'] ?? ($fresh->currency ?: config('payplus.currency', 'ILS'))),
+                // set_by/set_at name the LAST writer, which is now this one. An
+                // append by a shopper is attributed to the customer rather than to
+                // the system: PlatformContext has no acting admin on the storefront
+                // surface, and "system" would read as the app having decided.
+                'set_by' => PlatformContext::actingActor() ?? ActivityEvent::ACTOR_CUSTOMER,
+                'set_at' => now()->toIso8601String(),
+            ];
+            $fresh->forceFill(['meta' => $meta])->save();
+
+            Timeline::record(
+                kind: Timeline::KIND_PLAN_EDITED,
+                details: [
+                    'changed' => ['amount' => ['from' => $oldAmount, 'to' => $total]],
+                    'added_lines' => $added,
+                    'currency' => (string) ($fresh->currency ?: ''),
+                ],
+                planId: $fresh->getKey(),
+                shopId: $fresh->shop_id,
+            );
+        });
+    }
+
+    /**
+     * The plan's OWN next cycle as an override line — what the shopper is already
+     * paying for, so appending to it adds rather than replaces.
+     *
+     * Priced by the shared resolver (the same number the next charge would take,
+     * including a cycle still inside an intro-discount window), and named from the
+     * plan rather than the catalog: an imported member's product may not be in our
+     * catalog at all, and dropping their subscription line because we could not
+     * look it up would be the exact failure this method exists to prevent. A line
+     * with no numeric product id degrades to a named line, which is what the
+     * WooCommerce strategy already builds for one.
+     *
+     * @return array<string, mixed>
+     */
+    private function baselineLine(InstallmentPlan $plan): array
+    {
+        $resolver = new CycleAmountResolver;
+        $amount = round((float) $resolver->amountForCharge($plan, $resolver->chargeNumberForNext($plan)), 2);
+
+        $externalId = trim((string) ($plan->externalProductId() ?? ''));
+
+        return [
+            'product_id' => ctype_digit($externalId) ? (int) $externalId : 0,
+            'name' => (string) ($plan->itemTitle()
+                ?: $plan->productTitle()
+                ?: __('storefront.installments.recurring_line', ['plan' => (string) $plan->public_id])),
+            'quantity' => 1,
+            'unit_price' => max(0.0, $amount),
+        ];
     }
 
     /**

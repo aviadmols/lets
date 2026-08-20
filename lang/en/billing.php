@@ -73,6 +73,7 @@ return [
         'retry' => 'Retry',
         'manual' => 'Manual',
         'gateway' => 'Store checkout (PayPlus)',
+        'account_offer' => 'Account add-on',
     ],
 
     // common labels

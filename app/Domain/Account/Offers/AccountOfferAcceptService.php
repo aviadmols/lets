@@ -7,6 +7,7 @@ use App\Domain\Installments\RecurringPlanService;
 use App\Domain\Lifecycle\ChargeNowService;
 use App\Domain\Lifecycle\SubscriptionLifecycleService;
 use App\Models\AccountOffer;
+use App\Models\AccountOfferTarget;
 use App\Models\CustomerConsent;
 use App\Models\InstallmentPlan;
 use App\Models\MerchantBillingSettings;
@@ -21,10 +22,17 @@ use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * One click in a customer's own account page becomes a new subscription on the
- * card they already saved.
+ * One click in a customer's own account page becomes a new subscription — or a
+ * plain product bought outright — on the card they already saved.
  *
- * THE SHAPE, and why it is three steps rather than one transaction:
+ * AN OFFER IS A LIST. The click names one TARGET of it, and this class's first
+ * job is to turn that name into the row it means and to re-ask, under the lock,
+ * whether THAT target is still on sale for THIS shopper. A one-time target is
+ * then handed to AccountOfferPurchaseService; a subscription target follows the
+ * three-step path below, which has not changed.
+ *
+ * THE SHAPE of a subscription acceptance, and why it is three steps rather than
+ * one transaction:
  *
  *   A. (txn) create the plan + write its consent row + record the acceptance.
  *   B. charge — OUTSIDE any transaction, through ChargeNowService → the
@@ -79,21 +87,29 @@ final class AccountOfferAcceptService
         private readonly RecurringPlanService $plans,
         private readonly SubscriptionLifecycleService $lifecycle,
         private readonly ChargeNowService $charges,
+        private readonly AccountOfferPurchaseService $purchases = new AccountOfferPurchaseService,
         private readonly AccountOfferEligibility $eligibility = new AccountOfferEligibility,
     ) {}
 
     /**
-     * Accept one offer from one of this visitor's subscriptions.
+     * Accept one TARGET of one offer, from one of this visitor's subscriptions.
+     *
+     * $targetKey is the stable key the payload carried and the browser posted
+     * back. An empty key means the offer's first target — the same thing
+     * `{{button}}` means, and the answer for a renderer that has not been taught
+     * about targets yet.
      *
      * $shownAmount is the price the CARD displayed. It is a guard, never an
-     * input: the money always comes from the template through AccountOfferQuote,
-     * and a mismatch means the merchant re-priced between the page render and the
-     * click — which is a "reload and look again", not a charge at either number.
+     * input: the money always comes from the merchant's own template or catalog
+     * through AccountOfferQuote, and a mismatch means the price moved between the
+     * page render and the click — which is a "reload and look again", not a charge
+     * at either number.
      */
     public function accept(
         AccountVisitor $visitor,
         InstallmentPlan $source,
         string $offerId,
+        string $targetKey = '',
         ?float $shownAmount = null,
     ): AccountOfferOutcome {
         $offer = $this->findOffer($offerId);
@@ -101,22 +117,40 @@ final class AccountOfferAcceptService
             return AccountOfferOutcome::invalid();
         }
 
+        // A key that names nothing is NOT_ELIGIBLE and not INVALID: the offer is
+        // real and the shopper is looking at it — what they clicked is no longer
+        // part of it.
+        $target = $offer->targetByKey($targetKey);
+        if (! $target instanceof AccountOfferTarget) {
+            return AccountOfferOutcome::notEligible();
+        }
+
         $shop = $visitor->shop;
-        $quote = AccountOfferQuote::for($offer, $source, $shop);
+        $quote = AccountOfferQuote::forTarget($target, $source, $shop);
         if ($quote === null) {
             return AccountOfferOutcome::unavailable();
         }
 
         $settings = MerchantBillingSettings::current();
-        if (! $this->eligibility->isOpen($offer, now(), $settings)) {
+        if (! $this->eligibility->isOpen($offer, now(), $settings)
+            || ! $this->eligibility->targetIsOpen($target, $settings)) {
             return AccountOfferOutcome::unavailable();
         }
 
         // THE DOUBLE-CLICK WALL. Non-blocking: a second click that arrives while
         // the first is still in flight is told the page moved, rather than queued
-        // behind it to create a second subscription a moment later.
+        // behind it to create a second subscription a moment later. Keyed on the
+        // TARGET too — two different choices of one offer are two different
+        // decisions and must not block each other.
         $lock = Cache::lock(
-            sprintf('%s:%d:%d:%d', self::LOCK_PREFIX, (int) $shop->getKey(), (int) $offer->getKey(), (int) $source->getKey()),
+            sprintf(
+                '%s:%d:%d:%d:%d',
+                self::LOCK_PREFIX,
+                (int) $shop->getKey(),
+                (int) $offer->getKey(),
+                (int) $target->getKey(),
+                (int) $source->getKey(),
+            ),
             self::LOCK_SECONDS,
         );
 
@@ -125,7 +159,7 @@ final class AccountOfferAcceptService
         }
 
         try {
-            return $this->acceptUnderLock($visitor, $offer, $quote, $source, $shownAmount, $settings);
+            return $this->acceptUnderLock($visitor, $offer, $target, $quote, $source, $shownAmount, $settings);
         } finally {
             $lock->release();
         }
@@ -136,6 +170,7 @@ final class AccountOfferAcceptService
     private function acceptUnderLock(
         AccountVisitor $visitor,
         AccountOffer $offer,
+        AccountOfferTarget $target,
         AccountOfferQuote $quote,
         InstallmentPlan $source,
         ?float $shownAmount,
@@ -151,7 +186,7 @@ final class AccountOfferAcceptService
 
         // RE-VERIFY under the lock. The eligibility that drew the card is a
         // snapshot; this is the one that decides.
-        $eligible = collect($this->eligibility->sourcesFor($offer, $plans, $quote))
+        $eligible = collect($this->eligibility->sourcesFor($offer, $plans))
             ->firstWhere('id', $source->getKey());
 
         if (! $eligible instanceof InstallmentPlan) {
@@ -160,18 +195,30 @@ final class AccountOfferAcceptService
 
         $source = $eligible;
 
+        // …and the target itself: they may have taken it since the page loaded,
+        // or the subscription's schedule may have moved out from under an add-on.
+        if (! $this->eligibility->targetIsOfferable($target, $quote, $plans, $settings, $source)) {
+            return AccountOfferOutcome::notEligible();
+        }
+
         if ($shownAmount !== null && abs($shownAmount - $quote->amount) > self::AMOUNT_EPSILON) {
             return AccountOfferOutcome::changed();
         }
 
-        $immediate = $offer->isImmediate();
-        $firstChargeAt = $this->firstChargeAt($offer, $source);
+        // A plain product is bought, not subscribed to: different law, its own
+        // service, and no plan is created.
+        if ($target->isOneTime()) {
+            return $this->purchases->purchase($offer, $target, $quote, $source);
+        }
+
+        $immediate = $target->chargesNow();
+        $firstChargeAt = $this->firstChargeAt($target, $source);
 
         // === Step A ===
-        $new = DB::transaction(function () use ($visitor, $offer, $quote, $source, $firstChargeAt, $immediate, $settings): InstallmentPlan {
-            $new = $this->createPlan($visitor, $offer, $quote, $source, $firstChargeAt, $immediate);
+        $new = DB::transaction(function () use ($visitor, $offer, $target, $quote, $source, $firstChargeAt, $immediate, $settings): InstallmentPlan {
+            $new = $this->createPlan($visitor, $offer, $target, $quote, $source, $firstChargeAt, $immediate);
             $this->writeConsent($new, $offer, $quote, $source, $settings);
-            $this->recordAcceptance($offer, $quote, $source, $new);
+            $this->recordAcceptance($offer, $target, $quote, $source, $new);
 
             return $new;
         });
@@ -179,8 +226,8 @@ final class AccountOfferAcceptService
         if (! $immediate) {
             // Nothing to charge today. Close the old subscription now (the new one
             // picks up on its renewal date) and we are done.
-            DB::transaction(function () use ($offer, $source, $new): void {
-                $this->completeSwitch($offer, $source, $new);
+            DB::transaction(function () use ($offer, $target, $source, $new): void {
+                $this->completeSwitch($offer, $target, $source, $new);
             });
 
             return AccountOfferOutcome::ok($new->refresh());
@@ -191,16 +238,16 @@ final class AccountOfferAcceptService
 
         // === Step C ===
         if ($outcome->isSucceeded()) {
-            DB::transaction(function () use ($offer, $source, $new): void {
-                $this->completeSwitch($offer, $source, $new->refresh());
+            DB::transaction(function () use ($offer, $target, $source, $new): void {
+                $this->completeSwitch($offer, $target, $source, $new->refresh());
             });
 
             return AccountOfferOutcome::ok($new->refresh());
         }
 
         return $outcome->result === ChargeOutcome::RESULT_FAILED
-            ? $this->abandon($new, $offer, $source, self::REASON_CHARGE_FAILED, $outcome)
-            : $this->abandon($new, $offer, $source, self::REASON_UNAVAILABLE, $outcome);
+            ? $this->abandon($new, $offer, $target, $source, self::REASON_CHARGE_FAILED, $outcome)
+            : $this->abandon($new, $offer, $target, $source, self::REASON_UNAVAILABLE, $outcome);
     }
 
     // === Steps ===
@@ -218,6 +265,7 @@ final class AccountOfferAcceptService
     private function createPlan(
         AccountVisitor $visitor,
         AccountOffer $offer,
+        AccountOfferTarget $target,
         AccountOfferQuote $quote,
         InstallmentPlan $source,
         Carbon $firstChargeAt,
@@ -244,9 +292,10 @@ final class AccountOfferAcceptService
             'meta' => [
                 InstallmentPlan::META_ACCOUNT_OFFER => [
                     'offer_id' => (string) $offer->getKey(),
+                    'target' => $target->stableKey(),
                     'source_plan_public_id' => (string) $source->public_id,
-                    'mode' => $offer->mode(),
-                    'timing' => $offer->timing(),
+                    'mode' => $target->mode(),
+                    'timing' => $target->timing(),
                     'accepted_at' => now()->toIso8601String(),
                     'amount' => $quote->amount,
                     // One attempt and no more: the caller cancels this plan the
@@ -255,7 +304,7 @@ final class AccountOfferAcceptService
                     'one_shot' => $immediate,
                     // True only across the window between the money landing and
                     // the old plan being closed.
-                    'replace_pending' => $immediate && $offer->isReplace(),
+                    'replace_pending' => $immediate && $target->isReplace(),
                 ],
             ],
         ]);
@@ -306,6 +355,7 @@ final class AccountOfferAcceptService
     /** The acceptance itself, on BOTH plans. */
     private function recordAcceptance(
         AccountOffer $offer,
+        AccountOfferTarget $target,
         AccountOfferQuote $quote,
         InstallmentPlan $source,
         InstallmentPlan $new,
@@ -313,8 +363,10 @@ final class AccountOfferAcceptService
         $details = [
             'offer_id' => (string) $offer->getKey(),
             'offer_name' => (string) $offer->name,
-            'mode' => $offer->mode(),
-            'timing' => $offer->timing(),
+            'target' => $target->stableKey(),
+            'kind' => $target->kind(),
+            'mode' => $target->mode(),
+            'timing' => $target->timing(),
             'amount' => $quote->amount,
             'currency' => $quote->currency,
             'source_plan' => (string) $source->public_id,
@@ -338,9 +390,13 @@ final class AccountOfferAcceptService
      * An ADD keeps the old subscription — there is nothing to end — so only the
      * counters and the stamp run.
      */
-    private function completeSwitch(AccountOffer $offer, InstallmentPlan $source, InstallmentPlan $new): void
-    {
-        if ($offer->isReplace() && ! $this->isTerminal($source)) {
+    private function completeSwitch(
+        AccountOffer $offer,
+        AccountOfferTarget $target,
+        InstallmentPlan $source,
+        InstallmentPlan $new,
+    ): void {
+        if ($target->isReplace() && ! $this->isTerminal($source)) {
             // notify: false — the shopper upgraded; a cancellation notice about the
             // subscription they just replaced reads as the upgrade going wrong.
             $this->lifecycle->cancel($source, self::REASON_REPLACED.':'.$offer->getKey(), notify: false);
@@ -357,8 +413,9 @@ final class AccountOfferAcceptService
 
         $details = [
             'offer_id' => (string) $offer->getKey(),
-            'mode' => $offer->mode(),
-            'timing' => $offer->timing(),
+            'target' => $target->stableKey(),
+            'mode' => $target->mode(),
+            'timing' => $target->timing(),
             'from_plan' => (string) $source->public_id,
             'to_plan' => (string) $new->public_id,
         ];
@@ -381,6 +438,7 @@ final class AccountOfferAcceptService
     private function abandon(
         InstallmentPlan $new,
         AccountOffer $offer,
+        AccountOfferTarget $target,
         InstallmentPlan $source,
         string $reason,
         ChargeOutcome $outcome,
@@ -408,6 +466,7 @@ final class AccountOfferAcceptService
             kind: Timeline::KIND_ACCOUNT_OFFER_CHARGE_FAILED,
             details: [
                 'offer_id' => (string) $offer->getKey(),
+                'target' => $target->stableKey(),
                 'reason' => $reason,
                 'charge_result' => $outcome->result,
                 'charge_reason' => $outcome->reason,
@@ -475,7 +534,7 @@ final class AccountOfferAcceptService
         $source = $sourcePublicId !== '' ? $plans->firstWhere('public_id', $sourcePublicId) : null;
 
         if ($source instanceof InstallmentPlan
-            && ($meta['mode'] ?? null) === AccountOffer::MODE_REPLACE
+            && ($meta['mode'] ?? null) === AccountOfferTarget::MODE_REPLACE
             && ! $this->isTerminal($source)) {
             DB::transaction(function () use ($plan, $source, $meta): void {
                 $this->lifecycle->cancel($source, self::REASON_REPLACED.':'.($meta['offer_id'] ?? ''), notify: false);
@@ -489,7 +548,7 @@ final class AccountOfferAcceptService
                         kind: Timeline::KIND_PLAN_SWITCHED,
                         details: [
                             'offer_id' => (string) ($meta['offer_id'] ?? ''),
-                            'mode' => AccountOffer::MODE_REPLACE,
+                            'mode' => AccountOfferTarget::MODE_REPLACE,
                             'from_plan' => (string) $source->public_id,
                             'to_plan' => (string) $plan->public_id,
                             'repaired' => true,
@@ -523,7 +582,7 @@ final class AccountOfferAcceptService
         }
 
         return AccountOffer::query()
-            ->with(['template.product', 'template.variant'])
+            ->with(['targets.template.product', 'targets.template.variant'])
             ->whereKey((int) $offerId)
             ->first();
     }
@@ -537,11 +596,11 @@ final class AccountOfferAcceptService
      * which the scheduler reads as "overdue" and charges anyway. Saying today is
      * the same outcome, honestly labelled on the shopper's own disclosure.
      */
-    private function firstChargeAt(AccountOffer $offer, InstallmentPlan $source): Carbon
+    private function firstChargeAt(AccountOfferTarget $target, InstallmentPlan $source): Carbon
     {
         $today = now()->startOfDay();
 
-        if ($offer->isImmediate()) {
+        if ($target->chargesNow()) {
             return $today;
         }
 

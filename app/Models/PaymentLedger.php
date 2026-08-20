@@ -28,6 +28,17 @@ class PaymentLedger extends Model
     public const CONTEXT_MANUAL = 'manual';
     /** A plain WooCommerce storefront checkout paid on the PayPlus page. */
     public const CONTEXT_GATEWAY = 'gateway';
+    /**
+     * A one-time product bought from an offer inside the customer's own account
+     * area, on the card their subscription already saved.
+     *
+     * Deliberately NOT `upsell`. Mechanically the two are twins — one click, a
+     * saved token, no card re-entry — but `upsell` means the post-purchase flow
+     * on the thank-you page, and the merchant's dashboard sums exactly that
+     * context into "upsell revenue" (DashboardMetrics::upsellRevenue). Filing
+     * account-area add-ons there would report money from a funnel that never ran.
+     */
+    public const CONTEXT_ACCOUNT_OFFER = 'account_offer';
 
     public const STATUS_PENDING = 'pending';
     public const STATUS_SUCCEEDED = 'succeeded';

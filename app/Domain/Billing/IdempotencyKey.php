@@ -36,6 +36,31 @@ final class IdempotencyKey
     }
 
     /**
+     * A ONE-TIME product bought from an offer inside the customer's own account
+     * area, charged on the card their subscription already saved.
+     *
+     * $customerRef is the SOURCE subscription's identity (its shopify/external
+     * customer reference, else its internal id) — never the visitor's session, so
+     * the same shopper clicking from two devices collapses to one key.
+     *
+     * $ymd is what makes this repeatable: a shopper may legitimately buy the same
+     * add-on again next month, and a key without a date would make the second
+     * purchase look like a duplicate of the first and silently take no money. A
+     * DAY is the right grain — it is long enough that every double-click, retry
+     * and refresh inside one shopping session collapses to one charge, and short
+     * enough that nobody is refused a second deliberate purchase for long.
+     */
+    public static function accountOfferPurchase(
+        int $shopId,
+        int $offerId,
+        int $targetId,
+        string $customerRef,
+        string $ymd,
+    ): string {
+        return "account_offer:{$shopId}:{$offerId}:{$targetId}:{$customerRef}:{$ymd}";
+    }
+
+    /**
      * A plain storefront checkout paid on the PayPlus page (the WooCommerce
      * gateway). PayPlus already charged; this key only keeps the RECORD single
      * under the push + pull double-confirmation.

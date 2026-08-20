@@ -106,9 +106,17 @@ final class AccountPresenter
     /** Days until the sample subscription renews (also its period-end offer date). */
     private const SAMPLE_NEXT_DAYS = 9;
 
-    /** Chrome the offer cards need, on top of the shared `ui.*` keys. */
+    /**
+     * Chrome the offer cards need, on top of the shared `ui.*` keys.
+     *
+     * The last three arrived with one-time targets: a card that sells a mug says
+     * "Buy now", not "Choose this plan", and one that adds it to the next box has
+     * to say WHEN — a shopper who thinks they have just been charged will check
+     * their statement and then call.
+     */
     private const OFFER_COPY_KEYS = [
         'offer_accept', 'offer_from', 'offer_replaces', 'offer_price_label', 'offer_unavailable',
+        'offer_buy_now', 'offer_one_time', 'offer_add_to_next',
     ];
 
     public function __construct(
@@ -187,6 +195,10 @@ final class AccountPresenter
      * that qualifies, because a full-width strip repeated four times is not a
      * promotion, it is a wall.
      *
+     * An offer is drawn when at least ONE of its targets is offerable. The rest
+     * are dropped from the card silently: a promotion that offers three things
+     * and can honestly sell two should sell two, not vanish.
+     *
      * @param  Collection<int, InstallmentPlan>  $plans
      * @return array{top: list<array<string, mixed>>, rail: list<array<string, mixed>>, by_plan: array<string, list<array<string, mixed>>>}
      */
@@ -203,6 +215,7 @@ final class AccountPresenter
         }
 
         $settings = MerchantBillingSettings::current();
+        $shop = $plans->first()->shop;
         $now = now();
 
         foreach ($this->liveOffers() as $offer) {
@@ -210,13 +223,22 @@ final class AccountPresenter
                 continue;
             }
 
-            $quote = AccountOfferQuote::for($offer, $plans->first(), $plans->first()->shop);
-            if ($quote === null) {
+            $sources = $this->offerEligibility->sourcesFor($offer, $plans);
+            if ($sources === []) {
                 continue;
             }
 
-            $sources = $this->offerEligibility->sourcesFor($offer, $plans, $quote);
-            if ($sources === []) {
+            // Price each target ONCE. The only thing a source contributes is the
+            // currency, which withSource() re-applies per card.
+            $quotes = [];
+            foreach ($offer->orderedTargets() as $target) {
+                $quote = AccountOfferQuote::forTarget($target, $plans->first(), $shop);
+                if ($quote !== null) {
+                    $quotes[] = [$target, $quote];
+                }
+            }
+
+            if ($quotes === []) {
                 continue;
             }
 
@@ -224,12 +246,19 @@ final class AccountPresenter
 
             // `top`/`rail` name exactly one source; `plan` names each of them.
             foreach ($placement === AccountOffer::PLACEMENT_PLAN ? $sources : [$sources[0]] as $source) {
-                $card = $this->offers->present(
-                    $offer,
-                    $quote->withSource($source),
-                    (string) $source->public_id,
-                    $this->offers->firstChargeAt($offer, $source),
-                );
+                $pairs = [];
+                foreach ($quotes as [$target, $quote]) {
+                    $quote = $quote->withSource($source);
+                    if ($this->offerEligibility->targetIsOfferable($target, $quote, $plans, $settings, $source)) {
+                        $pairs[] = [$target, $quote];
+                    }
+                }
+
+                if ($pairs === []) {
+                    continue;
+                }
+
+                $card = $this->offers->present($offer, $pairs, (string) $source->public_id, $source);
 
                 if ($placement === AccountOffer::PLACEMENT_PLAN) {
                     $out['by_plan'][(string) $source->public_id][] = $card;
@@ -244,7 +273,8 @@ final class AccountPresenter
 
     /**
      * The shop's switched-on offers, best first. Tenant-scoped by BelongsToShop;
-     * the templates ride along because every card has to price itself.
+     * the targets and their templates ride along because every card has to price
+     * itself.
      *
      * @return Collection<int, AccountOffer>
      */
@@ -252,7 +282,7 @@ final class AccountPresenter
     {
         return AccountOffer::query()
             ->open()
-            ->with(['template.product', 'template.variant'])
+            ->with(['targets.template.product', 'targets.template.variant'])
             ->orderBy('priority')
             ->orderBy('id')
             ->get();
@@ -419,17 +449,30 @@ final class AccountPresenter
             return $out;
         }
 
+        $renewal = Carbon::parse($nextDate);
+
         foreach ($this->liveOffers() as $offer) {
-            $quote = AccountOfferQuote::for($offer, null, $shop);
-            if ($quote === null) {
+            $pairs = [];
+            foreach ($offer->orderedTargets() as $target) {
+                $quote = AccountOfferQuote::forTarget($target, null, $shop);
+                if ($quote !== null) {
+                    $pairs[] = [$target, $quote];
+                }
+            }
+
+            if ($pairs === []) {
                 continue;
             }
 
+            // No source plan: the sample shopper is nobody in particular, so the
+            // dates a target promises are measured against the sample card's own
+            // renewal rather than against a subscription that does not exist.
             $out[$offer->placement()][] = $this->offers->present(
                 $offer,
-                $quote,
+                $pairs,
                 self::SAMPLE_PLAN_ID,
-                $offer->isImmediate() ? now()->startOfDay() : Carbon::parse($nextDate),
+                null,
+                $renewal,
             );
         }
 

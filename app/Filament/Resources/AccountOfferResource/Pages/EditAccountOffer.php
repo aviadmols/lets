@@ -3,7 +3,6 @@
 namespace App\Filament\Resources\AccountOfferResource\Pages;
 
 use App\Filament\Resources\AccountOfferResource;
-use App\Models\AccountOffer;
 use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
@@ -49,19 +48,23 @@ class EditAccountOffer extends EditRecord
         return AccountOfferResource::normalizeAudience($data);
     }
 
-    /** @param array<string, mixed> $data */
+    /**
+     * Only the audience bag is tidied here.
+     *
+     * The TARGETS are not in $data at all: the repeater is a relationship
+     * component, so Filament keeps it out of the record's own attributes and
+     * writes the rows itself after the offer is saved. Their per-kind tidying —
+     * an ADD row that must not keep a replacement timing, a subscription row
+     * that must not keep a quantity — happens in
+     * AccountOfferResource::normalizeTarget(), which the repeater calls on every
+     * row it creates or updates.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
     protected function mutateFormDataBeforeSave(array $data): array
     {
-        $data = AccountOfferResource::normalizeAudience($data);
-
-        // An ADD offer has no replacement to time. Leaving a stale value behind
-        // would be invisible on the form (the control is hidden) and would come
-        // back the moment somebody switched the mode again.
-        if (($data['mode'] ?? null) === AccountOffer::MODE_ADD) {
-            $data['replace_timing'] = null;
-        }
-
-        return $data;
+        return AccountOfferResource::normalizeAudience($data);
     }
 
     protected function getSavedNotification(): ?Notification

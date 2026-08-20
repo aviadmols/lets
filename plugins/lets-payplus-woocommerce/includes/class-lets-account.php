@@ -1097,10 +1097,14 @@ function lets_payplus_account_rest_act(WP_REST_Request $request)
         'name'         => (string) ($user ? $user->display_name : ''),
         'subscription' => sanitize_text_field((string) $request->get_param('subscription')),
         'date'         => sanitize_text_field((string) $request->get_param('date')),
-        // Which offer was clicked, and the price the CARD showed. The amount is
-        // forwarded as evidence, never as an instruction: LETS prices the offer
-        // from its own template and refuses the click when the two disagree.
+        // Which offer was clicked, WHICH of its targets, and the price the CARD
+        // showed. One offer can now put several products in front of a shopper —
+        // a plan to switch to, a one-off to buy on the saved card — so the offer
+        // id alone no longer names what was accepted. The amount is forwarded as
+        // evidence, never as an instruction: LETS prices the target from its own
+        // template and refuses the click when the two disagree.
         'offer'        => sanitize_text_field((string) $request->get_param('offer')),
+        'target'       => sanitize_text_field((string) $request->get_param('target')),
         'amount'       => is_numeric($request->get_param('amount')) ? (string) $request->get_param('amount') : '',
         'line_items'   => lets_payplus_account_clean_items($request->get_param('line_items')),
         'locale'       => lets_payplus_account_site_locale(),

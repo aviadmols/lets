@@ -3,6 +3,7 @@
 namespace App\Domain\Account\Offers;
 
 use App\Models\AccountOffer;
+use App\Models\AccountOfferTarget;
 use App\Models\InstallmentPlan;
 use App\Models\MerchantBillingSettings;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
@@ -11,18 +12,23 @@ use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
- * Who may see an offer, and which of their subscriptions it can be taken from.
+ * Who may see an offer, which of their subscriptions it can be taken from, and —
+ * since an offer became a list — which of its targets are actually on sale.
  *
- * Split in two on purpose, the same split MerchantPortalAppearance draws between
- * bannersFor (this reader) and bannersAt (the merchant's preview):
+ * THREE QUESTIONS, deliberately separate:
  *
- *   isOpen()  — is this offer live for the SHOP at all? Status, date window, and
- *               the two shop-level walls (live charging, one-subscription-only).
- *   matches() — may THIS subscription be the one it is taken from?
+ *   isOpen()          — is this PROMOTION live for the shop at all? Status and
+ *                       the merchant's date window. Nothing about money: an
+ *                       offer whose subscription target is unsellable today may
+ *                       still have a one-time target that is perfectly fine.
+ *   matches()         — may THIS subscription be the one an offer is taken from?
+ *                       Audience, a working saved card, a usable identity.
+ *   targetIsOpen()    — may THIS target be sold right now? The two shop-level
+ *   targetIsOfferable() money walls, plus what the shopper already holds.
  *
  * Everything here is a refusal. The default answer is no, and each yes is an
  * explicit thing that was checked — because the consequence of a wrong yes is a
- * saved card being charged for a plan the shopper did not want.
+ * saved card being charged for something the shopper did not want.
  */
 final class AccountOfferEligibility
 {
@@ -34,44 +40,103 @@ final class AccountOfferEligibility
     private const TERMINAL_STATUSES = [PlanStatus::CANCELLED, PlanStatus::COMPLETED];
 
     /**
-     * Is the offer live for this shop right now?
+     * Is the PROMOTION live for this shop right now?
      *
-     * Two walls beyond the merchant's own switch, and neither is cosmetic:
+     * The merchant's own switch and their date window, and nothing else. The
+     * money walls used to live here, when an offer was a single target and
+     * "does this charge today" was a property of the offer. It is now a property
+     * of each target — see targetIsOpen() — so an offer that carries both a
+     * charge-now subscription and a ride-along add-on keeps showing the half
+     * that is honest on a shop whose charging is paused.
      *
-     * LIVE CHARGING OFF hides every IMMEDIATE offer. A shop mid-migration has its
-     * saved cards deliberately untouchable; showing a button that says "charged
-     * now" and then refusing it is a worse experience than not showing it, and
-     * bypassing the wall (as an older upsell path did) is not an option. A
-     * period-end offer stays visible — no money moves today, and the plan it
-     * creates simply waits with everything else.
-     *
-     * ONE-SUBSCRIPTION-ONLY hides every ADD offer. The merchant told the shop that
-     * a customer holds at most one subscription; an offer that stacks a second one
-     * would be the app breaking the merchant's own rule from the inside. A REPLACE
-     * offer is consistent with it and stays.
+     * $settings is still taken (and still read by targetIsOpen) so callers keep
+     * one place to resolve it.
      */
     public function isOpen(AccountOffer $offer, CarbonInterface $now, MerchantBillingSettings $settings): bool
     {
-        if (! $offer->isActive() || ! $offer->isOpenAt($now)) {
+        return $offer->isActive() && $offer->isOpenAt($now);
+    }
+
+    /**
+     * May this TARGET be sold at all, on this shop, today?
+     *
+     * Two walls, and neither is cosmetic:
+     *
+     * LIVE CHARGING OFF hides every target that takes money NOW — a subscription
+     * charged on the click, and a one-time product bought on the click. A shop
+     * mid-migration has its saved cards deliberately untouchable; showing a
+     * button that says "charged now" and then refusing it is a worse experience
+     * than not showing it, and bypassing the wall (as an older upsell path did)
+     * is not an option. A period-end switch and a next-order add-on stay visible:
+     * no money moves today, and what they create simply waits with everything
+     * else.
+     *
+     * ONE-SUBSCRIPTION-ONLY hides every ADD SUBSCRIPTION target. The merchant told
+     * the shop that a customer holds at most one subscription; an offer that
+     * stacks a second one would be the app breaking the merchant's own rule from
+     * the inside. A REPLACE is consistent with it and stays — and a one-time
+     * product is not a subscription at all, so the rule has nothing to say about
+     * buying a mug.
+     */
+    public function targetIsOpen(AccountOfferTarget $target, MerchantBillingSettings $settings): bool
+    {
+        if ($target->chargesNow() && ! $settings->chargingIsLive()) {
             return false;
         }
 
-        if ($offer->isImmediate() && ! $settings->chargingIsLive()) {
+        return ! ($target->isSubscription() && $target->isAdd() && $settings->allowsOneSubscriptionOnly());
+    }
+
+    /**
+     * May this target be offered to THIS shopper, from THIS subscription?
+     *
+     * On top of the shop-level walls: a subscription they already hold is not an
+     * offer, and a next-order add-on needs a next order to ride on. A source plan
+     * with no scheduled charge has nothing to append to, so the card is never
+     * drawn rather than drawn and refused.
+     *
+     * $source is null in the merchant's PREVIEW, which has no real subscription
+     * to ask about; the preview shows what the offer is, not what one shopper
+     * qualifies for.
+     *
+     * @param  iterable<InstallmentPlan>  $plans
+     */
+    public function targetIsOfferable(
+        AccountOfferTarget $target,
+        AccountOfferQuote $quote,
+        iterable $plans,
+        MerchantBillingSettings $settings,
+        ?InstallmentPlan $source = null,
+    ): bool {
+        if (! $this->targetIsOpen($target, $settings)) {
             return false;
         }
 
-        return ! ($offer->isAdd() && $settings->allowsOneSubscriptionOnly());
+        if ($target->isSubscription()) {
+            return ! $this->holdsTarget($plans, $quote);
+        }
+
+        if ($target->fulfilment() === AccountOfferTarget::FULFILMENT_NEXT_ORDER) {
+            return $source === null || $source->next_charge_at !== null;
+        }
+
+        return true;
     }
 
     /**
      * May this subscription be the SOURCE for this offer?
      *
-     * The source is not just the plan the card sits under — it is where the new
+     * The source is not just the plan the card sits under — it is where a new
      * plan's identity and saved card come from (an imported member's reference is
-     * a UUID no visitor session could reproduce), so every requirement here is
-     * really a requirement of the charge that follows.
+     * a UUID no visitor session could reproduce), and where a one-time purchase
+     * takes its customer and its card. Every requirement here is really a
+     * requirement of the charge that follows.
+     *
+     * "Do they already hold what is on offer" is deliberately NOT asked here any
+     * more: it is a question about one TARGET, and an offer with three of them
+     * must not vanish because the shopper took one.
      */
-    public function matches(AccountOffer $offer, InstallmentPlan $plan, AccountOfferQuote $quote): bool
+    public function matches(AccountOffer $offer, InstallmentPlan $plan): bool
     {
         if (! $plan->isRecurring()) {
             return false;
@@ -108,13 +173,8 @@ final class AccountOfferEligibility
 
         // The consent gate matches on customer_id / shopify_customer_id and never
         // on email. A plan carrying neither can never be charged again, so it can
-        // never be the source of a plan that inherits its identity.
-        if (! $this->identityIsUsable($plan)) {
-            return false;
-        }
-
-        // Offering somebody what they already pay for.
-        return ! $quote->isAlreadyHeldBy($plan);
+        // never be the source of a charge that inherits its identity.
+        return $this->identityIsUsable($plan);
     }
 
     /**
@@ -122,10 +182,18 @@ final class AccountOfferEligibility
      * not just the candidate source: a shopper with a yearly plan AND the monthly
      * one already has the monthly one, whichever card the offer would sit under.
      *
+     * Always false for a ONE-TIME target (the quote answers that): a shopper may
+     * buy the same mug every month, and telling them they cannot because they
+     * already bought one would be the app inventing a rule the merchant did not.
+     *
      * @param  iterable<InstallmentPlan>  $plans
      */
     public function holdsTarget(iterable $plans, AccountOfferQuote $quote): bool
     {
+        if (! $quote->isSubscription()) {
+            return false;
+        }
+
         foreach ($plans as $plan) {
             $status = $this->statusOf($plan);
 
@@ -151,20 +219,20 @@ final class AccountOfferEligibility
      * @param  iterable<InstallmentPlan>  $plans
      * @return list<InstallmentPlan>
      */
-    public function sourcesFor(AccountOffer $offer, iterable $plans, AccountOfferQuote $quote): array
+    public function sourcesFor(AccountOffer $offer, iterable $plans): array
     {
         $all = is_array($plans) ? $plans : iterator_to_array($plans);
 
         // A switch that half-finished (charged, but the old plan is still live) is
         // an inconsistent picture. Offering MORE on top of it would compound it;
         // the next accept attempt repairs it first.
-        if ($this->hasPendingReplacement($all) || $this->holdsTarget($all, $quote)) {
+        if ($this->hasPendingReplacement($all)) {
             return [];
         }
 
         $matching = [];
         foreach ($all as $plan) {
-            if ($this->matches($offer, $plan, $quote)) {
+            if ($this->matches($offer, $plan)) {
                 $matching[] = $plan;
             }
         }
@@ -212,6 +280,9 @@ final class AccountOfferEligibility
      * whether it is null — because an imported member's reference is a UUID and
      * Postgres aborts a query that compares a bigint to one (sqlite would not,
      * which is exactly how such a bug reaches production).
+     *
+     * $quote narrows the count by ONE target's "already holds it": the admin asks
+     * it per target, because that is the number that differs between them.
      */
     public function eligibleNowCount(AccountOffer $offer, ?AccountOfferQuote $quote = null): int
     {
@@ -240,7 +311,8 @@ final class AccountOfferEligibility
         }
 
         // Somebody already on the offered product AND cadence is not a candidate.
-        if ($quote !== null && $quote->targetProductId() !== '') {
+        // A one-time target excludes nobody: buying it again is allowed.
+        if ($quote !== null && $quote->isSubscription() && $quote->targetProductId() !== '' && $quote->frequency !== null) {
             $query->whereNot(function (Builder $q) use ($quote): void {
                 $q->where(fn (Builder $inner) => $this->productIn($inner, [$quote->targetProductId()]))
                     ->where('billing_frequency', $quote->frequency->value)

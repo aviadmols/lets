@@ -3,11 +3,12 @@
 namespace Tests\Unit\Models;
 
 use App\Models\AccountOffer;
+use App\Models\AccountOfferTarget;
 use Tests\TestCase;
 
 /**
- * The offer model's GUARDS — the reads that stand between what a merchant typed
- * and what lands on a shopper's page.
+ * The offer and target models' GUARDS — the reads that stand between what a
+ * merchant typed and what lands on a shopper's page.
  *
  * No database: every one of these is a pure function of the row's own columns,
  * which is the point. A guard that needed a query would be a guard somebody
@@ -18,24 +19,77 @@ final class AccountOfferTest extends TestCase
     // === CONSTANTS ===
     private const VALID_HTML = '<p>Save more</p>{{button}}';
 
-    public function test_the_custom_html_rule_demands_exactly_one_button_token(): void
-    {
-        // No custom HTML at all is fine — the merchant gets the designed card.
-        $this->assertNull(AccountOffer::validateCustomHtml(null));
-        $this->assertNull(AccountOffer::validateCustomHtml('   '));
+    /** One target, addressable three ways: slug, product id, position. */
+    private const ONE_TARGET = [[
+        'token_key' => 'upgrade',
+        'external_product_id' => '2675',
+        'position' => 1,
+        'stable_key' => 'upgrade',
+    ]];
 
-        $this->assertNull(AccountOffer::validateCustomHtml(self::VALID_HTML));
+    public function test_the_custom_html_rule_demands_at_least_one_button_token(): void
+    {
+        // No custom HTML at all is fine — the merchant gets the designed cards.
+        $this->assertNull(AccountOffer::validateCustomHtml(null, self::ONE_TARGET));
+        $this->assertNull(AccountOffer::validateCustomHtml('   ', self::ONE_TARGET));
+
+        $this->assertNull(AccountOffer::validateCustomHtml(self::VALID_HTML, self::ONE_TARGET));
 
         // None: nobody could accept the offer.
         $this->assertSame(
             AccountOffer::ERROR_BUTTON_REQUIRED,
-            AccountOffer::validateCustomHtml('<p>Save more</p>'),
+            AccountOffer::validateCustomHtml('<p>Save more</p>', self::ONE_TARGET)['key'],
         );
+    }
 
-        // Two: a second control wired to the same charge.
+    /**
+     * TWO buttons for one target used to be refused (a second control wired to
+     * the same charge). It is now allowed, because an offer that sells several
+     * things has several buttons — and repeating one target's button top and
+     * bottom of a long block is a layout decision, not a double charge: the
+     * acceptance is idempotent on the target either way.
+     */
+    public function test_several_button_tokens_are_allowed_now_that_an_offer_sells_several_things(): void
+    {
+        $targets = [
+            ['token_key' => 'monthly', 'external_product_id' => '2675', 'position' => 1, 'stable_key' => 'monthly'],
+            ['token_key' => 'mug', 'external_product_id' => '4242', 'position' => 2, 'stable_key' => 'mug'],
+        ];
+
+        $this->assertNull(AccountOffer::validateCustomHtml(
+            '<p>Switch {{button_monthly}}</p><p>or add the mug {{button_mug}}</p>',
+            $targets,
+        ));
+
+        // The same target twice is a layout, not an error.
+        $this->assertNull(AccountOffer::validateCustomHtml('{{button}}<p>or</p>{{button_monthly}}', $targets));
+    }
+
+    public function test_a_token_that_names_nothing_is_refused_and_says_which(): void
+    {
+        $error = AccountOffer::validateCustomHtml('<p>{{button_upgade}}</p>', self::ONE_TARGET);
+
+        $this->assertSame(AccountOffer::ERROR_BUTTON_UNKNOWN, $error['key']);
+        // The merchant is told the exact token, not "something is wrong".
+        $this->assertSame('{{button_upgade}}', $error['params']['token']);
+    }
+
+    public function test_a_token_resolves_by_slug_product_id_or_position(): void
+    {
+        foreach (['{{button}}', '{{button_upgrade}}', '{{button_2675}}', '{{button_1}}'] as $token) {
+            $this->assertNull(
+                AccountOffer::validateCustomHtml('<p>x</p>'.$token, self::ONE_TARGET),
+                $token.' must resolve',
+            );
+        }
+    }
+
+    /** A bare {{button}} on an offer with no targets at all names nothing. */
+    public function test_a_button_token_with_no_targets_at_all_is_refused(): void
+    {
         $this->assertSame(
-            AccountOffer::ERROR_BUTTON_REQUIRED,
-            AccountOffer::validateCustomHtml('{{button}}<p>or</p>{{button}}'),
+            AccountOffer::ERROR_BUTTON_UNKNOWN,
+            AccountOffer::validateCustomHtml(self::VALID_HTML, [])['key'],
         );
     }
 
@@ -45,7 +99,7 @@ final class AccountOfferTest extends TestCase
         // is what counting AFTER strip_tags actually checks.
         $this->assertSame(
             AccountOffer::ERROR_BUTTON_REQUIRED,
-            AccountOffer::validateCustomHtml('<a href="/x" title="{{button}}">go</a>'),
+            AccountOffer::validateCustomHtml('<a href="/x" title="{{button}}">go</a>', self::ONE_TARGET)['key'],
         );
     }
 
@@ -53,33 +107,101 @@ final class AccountOfferTest extends TestCase
     {
         $this->assertSame(
             AccountOffer::ERROR_BUTTON_REQUIRED,
-            AccountOffer::validateCustomHtml('<script>alert(1)</script>'),
+            AccountOffer::validateCustomHtml('<script>alert(1)</script>', self::ONE_TARGET)['key'],
         );
     }
 
-    public function test_an_unreadable_mode_timing_or_placement_falls_back_rather_than_throwing(): void
+    /** The form wants a sentence, and the sentence names the token. */
+    public function test_the_error_helper_returns_a_resolved_sentence(): void
     {
-        $offer = new AccountOffer([
-            'mode' => 'sideways',
-            'replace_timing' => 'whenever',
-            'placement' => 'nowhere',
-        ]);
+        $message = AccountOffer::customHtmlError('<p>{{button_nope}}</p>', self::ONE_TARGET);
 
-        // Replace is the safe default: it is the mode the one-subscription rule
-        // never conflicts with. Immediate is the default the disclosure matches.
-        $this->assertSame(AccountOffer::MODE_REPLACE, $offer->mode());
-        $this->assertSame(AccountOffer::TIMING_IMMEDIATE, $offer->timing());
-        $this->assertSame(AccountOffer::PLACEMENT_PLAN, $offer->placement());
+        $this->assertNotNull($message);
+        $this->assertStringContainsString('{{button_nope}}', $message);
+        $this->assertStringNotContainsString('account_offers.', $message);
+        $this->assertNull(AccountOffer::customHtmlError(self::VALID_HTML, self::ONE_TARGET));
     }
 
-    public function test_an_add_offer_reports_no_timing(): void
+    public function test_an_unreadable_placement_falls_back_rather_than_throwing(): void
     {
-        $offer = new AccountOffer(['mode' => AccountOffer::MODE_ADD, 'replace_timing' => 'period_end']);
+        $this->assertSame(
+            AccountOffer::PLACEMENT_PLAN,
+            (new AccountOffer(['placement' => 'nowhere']))->placement(),
+        );
+    }
 
-        // It ends no period, so it must not claim one — but it still takes money
-        // today, and isImmediate() is the question the money asks.
-        $this->assertNull($offer->timing());
-        $this->assertTrue($offer->isImmediate());
+    public function test_an_unreadable_mode_or_timing_on_a_target_falls_back_rather_than_throwing(): void
+    {
+        $target = new AccountOfferTarget([
+            'kind' => 'sideways',
+            'mode' => 'sideways',
+            'replace_timing' => 'whenever',
+        ]);
+
+        // Subscription is the safe kind (it is the one that reads a template
+        // rather than trusting a product id), ADD is the safe mode — it ends
+        // nothing — and immediate is the timing the disclosure matches.
+        $this->assertSame(AccountOfferTarget::KIND_SUBSCRIPTION, $target->kind());
+        $this->assertSame(AccountOfferTarget::MODE_ADD, $target->mode());
+        $this->assertNull($target->timing(), 'an ADD ends no period');
+        $this->assertTrue($target->chargesNow());
+    }
+
+    public function test_a_one_time_target_is_always_an_add_and_never_reports_a_timing(): void
+    {
+        $target = new AccountOfferTarget([
+            'kind' => AccountOfferTarget::KIND_ONE_TIME,
+            // A merchant (or a bad import) says replace. Buying a mug does not
+            // end a subscription, whatever the column says.
+            'mode' => AccountOfferTarget::MODE_REPLACE,
+            'replace_timing' => AccountOfferTarget::TIMING_PERIOD_END,
+            'fulfilment' => AccountOfferTarget::FULFILMENT_NEXT_ORDER,
+        ]);
+
+        $this->assertSame(AccountOfferTarget::MODE_ADD, $target->mode());
+        $this->assertNull($target->timing());
+        $this->assertSame(AccountOfferTarget::FULFILMENT_NEXT_ORDER, $target->fulfilment());
+        $this->assertFalse($target->chargesNow(), 'a next-order add-on takes no money today');
+    }
+
+    public function test_a_subscription_target_never_reports_a_fulfilment(): void
+    {
+        $target = new AccountOfferTarget([
+            'kind' => AccountOfferTarget::KIND_SUBSCRIPTION,
+            'fulfilment' => AccountOfferTarget::FULFILMENT_NEXT_ORDER,
+        ]);
+
+        $this->assertNull($target->fulfilment());
+    }
+
+    public function test_the_stable_key_prefers_the_slug_then_the_product_then_the_position(): void
+    {
+        $this->assertSame('upgrade', (new AccountOfferTarget([
+            'token_key' => 'upgrade', 'external_product_id' => '2675', 'position' => 3,
+        ]))->stableKey());
+
+        $this->assertSame('2675', (new AccountOfferTarget([
+            'external_product_id' => '2675', 'position' => 3,
+        ]))->stableKey());
+
+        $this->assertSame('3', (new AccountOfferTarget(['position' => 3]))->stableKey());
+
+        // A slug the merchant typed in caps or with a space is not a slug.
+        $this->assertSame('1', (new AccountOfferTarget(['token_key' => 'Up Grade']))->stableKey());
+    }
+
+    public function test_a_quantity_is_clamped_and_only_a_one_time_target_has_one(): void
+    {
+        $subscription = new AccountOfferTarget(['quantity' => 4]);
+        $this->assertSame(1, $subscription->quantity(), 'one subscription is one subscription');
+
+        $oneTime = fn (int $q): int => (new AccountOfferTarget([
+            'kind' => AccountOfferTarget::KIND_ONE_TIME, 'quantity' => $q,
+        ]))->quantity();
+
+        $this->assertSame(1, $oneTime(0));
+        $this->assertSame(3, $oneTime(3));
+        $this->assertSame(AccountOfferTarget::MAX_QUANTITY, $oneTime(9999));
     }
 
     public function test_the_audience_drops_values_no_enum_recognises_and_never_narrows_to_nothing(): void

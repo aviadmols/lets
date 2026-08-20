@@ -69,6 +69,7 @@ class PaymentLedgerResource extends Resource
             PaymentLedger::CONTEXT_RETRY,
             PaymentLedger::CONTEXT_MANUAL,
             PaymentLedger::CONTEXT_GATEWAY,
+            PaymentLedger::CONTEXT_ACCOUNT_OFFER,
         ];
     }
 

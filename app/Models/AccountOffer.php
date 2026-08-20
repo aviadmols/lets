@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Domain\Account\Offers\OfferButtonTokens;
 use App\Models\Concerns\BelongsToShop;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
@@ -10,22 +11,27 @@ use App\Support\SafeHtml;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
- * An upsell the merchant shows inside a customer's own account page.
+ * A PROMOTION the merchant shows inside a customer's own account page.
+ *
+ * The offer is the wrapper: its name, whether it is switched on, who sees it,
+ * when, where on the page, how it looks and how often it has been taken. WHAT it
+ * sells lives in account_offer_targets — one offer, several targets, each its own
+ * choice ("switch to monthly", "or to the annual saver", "and add the mug").
  *
  * Every merchant-set value is read back through a GUARD, never raw — the same
  * discipline MerchantPortalAppearance follows, and for the same reason: these
  * values are interpolated into a page on the merchant's storefront in front of a
  * signed-in shopper. An unvalidated URL is a hostile-content vector, an
- * unvalidated mode is a charge nobody meant to make, and an unvalidated audience
- * entry is an offer shown to the wrong person.
+ * unvalidated audience entry is an offer shown to the wrong person, and (on the
+ * target) an unvalidated mode is a charge nobody meant to make.
  *
- * The offer never carries a PRICE. It points at a subscription template
- * (ProductSubscriptionPlan) and AccountOfferQuote reads the money from there at
- * display AND at accept time, so the number on the card is the number the plan
- * is born with.
+ * The offer never carries a PRICE. Each target reads its money from the
+ * merchant's own template (a subscription target) or from the catalog (a
+ * one-time target), at display AND at accept time, so the number on the card is
+ * the number that is charged.
  */
 class AccountOffer extends Model
 {
@@ -40,29 +46,6 @@ class AccountOffer extends Model
 
     public const STATUSES = [self::STATUS_DRAFT, self::STATUS_ACTIVE];
 
-    /**
-     * ADD stands the new subscription BESIDE the one the shopper already has.
-     * REPLACE ends theirs in favour of it — which is the switch offer, and the
-     * reason `replace_timing` exists at all.
-     */
-    public const MODE_ADD = 'add';
-
-    public const MODE_REPLACE = 'replace';
-
-    public const MODES = [self::MODE_ADD, self::MODE_REPLACE];
-
-    /**
-     * WHEN a replacement takes effect. IMMEDIATE charges the saved card on the
-     * click and ends the old plan once the money lands. PERIOD_END schedules the
-     * new plan's first charge for the day the old one would have renewed and
-     * ends the old plan now — no proration, no double charge, no gap.
-     */
-    public const TIMING_IMMEDIATE = 'immediate';
-
-    public const TIMING_PERIOD_END = 'period_end';
-
-    public const TIMINGS = [self::TIMING_IMMEDIATE, self::TIMING_PERIOD_END];
-
     /** Where the card is drawn. `plan` sits under the subscription it targets. */
     public const PLACEMENT_TOP = 'top';
 
@@ -73,11 +56,15 @@ class AccountOffer extends Model
     public const PLACEMENTS = [self::PLACEMENT_TOP, self::PLACEMENT_RAIL, self::PLACEMENT_PLAN];
 
     /**
-     * The tokens a merchant may write into custom HTML. `{{button}}` is the only
-     * REQUIRED one — without it the block has no way to be accepted, which is a
-     * promotion the shopper cannot act on.
+     * The tokens a merchant may write into custom HTML. A BUTTON token is the
+     * only required one — without one the block has no way to be accepted, which
+     * is a promotion the shopper cannot act on.
+     *
+     * `{{button}}` is the first target. `{{button_<slug>}}`, `{{button_<product
+     * id>}}` and `{{button_<position>}}` address a specific one — the whole
+     * vocabulary, and its resolution order, lives in OfferButtonTokens.
      */
-    public const TOKEN_BUTTON = '{{button}}';
+    public const TOKEN_BUTTON = OfferButtonTokens::TOKEN_BUTTON;
 
     public const TOKEN_PRICE = '{{price}}';
 
@@ -96,15 +83,27 @@ class AccountOffer extends Model
     ];
 
     /**
-     * What `{{button}}` becomes on the way out. A sentinel, not a `<button>`:
+     * What a button token becomes on the way out. A sentinel, not a `<button>`:
      * SafeHtml's allow-list has no `button` tag, and it should not — the renderer
      * swaps this span for a real control it wired itself, so the click handler is
-     * never something a merchant could have typed.
+     * never something a merchant could have typed. The `%s` is the target's stable
+     * key, which is what the click posts back.
      */
-    public const BUTTON_SLOT = '<span class="la-offer__slot"></span>';
+    public const BUTTON_SLOT_FORMAT = OfferButtonTokens::SLOT_FORMAT;
 
-    /** The error key the admin form shows when `{{button}}` is missing/duplicated. */
+    public const BUTTON_SLOT_CLASS = OfferButtonTokens::SLOT_CLASS;
+
+    /** The error key the admin form shows when the block carries no button token. */
     public const ERROR_BUTTON_REQUIRED = 'account_offers.form.html_button_required';
+
+    /**
+     * The error key for a button token that names a target this offer does not
+     * have — a typo'd slug, or a target the merchant deleted from the list while
+     * the HTML still calls for it. Refused at save rather than rendered as a hole:
+     * a promotion with a missing button reads to the shopper as a broken page and
+     * to the merchant as nothing happening at all.
+     */
+    public const ERROR_BUTTON_UNKNOWN = 'account_offers.form.html_button_unknown';
 
     public const MAX_HEADING = 80;
 
@@ -162,10 +161,19 @@ class AccountOffer extends Model
 
     // === Relations ===
 
-    /** The subscription template this offer sells. Price + cadence live there. */
-    public function template(): BelongsTo
+    /**
+     * What this offer sells, in the order the merchant arranged it.
+     *
+     * Ordered by position at the RELATION, not at every call site: position is
+     * also the fallback addressing scheme ({{button_2}}) and the order the cards
+     * are drawn in, so a caller that forgot to sort would silently rename every
+     * button.
+     */
+    public function targets(): HasMany
     {
-        return $this->belongsTo(ProductSubscriptionPlan::class, 'product_subscription_plan_id');
+        return $this->hasMany(AccountOfferTarget::class, 'offer_id')
+            ->orderBy('position')
+            ->orderBy('id');
     }
 
     // === Scopes ===
@@ -183,49 +191,56 @@ class AccountOffer extends Model
         return $this->oneOf($this->status, self::STATUSES, self::STATUS_DRAFT) === self::STATUS_ACTIVE;
     }
 
-    public function mode(): string
+    /**
+     * The targets, loaded and in order. Every reader goes through here so a
+     * relation that happens to be loaded unsorted cannot renumber the buttons.
+     *
+     * @return list<AccountOfferTarget>
+     */
+    public function orderedTargets(): array
     {
-        return $this->oneOf($this->mode, self::MODES, self::MODE_REPLACE);
-    }
+        $targets = $this->relationLoaded('targets') ? $this->targets : $this->targets()->get();
 
-    public function isReplace(): bool
-    {
-        return $this->mode() === self::MODE_REPLACE;
-    }
-
-    public function isAdd(): bool
-    {
-        return $this->mode() === self::MODE_ADD;
+        return $targets
+            ->sortBy([['position', 'asc'], ['id', 'asc']])
+            ->values()
+            ->all();
     }
 
     /**
-     * The replacement timing, or null when there is nothing to replace.
+     * The target a click names, or null.
      *
-     * An ADD offer has no timing to report — it ends no period — so the payload
-     * carries null for it rather than a value the shopper's card would imply.
-     * Use isImmediate() for the question the money actually asks.
+     * Resolved in PHP over the loaded list and never in SQL: the key is a string
+     * from an untrusted request body, and `account_offer_targets.id` is a bigint
+     * that Postgres would abort the whole statement over rather than simply not
+     * match (sqlite, which the tests run on, shrugs — which is exactly how such a
+     * bug ships).
+     *
+     * An EMPTY key means the first target. That is not a shim: `{{button}}` means
+     * the same thing, and a renderer that has not been taught about targets yet
+     * is asking for the offer's primary choice.
      */
-    public function timing(): ?string
+    public function targetByKey(string $key): ?AccountOfferTarget
     {
-        if (! $this->isReplace()) {
+        $targets = $this->orderedTargets();
+        if ($targets === []) {
             return null;
         }
 
-        return $this->oneOf($this->replace_timing, self::TIMINGS, self::TIMING_IMMEDIATE);
-    }
+        $descriptors = array_map(static fn (AccountOfferTarget $t): array => $t->descriptor(), $targets);
+        $resolved = OfferButtonTokens::resolve(trim($key), $descriptors);
 
-    /**
-     * Does accepting this offer charge the saved card NOW?
-     *
-     * Everything that is not explicitly "at period end" does. An ADD is always
-     * immediate (there is no other period to wait for), and a replace whose
-     * timing column is missing or unreadable falls back to immediate rather than
-     * to a silent delay — the shopper is shown a disclosure derived from this
-     * same answer, so the two can never disagree.
-     */
-    public function isImmediate(): bool
-    {
-        return $this->timing() !== self::TIMING_PERIOD_END;
+        if ($resolved === null) {
+            return null;
+        }
+
+        foreach ($targets as $target) {
+            if ($target->stableKey() === $resolved['stable_key']) {
+                return $target;
+            }
+        }
+
+        return null;
     }
 
     public function placement(): string
@@ -306,17 +321,29 @@ class AccountOffer extends Model
     // === Validation (called by the admin form) ===
 
     /**
-     * Is this custom HTML usable? Returns a TRANSLATION KEY describing what is
-     * wrong, or null when the block is fine (including when it is empty — a
-     * merchant who wrote no custom HTML gets the designed card instead).
+     * Is this custom HTML usable? Returns the translation key + parameters of
+     * what is wrong, or null when the block is fine (including when it is empty —
+     * a merchant who wrote no custom HTML gets the designed cards instead).
      *
-     * The rule is about `{{button}}`: exactly one, in TEXT position. A block with
-     * none cannot be accepted by the shopper; a block with two would grow a
-     * second control wired to the same charge. Counting after strip_tags is what
-     * makes "in text position" checkable — a token hidden inside an attribute
-     * would never be rendered as a button, and must not pass for one.
+     * TWO RULES, and the second is what multiple targets bought us:
+     *
+     *   1. AT LEAST ONE button token, in TEXT position. A block with none cannot
+     *      be accepted by the shopper, which is a promotion nobody can act on.
+     *      Several are now legitimate — that is the whole point of a multi-target
+     *      offer — but they must be tokens the page can render, so the count is
+     *      taken after strip_tags: a token hidden inside an attribute would never
+     *      become a button and must not pass for one.
+     *
+     *   2. EVERY button token must name a real target. `{{button_upgade}}` is a
+     *      typo the merchant will otherwise discover from a shopper who could not
+     *      buy the thing. Checked against the tokens in the CLEANED block, so a
+     *      token the sanitizer removed is not held against them.
+     *
+     * @param  list<array{token_key: ?string, external_product_id: ?string, position: int, stable_key: string}>  $targets
+     *                                                                                                                     descriptors, in position order (AccountOfferTarget::descriptor())
+     * @return array{key: string, params: array<string, string>}|null
      */
-    public static function validateCustomHtml(?string $html): ?string
+    public static function validateCustomHtml(?string $html, array $targets = []): ?array
     {
         if (! is_string($html) || trim($html) === '') {
             return null;
@@ -325,12 +352,36 @@ class AccountOffer extends Model
         $clean = SafeHtml::clean($html);
 
         if ($clean === null) {
-            return self::ERROR_BUTTON_REQUIRED;
+            return ['key' => self::ERROR_BUTTON_REQUIRED, 'params' => []];
         }
 
-        return substr_count(strip_tags($clean), self::TOKEN_BUTTON) === 1
-            ? null
-            : self::ERROR_BUTTON_REQUIRED;
+        // Rule 1 — a button the shopper can actually see.
+        if (OfferButtonTokens::tokensIn(strip_tags($clean)) === []) {
+            return ['key' => self::ERROR_BUTTON_REQUIRED, 'params' => []];
+        }
+
+        // Rule 2 — every token names something.
+        foreach (OfferButtonTokens::tokensIn($clean) as $token) {
+            if (OfferButtonTokens::resolve($token['key'], $targets) === null) {
+                return ['key' => self::ERROR_BUTTON_UNKNOWN, 'params' => ['token' => $token['token']]];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The same check, as the SENTENCE a form field shows. Separate from the
+     * structured answer above because a validator wants the message while a test
+     * wants to know WHICH rule refused it.
+     *
+     * @param  list<array{token_key: ?string, external_product_id: ?string, position: int, stable_key: string}>  $targets
+     */
+    public static function customHtmlError(?string $html, array $targets = []): ?string
+    {
+        $error = self::validateCustomHtml($html, $targets);
+
+        return $error === null ? null : (string) __($error['key'], $error['params']);
     }
 
     // === Private guards ===

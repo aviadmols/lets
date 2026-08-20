@@ -132,8 +132,79 @@ final class AccountLayoutTest extends TestCase
         $this->assertStringContainsString('.la-offer__slot', $css);
 
         // A charge on a card the shopper cannot see is confirmed first, with the
-        // server's own sentence — never a string composed in the browser.
-        $this->assertStringContainsString('window.confirm(offer.disclosure)', $js);
+        // server's own sentence — never a string composed in the browser. The
+        // sentence belongs to the TARGET: on a card offering three things,
+        // confirming the wrong one is worse than confirming nothing.
+        $this->assertStringContainsString('window.confirm(target.disclosure)', $js);
+    }
+
+    /**
+     * One card, several things to say yes to.
+     *
+     * An offer used to be one product and one button. It is a LIST now — switch
+     * the plan, add the refill, buy the accessory once on the card already on
+     * file — and each row carries its own price, its own dates and its own
+     * button. The click therefore has to name WHICH: an offer id alone no longer
+     * says what was accepted, and the amount travelling beside it would then be
+     * evidence for a target nobody named.
+     */
+    public function test_one_offer_can_carry_several_targets(): void
+    {
+        $js = (string) file_get_contents(base_path(self::PLUGIN_JS));
+        $css = (string) file_get_contents(base_path(self::PLUGIN_CSS));
+
+        // The list, in the renderer and in the stylesheet. Either half alone is
+        // a row of unstyled paragraphs or a rule nothing ever matches.
+        $this->assertStringContainsString('la-offer__targets', $js);
+        $this->assertStringContainsString('.la-offer__targets', $css);
+        foreach (['.la-offer__target', '.la-offer__target-price', '.la-offer__target-note'] as $selector) {
+            $this->assertStringContainsString($selector, $css, "{$selector} is not styled");
+        }
+
+        // The verb names the target. This is the whole contract with the SaaS.
+        $this->assertStringContainsString('target: target.key', $js);
+
+        // The merchant's own markup places each button by key; a slot is matched
+        // by the target it names, never by its position in the string.
+        $this->assertStringContainsString('data-target', $js);
+        $this->assertStringContainsString("slot.getAttribute(OFFER_SLOT_KEY)", $js);
+        $this->assertStringContainsString('slot.parentNode.removeChild(slot)', $js);
+
+        // A payload with no targets is not a card with nothing to click — it is
+        // not a card at all.
+        $this->assertStringContainsString(
+            'Array.isArray(offer.targets) ? byIndex(offer.targets) : []',
+            $js,
+        );
+        $this->assertMatchesRegularExpression(
+            '/if \(!targets\.length\) \{ return null; \}/',
+            $js,
+            'an offer with no targets must render nothing at all',
+        );
+
+        // …and the three placements must survive that null rather than throw on
+        // appendChild(null) and take the whole area down.
+        foreach (['offerStrip', 'railStrip', 'box'] as $strip) {
+            $this->assertStringContainsString(
+                'append('.$strip.', renderOffer(state, offer,',
+                $js,
+                "{$strip} must use append(), which skips a null card",
+            );
+        }
+
+        // Copy the catalog has not learned yet degrades to the accept verb; it
+        // never prints "undefined" beside a price.
+        $this->assertStringContainsString('m.copy.offer_buy_now', $js);
+        $this->assertStringContainsString('m.copy.offer_one_time', $js);
+        $this->assertStringContainsString('m.copy.offer_add_to_next', $js);
+        $this->assertStringContainsString(
+            'target.button_text || fallback || m.copy.offer_accept',
+            $js,
+        );
+
+        // The renderer's version is the plugin's compatibility handle: a payload
+        // shape this wide has to be visible to the page that mounts it.
+        $this->assertStringContainsString('version: 3', $js);
     }
 
     /**
@@ -183,6 +254,12 @@ final class AccountLayoutTest extends TestCase
         $this->assertStringContainsString("'offer'", $act);
         $this->assertStringContainsString("sanitize_text_field((string) \$request->get_param('offer'))", $act);
         $this->assertStringContainsString("is_numeric(\$request->get_param('amount'))", $act);
+
+        // …and WHICH of the offer's targets was clicked. One offer can carry
+        // several products now; without the key the SaaS is asked to guess which
+        // one to charge for, and a guess here is somebody's money.
+        $this->assertStringContainsString("'target'", $act);
+        $this->assertStringContainsString("sanitize_text_field((string) \$request->get_param('target'))", $act);
 
         // The identity still comes from the WordPress session, never the body.
         $this->assertStringContainsString("'customer_ref' => (string) \$user_id", $act);

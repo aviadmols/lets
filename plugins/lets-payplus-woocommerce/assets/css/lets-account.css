@@ -1014,11 +1014,14 @@ a.la-banner:focus-visible {
     max-inline-size: 100%;
 }
 
+/* The body is the offer's own words only — heading, subtext. The prices and the
+   buttons live one per target below it, so its bottom inset is small: the first
+   target row brings its own. */
 .la-offer__body {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    padding: 18px var(--la-pad);
+    padding: 18px var(--la-pad) 4px;
 }
 
 .la-offer__heading {
@@ -1064,6 +1067,76 @@ a.la-banner:focus-visible {
 .la-offer__cta {
     align-self: flex-start;
     margin-block-start: 10px;
+}
+
+/* --- Targets: one card, several things to say yes to ---------------------
+
+   Each target — a plan to switch to, a product to add, a one-off to buy on the
+   card already on file — is its own ROW: its own price, its own dates, its own
+   button. Rows and not columns on purpose: two accept buttons side by side in a
+   240px rail card is a mis-tap waiting to happen, and a mis-tap here is a
+   charge. The hairline between them is what stops the second row's price from
+   reading as a second line of the first. */
+
+.la-offer__targets {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+}
+
+/* Only the designed card needs the shell's own inset; inside the merchant's own
+   markup the list sits in .la-offer__custom, which is already padded. */
+.la-offer > .la-offer__targets {
+    padding-inline: var(--la-pad);
+    padding-block-end: 18px;
+}
+
+/* Inside the merchant's markup the list holds the buttons their design never
+   placed. It gets air above it and nothing else: their layout is theirs, and
+   the only thing here that is ours is the button. */
+.la-offer__custom > .la-offer__targets {
+    margin-block-start: 12px;
+}
+
+.la-offer__target {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-inline-size: 0;
+    padding-block: 14px;
+}
+
+.la-offer__target + .la-offer__target {
+    border-block-start: 1px solid var(--la-border);
+}
+
+/* The body above already carries the offer's heading, so the row's own name is
+   the product, at the weight of a label rather than a second title. */
+.la-offer__target-name {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+/* The number the decision turns on, at the weight of the plan's own price. */
+.la-offer__target-price {
+    font-size: 1.0625rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin: 0;
+}
+
+.la-offer__target-note {
+    font-size: 0.8125rem;
+    color: var(--la-muted);
+    margin: 0;
+}
+
+/* A comfortable thumb target, and a little air above it so the button belongs
+   to the row it sits under rather than to the one below. */
+.la-offer__target .la-offer__cta {
+    margin-block-start: 6px;
+    min-block-size: 44px;
 }
 
 .la-offer__custom {
