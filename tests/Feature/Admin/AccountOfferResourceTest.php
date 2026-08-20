@@ -402,6 +402,23 @@ final class AccountOfferResourceTest extends TestCase
         $this->assertSame(0, AccountOffer::query()->count());
     }
 
+    /**
+     * A DIGITS-ONLY token name is refused: bare numbers are the row-order
+     * vocabulary ({{button_2}} = the second row). A merchant who typed "2" as
+     * the FIRST row's name silently rewired {{button_2}} to the wrong product
+     * — crossed buttons on a live page, found the hard way in production.
+     */
+    public function test_a_digits_only_token_name_is_refused(): void
+    {
+        Livewire::test(CreateAccountOffer::class)
+            ->fillForm($this->formData(['name' => 'Numeric slug']))
+            ->set(self::TARGETS_PATH, [$this->subscriptionRow(['token_key' => '2'])])
+            ->call('create')
+            ->assertHasFormErrors();
+
+        $this->assertSame(0, AccountOffer::query()->count());
+    }
+
     // === Custom HTML ===
 
     public function test_custom_html_without_a_button_token_is_refused(): void

@@ -85,8 +85,17 @@ class AccountOfferTarget extends Model
 
     public const FULFILMENTS = [self::FULFILMENT_IMMEDIATE, self::FULFILMENT_NEXT_ORDER];
 
-    /** The merchant's slug for a target: lower-case, digits, underscores. */
-    public const TOKEN_KEY_PATTERN = '/^[a-z0-9_]{1,32}$/';
+    /**
+     * The merchant's slug for a target: lower-case, digits, underscores — and
+     * AT LEAST ONE LETTER. A digits-only slug is refused because bare numbers
+     * are the row-order vocabulary ({{button_2}} = the second row): a merchant
+     * who typed "2" as the FIRST row's name silently rewired {{button_2}} to
+     * the wrong product — a crossed button, which in this feature means a
+     * charge for the wrong thing. Existing digits-only values fail the pattern
+     * on read and the token falls back to the row's position, which is what
+     * the merchant meant all along.
+     */
+    public const TOKEN_KEY_PATTERN = '/^(?=.*[a-z])[a-z0-9_]{1,32}$/';
 
     public const MAX_TOKEN_KEY = 32;
 

@@ -122,7 +122,7 @@ return [
         'fulfilment_help' => '“Next order” takes no money today: the line rides along on the subscription’s next charge, so it keeps working while live charging is off.',
 
         'token_key' => 'Name for the button token',
-        'token_key_help' => 'Optional, lower-case letters, digits and underscores. The button shortcode shown beside this field follows what you type — that is the exact tag to paste into your custom HTML.',
+        'token_key_help' => 'Optional, lower-case letters, digits and underscores — with at least one letter: a bare number is reserved for row order ({{button_2}} = the second row). The button shortcode shown beside this field follows what you type — that is the exact tag to paste into your custom HTML.',
         'button_token' => 'Button shortcode',
         'button_token_help' => 'Paste this into your custom HTML to place this row’s button. Without a name it falls back to the row’s position, so it moves when you reorder the rows.',
         'target_button_text' => 'Button text',
@@ -193,7 +193,7 @@ return [
     'form' => [
         'html_button_required' => 'Custom HTML must contain at least one button token, as text — that is where a button goes. Use {{button}} for the first thing this offer sells, or {{button_2}}, {{button_<product id>}} or {{button_<your own name>}} to place a button for a specific one. Without one, nobody can take the offer.',
         'html_button_unknown' => ':token does not match anything this offer sells. Check the spelling, or add the target it names.',
-        'token_key_invalid' => 'Use lower-case letters, digits and underscores only.',
+        'token_key_invalid' => 'Use lower-case letters, digits and underscores, with at least one letter. A bare number is reserved for row order ({{button_2}} = the second row).',
         'token_key_duplicate' => 'Another row already uses this name. Two buttons answering to one token would charge for the wrong thing.',
         'saved' => 'Offer saved.',
     ],

@@ -188,6 +188,13 @@ final class AccountOfferTest extends TestCase
 
         // A slug the merchant typed in caps or with a space is not a slug.
         $this->assertSame('1', (new AccountOfferTarget(['token_key' => 'Up Grade']))->stableKey());
+
+        // A DIGITS-ONLY slug is not a slug either: bare numbers belong to row
+        // order, and honouring "2" as the first row's NAME would rewire
+        // {{button_2}} away from the second row — crossed buttons on a live
+        // page. The value dies at the guard and the position speaks instead.
+        $this->assertNull((new AccountOfferTarget(['token_key' => '2']))->tokenKey());
+        $this->assertSame('4', (new AccountOfferTarget(['token_key' => '2', 'position' => 4]))->stableKey());
     }
 
     public function test_a_quantity_is_clamped_and_only_a_one_time_target_has_one(): void
