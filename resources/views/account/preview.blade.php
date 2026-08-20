@@ -22,7 +22,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
     <title>{{ __('account.admin.preview.heading') }}</title>
-    <link rel="stylesheet" href="{{ asset('account/lets-account.css') }}">
+    {{-- Cache-busted by content mtime, the same way the admin theme is
+         (AdminPanelProvider::themeAssetUrl). The storefront busts these on the
+         plugin version; this preview had nothing, so a merchant could tune a
+         setting and be shown a renderer from before the last deploy — the one
+         place where looking right and being right must not come apart. --}}
+    <link rel="stylesheet" href="{{ \App\Support\Ui\AccountAssets::url('account/lets-account.css') }}">
     <style>
         html, body { margin: 0; padding: 0; background: #f3f4f6; }
         body { padding: 20px; font-family: system-ui, sans-serif; }
@@ -32,7 +37,7 @@
 <body>
     <div id="lets-account-preview"></div>
 
-    <script src="{{ asset('account/lets-account.js') }}"></script>
+    <script src="{{ \App\Support\Ui\AccountAssets::url('account/lets-account.js') }}"></script>
     <script>
         (function () {
             var model = @json($model);
