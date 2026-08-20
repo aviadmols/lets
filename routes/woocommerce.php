@@ -3,6 +3,7 @@
 use App\Domain\Account\CustomerSubscriptionActions;
 use App\Http\Controllers\WooCommerce\Account\AccountActionController;
 use App\Http\Controllers\WooCommerce\Account\AccountBootstrapController;
+use App\Http\Controllers\WooCommerce\Account\AccountIdentityController;
 use App\Http\Controllers\WooCommerce\Account\AccountOtpController;
 use App\Http\Controllers\WooCommerce\Account\ImpersonateVerifyController;
 use App\Http\Controllers\WooCommerce\Account\SubscriptionEligibilityController;
@@ -224,6 +225,12 @@ Route::middleware(VerifyWooCommerceSignature::class)
             ->name('woocommerce.account.otp.request');
         Route::post('/account/otp/verify', [AccountOtpController::class, 'verify'])
             ->name('woocommerce.account.otp.verify');
+
+        // "Does LETS already know this address?" — asked by the plugin AFTER a
+        // verified code found no WordPress user, so an imported member is signed
+        // in from what LETS knows instead of being asked to introduce themselves.
+        Route::post('/account/identity', AccountIdentityController::class)
+            ->name('woocommerce.account.identity');
 
         // "Log in as this customer", from the LETS customer page. The admin's
         // browser arrives at the store carrying a ticket; the plugin hands it back

@@ -384,6 +384,18 @@
                     return;
                 }
 
+                // LETS recognized them and their account was just opened from
+                // what it knows — say so for a beat before landing, so the jump
+                // straight past the registration form reads as intended, not
+                // as a glitch.
+                if (body.created) {
+                    say('provisioned', 'good');
+                    stopCountdown();
+                    window.setTimeout(function () { land(body.redirect); }, 900);
+
+                    return;
+                }
+
                 land(body.redirect);
             }).catch(function () {
                 release();

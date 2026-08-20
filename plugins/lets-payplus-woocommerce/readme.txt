@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.34.0
+Stable tag: 0.35.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,16 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.35.0 =
+* A verified sign-in code that finds no WordPress user now asks LETS whether it
+  already knows the address. A member the store imported — a year of
+  subscriptions, no WP account — gets their account opened FROM what LETS knows
+  (name + email) and is signed straight in, instead of being asked to introduce
+  themselves on a store that has been charging them. The panel says "setting up
+  your account…" while it happens. Strangers still get the quick-registration
+  form, privileged accounts are refused as always, and an existing WP user
+  reached by a LETS-known phone is linked (phone indexed) rather than duplicated.
 
 = 0.34.0 =
 * A custom-HTML offer card can now carry its own CSS. The merchant defines the

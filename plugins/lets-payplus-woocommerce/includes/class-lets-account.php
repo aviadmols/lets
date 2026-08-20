@@ -1286,6 +1286,15 @@ function lets_payplus_account_rest_code_verify(WP_REST_Request $request)
         return rest_ensure_response(array('ok' => false, 'reason' => 'rejected'));
     }
 
+    // No WordPress user — but LETS may already KNOW this person: an imported
+    // member has a year of subscriptions here and no WP account. Asking them to
+    // "register" on a store that has been charging them is wrong twice, so their
+    // account is opened FROM what LETS knows and they are signed straight in.
+    $known = lets_payplus_account_provision_known_member($channel, $destination, $request->get_param('redirect'));
+    if (null !== $known) {
+        return $known;
+    }
+
     // Verified, and nobody owns it. Hand back a ticket rather than the address:
     // the browser never gets to name the destination the next call will trust.
     return rest_ensure_response(array(
@@ -1293,6 +1302,97 @@ function lets_payplus_account_rest_code_verify(WP_REST_Request $request)
         'register' => true,
         'ticket'   => lets_payplus_account_issue_ticket($channel, $destination),
     ));
+}
+
+/**
+ * Sign in a verified stranger LETS already knows, or null to fall back to the
+ * quick-registration form.
+ *
+ * The SaaS is asked only AFTER the code proved the destination; it answers with
+ * a name and an email, never more. Three outcomes:
+ *   - LETS knows them + a WP user already holds their email → LINK: the proven
+ *     phone is indexed onto that user (so next time the lookup finds them
+ *     directly) and they are signed into it. Privileged accounts are refused
+ *     outright — this door never opens into an admin.
+ *   - LETS knows them + no WP user → their customer account is created from the
+ *     LETS name and they are signed in. `created` rides the response so the
+ *     panel can say what just happened.
+ *   - LETS does not know them (or knows no usable name/email) → null; the
+ *     registration form asks, exactly as before.
+ *
+ * @param  string  $channel      'email' | 'sms'
+ * @param  string  $destination  the VERIFIED address the code answered from
+ * @param  mixed   $redirect
+ * @return WP_REST_Response|null
+ */
+function lets_payplus_account_provision_known_member($channel, $destination, $redirect)
+{
+    $identity = lets_payplus_signed_post('/api/woocommerce/account/identity', array(
+        'channel'     => $channel,
+        'destination' => $destination,
+    ));
+
+    if (is_wp_error($identity) || ! is_array($identity) || empty($identity['known'])) {
+        return null;
+    }
+
+    // On the email channel the address is the one that answered the code; on SMS
+    // the email is LETS's word for who owns the handset that answered.
+    $email = 'email' === $channel
+        ? sanitize_email($destination)
+        : sanitize_email((string) ($identity['email'] ?? ''));
+
+    if ('' === $email || ! is_email($email)) {
+        return null;
+    }
+
+    $phone = 'sms' === $channel ? lets_payplus_account_digits($destination) : '';
+
+    $existing = get_user_by('email', $email);
+    if ($existing) {
+        if (lets_payplus_account_is_privileged($existing)) {
+            // Same wall as the direct lookup: a privileged account is not a
+            // sign-in this endpoint performs, whatever LETS knows.
+            return rest_ensure_response(array('ok' => false, 'reason' => 'rejected'));
+        }
+
+        if ('' !== $phone) {
+            update_user_meta($existing->ID, LETS_ACCOUNT_PHONE_INDEX, $phone);
+        }
+
+        return lets_payplus_account_sign_in($existing, $redirect);
+    }
+
+    $first = lets_payplus_account_clean_name((string) ($identity['first_name'] ?? ''));
+    $last = lets_payplus_account_clean_name((string) ($identity['last_name'] ?? ''));
+
+    if ('' === $first || lets_payplus_account_name_too_long($first) || lets_payplus_account_name_too_long($last)) {
+        // LETS knows them but not by a usable name — let them type it themselves.
+        return null;
+    }
+
+    $user_id = lets_payplus_account_create_customer($email, $first, $last);
+    if ($user_id <= 0) {
+        return null;
+    }
+
+    lets_payplus_account_store_profile($user_id, $first, $last, $email, $phone);
+
+    $user = get_userdata($user_id);
+    if (! $user) {
+        return null;
+    }
+
+    $response = lets_payplus_account_sign_in($user, $redirect);
+    if ($response instanceof WP_REST_Response) {
+        $data = $response->get_data();
+        if (is_array($data) && ! empty($data['ok'])) {
+            $data['created'] = true;
+            $response->set_data($data);
+        }
+    }
+
+    return $response;
 }
 
 /**
@@ -2513,6 +2613,9 @@ function lets_payplus_account_login_config()
             'sending'        => $he ? 'שולחים…' : 'Sending…',
             'checking'       => $he ? 'בודקים…' : 'Checking…',
             'creating'       => $he ? 'פותחים חשבון…' : 'Creating your account…',
+            // Shown when a verified member LETS already knows skips the
+            // registration form: their account was opened for them.
+            'provisioned'    => $he ? 'מייצרים את המשתמש שלך…' : 'Setting up your account…',
             // %s is the masked destination — substituted as a NODE, never as HTML.
             'sent_to'        => $he ? 'שלחנו קוד ל-%s' : 'We sent a code to %s',
             'resent'         => $he ? 'שלחנו קוד חדש.' : 'A new code is on its way.',
