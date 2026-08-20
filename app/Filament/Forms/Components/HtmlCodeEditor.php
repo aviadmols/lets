@@ -45,7 +45,23 @@ class HtmlCodeEditor extends Field
 
     /** Editor mode + the visible row count of the textarea fallback. */
     public const EDITOR_MODE = 'htmlmixed';
+    public const MODE_CSS = 'css';
     public const MIN_ROWS = 12;
+
+    /**
+     * The CodeMirror mode this instance highlights in. HTML by default; the
+     * account-offer CSS tab asks for `css` — the mode script is already on the
+     * pinned asset list either way, so no new asset is loaded.
+     */
+    protected string $editorMode = self::EDITOR_MODE;
+
+    /** Highlight as CSS rather than HTML. The value is still just carried text. */
+    public function cssMode(): static
+    {
+        $this->editorMode = self::MODE_CSS;
+
+        return $this;
+    }
 
     /**
      * Expose the asset URLs + editor options to the view without the Blade reaching
@@ -71,7 +87,7 @@ class HtmlCodeEditor extends Field
 
     public function getEditorMode(): string
     {
-        return self::EDITOR_MODE;
+        return $this->editorMode;
     }
 
     public function getMinRows(): int

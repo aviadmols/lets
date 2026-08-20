@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.33.0
+Stable tag: 0.34.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,15 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.34.0 =
+* A custom-HTML offer card can now carry its own CSS. The merchant defines the
+  classes their markup uses in a new CSS tab beside the HTML editor, so the card
+  looks designed on any theme instead of only on one that happens to define
+  those classes. The stylesheet is cleaned on the LETS server (no @import, no
+  hostile url() schemes, no markup) and injected on the page as inert text —
+  once per offer, however many plans it renders under. The admin preview shows
+  the styled card, exactly as the shopper will get it.
 
 = 0.33.0 =
 * One offer area can now carry several products. A single card in the personal

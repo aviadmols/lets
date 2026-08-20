@@ -34,7 +34,7 @@ final class AccountPresenterOffersTest extends TestCase
     // === CONSTANTS ===
     /** Every key an offer card carries. */
     private const OFFER_KEYS = [
-        'id', 'placement', 'heading', 'subtext', 'image_url', 'html', 'source_plan', 'targets',
+        'id', 'placement', 'heading', 'subtext', 'image_url', 'html', 'css', 'source_plan', 'targets',
     ];
 
     /** Every key ONE target carries, in payload order. */
@@ -290,6 +290,50 @@ final class AccountPresenterOffersTest extends TestCase
             // names, so the block simply carries its button twice.
             $this->assertSame(2, substr_count($html, 'data-target="monthly"'));
             $this->assertStringNotContainsString('{{', $html);
+        });
+    }
+
+    /**
+     * The block's stylesheet rides the card as `css` — SafeCss-cleaned, because
+     * the renderer will hand it to a <style> element verbatim. An offer without
+     * one carries an explicit null, so the renderer's `if (offer.css)` guard has
+     * a value to read on every card, old payloads and new alike.
+     */
+    public function test_custom_css_arrives_sanitised_and_null_when_empty(): void
+    {
+        $shop = $this->makeShop();
+
+        Tenant::run($shop, function () use ($shop): void {
+            $product = $this->makeProduct(self::PRODUCT_MONTHLY, 'Membership 2675', 49.0);
+            $template = $this->makeTemplate($product, BillingFrequency::MONTHLY);
+
+            $this->makeOffer($template, [
+                'name' => 'Styled',
+                'custom_html' => '<div class="promo">{{button}}</div>',
+                'custom_css' => '.promo { color: #c00; }'
+                    .'@import url(https://evil.test/a.css);'
+                    .'.promo::after { content: "</style>"; }',
+                'token_key' => 'go',
+            ]);
+            $this->makeOffer($template, ['name' => 'Bare', 'placement' => AccountOffer::PLACEMENT_TOP]);
+
+            $this->makeSourcePlan();
+
+            $model = app(AccountPresenter::class)->present($this->visitor($shop));
+
+            $css = $model['subscriptions'][0]['offers'][0]['css'];
+            $this->assertIsString($css);
+            $this->assertStringContainsString('.promo { color: #c00; }', $css);
+            // SafeCss ran on the server: no external stylesheet, and no `<` at
+            // all — the string must not be able to close a <style> it sits in.
+            $this->assertStringNotContainsString('@import', $css);
+            $this->assertStringNotContainsString('evil.test', $css);
+            $this->assertStringNotContainsString('<', $css);
+
+            $this->assertNull(
+                $model['offers'][0]['css'],
+                'an offer without CSS carries an explicit null, not a missing key',
+            );
         });
     }
 

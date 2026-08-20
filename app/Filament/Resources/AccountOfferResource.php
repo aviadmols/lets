@@ -28,6 +28,7 @@ use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Tabs;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\ToggleButtons;
 use Filament\Forms\Form;
@@ -38,6 +39,7 @@ use Filament\Tables\Table;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\HtmlString;
 
 /**
  * Cross-Sell & Upsell → Account offers. The merchant's side of the card a
@@ -379,6 +381,18 @@ class AccountOfferResource extends Resource
                 ->live(onBlur: true)
                 ->extraInputAttributes(['dir' => 'ltr']),
 
+            /*
+             * The row's OWN button shortcode, ready to copy into the custom
+             * HTML — resolved with the same chain the renderer resolves a click
+             * with (AccountOfferTarget::stableKey): the merchant's slug, else
+             * the product id, else the row's 1-based visual position. Live: it
+             * follows the token_key as it is typed and the row as it is moved.
+             */
+            Placeholder::make('button_token_hint')
+                ->label(__(self::LANG.'.field.button_token'))
+                ->content(fn (Get $get, Component $component): Htmlable => self::buttonTokenHint($get, $component))
+                ->helperText(__(self::LANG.'.field.button_token_help')),
+
             TextInput::make('button_text')
                 ->label(__(self::LANG.'.field.target_button_text'))
                 ->helperText(__(self::LANG.'.field.target_button_text_help'))
@@ -507,38 +521,67 @@ class AccountOfferResource extends Resource
             ->columns(2);
     }
 
+    /**
+     * The custom block, in two tabs: the MARKUP and the STYLESHEET it relies on.
+     *
+     * The CSS tab exists because SafeHtml (rightly) drops the `style` attribute:
+     * a merchant's block is class-based, and those classes were only styled when
+     * the storefront theme happened to define them. The stylesheet is scrubbed by
+     * SafeCss on save and on read (the customHtml discipline), travels on the
+     * card payload as `css`, and lands on the page as a <style> element's
+     * textContent — never parsed as HTML.
+     */
     private static function htmlSection(): Section
     {
         return Section::make(__(self::LANG.'.section.html'))
             ->collapsible()
-            ->collapsed(fn (?AccountOffer $record): bool => $record?->custom_html === null)
+            ->collapsed(fn (?AccountOffer $record): bool => $record?->custom_html === null
+                && $record?->custom_css === null)
             ->schema([
-                HtmlCodeEditor::make('custom_html')
-                    ->label(__(self::LANG.'.field.custom_html'))
-                    ->helperText(__(self::LANG.'.field.html_help'))
-                    /*
-                     * Two rules, both owned by the MODEL (validateCustomHtml)
-                     * because the same answer is needed wherever an offer is
-                     * written: at least one button token in text position, and
-                     * every token naming a target that exists. The second is why
-                     * this closure reads the repeater's LIVE state rather than
-                     * the saved rows — the merchant is validated against the
-                     * targets they are typing, not the ones they had.
-                     */
-                    ->rule(static fn (Get $get): Closure => static function (
-                        string $attribute,
-                        mixed $value,
-                        Closure $fail,
-                    ) use ($get): void {
-                        $error = AccountOffer::validateCustomHtml(
-                            is_string($value) ? $value : null,
-                            self::descriptorsFrom($get(self::TARGETS)),
-                        );
+                Tabs::make('custom_block')
+                    ->tabs([
+                        Tabs\Tab::make('html')
+                            ->label(__(self::LANG.'.tab.html'))
+                            ->schema([
+                                HtmlCodeEditor::make('custom_html')
+                                    ->label(__(self::LANG.'.field.custom_html'))
+                                    ->helperText(__(self::LANG.'.field.html_help'))
+                                    /*
+                                     * Two rules, both owned by the MODEL (validateCustomHtml)
+                                     * because the same answer is needed wherever an offer is
+                                     * written: at least one button token in text position, and
+                                     * every token naming a target that exists. The second is why
+                                     * this closure reads the repeater's LIVE state rather than
+                                     * the saved rows — the merchant is validated against the
+                                     * targets they are typing, not the ones they had.
+                                     */
+                                    ->rule(static fn (Get $get): Closure => static function (
+                                        string $attribute,
+                                        mixed $value,
+                                        Closure $fail,
+                                    ) use ($get): void {
+                                        $error = AccountOffer::validateCustomHtml(
+                                            is_string($value) ? $value : null,
+                                            self::descriptorsFrom($get(self::TARGETS)),
+                                        );
 
-                        if ($error !== null) {
-                            $fail(__($error['key'], $error['params']));
-                        }
-                    })
+                                        if ($error !== null) {
+                                            $fail(__($error['key'], $error['params']));
+                                        }
+                                    })
+                                    ->columnSpanFull(),
+                            ]),
+
+                        Tabs\Tab::make('css')
+                            ->label(__(self::LANG.'.tab.css'))
+                            ->schema([
+                                HtmlCodeEditor::make('custom_css')
+                                    ->cssMode()
+                                    ->label(__(self::LANG.'.field.custom_css'))
+                                    ->helperText(__(self::LANG.'.field.css_help'))
+                                    ->columnSpanFull(),
+                            ]),
+                    ])
                     ->columnSpanFull(),
 
                 Placeholder::make('html_preview')
@@ -1143,6 +1186,7 @@ class AccountOfferResource extends Resource
             'image_url' => is_string($get('image_url')) ? $get('image_url') : null,
             'button_text' => is_string($get('button_text')) ? $get('button_text') : null,
             'custom_html' => $html,
+            'custom_css' => is_string($get('custom_css')) ? $get('custom_css') : null,
         ]);
 
         $payload = (new AccountOfferPresenter)->present(
@@ -1153,8 +1197,17 @@ class AccountOfferResource extends Resource
             now()->addDays(self::PREVIEW_RENEWAL_DAYS),
         );
 
+        /*
+         * The stylesheet rides INSIDE the srcdoc, ahead of the block, so the
+         * merchant previews the styled card — the same pairing the storefront
+         * makes. Concatenating it into a <style> is safe by construction:
+         * `css` is SafeCss-cleaned, and SafeCss strips every literal `<`, so
+         * the string cannot close the tag it sits in.
+         */
+        $css = (string) ($payload['css'] ?? '');
+
         return view(self::PREVIEW_VIEW, [
-            'html' => (string) ($payload['html'] ?? ''),
+            'html' => ($css !== '' ? '<style>'.$css.'</style>' : '').(string) ($payload['html'] ?? ''),
             'title' => __(self::LANG.'.field.html_preview'),
         ]);
     }
@@ -1207,6 +1260,59 @@ class AccountOfferResource extends Resource
         }
 
         return $seen > 1;
+    }
+
+    /**
+     * The shortcode this row's button answers to, as the merchant should paste
+     * it: `{{button_upgrade}}`, `{{button_4242}}`, `{{button_2}}`.
+     *
+     * Built from the SAME pieces the renderer resolves a click with —
+     * normalizeTarget() (so a subscription row never borrows a product id) into
+     * AccountOfferTarget::descriptorFor() — because a hint that resolves
+     * differently from the button is a merchant pasting the wrong charge.
+     *
+     * The `.rc-token` chip is the design system's monospace token class (the
+     * mail-settings placeholder chips); the key is escaped on the way in.
+     */
+    private static function buttonTokenHint(Get $get, Component $component): Htmlable
+    {
+        $normalized = self::normalizeTarget([
+            'kind' => $get('kind'),
+            'token_key' => $get('token_key'),
+            'external_product_id' => $get('external_product_id'),
+        ], 1);
+
+        $descriptor = AccountOfferTarget::descriptorFor(
+            $normalized['token_key'],
+            $normalized['external_product_id'],
+            self::rowPosition($component, $get('../../'.self::TARGETS)),
+        );
+
+        return new HtmlString(
+            '<code class="rc-token">'.e('{{button_'.$descriptor['stable_key'].'}}').'</code>',
+        );
+    }
+
+    /**
+     * This row's 1-based VISUAL position — its place in the repeater's live
+     * state, never the saved `position` column: a new row has no column yet, and
+     * a reordered one has the old value until save. The repeater keys its items
+     * by uuid and keeps the array in visual order, so the row's place is the
+     * place of its uuid — the last segment of the row container's state path —
+     * among the keys.
+     */
+    private static function rowPosition(Component $component, mixed $rows): int
+    {
+        if (! is_array($rows) || $rows === []) {
+            return 1;
+        }
+
+        $segments = explode('.', $component->getContainer()->getStatePath());
+        $uuid = (string) end($segments);
+
+        $index = array_search($uuid, array_map('strval', array_keys($rows)), true);
+
+        return $index === false ? 1 : $index + 1;
     }
 
     // === Private — transient targets ===

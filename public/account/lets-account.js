@@ -68,6 +68,11 @@
     var OFFER_SLOT_CLASS = 'la-offer__slot';
     var OFFER_SLOT_KEY = 'data-target';
 
+    /* An offer may carry its own stylesheet (`card.css`) — the classes its
+       custom HTML uses, defined by the merchant instead of hoped for from the
+       theme. It is injected ONCE per offer id, marked with this attribute. */
+    var OFFER_CSS_ATTR = 'data-lets-offer-css';
+
     /* Elements that never survive merchant markup, and the attribute shapes that
        never survive an element. The server stripped all of them already; this is
        the second lock on the same door, applied after the browser has parsed the
@@ -808,6 +813,8 @@
         var targets = Array.isArray(offer.targets) ? byIndex(offer.targets) : [];
         if (!targets.length) { return null; }
 
+        injectOfferCss(state, offer);
+
         var card = el('article', modifier ? 'la-offer ' + modifier : 'la-offer');
         attr(card, 'data-offer', offer.id);
 
@@ -957,6 +964,33 @@
         }
 
         return box;
+    }
+
+    /**
+     * The offer's own stylesheet, mounted once.
+     *
+     * The string is the SERVER's guarantee: app/Support/SafeCss.php scrubbed it
+     * when the merchant saved it and again when the presenter read it — no
+     * @import, no hostile url() scheme, no `<` at all. And the assignment below
+     * is breakout-proof by construction: textContent set through the DOM is
+     * never re-parsed as HTML, so even a `</style>` inside the CSS could not
+     * close the element — it would simply be (invalid) CSS text. This is NOT the
+     * renderer's innerHTML — no markup is parsed here.
+     *
+     * One <style> per offer id, into the account root: the same offer renders
+     * under several plans, and its rules must exist once, not once per card.
+     */
+    function injectOfferCss(state, offer) {
+        if (!offer.css || !state.mount) { return; }
+
+        var id = String(offer.id);
+        var marker = '[' + OFFER_CSS_ATTR + '="' + id.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"]';
+        if (state.mount.querySelector(marker)) { return; }
+
+        var style = document.createElement('style');
+        style.setAttribute(OFFER_CSS_ATTR, id);
+        style.textContent = String(offer.css);
+        state.mount.appendChild(style);
     }
 
     /** The target a sentinel names, or null — never a positional guess. */
@@ -1111,7 +1145,7 @@
 
     // === Export ===
 
-    window.LetsAccount = { render: render, version: 3 };
+    window.LetsAccount = { render: render, version: 4 };
 
     /**
      * Preview bridge. The admin's iframe posts a draft appearance on every

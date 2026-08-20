@@ -50,8 +50,13 @@ return [
         'placement' => 'Where it appears',
         'design' => 'Design',
         'design_help' => 'Leave these blank to use the product’s own name and image.',
-        'html' => 'Custom HTML',
+        'html' => 'Custom HTML & CSS',
         'stats' => 'Reach',
+    ],
+
+    'tab' => [
+        'html' => 'HTML',
+        'css' => 'CSS',
     ],
 
     'field' => [
@@ -117,7 +122,9 @@ return [
         'fulfilment_help' => '“Next order” takes no money today: the line rides along on the subscription’s next charge, so it keeps working while live charging is off.',
 
         'token_key' => 'Name for the button token',
-        'token_key_help' => 'Optional, lower-case letters, digits and underscores. Name it “upgrade” and you can place its button anywhere in your custom HTML with {{button_upgrade}}.',
+        'token_key_help' => 'Optional, lower-case letters, digits and underscores. The button shortcode shown beside this field follows what you type — that is the exact tag to paste into your custom HTML.',
+        'button_token' => 'Button shortcode',
+        'button_token_help' => 'Paste this into your custom HTML to place this row’s button. Without a name it falls back to the row’s position, so it moves when you reorder the rows.',
         'target_button_text' => 'Button text',
         'target_button_text_help' => 'For this row only. Leave blank for the default wording.',
 
@@ -150,9 +157,11 @@ return [
         'https_only' => 'Must start with https://',
 
         'custom_html' => 'Custom HTML',
-        'html_help' => 'Replaces the designed card entirely. Available tokens: {{button}} (required — the button for the first thing this offer sells), {{button_2}} / {{button_<your own name>}} for a specific one, and {{price}}, {{product}}, {{cadence}}, {{heading}}, which describe the first one. Scripts, iframes, forms, event handlers and the style attribute are removed before a customer ever sees it — style your block with CSS classes from your theme.',
+        'html_help' => 'Replaces the designed card entirely. Available tokens: {{button}} (required — the button for the first thing this offer sells), {{button_2}} / {{button_<your own name>}} for a specific one, and {{price}}, {{product}}, {{cadence}}, {{heading}}, which describe the first one. Scripts, iframes, forms, event handlers and the style attribute are removed before a customer ever sees it — style your block with CSS classes, defined in the CSS tab or by your theme.',
+        'custom_css' => 'Custom CSS',
+        'css_help' => 'Styles this offer’s block in the account area — define here the classes your custom HTML uses. Prefix every selector with a wrapper class of your own (e.g. .my-offer .title) so your rules cannot leak into the rest of the page. @import, hostile url() schemes and the “<” character are removed; if you need “<” in generated text, write it as \3C inside content.',
         'html_preview' => 'Preview',
-        'html_preview_help' => 'Exactly what is sent to the page, with sample values.',
+        'html_preview_help' => 'Exactly what is sent to the page, with sample values — your CSS included.',
     ],
 
     'warning' => [

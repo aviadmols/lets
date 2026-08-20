@@ -18,6 +18,11 @@
     ZERO inline CSS in the admin chrome; the merchant's own markup carries no
     style attribute either (SafeHtml drops it) and is sandboxed regardless.
 
+    When the offer carries custom CSS, the caller prepends it as a <style> block
+    inside the same srcdoc string. That concatenation is safe by construction:
+    the CSS is SafeCss-cleaned, and SafeCss strips every literal `<`, so the
+    string cannot close the tag it sits in.
+
     Props: $html (string, already presenter-processed), $title (string, iframe label).
 --}}
 <div class="rc-preview">

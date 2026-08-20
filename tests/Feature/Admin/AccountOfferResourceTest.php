@@ -518,6 +518,71 @@ final class AccountOfferResourceTest extends TestCase
         $this->assertStringContainsString('<strong>', $stored, 'the merchant keeps their markup');
     }
 
+    /**
+     * The CSS tab writes through the same discipline as the HTML one: SafeCss on
+     * save (the hostile version never exists at rest) and again on read. The
+     * `<`-stripping is what lets the preview concatenate this string inside
+     * <style>…</style> without the string ever being able to close the tag.
+     */
+    public function test_custom_css_is_stored_scrubbed_and_read_back_clean(): void
+    {
+        Livewire::test(CreateAccountOffer::class)
+            ->fillForm($this->formData([
+                'custom_html' => '<div class="promo">{{button}}</div>',
+                'custom_css' => '.promo { color: #c00; }'
+                    .'@import url(https://evil.test/a.css);'
+                    .'.promo::after { content: "</style><script>alert(1)</script>"; }',
+            ]))
+            ->set(self::TARGETS_PATH, [$this->subscriptionRow()])
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        $offer = AccountOffer::query()->where('name', 'Switch to monthly')->firstOrFail();
+        $stored = (string) $offer->custom_css;
+
+        // Scrubbed AT REST, not merely on the way out.
+        $this->assertStringNotContainsString('@import', $stored);
+        $this->assertStringNotContainsString('evil.test', $stored);
+        $this->assertStringNotContainsString('<', $stored);
+        $this->assertStringContainsString('.promo { color: #c00; }', $stored, 'the merchant keeps their rules');
+
+        // …and the guarded read agrees with what was written.
+        $this->assertSame($stored, $offer->customCss());
+
+        // A blanked-out stylesheet is a null, not an empty string the payload
+        // would then ship as a truthy-looking value.
+        $offer->custom_css = "   \n";
+        $offer->save();
+        $this->assertNull($offer->fresh()->custom_css);
+    }
+
+    /**
+     * Every repeater row shows the merchant the exact `{{button_…}}` shortcode
+     * its button answers to — resolved the way the renderer resolves it
+     * (slug, else product id, else 1-based visual position), so what they copy
+     * is what will charge.
+     */
+    public function test_each_target_row_shows_its_ready_to_copy_button_shortcode(): void
+    {
+        $this->makeProduct(self::PRODUCT_MUG, 'Branded mug', 45.0);
+
+        Livewire::test(CreateAccountOffer::class)
+            ->fillForm($this->formData())
+            ->set(self::TARGETS_PATH, [
+                'row-a' => $this->subscriptionRow(['token_key' => 'upgrade']),
+                'row-b' => $this->subscriptionRow(),
+                'row-c' => $this->oneTimeRow(),
+            ])
+            // The design system's monospace token chip, not ad-hoc styling.
+            ->assertSeeHtml('rc-token')
+            // The merchant's own slug wins…
+            ->assertSeeHtml('{{button_upgrade}}')
+            // …a nameless subscription row falls back to its VISUAL position…
+            ->assertSeeHtml('{{button_2}}')
+            // …and a nameless one-time row answers to its product id.
+            ->assertSeeHtml('{{button_'.self::PRODUCT_MUG.'}}');
+    }
+
     // === Tenancy ===
 
     public function test_another_shops_offer_is_neither_listed_nor_editable(): void

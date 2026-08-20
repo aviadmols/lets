@@ -100,6 +100,11 @@ final class AccountOfferPresenter
             'subtext' => $offer->subtext(),
             'image_url' => $offer->imageUrl(),
             'html' => $this->html($offer, $pairs, $first),
+            // The block's own stylesheet, SafeCss-cleaned (null when empty). The
+            // renderer assigns it to a <style> element's textContent — never
+            // parsed as HTML — and the admin preview writes the same string, so
+            // the card the merchant sees is the card the shopper gets.
+            'css' => $offer->customCss(),
             'source_plan' => $sourcePublicId,
             'targets' => $targets,
         ];

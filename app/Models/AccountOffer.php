@@ -7,6 +7,7 @@ use App\Models\Concerns\BelongsToShop;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Support\SafeCss;
 use App\Support\SafeHtml;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
@@ -115,6 +116,9 @@ class AccountOffer extends Model
 
     public const MAX_NAME = 120;
 
+    /** The custom stylesheet's ceiling — SafeCss's own, named here beside the rest. */
+    public const MAX_CUSTOM_CSS = SafeCss::MAX_LENGTH;
+
     /** The statuses an offer targets when the merchant named none. */
     public const DEFAULT_AUDIENCE_STATUSES = [
         PlanStatus::ACTIVE->value,
@@ -143,7 +147,8 @@ class AccountOffer extends Model
     }
 
     /**
-     * Merchant HTML is sanitised on the way IN as well as on the way out.
+     * Merchant HTML — and its CSS — are sanitised on the way IN as well as on
+     * the way out.
      *
      * Cleaning on read alone would be enough for safety, but it would leave the
      * raw string in the database — where a future export, a support tool or a
@@ -155,6 +160,10 @@ class AccountOffer extends Model
         static::saving(static function (self $offer): void {
             if ($offer->isDirty('custom_html')) {
                 $offer->custom_html = SafeHtml::clean($offer->custom_html);
+            }
+
+            if ($offer->isDirty('custom_css')) {
+                $offer->custom_css = SafeCss::clean($offer->custom_css);
             }
         });
     }
@@ -306,6 +315,16 @@ class AccountOffer extends Model
     public function customHtml(): ?string
     {
         return SafeHtml::clean($this->custom_html);
+    }
+
+    /**
+     * The block's own stylesheet, scrubbed AGAIN on read — the same belt and
+     * braces as customHtml(), for the same rows written before this class knew
+     * about them.
+     */
+    public function customCss(): ?string
+    {
+        return SafeCss::clean($this->custom_css);
     }
 
     /** Is the merchant's date window open at this instant? No window = always. */

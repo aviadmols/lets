@@ -204,7 +204,32 @@ final class AccountLayoutTest extends TestCase
 
         // The renderer's version is the plugin's compatibility handle: a payload
         // shape this wide has to be visible to the page that mounts it.
-        $this->assertStringContainsString('version: 3', $js);
+        $this->assertStringContainsString('version: 4', $js);
+    }
+
+    /**
+     * An offer may carry its own stylesheet (`card.css` — SafeCss-cleaned on the
+     * server), and injecting it must NOT create a second innerHTML: the renderer
+     * builds a <style> ELEMENT and assigns its textContent, which the DOM never
+     * re-parses as HTML — a `</style>` inside the CSS cannot break out. Once per
+     * offer id, marked, because the same offer renders under several plans.
+     */
+    public function test_an_offers_css_is_injected_once_as_inert_text(): void
+    {
+        $js = (string) file_get_contents(base_path(self::PLUGIN_JS));
+
+        // A real element with assigned text — never a string of markup.
+        $this->assertStringContainsString("document.createElement('style')", $js);
+        $this->assertStringContainsString('style.textContent = String(offer.css);', $js);
+
+        // The marker, and the once-per-offer guard that reads it.
+        $this->assertStringContainsString("var OFFER_CSS_ATTR = 'data-lets-offer-css';", $js);
+        $this->assertStringContainsString('if (state.mount.querySelector(marker)) { return; }', $js);
+
+        // Wired into the one card renderer, and tolerant of a payload from a
+        // LETS that predates the field — a missing `css` injects nothing.
+        $this->assertStringContainsString('injectOfferCss(state, offer);', $js);
+        $this->assertStringContainsString('if (!offer.css || !state.mount) { return; }', $js);
     }
 
     /**
