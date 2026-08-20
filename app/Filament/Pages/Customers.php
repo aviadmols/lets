@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Domain\Customers\CustomerPlans;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Models\InstallmentPlan;
 use App\Models\PaymentLedger;
@@ -11,6 +12,7 @@ use App\Support\Ui\Money;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Customers list (docs/ux/20-customers.md Part A). v1: customers are DERIVED from
@@ -106,6 +108,26 @@ class Customers extends Page
     }
 
     /**
+     * WHO this plan belongs to, as one key.
+     *
+     * The reference when it identifies a person; their email when it does not
+     * (a guest checkout writes WooCommerce's `0`, which every guest shares);
+     * '' when the plan names nobody at all. The same key becomes the route
+     * parameter, and CustomerPlans::query() resolves both kinds — a reference
+     * through the id columns, an email through the address clause.
+     */
+    private static function customerKey(InstallmentPlan $plan): string
+    {
+        $reference = trim((string) ($plan->shopify_customer_id ?? ''));
+
+        if (CustomerPlans::identifies($reference)) {
+            return $reference;
+        }
+
+        return mb_strtolower(trim((string) ($plan->customer_email ?? '')));
+    }
+
+    /**
      * PayPlus-rail rows, keyed by customer id. `named` marks an identity captured
      * at checkout so the merge can prefer it over a contract's bare reference.
      *
@@ -130,8 +152,14 @@ class Customers extends Page
             ->get(['shopify_customer_id', 'customer_name', 'customer_email', 'customer_phone', 'status']);
 
         return $plans
-            ->whereNotNull('shopify_customer_id')
-            ->groupBy('shopify_customer_id')
+            // Keyed by whatever IDENTIFIES the shopper — their reference when it
+            // stands for one person, otherwise their email. Guests all carry
+            // WooCommerce's `0`, so keying on the reference alone listed every
+            // guest in the shop as a single customer and opened their page onto
+            // four people's subscriptions. A plan with neither is nobody we can
+            // name, and is left out rather than merged into a bucket.
+            ->groupBy(fn (InstallmentPlan $p): string => self::customerKey($p))
+            ->reject(fn (Collection $group, string $key): bool => $key === '')
             ->map(function (Collection $group, string $customerId): array {
                 $statuses = $group->map(fn ($p) => $p->status instanceof PlanStatus ? $p->status->value : (string) $p->status);
 
@@ -240,14 +268,43 @@ class Customers extends Page
             return [];
         }
 
-        return PaymentLedger::query()
-            ->selectRaw('shopify_customer_id, SUM(amount) as total')
-            ->whereIn('shopify_customer_id', $customerIds)
-            ->where('status', PaymentLedger::STATUS_SUCCEEDED)
-            ->groupBy('shopify_customer_id')
-            ->get()
-            ->mapWithKeys(fn ($row): array => [(string) $row->shopify_customer_id => (float) $row->total])
-            ->all();
+        // The keys are of two kinds — see customerKey(). A reference sums through
+        // the id column; a guest's email sums through the address, because their
+        // reference is WooCommerce's shared `0` and summing on it would report
+        // every guest's spend as each guest's own.
+        $references = array_values(array_filter($customerIds, CustomerPlans::identifies(...)));
+        $emails = array_values(array_map(
+            static fn (string $key): string => mb_strtolower($key),
+            array_filter($customerIds, static fn (string $key): bool => ! CustomerPlans::identifies($key)),
+        ));
+
+        $totals = [];
+
+        if ($references !== []) {
+            PaymentLedger::query()
+                ->selectRaw('shopify_customer_id, SUM(amount) as total')
+                ->whereIn('shopify_customer_id', $references)
+                ->where('status', PaymentLedger::STATUS_SUCCEEDED)
+                ->groupBy('shopify_customer_id')
+                ->get()
+                ->each(function ($row) use (&$totals): void {
+                    $totals[(string) $row->shopify_customer_id] = (float) $row->total;
+                });
+        }
+
+        if ($emails !== []) {
+            PaymentLedger::query()
+                ->selectRaw('LOWER(customer_email) as email, SUM(amount) as total')
+                ->whereIn(DB::raw('LOWER(customer_email)'), $emails)
+                ->where('status', PaymentLedger::STATUS_SUCCEEDED)
+                ->groupBy(DB::raw('LOWER(customer_email)'))
+                ->get()
+                ->each(function ($row) use (&$totals): void {
+                    $totals[(string) $row->email] = (float) $row->total;
+                });
+        }
+
+        return $totals;
     }
 
     /** Worst-status-wins dot: red > amber > green > gray (no active plan). */

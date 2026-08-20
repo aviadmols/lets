@@ -2,6 +2,7 @@
 
 namespace App\Domain\Account;
 
+use App\Domain\Customers\CustomerPlans;
 use App\Models\InstallmentPlan;
 use App\Models\LoyaltyAccount;
 use App\Models\Shop;
@@ -145,8 +146,16 @@ final class AccountVisitor
         $ref = (string) $this->customerRef;
         $email = $this->email;
 
-        return $query->where(function (Builder $q) use ($refColumns, $emailColumn, $ref, $email): void {
-            foreach ($refColumns as $column) {
+        // A reference that stands for NOBODY must never be matched on. `0` is
+        // WooCommerce's own "no user", so every guest in the shop carries it —
+        // and this query decides which subscriptions a shopper may read AND
+        // cancel. The plugin's convention is to send a guest's email instead,
+        // which is exactly why the wall belongs here too: a convention is not a
+        // permission check. Their email clause still runs.
+        $refIsUsable = CustomerPlans::identifies($ref);
+
+        return $query->where(function (Builder $q) use ($refColumns, $emailColumn, $ref, $email, $refIsUsable): void {
+            foreach ($refIsUsable ? $refColumns : [] as $column) {
                 // `customer_id` is an unsignedBigInteger. Postgres refuses to read
                 // a non-numeric reference as one and aborts the whole query rather
                 // than not matching — and an imported member's reference is the

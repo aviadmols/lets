@@ -45,6 +45,28 @@ final class CustomerPlans
      */
     public const NUMERIC_REF_COLUMN = 'customer_id';
 
+    /**
+     * References that look like an id and are not an identity.
+     *
+     * `0` is WooCommerce's OWN value for "no user": every guest checkout in the
+     * shop writes it, so matching on it merged four different people — four
+     * different email addresses — into one customer, and the merchant opened a
+     * shopper's page to find somebody else's subscriptions listed as theirs.
+     *
+     * The docblock above already says a blank email never merges anyone. This is
+     * the same law: `0` is a blank wearing a number's clothes. A guest is
+     * reachable by the address they typed, and by nothing else.
+     */
+    public const NON_IDENTIFYING_REFS = ['0'];
+
+    /** Can this reference stand for ONE person? */
+    public static function identifies(string $reference): bool
+    {
+        $reference = trim($reference);
+
+        return $reference !== '' && ! in_array($reference, self::NON_IDENTIFYING_REFS, true);
+    }
+
     /** A query for every plan belonging to this customer, newest first. */
     public static function query(string $reference): Builder
     {
@@ -92,6 +114,14 @@ final class CustomerPlans
     /** The reference on any id column a rail might have used. */
     private static function byReference(Builder $query, string $reference): Builder
     {
+        if (! self::identifies($reference)) {
+            // Fail CLOSED, exactly as an empty reference does. A guest's `0`
+            // matches every other guest, and this is a query that decides whose
+            // purchase history somebody is looking at. Their email clause still
+            // runs — that is how a guest is found.
+            return $query->whereRaw('1 = 0');
+        }
+
         foreach (self::REF_COLUMNS as $i => $column) {
             $i === 0
                 ? $query->where($column, $reference)
