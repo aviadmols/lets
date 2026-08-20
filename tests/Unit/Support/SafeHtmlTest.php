@@ -3,6 +3,7 @@
 namespace Tests\Unit\Support;
 
 use App\Support\SafeHtml;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -131,5 +132,32 @@ final class SafeHtmlTest extends TestCase
         $long = str_repeat('a', SafeHtml::MAX_LENGTH + 500);
 
         $this->assertSame(SafeHtml::MAX_LENGTH, mb_strlen((string) SafeHtml::clean($long)));
+    }
+
+    /**
+     * An EMPTY attribute value used to crash the sanitiser outright — a 500 on
+     * saving an offer, from markup as ordinary as `<img alt="">`.
+     *
+     * preg_match_all with PREG_SET_ORDER drops trailing groups that did not
+     * participate, so a double-quoted attribute has no third or fourth group at
+     * all; reading them positionally only survived while every value happened to
+     * be non-empty. Each quoting style is pinned here, empty and not.
+     */
+    #[DataProvider('emptyAttributeMarkup')]
+    public function test_an_empty_attribute_value_does_not_break_the_sanitiser(string $html, string $expected): void
+    {
+        $this->assertSame($expected, SafeHtml::clean($html));
+    }
+
+    /** @return array<string, array{0: string, 1: string}> */
+    public static function emptyAttributeMarkup(): array
+    {
+        return [
+            'empty double-quoted' => ['<img alt="" title="Gift">', '<img alt="" title="Gift">'],
+            'empty single-quoted' => ["<img alt='' title='Gift'>", '<img alt="" title="Gift">'],
+            'empty class on a div' => ['<div class=""><p>Hello</p></div>', '<div class=""><p>Hello</p></div>'],
+            'unquoted value' => ['<img width=320>', '<img width="320">'],
+            'every attribute empty' => ['<img alt="" title="">', '<img alt="" title="">'],
+        ];
     }
 }

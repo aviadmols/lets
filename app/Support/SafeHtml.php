@@ -99,7 +99,22 @@ final class SafeHtml
 
                 foreach ($attrs as $attr) {
                     $name = strtolower($attr[1]);
-                    $value = $attr[2] !== '' ? $attr[2] : ($attr[3] !== '' ? $attr[3] : ($attr[4] ?? ''));
+
+                    // The value sits in whichever quoting group matched — but
+                    // PREG_SET_ORDER DROPS trailing groups that did not
+                    // participate, so a double-quoted attribute has no [3] and
+                    // no [4] at all. Reading them positionally worked right up
+                    // until somebody pasted an EMPTY one (`alt=""`, `class=""`):
+                    // the value falls past [2] and lands on a key that does not
+                    // exist. Every branch is coalesced, and an empty value stays
+                    // an empty value rather than becoming a missing one.
+                    $value = '';
+                    foreach ([2, 3, 4] as $group) {
+                        if (($attr[$group] ?? '') !== '') {
+                            $value = $attr[$group];
+                            break;
+                        }
+                    }
 
                     if (! in_array($name, self::ALLOWED_ATTRIBUTES, true)) {
                         continue;
