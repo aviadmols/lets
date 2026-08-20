@@ -32,6 +32,7 @@ return [
         'account_offer_accepted' => 'Offer accepted in the customer area',
         'plan_switched' => 'Subscription switched',
         'account_offer_charge_failed' => 'Offer accepted, but the card was declined',
+        'account_action_failed' => 'A customer-area action was refused',
         'shopify_subscription_resumed' => 'Subscription resumed',
         'shopify_subscription_rescheduled' => 'Next charge date changed',
         'shopify_subscription_bill_now' => 'Immediate charge requested from Shopify',
@@ -45,5 +46,26 @@ return [
         'next_charge_at' => 'Next charge',
         'amount' => 'Amount',
         'items' => 'Products',
+    ],
+
+    // The verb a shopper clicked (account_action_failed summary).
+    'action' => [
+        'pause' => 'Pause subscription',
+        'resume' => 'Resume subscription',
+        'cancel' => 'Cancel subscription',
+        'skip' => 'Skip next delivery',
+        'reschedule' => 'Change next charge date',
+        'items' => 'Edit next order',
+        'accept_offer' => 'Accept an offer',
+    ],
+
+    // Why the click was refused (account_action_failed summary).
+    'result' => [
+        'not_allowed' => 'not allowed for this subscription',
+        'bad_state' => 'the subscription is not in a state that allows it',
+        'invalid' => 'the subscription or offer was not found',
+        'unavailable' => 'the offer is not available right now',
+        'not_eligible' => 'the subscription is not eligible for the offer',
+        'changed' => 'the offer changed while the page was open',
     ],
 ];

@@ -32,6 +32,7 @@ return [
         'account_offer_accepted' => 'הצעה התקבלה באזור האישי',
         'plan_switched' => 'המנוי הוחלף',
         'account_offer_charge_failed' => 'ההצעה התקבלה, אך הכרטיס נדחה',
+        'account_action_failed' => 'פעולה באזור האישי נדחתה',
         'shopify_subscription_resumed' => 'המנוי חודש',
         'shopify_subscription_rescheduled' => 'תאריך החיוב הבא שונה',
         'shopify_subscription_bill_now' => 'נשלחה בקשת חיוב מיידי ל-Shopify',
@@ -45,5 +46,26 @@ return [
         'next_charge_at' => 'חיוב הבא',
         'amount' => 'סכום',
         'items' => 'מוצרים',
+    ],
+
+    // הפעולה שהלקוח לחץ עליה (סיכום account_action_failed).
+    'action' => [
+        'pause' => 'השהיית מנוי',
+        'resume' => 'חידוש מנוי',
+        'cancel' => 'ביטול מנוי',
+        'skip' => 'דילוג על המשלוח הבא',
+        'reschedule' => 'שינוי תאריך החיוב הבא',
+        'items' => 'עריכת ההזמנה הבאה',
+        'accept_offer' => 'קבלת הצעה',
+    ],
+
+    // הסיבה שהלחיצה נדחתה (סיכום account_action_failed).
+    'result' => [
+        'not_allowed' => 'הפעולה אינה מותרת למנוי הזה',
+        'bad_state' => 'המנוי אינו במצב שמאפשר את הפעולה',
+        'invalid' => 'המנוי או ההצעה לא נמצאו',
+        'unavailable' => 'ההצעה אינה זמינה כרגע',
+        'not_eligible' => 'המנוי אינו זכאי להצעה',
+        'changed' => 'ההצעה השתנתה בזמן שהעמוד היה פתוח',
     ],
 ];

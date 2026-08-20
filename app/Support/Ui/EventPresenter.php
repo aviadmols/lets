@@ -67,6 +67,9 @@ final class EventPresenter
         'account_offer_accepted' => ['info', 'timeline.kind.account_offer_accepted'],
         'plan_switched' => ['success', 'timeline.kind.plan_switched'],
         'account_offer_charge_failed' => ['failure', 'timeline.kind.account_offer_charge_failed'],
+        // FAILURE, not info: a shopper clicked and was refused. The merchant scans
+        // the feed precisely to find the friction customers hit alone.
+        'account_action_failed' => ['failure', 'timeline.kind.account_action_failed'],
         // The Shopify-Payments rail's contract verbs (ContractActionService) —
         // without these mappings the contract Timeline reads every row as the
         // humanized "Activity" fallback.
@@ -110,7 +113,7 @@ final class EventPresenter
      * Detail keys that are SAFE to surface in the UI. Anything else (notably
      * invoice_url / document_url / raw token / payplus_* secrets) is dropped.
      */
-    public const SAFE_DETAIL_KEYS = ['amount', 'currency', 'sequence', 'from', 'to', 'context', 'reason', 'changed', 'from_amount', 'to_amount', 'charge_number', 'coupon_codes'];
+    public const SAFE_DETAIL_KEYS = ['amount', 'currency', 'sequence', 'from', 'to', 'context', 'reason', 'changed', 'from_amount', 'to_amount', 'charge_number', 'coupon_codes', 'action', 'result', 'subscription'];
 
     public static function tone(ActivityEvent $event): string
     {
@@ -189,6 +192,18 @@ final class EventPresenter
         if (isset($safe['from'], $safe['to'])) {
             $parts[] = __('billing.status.' . $safe['from']) . ' → ' . __('billing.status.' . $safe['to']);
         }
+        // A refused account action: which verb, and why it was refused. Both
+        // resolve through the catalog and degrade to the raw value, so a verb
+        // added later reads as itself rather than as a missing-translation token.
+        if (isset($safe['action'])) {
+            $parts[] = self::catalogued('timeline.action.', (string) $safe['action']);
+        }
+        if (isset($safe['result'])) {
+            $parts[] = self::catalogued('timeline.result.', (string) $safe['result']);
+        }
+        if (isset($safe['subscription'])) {
+            $parts[] = (string) $safe['subscription'];
+        }
         // A plan edit (W25): render each changed field as "old → new" (amount formatted as money,
         // dates/plain values as-is). Only the whitelisted `changed` shape is read.
         foreach ((array) ($safe['changed'] ?? []) as $field => $change) {
@@ -199,6 +214,14 @@ final class EventPresenter
         }
 
         return $parts === [] ? null : implode(' · ', $parts);
+    }
+
+    /** A catalogue lookup that degrades to the raw value instead of a missing-translation token. */
+    private static function catalogued(string $prefix, string $value): string
+    {
+        $translated = __($prefix . $value);
+
+        return $translated === $prefix . $value ? $value : $translated;
     }
 
     /** "Field: old → new" for a single edited field. Amount fields format as money. */

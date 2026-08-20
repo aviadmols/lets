@@ -102,6 +102,16 @@ final class Timeline
     public const KIND_ACCOUNT_OFFER_CHARGE_FAILED = 'account_offer_charge_failed';
 
     /**
+     * A shopper clicked something in their own account area and the action was
+     * REFUSED — the wrong state, a rule said no, a thing that no longer exists.
+     * Recorded so the merchant's main feed shows the friction a customer just
+     * hit, instead of the customer being the only witness. details:
+     * {action, result, subscription?}. Charge declines are NOT this kind —
+     * they carry KIND_ACCOUNT_OFFER_CHARGE_FAILED with the plan attached.
+     */
+    public const KIND_ACCOUNT_ACTION_FAILED = 'account_action_failed';
+
+    /**
      * Record a Timeline event. Never throws.
      *
      * ACTOR ATTRIBUTION (W2): when the caller does NOT pass an explicit actor, the

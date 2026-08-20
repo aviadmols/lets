@@ -4,6 +4,9 @@ namespace App\Http\Controllers\WooCommerce\Account;
 
 use App\Domain\Account\AccountPresenter;
 use App\Domain\Account\CustomerSubscriptionActions;
+use App\Models\ActivityEvent;
+use App\Models\InstallmentPlan;
+use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Support\Tenant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -64,6 +67,16 @@ final class AccountActionController extends WooAccountController
                 ],
             );
 
+            // A refused click lands on the merchant's Timeline, not only on the
+            // shopper's screen: "the customer hit a wall" is operational news,
+            // and until now the customer was its only witness. Charge declines
+            // are excluded — the accept path already writes their own kind with
+            // the plan attached, and one click deserves one feed entry.
+            if ($outcome['result'] !== CustomerSubscriptionActions::RESULT_OK
+                && $outcome['result'] !== CustomerSubscriptionActions::RESULT_CHARGE_FAILED) {
+                $this->recordFailure($action, $outcome['result'], (string) $request->input('subscription'));
+            }
+
             if ($outcome['result'] === CustomerSubscriptionActions::RESULT_INVALID) {
                 return $this->miss();
             }
@@ -81,6 +94,30 @@ final class AccountActionController extends WooAccountController
                 'account' => $model,
             ]);
         });
+    }
+
+    /**
+     * Pin the refusal to the merchant's Timeline. The plan is re-resolved from
+     * the public id INSIDE the tenant scope, so a foreign or invented id simply
+     * yields an unattached event — the feed still shows the miss, without ever
+     * confirming what the id belonged to. Timeline::record never throws.
+     */
+    private function recordFailure(string $action, string $result, string $publicId): void
+    {
+        $publicId = trim($publicId);
+
+        Timeline::record(
+            kind: Timeline::KIND_ACCOUNT_ACTION_FAILED,
+            details: array_filter([
+                'action' => $action,
+                'result' => $result,
+                'subscription' => $publicId !== '' ? $publicId : null,
+            ]),
+            planId: $publicId !== ''
+                ? InstallmentPlan::query()->where('public_id', $publicId)->value('id')
+                : null,
+            actor: ActivityEvent::ACTOR_CUSTOMER,
+        );
     }
 
     /**
