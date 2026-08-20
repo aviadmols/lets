@@ -18,6 +18,7 @@ use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Support\Tenant;
+use App\Support\Ui\EventPresenter;
 use App\Support\Ui\Money;
 use Filament\Actions\Action as HeaderAction;
 use Filament\Forms\Components\Select;
@@ -554,7 +555,7 @@ class CustomerDetail extends Page
             return [];
         }
 
-        return ActivityEvent::query()
+        $events = ActivityEvent::query()
             ->where(function ($q) use ($planIds, $contractGids): void {
                 if ($planIds !== []) {
                     $q->whereIn('plan_id', $planIds);
@@ -564,7 +565,15 @@ class CustomerDetail extends Page
                 }
             })
             ->latest('created_at')
-            ->limit(self::FEED_LIMIT)
+            // Over-fetch, because collapsing happens after the read: a page whose
+            // last rows are all second copies would otherwise show fewer events
+            // than it promised.
+            ->limit(self::FEED_LIMIT * 2)
             ->get();
+
+        // A switch is written on BOTH plans, and this feed holds both — so one
+        // act arrived here twice and read as two. Collapsed to one row; the
+        // plan's own timeline is untouched, where a single copy is correct.
+        return array_slice(EventPresenter::collapseTwoSided($events), 0, self::FEED_LIMIT);
     }
 }

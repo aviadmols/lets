@@ -89,6 +89,22 @@ final class EventPresenter
     public const FALLBACK = ['info', 'timeline.kind.generic'];
 
     /**
+     * Kinds deliberately written on BOTH plans of one switch.
+     *
+     * A plan's own timeline shows one copy and is right. A CUSTOMER's timeline
+     * aggregates every plan they hold, so the same act arrives twice — and a
+     * shopper who switched once read four rows and asked why their subscription
+     * had been created and cancelled so many times. Nothing had: the feed was
+     * double-counting.
+     *
+     * Safe to collapse only for these, because their details name BOTH sides
+     * (from_plan/to_plan) and are therefore the act's identity. Deduplicating on
+     * details generally would collapse two genuinely different plans that were
+     * charged the same amount in the same second — hiding real money.
+     */
+    public const TWO_SIDED_KINDS = ['account_offer_accepted', 'plan_switched'];
+
+    /**
      * Previewable email-event kind => the MerchantMailSettings template that event
      * rendered. Lets the Timeline "Preview email" action show the merchant exactly
      * which template (their custom copy or the platform default) was sent, via
@@ -106,6 +122,41 @@ final class EventPresenter
         'charge_succeeded_email_sent' => 'charge_succeeded',
         'charge_failed_email_sent' => 'charge_failed',
     ];
+
+    /**
+     * One act, one row: collapse the second copy of a two-sided event.
+     *
+     * For a CUSTOMER's aggregated feed only — a plan's own timeline never sees a
+     * duplicate. The surviving row is the FIRST one the caller hands over, so
+     * ordering is the caller's decision and this never re-sorts a feed.
+     *
+     * @param  iterable<ActivityEvent>  $events
+     * @return list<ActivityEvent>
+     */
+    public static function collapseTwoSided(iterable $events): array
+    {
+        $seen = [];
+        $out = [];
+
+        foreach ($events as $event) {
+            if (in_array($event->kind, self::TWO_SIDED_KINDS, true)) {
+                // The act, not the row: kind + the second it happened in + the
+                // payload naming both plans. Two copies share all three.
+                $fingerprint = $event->kind
+                    .'|'.(string) optional($event->created_at)->toDateTimeString()
+                    .'|'.json_encode($event->details ?? []);
+
+                if (isset($seen[$fingerprint])) {
+                    continue;
+                }
+                $seen[$fingerprint] = true;
+            }
+
+            $out[] = $event;
+        }
+
+        return $out;
+    }
 
     /** The mail template an email-event previews, or null when not previewable. */
     public static function emailTemplate(ActivityEvent $event): ?string
