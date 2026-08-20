@@ -322,7 +322,11 @@ function lets_payplus_account_enqueue($model)
     wp_localize_script('lets-payplus-account', 'LetsAccountData', array(
         'model' => $model,
         // {action} is substituted by the renderer — one registered route, six verbs.
-        'endpoint' => esc_url_raw(rest_url(LETS_PAYPLUS_REST_NS . '/account/act/{action}')),
+        // The placeholder is appended AFTER esc_url_raw: WordPress strips curly
+        // braces from URLs, and an endpoint delivered as ".../act/action" makes
+        // the renderer's replace() a no-op — every verb then posts to a route
+        // that does not exist and every click fails with the generic toast.
+        'endpoint' => esc_url_raw(rest_url(LETS_PAYPLUS_REST_NS . '/account/act/')) . '{action}',
         'nonce'    => wp_create_nonce('wp_rest'),
         // Where the sign-in CTA points when the visitor is logged out: the
         // My Account page, whose login form carries our sign-in panel.
