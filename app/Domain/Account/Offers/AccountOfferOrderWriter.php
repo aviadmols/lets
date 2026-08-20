@@ -9,6 +9,7 @@ use App\Models\Shop;
 use App\Services\WooCommerce\Orders\WooCommerceOrderStrategy;
 use App\Services\WooCommerce\Orders\WooOrderTags;
 use App\Services\WooCommerce\WooClientFactory;
+use App\Services\WooCommerce\WooCustomerResolver;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -102,15 +103,16 @@ final class AccountOfferOrderWriter
                 ],
             ];
 
-            // Attach to the real store customer when there is one, so the add-on
-            // shows in their account beside everything else. An imported member
-            // whose reference is a UUID has no WooCommerce user to attach it to.
-            $customerId = (int) ($source->externalCustomerId() ?? 0);
-            if ($customerId > 0) {
-                $payload['customer_id'] = $customerId;
-            }
+            $client = WooClientFactory::for($shop);
 
-            $order = WooClientFactory::for($shop)->createOrder($payload);
+            // Attach to the real store customer, so the add-on shows in their
+            // account beside everything else. Resolved by the shared rule rather
+            // than by the plan's reference alone: an imported member's reference
+            // is a UUID and a guest checkout's is `0`, and both of those people
+            // may hold an account today — the store is asked by email.
+            $payload['customer_id'] = WooCustomerResolver::resolve($source, $client);
+
+            $order = $client->createOrder($payload);
             $orderId = (string) ($order['id'] ?? '');
 
             return $orderId !== '' ? $orderId : null;

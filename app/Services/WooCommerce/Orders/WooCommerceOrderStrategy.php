@@ -8,6 +8,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\ChargeContext;
 use App\Services\Orders\PlatformOrderStrategy;
 use App\Services\WooCommerce\WooClientFactory;
 use App\Services\WooCommerce\WooCommerceClient;
+use App\Services\WooCommerce\WooCustomerResolver;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -59,6 +60,9 @@ final class WooCommerceOrderStrategy implements PlatformOrderStrategy
     /** Plan meta key holding the per-cycle recurring WC order ids (idempotency; read by DocumentIssuer to link a cycle receipt to its order). */
     public const META_RECURRING_ORDER_IDS = 'wc_recurring_order_ids';
 
+    /** Plan meta key remembering the WC customer resolved by email (owned by WooCustomerResolver). */
+    public const META_WC_CUSTOMER_ID = WooCustomerResolver::META_WC_CUSTOMER_ID;
+
     public function materialize(InstallmentPlan $plan, ChargeContext $context, bool $isFinal = false): void
     {
         // Never call WC for a shop that has not completed the connect handshake — skip
@@ -95,6 +99,7 @@ final class WooCommerceOrderStrategy implements PlatformOrderStrategy
             'status' => self::STATUS_PROCESSING,        // accepted, fulfillment LOCKED (not completed)
             'set_paid' => false,                        // the deposit was collected on the PayPlus page, not WC
             'currency' => (string) $plan->currency,
+            'customer_id' => $this->customerIdFor($plan, $client),
             'billing' => $this->billing($plan),
             'line_items' => [$this->mainLineItem($plan)],
             'meta_data' => $this->meta([
@@ -175,6 +180,7 @@ final class WooCommerceOrderStrategy implements PlatformOrderStrategy
             'status' => self::STATUS_COMPLETED,         // a fulfillable, paid cycle order
             'set_paid' => true,                         // the money already moved through PayPlus
             'currency' => (string) $plan->currency,
+            'customer_id' => $this->customerIdFor($plan, $client),
             'billing' => $this->billing($plan),
             'line_items' => $lineItems,
             'meta_data' => $this->meta([
@@ -361,5 +367,11 @@ final class WooCommerceOrderStrategy implements PlatformOrderStrategy
         $id = (int) $value;
 
         return $id > 0 ? $id : null;
+    }
+
+    /** WHICH customer this order belongs to — see WooCustomerResolver. */
+    private function customerIdFor(InstallmentPlan $plan, WooCommerceClient $client): int
+    {
+        return WooCustomerResolver::resolve($plan, $client);
     }
 }

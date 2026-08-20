@@ -133,6 +133,14 @@ define('LETS_ACCOUNT_SHELL_TTL', 300);
 /** A round trip that FAILED is remembered only briefly — see the fetch. */
 define('LETS_ACCOUNT_SHELL_TTL_FAILED', 30);
 
+/**
+ * How long before a signed-in shopper's guest orders are swept for again.
+ * The first sign-in claims their history; after that this is only catching
+ * stragglers, so an hour is generous and keeps an unbounded query off the
+ * hot path of every sign-in.
+ */
+define('LETS_ACCOUNT_CLAIM_THROTTLE', HOUR_IN_SECONDS);
+
 /* -------------------------------------------------------------------------
  * 1. The My Account endpoint
  * ---------------------------------------------------------------------- */
@@ -1722,10 +1730,73 @@ function lets_payplus_account_sign_in($user, $redirect = null)
 
     do_action('wp_login', $user->user_login, $user);
 
+    // Their own past orders, handed back to them. Every sign-in funnels through
+    // here, so this is the one place that has to know about it.
+    lets_payplus_account_claim_guest_orders($user);
+
     return rest_ensure_response(array(
         'ok'       => true,
         'redirect' => lets_payplus_account_safe_redirect($redirect),
     ));
+}
+
+/**
+ * Attach this shopper's GUEST orders — the ones carrying their email with no
+ * account behind them — to their user.
+ *
+ * A subscriber who checked out as a guest, or whose LETS renewals were written
+ * before they had an account, opens My Account and sees nothing: the orders are
+ * there, under their address, owned by nobody. WooCommerce solves this at
+ * registration and calls it linking past orders; a passwordless sign-in is the
+ * same moment for a store where most shoppers never register at all.
+ *
+ * SAFETY: matched on the user's OWN email, which WordPress already treats as
+ * that account's identity — and every route into here has proven the address by
+ * code first. wc_update_new_customer_past_orders() is WooCommerce's own helper
+ * for exactly this: it claims the orders AND refreshes the customer's order
+ * count and lifetime spend, so the merchant's reports agree with the change.
+ *
+ * THROTTLED per user, because the query is unbounded by nature: the first
+ * sign-in claims everything, and later ones only sweep up what has appeared
+ * since. Merchants who want none of it:
+ *
+ *     add_filter('lets_payplus_account_claim_orders', '__return_false');
+ *
+ * @param  WP_User  $user
+ * @return int  orders claimed (0 when skipped)
+ */
+function lets_payplus_account_claim_guest_orders($user)
+{
+    /**
+     * Filters whether a signing-in shopper's guest orders are attached to them.
+     *
+     * @param  bool  $enabled
+     * @param  WP_User  $user
+     */
+    if (! apply_filters('lets_payplus_account_claim_orders', true, $user)) {
+        return 0;
+    }
+
+    if (! function_exists('wc_update_new_customer_past_orders') || empty($user->user_email)) {
+        return 0;
+    }
+
+    $throttle = 'lets_pp_claimed_' . (int) $user->ID;
+    if (get_transient($throttle)) {
+        return 0;
+    }
+    set_transient($throttle, 1, LETS_ACCOUNT_CLAIM_THROTTLE);
+
+    // Never fatal a sign-in over bookkeeping: the shopper is already
+    // authenticated, and an order that stays a guest order is a nuisance the
+    // next sign-in fixes, not a reason to bounce them back to the form.
+    try {
+        return (int) wc_update_new_customer_past_orders($user->ID);
+    } catch (Throwable $e) {
+        return 0;
+    } catch (Exception $e) { // PHP 5/7-era fatals surfaced as Exception
+        return 0;
+    }
 }
 
 /**

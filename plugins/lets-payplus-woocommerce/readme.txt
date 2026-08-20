@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.36.0
+Stable tag: 0.37.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,18 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.37.0 =
+* Orders now belong to the shopper they are for. Every order LETS created was a
+  guest order — a subscriber's own renewals were missing from My Account and
+  from their lifetime spend, on a store that knew exactly who they were. New
+  orders name their customer; where the subscription's own reference cannot say
+  who that is (a guest checkout, an imported member), the store is asked by
+  email.
+* Signing in also hands a shopper their past guest orders: orders carrying their
+  email with no account behind them are attached to their user, and their order
+  count and total spend are refreshed with them. Merchants who want none of it:
+  add_filter('lets_payplus_account_claim_orders', '__return_false').
 
 = 0.36.0 =
 * Payment history dates now speak the page's language: a Hebrew store dates a

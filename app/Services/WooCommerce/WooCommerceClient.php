@@ -92,6 +92,50 @@ final class WooCommerceClient
     }
 
     /**
+     * GET /wp-json/wc/v3/customers?email= → that customer's WC id, or null.
+     *
+     * The store, not LETS, is the authority on who owns an address here. LETS
+     * knows a plan's identity by whatever the plugin asserted when it was BORN —
+     * a WordPress user id for a logged-in checkout, `0` for a guest, a legacy
+     * UUID for an imported member — and none of those can be re-pointed later
+     * without breaking the consent gate, which matches on exactly those columns.
+     * So an order asks the store instead: same email, same person, and a shopper
+     * who opened their account long after subscribing still gets their orders.
+     */
+    public function findCustomerIdByEmail(string $email): ?int
+    {
+        $email = trim($email);
+        if ($email === '') {
+            return null;
+        }
+
+        // FAIL-SOFT, unlike every other call here. This lookup only ENRICHES an
+        // order with its owner; the order itself is the thing that must exist.
+        // A store that is slow, unreachable, or has the endpoint locked down
+        // would otherwise take the whole order down with it — and an order that
+        // lands as a guest order is recovered by the next sign-in, while an
+        // order that was never created is money with no paperwork behind it.
+        try {
+            // `role=all`: WooCommerce's customers endpoint defaults to
+            // role=customer, and a shopper whose WP account carries another role
+            // (subscriber from a membership plugin, say) would answer "no such
+            // customer" while owning every order in question.
+            $response = $this->get('customers', ['email' => $email, 'per_page' => 1, 'role' => 'all']);
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        if (! $response->successful()) {
+            return null;
+        }
+
+        $body = $response->json();
+        $id = is_array($body) ? (int) ($body[0]['id'] ?? 0) : 0;
+
+        return $id > 0 ? $id : null;
+    }
+
+    /**
      * GET /wp-json/wc/v3/orders/{id} → the order array, or null on 404.
      *
      * The fallback address source: a guest has no profile, but the order they
