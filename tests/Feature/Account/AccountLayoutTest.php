@@ -204,7 +204,7 @@ final class AccountLayoutTest extends TestCase
 
         // The renderer's version is the plugin's compatibility handle: a payload
         // shape this wide has to be visible to the page that mounts it.
-        $this->assertStringContainsString('version: 4', $js);
+        $this->assertStringContainsString('version: 5', $js);
     }
 
     /**

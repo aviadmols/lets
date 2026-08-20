@@ -117,12 +117,24 @@
         return unit ? text + ' ' + unit : text;
     }
 
+    /**
+     * The locale dates are written in — the PAYLOAD's language (set by render()),
+     * so a Hebrew page dates in Hebrew whatever the browser speaks. undefined
+     * (no payload locale) falls back to the browser, the old behaviour.
+     */
+    var dateLocale;
+
     /** A date the shopper reads. Falls back to the ISO string rather than "Invalid Date". */
     function dateLong(iso) {
         if (!iso) { return ''; }
         var d = new Date(iso + 'T00:00:00');
         if (isNaN(d.getTime())) { return iso; }
-        return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+        try {
+            return d.toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' });
+        } catch (e) {
+            // An unknown locale tag must degrade to the browser, never throw.
+            return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+        }
     }
 
     function dateYear(iso) {
@@ -150,6 +162,11 @@
     function render(mount, model, options) {
         options = options || {};
         if (!mount || !model) { return; }
+
+        // The payload's language decides how DATES read, not the browser's: a
+        // Hebrew page whose copy says "תשלומים" must not date them "Aug 20"
+        // because the shopper's browser happens to be English.
+        dateLocale = (model.appearance && model.appearance.locale) || undefined;
 
         mount.textContent = '';
         mount.className = ROOT_CLASS;
@@ -497,17 +514,30 @@
         var table = el('table', 'la-table');
         var thead = el('thead');
         var hrow = el('tr');
-        append(hrow, el('th', null, '#'), el('th', null, m.copy.payments_heading), el('th', null, m.copy.status));
+        append(hrow, el('th', null, '#'), el('th', null, m.copy.payments_heading), el('th', null, m.copy.status), el('th', null, ''));
         append(thead, hrow);
         append(table, thead);
 
         var tbody = el('tbody');
         sub.payments.forEach(function (p) {
             var row = el('tr');
+
+            // The shopper's own receipt (a Green Invoice view link the server
+            // matched to this exact charge), when one was issued.
+            var receiptCell = el('td', 'la-payments__receipt');
+            if (p.receipt_url) {
+                var receipt = el('a', 'la-link', m.copy.receipt_label || '');
+                attr(receipt, 'href', String(p.receipt_url));
+                attr(receipt, 'target', '_blank');
+                attr(receipt, 'rel', 'noopener noreferrer');
+                append(receiptCell, receipt);
+            }
+
             append(row,
                 el('td', null, p.sequence),
                 el('td', null, money(p.amount, sub) + (p.at ? ' · ' + dateLong(p.at) : '')),
-                el('td', null, m.copy['status_' + p.status] || p.status)
+                el('td', null, m.copy['status_' + p.status] || p.status),
+                receiptCell
             );
             append(tbody, row);
         });
@@ -1145,7 +1175,7 @@
 
     // === Export ===
 
-    window.LetsAccount = { render: render, version: 4 };
+    window.LetsAccount = { render: render, version: 5 };
 
     /**
      * Preview bridge. The admin's iframe posts a draft appearance on every

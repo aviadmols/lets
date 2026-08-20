@@ -11,9 +11,11 @@ use App\Domain\Loyalty\Rendering\LoyaltyPagePresenter;
 use App\Models\AccountOffer;
 use App\Models\InstallmentPaymentMethod;
 use App\Models\InstallmentPlan;
+use App\Models\IssuedDocument;
 use App\Models\MerchantBillingSettings;
 use App\Models\MerchantLoyaltySettings;
 use App\Models\MerchantPortalAppearance;
+use App\Models\PaymentLedger;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
@@ -618,6 +620,7 @@ final class AccountPresenter
             'action_reschedule', 'action_items', 'action_update_card', 'confirm_cancel',
             'points_balance', 'points_worth', 'tier', 'sign_in_prompt', 'sign_in_cta',
             'saved', 'failed', 'loading', 'paid_of', 'remaining', 'payments_heading',
+            'receipt_label',
             ...self::OFFER_COPY_KEYS,
         ];
 
@@ -820,6 +823,8 @@ final class AccountPresenter
     /** @return list<array<string, mixed>> */
     private function payments(InstallmentPlan $plan): array
     {
+        $receipts = $this->receiptUrls($plan);
+
         return $plan->payments
             ->sortByDesc('sequence')
             ->take(self::MAX_PAYMENTS)
@@ -830,9 +835,54 @@ final class AccountPresenter
                     ? $payment->status->value
                     : (string) $payment->status,
                 'at' => $payment->charged_at instanceof Carbon ? $payment->charged_at->toDateString() : null,
+                // The shopper's own receipt (Green Invoice view link), when the
+                // charge produced one. Matched by transaction uid — the one value
+                // the payment slot and the ledger row both witnessed — never by
+                // date, which collides on a same-day retry.
+                'receipt_url' => $payment->payplus_transaction_uid !== null
+                    ? ($receipts[(string) $payment->payplus_transaction_uid] ?? null)
+                    : null,
             ])
             ->values()
             ->all();
+    }
+
+    /**
+     * transaction uid → the issued document's view URL, for this plan.
+     *
+     * Two queries, not a join: BelongsToShop's global scope constrains each
+     * model unambiguously on its own, and both tables carry shop_id — a join
+     * would make the scope's where ambiguous.
+     *
+     * @return array<string, string>
+     */
+    private function receiptUrls(InstallmentPlan $plan): array
+    {
+        $docs = IssuedDocument::query()
+            ->where('plan_id', $plan->getKey())
+            ->where('status', IssuedDocument::STATUS_ISSUED)
+            ->whereNotNull('document_url')
+            ->whereNotNull('ledger_id')
+            ->get(['ledger_id', 'document_url']);
+
+        if ($docs->isEmpty()) {
+            return [];
+        }
+
+        $uidByLedger = PaymentLedger::query()
+            ->whereIn('id', $docs->pluck('ledger_id')->all())
+            ->whereNotNull('payplus_transaction_uid')
+            ->pluck('payplus_transaction_uid', 'id');
+
+        $map = [];
+        foreach ($docs as $doc) {
+            $uid = $uidByLedger[(int) $doc->ledger_id] ?? null;
+            if ($uid !== null) {
+                $map[(string) $uid] = (string) $doc->document_url;
+            }
+        }
+
+        return $map;
     }
 
     /**
@@ -959,8 +1009,8 @@ final class AccountPresenter
             // looking at.
             'commitment_note' => null,
             'payments' => [
-                ['sequence' => 2, 'amount' => 89.0, 'status' => 'succeeded', 'at' => now()->subDays(21)->toDateString()],
-                ['sequence' => 1, 'amount' => 89.0, 'status' => 'succeeded', 'at' => now()->subDays(51)->toDateString()],
+                ['sequence' => 2, 'amount' => 89.0, 'status' => 'succeeded', 'at' => now()->subDays(21)->toDateString(), 'receipt_url' => null],
+                ['sequence' => 1, 'amount' => 89.0, 'status' => 'succeeded', 'at' => now()->subDays(51)->toDateString(), 'receipt_url' => null],
             ],
             'offers' => $offers,
         ];

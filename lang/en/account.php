@@ -41,6 +41,7 @@ return [
         'paid_of' => 'paid of',
         'remaining' => 'Remaining',
         'payments_heading' => 'Payments',
+        'receipt_label' => 'Receipt',
 
         'action_pause' => 'Pause',
         'action_resume' => 'Resume',

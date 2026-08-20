@@ -32,6 +32,7 @@ return [
         'paid_of' => 'שולם מתוך',
         'remaining' => 'נותר לתשלום',
         'payments_heading' => 'תשלומים',
+        'receipt_label' => 'קבלה',
 
         'action_pause' => 'השהיית המנוי',
         'action_resume' => 'חידוש המנוי',

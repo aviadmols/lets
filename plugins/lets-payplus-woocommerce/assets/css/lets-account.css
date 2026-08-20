@@ -2226,3 +2226,22 @@ a.la-banner:focus-visible {
     outline: none;
     box-shadow: var(--la-ring);
 }
+
+/* Payment receipt link — the shopper's own paperwork, one tap away. Accent
+   colour + underline so it reads as a link inside a data table; nowrap so
+   "Receipt" never breaks across lines in a narrow column. */
+.la-link {
+    color: var(--la-accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.la-link:focus-visible {
+    outline: none;
+    box-shadow: var(--la-ring);
+    border-radius: 4px;
+}
+
+.la-payments__receipt {
+    white-space: nowrap;
+}

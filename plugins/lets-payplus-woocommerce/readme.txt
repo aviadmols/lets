@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.35.0
+Stable tag: 0.36.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,13 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.36.0 =
+* Payment history dates now speak the page's language: a Hebrew store dates a
+  charge "20 באוג׳", not "Aug 20", whatever language the shopper's browser is in.
+* Each paid charge whose receipt was issued (Green Invoice) now carries a
+  "Receipt" link in the payment history — the shopper opens their own paperwork
+  in one tap, matched server-side to the exact transaction.
 
 = 0.35.0 =
 * A verified sign-in code that finds no WordPress user now asks LETS whether it
