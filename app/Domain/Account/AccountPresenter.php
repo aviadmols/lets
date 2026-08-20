@@ -718,6 +718,12 @@ final class AccountPresenter
             'title' => (string) ($plan->itemTitle() ?: $plan->productTitle() ?: ''),
             'status' => $status,
             'tone' => self::STATUS_TONES[$status] ?? self::TONE_ATTENTION,
+            // A subscription that is OVER opens folded: it is history, and a
+            // shopper with one live plan and three cancelled ones was reading
+            // four cards of equal weight to find the one that still bills them.
+            // Decided here, not in the renderer, so the merchant's preview and
+            // the live page cannot disagree about it.
+            'collapsed' => $this->isCollapsed($status),
             'currency' => (string) ($plan->currency ?: ''),
             'currency_symbol' => self::currencySymbol($plan->currency),
             'amount' => $recurring
@@ -818,6 +824,24 @@ final class AccountPresenter
         }
 
         return ['lines' => $lines, 'amount' => round((float) ($override['amount'] ?? 0), 2)];
+    }
+
+    /**
+     * Does this subscription open FOLDED in the personal area?
+     *
+     * Only the ones that are OVER — cancelled and completed. They cannot change
+     * again, so the card is a record rather than a control, and a shopper with
+     * one live plan among several dead ones should not have to read all of them
+     * to find the one that still takes money.
+     *
+     * PAUSED, FAILED and AWAITING_FIRST_PAYMENT deliberately stay OPEN even
+     * though none of them is "active": each one is a plan waiting on the shopper
+     * to do something — resume it, fix a declined card, finish paying — and
+     * folding an action away is how a subscription quietly dies.
+     */
+    private function isCollapsed(string $status): bool
+    {
+        return (self::STATUS_TONES[$status] ?? null) === self::TONE_ENDED;
     }
 
     /** @return list<array<string, mixed>> */
@@ -987,6 +1011,9 @@ final class AccountPresenter
             'title' => __('account.sample.product'),
             'status' => 'active',
             'tone' => self::TONE_ACTIVE,
+            // The sample plan is live, so the preview shows a card the way a
+            // merchant's paying subscribers see theirs — open.
+            'collapsed' => false,
             'currency' => 'ILS',
             'currency_symbol' => self::currencySymbol('ILS'),
             'amount' => 89.0,

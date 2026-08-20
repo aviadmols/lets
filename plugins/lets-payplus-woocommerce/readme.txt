@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.37.0
+Stable tag: 0.38.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,14 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.38.0 =
+* A subscription that has ENDED — cancelled or completed — now opens folded in
+  the personal area: a shopper who switched plans was reading four cards of
+  equal weight to find the one that still takes their money. Its title and
+  status stay visible; one click opens the rest. Paused, failed and
+  awaiting-payment plans stay open, because each is waiting on the shopper to
+  do something and folding an action away is how a subscription quietly dies.
 
 = 0.37.0 =
 * Orders now belong to the shopper they are for. Every order LETS created was a

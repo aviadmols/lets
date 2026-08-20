@@ -367,12 +367,20 @@
 
     function renderSubscription(state, sub) {
         var m = state.model;
-        var card = el('article', 'la-card la-sub');
+
+        // A subscription that is OVER opens FOLDED — the server decides which
+        // (sub.collapsed), so the merchant's preview and the live page cannot
+        // disagree. A real <details>/<summary> rather than a scripted toggle:
+        // keyboard, screen readers and find-in-page all work without us, and a
+        // payload from a LETS that predates the flag simply renders as before.
+        var collapsed = !!sub.collapsed;
+        var card = el(collapsed ? 'details' : 'article', 'la-card la-sub');
         attr(card, 'data-subscription', sub.id);
         attr(card, 'data-tone', sub.tone);
+        if (collapsed) { attr(card, 'data-collapsed', 'true'); }
 
         // --- head: title + status
-        var head = el('div', 'la-sub__head');
+        var head = el(collapsed ? 'summary' : 'div', 'la-sub__head');
         var titles = el('div');
         append(titles,
             el('h3', 'la-sub__title', sub.title || m.copy.subscriptions_heading),
@@ -1175,7 +1183,7 @@
 
     // === Export ===
 
-    window.LetsAccount = { render: render, version: 5 };
+    window.LetsAccount = { render: render, version: 6 };
 
     /**
      * Preview bridge. The admin's iframe posts a draft appearance on every

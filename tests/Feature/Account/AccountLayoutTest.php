@@ -204,7 +204,34 @@ final class AccountLayoutTest extends TestCase
 
         // The renderer's version is the plugin's compatibility handle: a payload
         // shape this wide has to be visible to the page that mounts it.
-        $this->assertStringContainsString('version: 5', $js);
+        $this->assertStringContainsString('version: 6', $js);
+    }
+
+    /**
+     * A subscription that is OVER opens FOLDED, as a real <details>/<summary> —
+     * not a scripted toggle. Keyboard, screen readers and find-in-page all work
+     * without us, and the server decides WHICH (`sub.collapsed`), so the
+     * merchant's preview and the live page cannot disagree about it.
+     */
+    public function test_an_ended_subscription_folds_as_a_native_disclosure(): void
+    {
+        $js = (string) file_get_contents(base_path(self::PLUGIN_JS));
+        $css = (string) file_get_contents(base_path(self::PLUGIN_CSS));
+
+        // The server's flag, and the two elements it swaps in.
+        $this->assertStringContainsString('sub.collapsed', $js);
+        $this->assertStringContainsString("el(collapsed ? 'details' : 'article'", $js);
+        $this->assertStringContainsString("el(collapsed ? 'summary' : 'div', 'la-sub__head')", $js);
+
+        // A payload from a LETS that predates the flag renders exactly as before:
+        // `!!undefined` is false, so the card stays an <article>.
+        $this->assertStringContainsString('var collapsed = !!sub.collapsed;', $js);
+
+        // …and the fold is actually drawn: a summary styled as the head, with a
+        // caret that turns when it opens. Without these it is an unstyled
+        // list-item marker on top of a flex row.
+        $this->assertStringContainsString('.la-sub[data-collapsed] > .la-sub__head', $css);
+        $this->assertStringContainsString('.la-sub[data-collapsed][open] > .la-sub__head::after', $css);
     }
 
     /**

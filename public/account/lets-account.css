@@ -2245,3 +2245,38 @@ a.la-banner:focus-visible {
 .la-payments__receipt {
     white-space: nowrap;
 }
+
+/* A subscription that is OVER renders as a real <details>: it opens folded, so
+   a shopper with one live plan among several cancelled ones reads the live one
+   first. The head stays a flex row (details/summary defaults to list-item), the
+   native marker is replaced by a caret that turns on open, and the caret mirrors
+   itself in RTL the same way the rest of the area does. */
+.la-sub[data-collapsed] > .la-sub__head {
+    cursor: pointer;
+    list-style: none;
+}
+
+.la-sub[data-collapsed] > .la-sub__head::-webkit-details-marker {
+    display: none;
+}
+
+.la-sub[data-collapsed] > .la-sub__head::after {
+    content: '';
+    flex: none;
+    align-self: center;
+    inline-size: 8px;
+    block-size: 8px;
+    border-inline-end: 2px solid var(--la-muted);
+    border-block-end: 2px solid var(--la-muted);
+    transform: rotate(45deg);
+    transition: transform .18s ease;
+}
+
+.la-sub[data-collapsed][open] > .la-sub__head::after {
+    transform: rotate(-135deg);
+}
+
+/* An ended card is history: it recedes until the shopper opens it. */
+.la-sub[data-collapsed]:not([open]) {
+    background: var(--la-card-2);
+}
