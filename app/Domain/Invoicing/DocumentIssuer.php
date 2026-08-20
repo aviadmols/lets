@@ -142,8 +142,15 @@ final class DocumentIssuer
                 // An UPSELL belongs to the purchase it followed: it carries the
                 // parent order, not an order of its own. Without this fallback its
                 // receipt named no order at all, so it never appeared on the order
-                // it was actually bought from.
-                'external_order_id' => $ledger->shopify_order_id ?: $ledger->parent_order_id,
+                // it was actually bought from. The LAST fallback is the recurring
+                // cycle's own store order: that order is created AFTER the ledger
+                // row (so the ledger never carries it), and this job runs after
+                // commit — by now the strategy has stamped the id on the plan.
+                // Without it a cycle receipt names no order, and the store's
+                // order screen shows a paid order with no paperwork behind it.
+                'external_order_id' => $ledger->shopify_order_id
+                    ?: $ledger->parent_order_id
+                    ?: $this->latestCycleOrderIdFor($context, $plan),
             ]);
         } catch (Throwable $e) {
             return $this->recordBuildFailure($shopId, $context, $e);
@@ -572,6 +579,24 @@ final class DocumentIssuer
         }
 
         return $shop;
+    }
+
+    /**
+     * The newest store order materialized for this plan's recurring cycles, or
+     * null. Recurring only: every other context either has its order on the
+     * ledger already or genuinely has none. Reads the same plan-meta list the
+     * WooCommerce strategy appends to after each cycle order it creates.
+     */
+    private function latestCycleOrderIdFor(DocumentContext $context, ?InstallmentPlan $plan): ?string
+    {
+        if ($context !== DocumentContext::RECURRING || $plan === null) {
+            return null;
+        }
+
+        $ids = (array) (((array) ($plan->fresh()->meta ?? []))[\App\Services\WooCommerce\Orders\WooCommerceOrderStrategy::META_RECURRING_ORDER_IDS] ?? []);
+        $last = $ids === [] ? null : (string) end($ids);
+
+        return $last !== '' ? $last : null;
     }
 
     private function planFor(PaymentLedger $ledger): ?InstallmentPlan

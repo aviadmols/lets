@@ -56,8 +56,8 @@ final class WooCommerceOrderStrategy implements PlatformOrderStrategy
     private const STATUS_PROCESSING = 'processing';
     private const STATUS_COMPLETED = 'completed';
 
-    /** Plan meta key holding the per-cycle recurring WC order ids (idempotency). */
-    private const META_RECURRING_ORDER_IDS = 'wc_recurring_order_ids';
+    /** Plan meta key holding the per-cycle recurring WC order ids (idempotency; read by DocumentIssuer to link a cycle receipt to its order). */
+    public const META_RECURRING_ORDER_IDS = 'wc_recurring_order_ids';
 
     public function materialize(InstallmentPlan $plan, ChargeContext $context, bool $isFinal = false): void
     {
@@ -164,11 +164,7 @@ final class WooCommerceOrderStrategy implements PlatformOrderStrategy
 
         $lineItems = $override !== null
             ? $this->overrideLineItems($override, $plan)
-            : [[
-                'name' => __('storefront.installments.recurring_line', ['plan' => (string) $plan->public_id]),
-                'quantity' => 1,
-                'total' => $this->money($amount),
-            ]];
+            : [$this->recurringLineItem($plan, $amount)];
 
         // Discount-tag predicate: the cycle charged BELOW the plan's regular
         // (undiscounted) price — intro window active, or a kept first payment.
@@ -261,6 +257,47 @@ final class WooCommerceOrderStrategy implements PlatformOrderStrategy
     // === Payload builders ===
 
     /** The parent installments line item, priced at the FULL product total. */
+    /**
+     * The cycle's single line. The REAL product reference leads and the free-text
+     * name is only the fallback — modern WooCommerce (the stores that matter)
+     * REFUSES a line with neither product_id nor sku
+     * (`woocommerce_rest_required_product_reference`), which is exactly how every
+     * recurring cycle on the pilot store silently produced NO order: the strategy
+     * sent a name-only line, the store said 400, and the orchestrator's fail-soft
+     * swallow was the only witness. The reference also makes the order READ right:
+     * the merchant sees the actual product, and WC decrements its stock.
+     *
+     * @return array<string, mixed>
+     */
+    private function recurringLineItem(InstallmentPlan $plan, float $amount): array
+    {
+        $line = [
+            'quantity' => 1,
+            // Pinned server-side so the order sums to the money that MOVED, even
+            // when the product reference would price it differently today.
+            'total' => $this->money($amount),
+        ];
+
+        $productId = $this->numericOrNull($plan->external_product_id ?: $plan->shopify_product_id);
+        $variantId = $this->numericOrNull($plan->external_variant_id ?: $plan->shopify_variant_id);
+
+        if ($productId !== null) {
+            $line['product_id'] = $productId;
+        }
+        // Never a variation_id echoing a simple product's own id (the W23 trap).
+        if ($variantId !== null && $variantId !== $productId) {
+            $line['variation_id'] = $variantId;
+        }
+        if ($productId === null && $variantId === null) {
+            // No catalog reference on the plan (some imports). A name-only line is
+            // refused by newer stores — sent anyway as the only honest option, and
+            // the failure now lands on the Timeline instead of dying in a log.
+            $line['name'] = __('storefront.installments.recurring_line', ['plan' => (string) $plan->public_id]);
+        }
+
+        return $line;
+    }
+
     private function mainLineItem(InstallmentPlan $plan): array
     {
         $line = [

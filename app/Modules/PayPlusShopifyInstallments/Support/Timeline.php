@@ -112,6 +112,15 @@ final class Timeline
     public const KIND_ACCOUNT_ACTION_FAILED = 'account_action_failed';
 
     /**
+     * A charge SUCCEEDED but materializing the store's order (WooCommerce /
+     * Shopify) failed. The ledger is the money truth either way — this event is
+     * what makes the gap visible: an order missing from the store looks like a
+     * sale that never happened to everyone who lives in the store's admin.
+     * details: {context, reason}.
+     */
+    public const KIND_STORE_ORDER_FAILED = 'store_order_failed';
+
+    /**
      * Record a Timeline event. Never throws.
      *
      * ACTOR ATTRIBUTION (W2): when the caller does NOT pass an explicit actor, the

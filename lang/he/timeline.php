@@ -33,6 +33,7 @@ return [
         'plan_switched' => 'המנוי הוחלף',
         'account_offer_charge_failed' => 'ההצעה התקבלה, אך הכרטיס נדחה',
         'account_action_failed' => 'פעולה באזור האישי נדחתה',
+        'store_order_failed' => 'החיוב הצליח, אך יצירת ההזמנה בחנות נכשלה',
         'shopify_subscription_resumed' => 'המנוי חודש',
         'shopify_subscription_rescheduled' => 'תאריך החיוב הבא שונה',
         'shopify_subscription_bill_now' => 'נשלחה בקשת חיוב מיידי ל-Shopify',

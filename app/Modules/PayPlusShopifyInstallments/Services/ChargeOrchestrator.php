@@ -445,6 +445,20 @@ final class ChargeOrchestrator
                 'is_final' => $isFinal,
                 'error' => $e->getMessage(),
             ]);
+
+            // ON THE TIMELINE, not only in a log that rotates: the money moved
+            // and the merchant's store doesn't say so — every recurring cycle on
+            // the pilot store was missing its WC order for WEEKS and nobody could
+            // see it. The ledger stays the money truth; this event is the flare.
+            Timeline::record(
+                kind: Timeline::KIND_STORE_ORDER_FAILED,
+                details: [
+                    'context' => $context->value,
+                    'reason' => mb_substr($e->getMessage(), 0, 300),
+                ],
+                planId: $plan->getKey(),
+                shopId: (int) $plan->shop_id,
+            );
         }
     }
 

@@ -70,6 +70,10 @@ final class EventPresenter
         // FAILURE, not info: a shopper clicked and was refused. The merchant scans
         // the feed precisely to find the friction customers hit alone.
         'account_action_failed' => ['failure', 'timeline.kind.account_action_failed'],
+        // FAILURE: the charge went through but the store never got its order —
+        // money that moved with no order behind it is exactly what a merchant
+        // audits for, and this was invisible outside a rotating log.
+        'store_order_failed' => ['failure', 'timeline.kind.store_order_failed'],
         // The Shopify-Payments rail's contract verbs (ContractActionService) —
         // without these mappings the contract Timeline reads every row as the
         // humanized "Activity" fallback.
