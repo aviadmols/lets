@@ -114,6 +114,17 @@ Composer: `<php84> C:\Users\user\.config\herd\bin\composer.phar`
   (`plans_only` vs `all_orders`, the WooCommerce "invoice every site order"
   switch) and a per-context document-type map.
 - `app/Domain/Upsell/` — flows, triggers, offers, branches, events.
+- `app/Domain/Campaigns/Email/` — merchant email campaigns. The audience bag is
+  the account-offer shape widened to every customer LETS knows (subscribers on
+  both rails, deposit/instalment buyers, club members), deduped to one email per
+  person. `{account_login_url}` is a **passwordless credential**: minted per
+  recipient at send time, stored as sha256, spent once by a POST (a GET spends
+  nothing — mail scanners click first), revocable per token and per campaign,
+  and it never mints a WordPress session itself (WooCommerce gets a 120s
+  `ImpersonationTicket` in `customer` mode; Shopify gets our hosted account
+  page, because Shopify mints no storefront session for an app). Rules in
+  `docs/security/security-policies.md` §5.1. Marketing mail must carry
+  `{unsubscribe_url}` + `List-Unsubscribe`, and is subject-tagged "פרסומת".
 - Admin = Filament 3 panel re-skinned to the Recharge spec.
 
 ## Status

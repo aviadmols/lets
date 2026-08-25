@@ -6,6 +6,7 @@ use App\Domain\Account\Offers\AccountOfferEligibility;
 use App\Domain\Account\Offers\AccountOfferPresenter;
 use App\Domain\Account\Offers\AccountOfferQuote;
 use App\Domain\Billing\CycleAmountResolver;
+use App\Domain\Campaigns\Models\GiftRecipient;
 use App\Domain\Loyalty\Http\LoyaltyVisitor;
 use App\Domain\Loyalty\Rendering\LoyaltyPagePresenter;
 use App\Models\AccountOffer;
@@ -16,6 +17,8 @@ use App\Models\MerchantBillingSettings;
 use App\Models\MerchantLoyaltySettings;
 use App\Models\MerchantPortalAppearance;
 use App\Models\PaymentLedger;
+use App\Models\SubscriptionContract;
+use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
@@ -80,6 +83,57 @@ final class AccountPresenter
     private const STATUS_ORDER_DEFAULT = 2;
 
     /**
+     * Shopify contract status (mirrored verbatim, uppercase) → the SAME tone
+     * vocabulary the plan cards use, so one renderer draws both rails' badges.
+     * FAILED is attention, not ended: billing is stuck and the shopper can fix it.
+     */
+    private const CONTRACT_TONES = [
+        SubscriptionContract::STATUS_ACTIVE => self::TONE_ACTIVE,
+        SubscriptionContract::STATUS_PAUSED => self::TONE_PAUSED,
+        SubscriptionContract::STATUS_CANCELLED => self::TONE_ENDED,
+        SubscriptionContract::STATUS_EXPIRED => self::TONE_ENDED,
+        SubscriptionContract::STATUS_FAILED => self::TONE_ATTENTION,
+    ];
+
+    /** Reading order for contracts — the live one first, history last (see STATUS_ORDER). */
+    private const CONTRACT_STATUS_ORDER = [
+        SubscriptionContract::STATUS_ACTIVE => 0,
+        SubscriptionContract::STATUS_PAUSED => 1,
+        SubscriptionContract::STATUS_FAILED => 2,
+        SubscriptionContract::STATUS_EXPIRED => 3,
+        SubscriptionContract::STATUS_CANCELLED => 4,
+    ];
+
+    /** An unknown contract status sorts with the ones needing attention. */
+    private const CONTRACT_STATUS_ORDER_DEFAULT = 2;
+
+    /**
+     * Contract states no customer verb can leave — Shopify cannot reactivate a
+     * cancelled or expired contract (a new checkout can). Their cards are
+     * records, so they offer no actions at all, not even card_update.
+     */
+    private const CONTRACT_TERMINAL_STATUSES = [
+        SubscriptionContract::STATUS_CANCELLED,
+        SubscriptionContract::STATUS_EXPIRED,
+    ];
+
+    /**
+     * Shopify's billing interval → the cadence vocabulary cadence() already
+     * translates, so "every 3 months" is ONE sentence on both rails. The map
+     * itself lives on the contract model so the campaign audience filter speaks
+     * the same cadence language.
+     */
+    private const CONTRACT_INTERVAL_FREQUENCY = SubscriptionContract::INTERVAL_FREQUENCY;
+
+    /**
+     * The one contract-only verb: ask Shopify to EMAIL the shopper its secure
+     * card-update page. Offered on every non-terminal contract with no merchant
+     * switch — it moves no money, and a shop must never be able to withhold the
+     * way a shopper fixes their own failing card.
+     */
+    public const CONTRACT_ACTION_CARD_UPDATE = 'card_update';
+
+    /**
      * What makes a reader a SUBSCRIBER for banner targeting. A paused plan still
      * is one — the shopper pays again the moment they resume, and telling them to
      * "start subscribing" while they hold a live plan reads as an insult. An
@@ -101,6 +155,9 @@ final class AccountPresenter
 
     /** Payment rows shown per plan. Enough to recognise, few enough to scan. */
     private const MAX_PAYMENTS = 12;
+
+    /** Gift rows on the "gifts from us" list — a keepsake shelf, not an archive. */
+    private const MAX_GIFTS = 24;
 
     /** The sample subscription's public id — the preview's only "plan". */
     private const SAMPLE_PLAN_ID = 'SAMPLE-1';
@@ -147,8 +204,10 @@ final class AccountPresenter
                 'identified' => false,
                 'greeting' => null,
                 'subscriptions' => [],
+                'contracts' => [],
                 'upcoming' => [],
                 'benefits' => [],
+                'gifts' => [],
                 'loyalty' => null,
                 'payment_methods' => [],
                 // An offer is taken FROM a subscription, on a saved card. We know
@@ -176,8 +235,14 @@ final class AccountPresenter
             'subscriptions' => $plans
                 ->map(fn (InstallmentPlan $p): array => $this->plan($p, $offers['by_plan'][(string) $p->public_id] ?? []))
                 ->all(),
+            // The Shopify-Payments rail, in the same payload: to the shopper a
+            // contract is simply another subscription, and serving it here (not
+            // via a client-side Customer Account API read) means both rails obey
+            // ONE policy source — this presenter and the merchant's switches.
+            'contracts' => $this->contracts($visitor),
             'upcoming' => $this->benefits->for($plans, $account, $loyaltySettings),
             'benefits' => $this->activeBenefits($plans, $account),
+            'gifts' => $this->giftsFor($visitor, $settings),
             'loyalty' => $this->loyalty($visitor, $loyaltySettings),
             'payment_methods' => $this->paymentMethods($plans),
             'offers' => $offers[AccountOffer::PLACEMENT_TOP],
@@ -371,6 +436,9 @@ final class AccountPresenter
             'preview' => true,
             'greeting' => __('account.sample.name'),
             'subscriptions' => [$this->sampleSubscription($nextDate, $offers[AccountOffer::PLACEMENT_PLAN])],
+            // No sample contract: the preview merchant is on ONE platform, and a
+            // Shopify-Payments card in a WooCommerce shop's preview is a lie.
+            'contracts' => [],
             'upcoming' => [
                 [
                     'kind' => UpcomingBenefits::KIND_NEXT_DELIVERY,
@@ -539,6 +607,11 @@ final class AccountPresenter
                 'email' => $settings->supportEmail() ?? MerchantBillingSettings::current()->supportEmail(),
                 'url' => $settings->supportUrl(),
             ],
+            // The contact card behind a contact-mode cancel button, or null when
+            // cancelling is self-service (the renderer then never builds the
+            // dialog). One card for the whole area — policy is per shop, only
+            // the button is per plan.
+            'cancel_contact' => $this->cancelContactCard($settings),
             // Purchase rules the STOREFRONT enforces, not the account page. They
             // ride the shell because the shell is what the plugin already caches:
             // the per-customer question ("does this one have a subscription?")
@@ -613,14 +686,16 @@ final class AccountPresenter
     {
         $keys = [
             'welcome_heading', 'welcome_subtext', 'subscriptions_heading', 'upcoming_heading',
-            'benefits_heading', 'loyalty_heading', 'orders_heading', 'documents_heading',
+            'benefits_heading', 'loyalty_heading', 'orders_heading', 'gifts_heading', 'gift_sent_on', 'documents_heading',
             'profile_heading', 'addresses_heading', 'support_heading', 'empty_subscriptions',
             'empty_upcoming', 'next_charge', 'every', 'status', 'payment_method', 'no_card',
             'action_pause', 'action_resume', 'action_cancel', 'action_skip',
-            'action_reschedule', 'action_items', 'action_update_card', 'confirm_cancel',
+            'action_reschedule', 'action_items', 'action_update_card', 'action_add_card', 'confirm_cancel',
+            'cancel_contact_heading', 'cancel_contact_body', 'cancel_contact_email_label',
+            'cancel_contact_phone_label', 'close',
             'points_balance', 'points_worth', 'tier', 'sign_in_prompt', 'sign_in_cta',
             'saved', 'failed', 'loading', 'paid_of', 'remaining', 'payments_heading',
-            'receipt_label',
+            'receipt_label', 'contract_title', 'card_update_failed_prompt',
             ...self::OFFER_COPY_KEYS,
         ];
 
@@ -659,7 +734,81 @@ final class AccountPresenter
             $copy['status_'.$status->value] = __('account.status.'.$status->value);
         }
 
+        // Contract statuses are SHOPIFY'S, uppercase and mirrored verbatim, so
+        // they land beside the plan statuses in the same `status_*` bag without
+        // colliding — the renderer looks either kind up the same way.
+        foreach (SubscriptionContract::STATUSES as $status) {
+            $copy['status_'.$status] = __('account.contract_status.'.$status);
+        }
+
+        // The card-update verb's own toast: "we emailed you a link" is not
+        // "saved", and a shopper who reads the wrong one will wait on the page.
+        $copy['result_'.self::CONTRACT_ACTION_CARD_UPDATE] = __('account.result.card_update');
+
         return $copy;
+    }
+
+    /**
+     * The gifts this shopper actually RECEIVED through the merchant's gift
+     * campaigns — title, image, date. A toggleable section, so the query only
+     * runs when the merchant shows it; matched on the platform-asserted email,
+     * the same second identity every other block trusts; `created` rows only,
+     * because a skipped or failed gift never left the warehouse and a list that
+     * promises one is a support call.
+     *
+     * @return list<array{title: string, image: ?string, sent_at: ?string}>
+     */
+    private function giftsFor(AccountVisitor $visitor, MerchantPortalAppearance $settings): array
+    {
+        if (! in_array(MerchantPortalAppearance::SECTION_GIFTS, $settings->visibleSections(), true)) {
+            return [];
+        }
+
+        if ($visitor->email === null) {
+            return [];
+        }
+
+        return GiftRecipient::query()
+            ->where('status', GiftRecipient::STATUS_CREATED)
+            ->whereRaw('LOWER(customer_email) = ?', [$visitor->email])
+            ->with('campaign.product')
+            ->orderByDesc('updated_at')
+            ->limit(self::MAX_GIFTS)
+            ->get()
+            ->map(static function (GiftRecipient $gift): array {
+                $campaign = $gift->campaign;
+
+                return [
+                    'title' => trim((string) ($campaign?->product_title ?: $campaign?->title ?: '')) ?: (string) __('account.ui.gifts_heading'),
+                    'image' => $campaign?->product?->image_url ?: null,
+                    'sent_at' => $gift->updated_at?->toDateString(),
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * The contact card behind a contact-mode cancel button, or null.
+     *
+     * The email falls back to the shop's support address — a merchant who chose
+     * "through support" and typed nothing still must give the shopper a door,
+     * or the button would open an empty box.
+     *
+     * @return array{email: ?string, phone: ?string, note: ?string}|null
+     */
+    private function cancelContactCard(MerchantPortalAppearance $settings): ?array
+    {
+        $billing = MerchantBillingSettings::current();
+        $contact = $billing->cancelContact();
+
+        if ($contact === null) {
+            return null;
+        }
+
+        $contact['email'] ??= $settings->supportEmail() ?? $billing->supportEmail();
+
+        return $contact;
     }
 
     /** @return list<string> */
@@ -741,6 +890,11 @@ final class AccountPresenter
             'next_order' => $this->nextOrderSummary($plan),
             'card' => $this->card($plan->activePaymentMethod()),
             'actions' => array_keys(array_filter($actions)),
+            // Contact-mode cancelling: the button exists but opens the shell's
+            // `cancel_contact` card instead of a verb. Flagged per plan so the
+            // renderer only offers it where a self-service cancel WOULD have
+            // been (same commitment + state gates), never on a finished plan.
+            'cancel_contact' => $this->cancelViaContact($plan),
             // WHY the exit buttons are missing, when a commitment is what is
             // holding them. A button that simply is not there reads as a bug, or
             // worse as a shop hiding the way out; the sentence says how many
@@ -749,6 +903,20 @@ final class AccountPresenter
             'payments' => $this->payments($plan),
             'offers' => $offers,
         ];
+    }
+
+    /**
+     * Would this plan have offered a cancel button, if the merchant's policy is
+     * "through support"? The same gates as the self-service verb (commitment,
+     * cancellable state) — only the DOOR differs.
+     */
+    private function cancelViaContact(InstallmentPlan $plan): bool
+    {
+        $settings = MerchantBillingSettings::current();
+
+        return $settings->cancelsViaContact()
+            && $plan->customerMayExit()
+            && in_array($plan->status, CustomerSubscriptionActions::CANCELLABLE, true);
     }
 
     /**
@@ -770,12 +938,17 @@ final class AccountPresenter
     }
 
     /**
-     * "every month" / "כל חודש" / "כל 3 חודשים" — resolved HERE, not in the browser.
+     * "per month" / "בחודש" / "כל 3 חודשים" — resolved HERE, not in the browser.
      *
      * The renderer used to hold an English map of frequency → unit, so a Hebrew
      * store read "ILS 1 כל month". Hebrew also needs the plural to agree with the
      * count (חודש / חודשים), which a lookup table in JS cannot express — so the
      * unit is a choice string and the sentence is assembled from lang/{en,he}.
+     *
+     * A single-cycle cadence reads as a PRICE TAIL ("1 ₪ בחודש"), because that is
+     * where the sentence always sits — beside the amount. "Every N" phrasing is
+     * kept for real intervals ("כל 3 חודשים") and for biweekly, whose Hebrew unit
+     * ("שבועיים") only reads naturally after "כל".
      *
      * Public + static because the offer cards say the same sentence about the
      * same cadences, and two implementations of "every 3 months" is one too many.
@@ -794,9 +967,13 @@ final class AccountPresenter
             $unit = $frequency;
         }
 
-        return $count === 1
+        if ($count > 1) {
+            return __('account.cycle.every_n', ['count' => $count, 'unit' => $unit]);
+        }
+
+        return $frequency === BillingFrequency::BIWEEKLY->value
             ? __('account.cycle.every', ['unit' => $unit])
-            : __('account.cycle.every_n', ['count' => $count, 'unit' => $unit]);
+            : __('account.cycle.per', ['unit' => $unit]);
     }
 
     /** The symbol a price is read with, falling back to the currency's own code. */
@@ -942,6 +1119,116 @@ final class AccountPresenter
         }
 
         return array_values($out);
+    }
+
+    // === Shopify-Payments contracts ===
+
+    /**
+     * This shopper's mirrored subscription CONTRACTS, shaped with the plan
+     * cards' vocabulary (status/tone/cadence/actions) so the extension renders
+     * both rails with one set of components and one copy bag.
+     *
+     * Order mirrors the plans': the live contract first, then the ones waiting
+     * on the shopper, history last — and within a rank, the next billing date
+     * soonest first (the stable sort preserves the query's order).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function contracts(AccountVisitor $visitor): array
+    {
+        return $visitor->contracts()
+            ->orderBy('next_billing_date')
+            ->orderBy('id')
+            ->get()
+            ->sortBy(
+                fn (SubscriptionContract $c): int => self::CONTRACT_STATUS_ORDER[strtoupper((string) $c->status)]
+                    ?? self::CONTRACT_STATUS_ORDER_DEFAULT,
+                SORT_REGULAR,
+                false,
+            )
+            ->values()
+            ->map(fn (SubscriptionContract $c): array => $this->contract($c))
+            ->all();
+    }
+
+    /** @return array<string, mixed> one contract card, in the plan cards' vocabulary */
+    private function contract(SubscriptionContract $contract): array
+    {
+        $status = strtoupper((string) $contract->status);
+        $lines = $this->contractLines($contract);
+        $firstTitle = $lines[0]['title'] ?? '';
+
+        return [
+            'gid' => (string) $contract->shopify_gid,
+            'title' => $firstTitle !== '' ? $firstTitle : __('account.ui.contract_title'),
+            'status' => $status,
+            'tone' => self::CONTRACT_TONES[$status] ?? self::TONE_ATTENTION,
+            'cadence' => self::cadence(
+                self::CONTRACT_INTERVAL_FREQUENCY[strtoupper((string) $contract->interval)] ?? null,
+                (int) $contract->interval_count,
+            ),
+            'next_billing_date' => $contract->next_billing_date?->toDateString(),
+            'amount' => $contract->amount !== null ? round((float) $contract->amount, 2) : null,
+            'currency' => (string) ($contract->currency ?: ''),
+            'currency_symbol' => self::currencySymbol($contract->currency),
+            'lines' => $lines,
+            'actions' => $this->contractActions($status),
+        ];
+    }
+
+    /**
+     * The mirrored lines, defensively: rows mirrored before the image ride-along
+     * carry no image_url, and a sparse webhook row carries no lines at all.
+     *
+     * @return list<array{title: string, quantity: int, amount: ?float, image_url: ?string}>
+     */
+    private function contractLines(SubscriptionContract $contract): array
+    {
+        $out = [];
+        foreach ((array) ($contract->lines ?? []) as $line) {
+            if (! is_array($line)) {
+                continue;
+            }
+
+            $out[] = [
+                'title' => (string) ($line['title'] ?? ''),
+                'quantity' => max(1, (int) ($line['quantity'] ?? 1)),
+                'amount' => is_numeric($line['amount'] ?? null) ? round((float) $line['amount'], 2) : null,
+                'image_url' => (string) ($line['image_url'] ?? '') !== '' ? (string) $line['image_url'] : null,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * The verbs this contract's card offers — the SAME merchant switches the
+     * WooCommerce rail obeys (CustomerSubscriptionActions::availableFor), applied
+     * to Shopify's status vocabulary. The endpoint re-asks every switch, so this
+     * list is presentation and the refusal is policy.
+     *
+     * @return list<string>
+     */
+    private function contractActions(string $status): array
+    {
+        if (in_array($status, self::CONTRACT_TERMINAL_STATUSES, true)) {
+            return [];
+        }
+
+        $settings = MerchantBillingSettings::current();
+        $active = $status === SubscriptionContract::STATUS_ACTIVE;
+        $paused = $status === SubscriptionContract::STATUS_PAUSED;
+
+        return array_values(array_filter([
+            $active && $settings->allowsCustomerSkip() ? CustomerSubscriptionActions::ACTION_SKIP : null,
+            $active && $settings->allowsCustomerReschedule() ? CustomerSubscriptionActions::ACTION_RESCHEDULE : null,
+            $active && $settings->allowsCustomerPause() ? CustomerSubscriptionActions::ACTION_PAUSE : null,
+            // Resume rides the pause switch, exactly as on the Woo rail — a
+            // merchant who allows one but not the other would strand a shopper.
+            $paused && $settings->allowsCustomerPause() ? CustomerSubscriptionActions::ACTION_RESUME : null,
+            $settings->allowsCustomerCancel() ? CustomerSubscriptionActions::ACTION_CANCEL : null,
+            self::CONTRACT_ACTION_CARD_UPDATE,
+        ]));
     }
 
     // === Loyalty ===

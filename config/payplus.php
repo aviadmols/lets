@@ -49,4 +49,15 @@ return [
         'refund' => env('PAYPLUS_DOC_REFUND', 'credit_invoice'),
         'none' => null,
     ],
+
+    /*
+    | The card-update re-vault page (CardUpdateService). `charge_method` 0 is
+    | PayPlus's authorize/verify-only mode — a symbolic amount is validated but
+    | NOT captured, and the page vaults the token (create_token). UNVERIFIED on
+    | a live terminal: if verify-only turns out not to vault, set
+    | PAYPLUS_CARD_UPDATE_CHARGE_METHOD=1 (capture the symbolic 1 ₪) and refund
+    | by store policy. Both are env flips, not code changes.
+    */
+    'card_update_amount' => (float) env('PAYPLUS_CARD_UPDATE_AMOUNT', 1.0),
+    'card_update_charge_method' => (int) env('PAYPLUS_CARD_UPDATE_CHARGE_METHOD', 0),
 ];

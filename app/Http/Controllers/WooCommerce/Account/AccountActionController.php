@@ -92,7 +92,9 @@ final class AccountActionController extends WooAccountController
                 'ok' => $outcome['result'] === CustomerSubscriptionActions::RESULT_OK,
                 'result' => $outcome['result'],
                 'account' => $model,
-            ]);
+                // update_card answers with the PayPlus page LINK; the renderer
+                // navigates instead of redrawing. Absent for every other verb.
+            ] + (isset($outcome['link']) ? ['link' => $outcome['link']] : []));
         });
     }
 

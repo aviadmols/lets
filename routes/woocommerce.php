@@ -13,6 +13,8 @@ use App\Http\Controllers\WooCommerce\EmbedSessionController;
 use App\Http\Controllers\WooCommerce\InstallController;
 use App\Http\Controllers\WooCommerce\InvoicingController;
 use App\Http\Controllers\WooCommerce\PortalSettingsController;
+use App\Http\Controllers\WooCommerce\Storefront\WooCardUpdateCallbackController;
+use App\Http\Controllers\WooCommerce\Storefront\WooCardUpdateReturnController;
 use App\Http\Controllers\WooCommerce\Storefront\WooDepositCallbackController;
 use App\Http\Controllers\WooCommerce\Storefront\WooDepositReturnController;
 use App\Http\Controllers\WooCommerce\Storefront\WooGatewayCallbackController;
@@ -269,4 +271,12 @@ Route::prefix('woocommerce')->group(function () {
     // token-segment trust model as the deposit callback (CSRF-exempt in bootstrap/app.php).
     Route::post('/gateway/callback/{wc_shop_token}', WooGatewayCallbackController::class)
         ->name('woocommerce.gateway.callback');
+
+    // Card update (the account area's "עדכון כרטיס"): the re-vault page's
+    // server-to-server completion + the browser landing. Same token-segment
+    // trust model; the callback only VAULTS, it never moves money.
+    Route::post('/cardupdate/callback/{wc_shop_token}', WooCardUpdateCallbackController::class)
+        ->name('woocommerce.cardupdate.callback');
+    Route::get('/cardupdate/return/{wc_shop_token}', WooCardUpdateReturnController::class)
+        ->name('woocommerce.cardupdate.return');
 });

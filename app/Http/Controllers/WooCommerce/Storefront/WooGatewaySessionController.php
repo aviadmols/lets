@@ -11,8 +11,8 @@ use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactor
 use App\Services\PayPlus\PayPlusPageOptions;
 use App\Support\Tenant;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -35,6 +35,7 @@ final class WooGatewaySessionController extends WooStorefrontController
     // === CONSTANTS ===
     /** PayPlus charge_method config key + default (W17: 1 = immediate capture; 0 was verify-only). */
     private const CONFIG_CHARGE_METHOD = 'woocommerce.charge_method';
+
     private const CHARGE_METHOD_DEFAULT = 1;
 
     /** more_info prefix marking a plain-gateway order (vs. a LETS plan public id). */
@@ -42,6 +43,7 @@ final class WooGatewaySessionController extends WooStorefrontController
 
     /** generateLink response keys (same as the deposit page). */
     private const RESP_PAGE_LINK = 'data.payment_page_link';
+
     /** Where the page-request id can appear (searched in order) — the plugin verifies-on-return with it. */
     private const RESP_PAGE_REQUEST_UID_PATHS = [
         'data.page_request_uid',
@@ -185,7 +187,7 @@ final class WooGatewaySessionController extends WooStorefrontController
      * logged, never guessed.
      *
      * @param  array<int, mixed>  $items
-     * @return list<string>  the created plans' public ids
+     * @return list<string> the created plans' public ids
      */
     private function createSubscriptionPlans(Shop $shop, array $items, Request $request, string $currency): array
     {

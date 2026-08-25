@@ -57,9 +57,10 @@ final class WooDepositTokenResolver implements DepositTokenResolver
     /**
      * The deposit callback (WooDepositCallbackController) wraps the raw PayPlus body
      * under this key; we also search the payload root so the resolver works whether
-     * it is handed the wrapped activation payload or a raw PayPlus body.
+     * it is handed the wrapped activation payload or a raw PayPlus body. Public:
+     * the card-update callback builds the same wrapped shape.
      */
-    private const WRAP_KEY = 'payplus';
+    public const WRAP_KEY = 'payplus';
 
     /**
      * Candidate dot-paths (relative to each searched base) for the reusable card-token

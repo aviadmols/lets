@@ -99,16 +99,18 @@ return [
             'replace' => 'Replace',
         ],
 
-        'timing' => 'When the replacement takes effect',
+        'timing' => 'How the switch is charged',
         'timing_option' => [
-            'immediate' => 'Now — charge the saved card today',
-            'period_end' => 'At the end of the current period — nothing is charged today',
+            'immediate' => 'Full price now — the cycle restarts today',
+            'prorated' => 'Prorated difference now — the full price starts on the old renewal date',
+            'period_end' => 'Nothing today — the full price is charged on the old renewal date',
         ],
         'timing_short' => [
             'immediate' => 'now',
+            'prorated' => 'prorated now',
             'period_end' => 'at period end',
         ],
-        'timing_help' => 'At period end, the new subscription’s first charge falls on the day the old one would have renewed. There is no proration either way.',
+        'timing_help' => 'The switch itself always happens on the click; this decides the money. Prorated charges only the difference for the remainder of the paid period (a downgrade charges nothing — we never refund automatically).',
 
         'fulfilment' => 'How it reaches the customer',
         'fulfilment_option' => [

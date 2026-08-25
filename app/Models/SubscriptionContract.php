@@ -30,9 +30,13 @@ class SubscriptionContract extends Model
 
     /** Shopify's contract statuses, verbatim. */
     public const STATUS_ACTIVE = 'ACTIVE';
+
     public const STATUS_PAUSED = 'PAUSED';
+
     public const STATUS_CANCELLED = 'CANCELLED';
+
     public const STATUS_EXPIRED = 'EXPIRED';
+
     public const STATUS_FAILED = 'FAILED';
 
     public const STATUSES = [
@@ -42,6 +46,21 @@ class SubscriptionContract extends Model
 
     /** Only these are eligible for a billing attempt. */
     public const BILLABLE_STATUSES = [self::STATUS_ACTIVE];
+
+    /**
+     * Shopify's `interval` vocabulary → our BillingFrequency values, for the
+     * screens and audience filters that speak one cadence language across both
+     * rails. `interval_count` is deliberately not folded in (every 2 weeks is
+     * still "weekly" to a filter), exactly as the account offers treat plans.
+     *
+     * @var array<string, string>
+     */
+    public const INTERVAL_FREQUENCY = [
+        'DAY' => 'daily',
+        'WEEK' => 'weekly',
+        'MONTH' => 'monthly',
+        'YEAR' => 'yearly',
+    ];
 
     /** shop_id is stamped by BelongsToShop; the mirror is written only by ContractMirror. */
     protected $guarded = ['id', 'shop_id'];

@@ -1,12 +1,18 @@
 <?php
 
 /**
- * LETS — "log in as this customer".
+ * LETS — passwordless arrivals from LETS, in two modes.
  *
- * A merchant clicks the action on the LETS customer page and their browser lands
- * here carrying a ticket: `https://the-store.co.il/?lets_login_as=<ticket>`. We
+ * ADMIN mode is "log in as this customer": a merchant clicks the action on the
+ * LETS customer page and their browser lands here carrying a ticket. CUSTOMER
+ * mode is the sign-in link in a LETS campaign email: the SHOPPER already spent
+ * the emailed token on the LETS landing page, and arrives here with the short
+ * ticket that turns that into a WordPress session.
+ *
+ * Both land the same way: `https://the-store.co.il/?lets_login_as=<ticket>`. We
  * hand the ticket back to LETS over the SIGNED channel, LETS answers with the
- * customer it stands for, and WORDPRESS signs that person in.
+ * customer it stands for AND the mode it was minted in, and WORDPRESS signs that
+ * person in.
  *
  * THE TRUST SPLIT IS THE SAME AS THE SIGN-IN CODES, and for the same reason. LETS
  * attests to the ticket; it does not name a WordPress user and it cannot mint a
@@ -14,7 +20,15 @@
  * the site, and only then issues the cookie — through the one helper that also
  * re-associates the cart. A LETS admin (or anyone who ever reads a LETS database)
  * therefore cannot become a WordPress administrator by this route. That guard is
- * the whole point of the file and is not conditional on anything.
+ * the whole point of the file, is not conditional on anything, and applies to
+ * BOTH modes.
+ *
+ * WHAT THE MODE CHANGES, and only this: an admin borrowing a customer's session
+ * is marked as an impersonation (the admin bar becomes the way out), while a
+ * customer signing into their own account is not — a banner saying "you are
+ * being impersonated" shown to the actual customer is a support ticket. And a
+ * customer the store has never seen may be CREATED in customer mode, when the
+ * store allows quick registration; an admin ticket never creates anyone.
  *
  * A REFUSAL SAYS NOTHING. Expired, forged, no such customer, or an account we will
  * not hand over — all of them land on My Account with one generic notice. "No such
@@ -28,8 +42,16 @@ defined('ABSPATH') || exit;
 
 // === CONSTANTS ===
 
-/** The query parameter the LETS admin's browser arrives with. */
+/** The query parameter the arriving browser carries. */
 define('LETS_IMPERSONATE_PARAM', 'lets_login_as');
+
+/** A merchant borrowing a customer's session. The DEFAULT — an older LETS that
+ *  sends no mode at all is an admin "log in as customer" link, and must keep
+ *  behaving exactly as it did. */
+define('LETS_IMPERSONATE_MODE_ADMIN', 'admin');
+
+/** The customer entering their own account from a LETS campaign email. */
+define('LETS_IMPERSONATE_MODE_CUSTOMER', 'customer');
 
 /** The shape a ticket must have before it is worth a round trip. Mirrors ImpersonationTicket. */
 define('LETS_IMPERSONATE_PATTERN', '/^[A-Za-z0-9]{32,128}$/');
@@ -90,41 +112,68 @@ function lets_payplus_impersonate_maybe_redeem()
         );
     }
 
+    $mode = (isset($result['mode']) && LETS_IMPERSONATE_MODE_CUSTOMER === $result['mode'])
+        ? LETS_IMPERSONATE_MODE_CUSTOMER
+        : LETS_IMPERSONATE_MODE_ADMIN;
+
     $email = isset($result['email']) ? sanitize_email((string) $result['email']) : '';
     $user = lets_payplus_impersonate_user($email);
+
+    if (! $user && LETS_IMPERSONATE_MODE_CUSTOMER === $mode) {
+        // A customer the store has never seen. The store already said who may
+        // come in through a passwordless door (quick registration), and LETS
+        // only ever emails an address it charged or enrolled — so create the
+        // account rather than sending them to a dead end. An ADMIN ticket never
+        // reaches here: inventing a user to impersonate is not a support tool.
+        $user = lets_payplus_impersonate_register($email, $result);
+    }
 
     if (! $user) {
         lets_payplus_impersonate_refuse('no_matching_user');
     }
 
-    // THE GUARD THAT CANNOT BE RELAXED. A LETS admin must never be able to become
-    // a WordPress administrator, a shop manager, or anyone else who can edit this
-    // site. Checked here as well as inside sign_in() because this is the sentence
-    // a future reader must not be able to delete by accident.
+    // THE GUARD THAT CANNOT BE RELAXED, IN EITHER MODE. Nobody arriving through
+    // LETS may become a WordPress administrator, a shop manager, or anyone else
+    // who can edit this site. Checked here as well as inside sign_in() because
+    // this is the sentence a future reader must not be able to delete by accident.
     if (lets_payplus_account_is_privileged($user)) {
         lets_payplus_impersonate_refuse('privileged_user_refused');
     }
 
+    // Where they were sent. A RELATIVE path chosen by LETS (the personal-area
+    // endpoint), run through the same open-redirect wall every sign-in uses.
+    $target = lets_payplus_impersonate_target($result);
+
     // The one helper both passwordless routes use: it sets the auth cookie AND
     // re-associates the cart and the customer session with the now-known shopper.
-    $response = lets_payplus_account_sign_in($user, lets_payplus_impersonate_account_url());
+    $response = lets_payplus_account_sign_in($user, $target);
     $data = is_object($response) && method_exists($response, 'get_data') ? (array) $response->get_data() : array();
 
     if (empty($data['ok'])) {
         lets_payplus_impersonate_refuse('sign_in_refused');
     }
 
-    // AFTER the sign-in, never before: sign_in() fires `wp_login`, and this flag's
-    // own listener clears it on exactly that hook.
-    lets_payplus_impersonate_mark($user->ID);
+    if (LETS_IMPERSONATE_MODE_ADMIN === $mode) {
+        // AFTER the sign-in, never before: sign_in() fires `wp_login`, and this
+        // flag's own listener clears it on exactly that hook. Customer mode is
+        // deliberately NOT marked — this is the shopper's own session, and the
+        // "you are signed in as somebody — exit" bar is not for them.
+        lets_payplus_impersonate_mark($user->ID);
+    }
+
+    // The area is drawn from a cached payload; a stale one would greet them with
+    // whatever the store knew last time.
+    lets_payplus_account_flush_cache($user->ID);
 
     lets_payplus_log_event(
-        sprintf(
-            'A LETS admin signed in as customer #%d (%s).',
-            (int) $user->ID,
-            isset($result['customer_ref']) ? (string) $result['customer_ref'] : ''
-        ),
-        'login_as_customer',
+        LETS_IMPERSONATE_MODE_CUSTOMER === $mode
+            ? sprintf('Customer #%d signed in from a LETS email link.', (int) $user->ID)
+            : sprintf(
+                'A LETS admin signed in as customer #%d (%s).',
+                (int) $user->ID,
+                isset($result['customer_ref']) ? (string) $result['customer_ref'] : ''
+            ),
+        LETS_IMPERSONATE_MODE_CUSTOMER === $mode ? 'campaign_login' : 'login_as_customer',
         'info'
     );
 
@@ -133,6 +182,62 @@ function lets_payplus_impersonate_maybe_redeem()
     $redirect = ! empty($data['redirect']) ? (string) $data['redirect'] : lets_payplus_impersonate_account_url();
     wp_safe_redirect($redirect);
     exit;
+}
+
+/**
+ * Where LETS asked us to land them, as a full URL on THIS site.
+ *
+ * The path comes from the ticket payload (server side, never from the arriving
+ * URL) and is still passed through lets_payplus_account_safe_redirect(), which
+ * is wp_validate_redirect with a My Account fallback — an open redirect on a
+ * sign-in endpoint is how a phishing page borrows a real domain.
+ *
+ * @param  array  $result  the verify response
+ * @return string
+ */
+function lets_payplus_impersonate_target($result)
+{
+    $path = isset($result['redirect']) ? trim((string) $result['redirect']) : '';
+
+    if ('' === $path) {
+        return lets_payplus_impersonate_account_url();
+    }
+
+    return lets_payplus_account_safe_redirect(home_url('/' . ltrim($path, '/')));
+}
+
+/**
+ * Create the WordPress customer behind an address LETS just attested to.
+ *
+ * Only in CUSTOMER mode, only when the store allows quick registration, and only
+ * with a name LETS attested to as well — the same door
+ * lets_payplus_account_create_customer() opens for a verified sign-in code, and
+ * for the same reason: a shopper who has been emailed by this store and clicked
+ * its link should not meet a form they cannot complete.
+ *
+ * @param  string  $email
+ * @param  array  $result  the verify response
+ * @return WP_User|null
+ */
+function lets_payplus_impersonate_register($email, $result)
+{
+    if ('' === $email || ! is_email($email) || ! lets_payplus_account_quick_registration_allowed()) {
+        return null;
+    }
+
+    $first = isset($result['first_name']) ? sanitize_text_field((string) $result['first_name']) : '';
+    $last = isset($result['last_name']) ? sanitize_text_field((string) $result['last_name']) : '';
+
+    $user_id = lets_payplus_account_create_customer($email, $first, $last);
+    if ($user_id <= 0) {
+        return null;
+    }
+
+    lets_payplus_account_store_profile($user_id, $first, $last, $email, '');
+
+    $user = get_user_by('id', $user_id);
+
+    return $user ? $user : null;
 }
 
 /**

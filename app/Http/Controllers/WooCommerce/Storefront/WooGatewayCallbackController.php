@@ -35,7 +35,9 @@ final class WooGatewayCallbackController
 {
     // === CONSTANTS ===
     private const SUCCESS_CODES = ['000', '0', 'approved', 'success'];
+
     private const HASH_HEADER = 'hash';
+
     private const MORE_INFO_PREFIX = 'gw:';
 
     /**

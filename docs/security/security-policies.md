@@ -78,6 +78,64 @@ Writes are Timeline events (`customer_details_updated`) with actor attribution.
 GDPR webhook handling (`customers/redact`, `shop/redact`,
 `customers/data_request`) is recorded as its own ActivityEvent kinds.
 
+### 5.1 Passwordless account links in campaign email
+
+A campaign email may carry a `{account_login_url}` that opens the shopper's own
+account with no password. It is a credential, and is treated as one:
+
+- **Minted per recipient, at send time**, and only when the body actually uses
+  the token. 48 random alphanumerics; the row stores **sha256 only**, so the
+  link cannot be reconstructed from a database read, and it is never logged.
+- **A GET spends nothing.** `/c/login/{token}` renders an interstitial; a
+  CSRF-protected POST is the click that consumes it. Mail-security scanners
+  follow links before the person does, and a token they burnt is a customer
+  locked out.
+- **Single use, atomically** (one conditional UPDATE that must move one row),
+  with a per-campaign TTL (default 7 days from the send, cap 14) and two
+  revocation paths: per token (a failed send revokes its own) and per campaign
+  (the merchant's "Revoke sign-in links", which kills every link in one email).
+- **Uniform 410** for missing, malformed, expired, spent or revoked — the page
+  is never an oracle for which tokens exist. Rate-limited per IP and per token
+  hash. `Referrer-Policy: no-referrer`, `Cache-Control: no-store`,
+  `X-Robots-Tag: noindex` on every `/c/*` response; the landing page shows the
+  shop name and a **masked** address only.
+- **LETS still mints no WordPress session.** On WooCommerce the consumed token
+  becomes a 120-second, single-use `ImpersonationTicket` in `customer` mode;
+  the plugin resolves the attested address to one of its own users, **refuses
+  privileged accounts**, and issues the cookie itself — the same trust split as
+  the sign-in codes. On Shopify (which mints no storefront session for an app)
+  the shopper lands on a SaaS-hosted account page whose short session carries
+  exactly the identity the token named.
+- **Audited.** Each redemption writes `privacy.personal_data_accessed`
+  (surface `campaign_login`) and a `campaign_login_used` Timeline event on the
+  customer's own feed — deliberately a different kind from an admin's
+  `customer_impersonated`. The token row keeps a hashed IP and the user agent.
+- **Previews and test sends mint nothing** — they render sample URLs, the same
+  discipline `EmailPreviewRenderer` follows. Spent tokens are pruned 30 days
+  after expiry.
+
+Merchant-authored campaign HTML is substituted with `strtr()` and **never
+compiled** (§ the email-template rule), and previewed only inside a sandboxed
+`iframe srcdoc`.
+
+### 5.2 Card update on the PayPlus rail
+
+The account area's "עדכון כרטיס" mints a **PayPlus hosted page** in re-vault
+mode (`create_token`, verify-only charge method) — card digits never touch
+LETS. The completion is a server-to-server callback on the deposit callback's
+exact trust rails: the opaque `{wc_shop_token}` path segment resolves the shop
+before any body field is trusted, a present PayPlus `hash` signature fails
+closed, and the body can only act on the plan its `cardupd:`-prefixed
+`more_info` names (a deposit callback replayed here matches nothing). The new
+token is vaulted as a fresh `InstallmentPaymentMethod` with identity copied off
+the PLAN (the callback is only a hint); the plan and its non-terminal siblings
+on the old card are re-pointed; replay is idempotent on the token uid; the old
+method row is kept as history. Each swap writes a `card_updated` Timeline event
+(brand + last4, never a token). The verb itself is behind **no merchant
+switch** — a shop must never be able to withhold the way a shopper fixes a
+failing card — and answers only with the hosted-page LINK; nothing changes on
+the click.
+
 ## 6. Security incident response policy
 
 **Scope**: any suspected unauthorized access, data leak, credential exposure or

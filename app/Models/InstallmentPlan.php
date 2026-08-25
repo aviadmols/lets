@@ -83,6 +83,21 @@ class InstallmentPlan extends Model
     public const META_ACCOUNT_OFFER = 'account_offer';
 
     /**
+     * Key INSIDE the META_ACCOUNT_OFFER bag: a PRORATED switch's one-off first
+     * charge (the remainder-of-period difference). CycleAmountResolver reads it
+     * for charge #1 ONLY — installment_amount stays the real per-cycle price.
+     */
+    public const META_OFFER_FIRST_CHARGE = 'first_charge_amount';
+
+    /**
+     * Key INSIDE the META_ACCOUNT_OFFER bag: the date the FULL price resumes
+     * after a prorated switch (= the replaced plan's old renewal date). The
+     * accept service restores next_charge_at to it once the prorated money
+     * lands, undoing the orchestrator's automatic advance-from-today.
+     */
+    public const META_OFFER_RESUME_AT = 'resume_at';
+
+    /**
      * meta key holding the customer's address as EDITED in the admin. The import
      * keeps its own copy under meta.import.address — that one is the audit trail
      * of what the migration file said and is never rewritten; this key is what an
@@ -318,6 +333,24 @@ class InstallmentPlan extends Model
         $meta = ($this->meta ?? [])[self::META_ACCOUNT_OFFER] ?? null;
 
         return is_array($meta) ? $meta : [];
+    }
+
+    /**
+     * The prorated switch's one-off FIRST-charge amount, or null. Guarded: a
+     * value that is not a positive number is no override at all — an unreadable
+     * meta must fall back to the real per-cycle price, never to zero.
+     */
+    public function offerFirstChargeAmount(): ?float
+    {
+        $value = $this->accountOfferMeta()[self::META_OFFER_FIRST_CHARGE] ?? null;
+
+        if (! is_numeric($value)) {
+            return null;
+        }
+
+        $amount = round((float) $value, 2);
+
+        return $amount > 0 ? $amount : null;
     }
 
     /**

@@ -57,6 +57,9 @@ final class AccountOfferPresenter
 
     public const COPY_DISCLOSURE_LATER_REPLACE = 'account.ui.offer_disclosure_later_replace';
 
+    /** A prorated switch: the one-off difference now, the full price from :date. */
+    public const COPY_DISCLOSURE_PRORATED_REPLACE = 'account.ui.offer_disclosure_prorated_replace';
+
     /** A one-time product bought on the click. */
     public const COPY_DISCLOSURE_BUY_NOW = 'account.ui.offer_disclosure_buy_now';
 
@@ -126,7 +129,10 @@ final class AccountOfferPresenter
 
         $today = now()->startOfDay();
 
-        if ($target->chargesNow()) {
+        // A PRORATED switch's meaningful date is when the FULL price starts —
+        // the old renewal — even though the difference is charged today; the
+        // disclosure names both. Everything else that charges now starts now.
+        if ($target->chargesNow() && $target->timing() !== AccountOfferTarget::TIMING_PRORATED) {
             return $today;
         }
 
@@ -172,6 +178,11 @@ final class AccountOfferPresenter
         $firstChargeAt = $this->firstChargeAt($target, $source, $renewalFallback);
         $nextOrderAt = $this->nextOrderAt($target, $source, $renewalFallback);
 
+        // The prorated one-off, computed by the SAME class the accept service
+        // asks — the number on the card and the number that charges can only
+        // ever drift DOWN (days shrink), never up.
+        $dueNow = ReplaceProration::dueNow($target, $source, $quote->amount);
+
         return [
             'key' => $target->stableKey(),
             'index' => $index,
@@ -193,8 +204,12 @@ final class AccountOfferPresenter
                 : null,
             'first_charge_at' => $firstChargeAt?->toDateString(),
             'next_order_at' => $nextOrderAt?->toDateString(),
+            'due_now' => $dueNow,
+            'due_now_display' => $dueNow !== null && $dueNow >= ReplaceProration::MIN_CHARGE
+                ? $this->priceDisplay($dueNow, $symbol)
+                : null,
             'button_text' => $target->buttonText(),
-            'disclosure' => $this->disclosure($target, $priceDisplay, $firstChargeAt, $nextOrderAt),
+            'disclosure' => $this->disclosure($target, $priceDisplay, $firstChargeAt, $nextOrderAt, $dueNow, $symbol),
         ];
     }
 
@@ -258,6 +273,8 @@ final class AccountOfferPresenter
         string $priceDisplay,
         ?Carbon $firstChargeAt,
         ?Carbon $nextOrderAt,
+        ?float $dueNow = null,
+        string $symbol = '',
     ): string {
         if ($target->isOneTime()) {
             return $target->chargesNow()
@@ -266,6 +283,27 @@ final class AccountOfferPresenter
                     'amount' => $priceDisplay,
                     'date' => $nextOrderAt?->toDateString() ?? now()->toDateString(),
                 ]);
+        }
+
+        // A PRORATED switch says BOTH numbers. When nothing is chargeable today
+        // (a downgrade, a spent period, the admin preview with no real source),
+        // "nothing today, the full price from :date" is the honest sentence —
+        // and it is exactly the period-end one.
+        if ($target->timing() === AccountOfferTarget::TIMING_PRORATED) {
+            $date = $firstChargeAt?->toDateString() ?? now()->toDateString();
+
+            if ($dueNow !== null && $dueNow >= ReplaceProration::MIN_CHARGE) {
+                return (string) __(self::COPY_DISCLOSURE_PRORATED_REPLACE, [
+                    'due' => $this->priceDisplay($dueNow, $symbol),
+                    'amount' => $priceDisplay,
+                    'date' => $date,
+                ]);
+            }
+
+            return (string) __(self::COPY_DISCLOSURE_LATER_REPLACE, [
+                'amount' => $priceDisplay,
+                'date' => $date,
+            ]);
         }
 
         if ($target->chargesNow()) {

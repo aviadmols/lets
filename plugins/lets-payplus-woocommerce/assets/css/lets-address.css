@@ -1,0 +1,41 @@
+/* =========================================================================
+   LETS — GOV address autocomplete dropdown. Minimal on purpose: the fields
+   are the theme's; only the suggestion list is ours.
+   ========================================================================= */
+
+.lets-address__host {
+    position: relative;
+}
+
+.lets-address__list {
+    position: absolute;
+    inset-inline-start: 0;
+    inset-inline-end: 0;
+    top: 100%;
+    z-index: 1000;
+    margin-top: 2px;
+    background: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(16, 24, 40, 0.12);
+    overflow: hidden;
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.lets-address__item {
+    display: block;
+    width: 100%;
+    padding: 9px 14px;
+    border: 0;
+    background: transparent;
+    text-align: start;
+    font: inherit;
+    color: #101828;
+    cursor: pointer;
+}
+
+.lets-address__item:hover,
+.lets-address__item.is-active {
+    background: #f3f4f6;
+}

@@ -18,13 +18,20 @@
 return [
 
     'ui' => [
-        'welcome_heading' => 'My account',
+        /*
+         * The renderer appends ", {name}", so the default reads
+         * "Welcome, Shirley Dorfman". A gendered Hebrew form is the merchant's
+         * to type — Settings → Customer area → Copy.
+         */
+        'welcome_heading' => 'Welcome',
         'welcome_subtext' => 'Your subscriptions, benefits and orders in one place.',
         'subscriptions_heading' => 'Subscriptions',
         'upcoming_heading' => "What's next",
         'benefits_heading' => 'Benefits',
         'loyalty_heading' => 'Rewards',
         'orders_heading' => 'Order history',
+        'gifts_heading' => 'Gifts from us',
+        'gift_sent_on' => 'Sent on',
         'documents_heading' => 'Invoices & receipts',
         'profile_heading' => 'My details',
         'addresses_heading' => 'Addresses',
@@ -50,7 +57,27 @@ return [
         'action_reschedule' => 'Change date',
         'action_items' => 'Edit products',
         'action_update_card' => 'Update card',
+        'action_add_card' => 'Add a card',
         'confirm_cancel' => 'Cancel this subscription? This cannot be undone.',
+
+        /*
+         * Contact-mode cancelling: the cancel button opens a contact card
+         * instead of the one-click verb. `body` is the default sentence — the
+         * merchant's own note from the settings wins over it.
+         */
+        'cancel_contact_heading' => 'Cancel subscription',
+        'cancel_contact_body' => 'To cancel your subscription, contact our support team and we will take care of it.',
+        'cancel_contact_email_label' => 'Email',
+        'cancel_contact_phone_label' => 'Phone',
+        'close' => 'Close',
+
+        /*
+         * Shopify-Payments contract cards. `contract_title` labels a contract
+         * whose mirrored lines carry no product title; the failed prompt sits
+         * beside the card-update button when a charge has already bounced.
+         */
+        'contract_title' => 'Subscription',
+        'card_update_failed_prompt' => 'A payment failed. Update your card to keep this subscription going.',
 
         'points_balance' => 'Points balance',
         'points_worth' => 'Worth',
@@ -102,6 +129,7 @@ return [
         'offer_disclosure_now_replace' => ':amount will be charged to your saved card now. Your current subscription ends.',
         'offer_disclosure_later' => ':amount will be charged to your saved card on :date.',
         'offer_disclosure_later_replace' => ':amount will be charged to your saved card on :date. Your current subscription ends now, and nothing is charged today.',
+        'offer_disclosure_prorated_replace' => ':due will be charged to your saved card now for the remainder of your current period. From :date you will be charged :amount per cycle, and your current subscription ends now.',
         'offer_disclosure_buy_now' => ':amount will be charged to your saved card now, and this will be sent to you as a separate order.',
         'offer_disclosure_next_order' => 'This will be added to your next order on :date, and :amount will be charged with it. Nothing is charged today.',
     ],
@@ -122,6 +150,8 @@ return [
      * "כל 3 חודשים" — which a flat frequency→word map cannot express.
      */
     'cycle' => [
+        /* `per` is a price tail ("1 ₪ per month"); `every` stays for biweekly. */
+        'per' => 'per :unit',
         'every' => 'every :unit',
         'every_n' => 'every :count :unit',
 
@@ -133,6 +163,19 @@ return [
             'quarterly' => 'quarter|quarters',
             'yearly' => 'year|years',
         ],
+    ],
+
+    /*
+     * Shopify-Payments contract statuses — SHOPIFY'S vocabulary, uppercase and
+     * mirrored verbatim, so they live beside the lowercase plan statuses in the
+     * payload's one `status_*` bag without colliding.
+     */
+    'contract_status' => [
+        'ACTIVE' => 'Active',
+        'PAUSED' => 'Paused',
+        'CANCELLED' => 'Cancelled',
+        'EXPIRED' => 'Expired',
+        'FAILED' => 'Payment failed',
     ],
 
     /*
@@ -177,6 +220,19 @@ return [
         'skip' => 'Next delivery skipped.',
         'reschedule' => 'Date updated.',
         'items' => 'Next order updated.',
+
+        /*
+         * card_update sends an EMAIL, it does not change the card — the toast
+         * must say where to look next or the shopper waits on the page.
+         */
+        'card_update' => 'We sent you an email with a secure link to update your card.',
+
+        /*
+         * update_card (the PayPlus rail) answers with a LINK — the page
+         * navigates to PayPlus's secure form, so on success no toast is ever
+         * read. This sentence is the fallback for the blink before the redirect.
+         */
+        'update_card' => 'Taking you to the secure card page…',
 
         /*
          * accept_offer answers with more than ok/failed, because "your card was
@@ -232,11 +288,13 @@ return [
             'locked' => 'Always shown — a customer must be able to reach their own subscription.',
             'label' => [
                 'welcome' => 'Welcome header',
+                'stats' => 'Quick stats (subscriptions · next charge · points)',
                 'subscriptions' => 'Subscriptions',
                 'upcoming' => "What's next (benefit timeline)",
                 'benefits' => 'Benefits',
                 'loyalty' => 'Rewards / loyalty club',
                 'orders' => 'Order history',
+                'gifts' => 'Gifts sent (from your campaigns)',
                 'downloads' => 'Downloads (WooCommerce tab)',
                 'documents' => 'Invoices & receipts',
                 'profile' => 'My details',
@@ -260,6 +318,8 @@ return [
             'density' => 'Spacing',
             'card' => 'Card style',
             'font_note' => 'Typography is inherited from your storefront theme, so the area always matches your shop.',
+            'shopify_note_heading' => 'Colors follow your Shopify branding',
+            'shopify_note_body' => 'On Shopify the personal area lives inside the customer account, which follows the branding set in your Shopify admin — so colors, corners and density are managed there, not here. Language, sections and banners below still apply.',
             'theme_option' => ['light' => 'Light', 'dark' => 'Dark', 'auto' => "Follow the shopper's device"],
             'radius_option' => ['sharp' => 'Square', 'soft' => 'Rounded', 'pill' => 'Pill'],
             'density_option' => ['compact' => 'Compact', 'comfortable' => 'Comfortable'],

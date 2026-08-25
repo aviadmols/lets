@@ -1,16 +1,20 @@
 {{--
-  PayPlus return landing — the standalone page the shopper lands on after the hosted
-  deposit page (refURL_success/failure/cancel). A standalone storefront page, so it
+  PayPlus return landing — the standalone page the shopper lands on after a hosted
+  PayPlus page (refURL_success/failure/cancel). A standalone storefront page, so it
   carries its own minimal self-contained CSS (the no-inline-CSS rule applies to the
   admin/app UI, not these storefront pages). $state is one of success|failure|cancel.
+
+  Two flows share it: the deposit page (default copy) and the card-update page,
+  which passes its own $keyPrefix — same skeleton, different sentences.
 --}}
+@php($keyPrefix = $keyPrefix ?? 'storefront.installments.return_')
 <!DOCTYPE html>
 <html lang="{{ $locale ?? 'en' }}" dir="{{ $dir ?? 'ltr' }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex">
-    <title>{{ __('storefront.installments.return_'.$state.'_title') }}</title>
+    <title>{{ __($keyPrefix.$state.'_title') }}</title>
     <style>
         :root { --lets-fg: #1a1a1a; --lets-muted: #6b7280; --lets-bg: #ffffff; --lets-ok: #047857; --lets-err: #b91c1c; }
         * { box-sizing: border-box; }
@@ -34,11 +38,11 @@
 <body>
     <div class="lets-card">
         <h1 class="lets-title {{ $state === 'success' ? 'is-ok' : 'is-err' }}">
-            {{ __('storefront.installments.return_'.$state.'_title') }}
+            {{ __($keyPrefix.$state.'_title') }}
         </h1>
-        <p class="lets-body">{{ __('storefront.installments.return_'.$state.'_body') }}</p>
+        <p class="lets-body">{{ __($keyPrefix.$state.'_body') }}</p>
         @if (! empty($backUrl))
-            <a class="lets-back" href="{{ $backUrl }}">{{ __('storefront.installments.return_back') }}</a>
+            <a class="lets-back" href="{{ $backUrl }}">{{ __($keyPrefix.'back') }}</a>
         @endif
     </div>
 </body>

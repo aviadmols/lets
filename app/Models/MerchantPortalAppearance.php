@@ -29,6 +29,14 @@ class MerchantPortalAppearance extends Model
     /** Sections the merchant can show, hide and reorder. */
     public const SECTION_WELCOME = 'welcome';
 
+    /**
+     * The quick-stats strip INSIDE the welcome hero (subscription count / next
+     * charge / points). A key of its own so a merchant can hide the numbers
+     * without hiding the greeting; its position in the list is ignored — it
+     * only ever draws inside the hero.
+     */
+    public const SECTION_STATS = 'stats';
+
     public const SECTION_SUBSCRIPTIONS = 'subscriptions';
 
     public const SECTION_UPCOMING = 'upcoming';
@@ -38,6 +46,13 @@ class MerchantPortalAppearance extends Model
     public const SECTION_LOYALTY = 'loyalty';
 
     public const SECTION_ORDERS = 'orders';
+
+    /**
+     * "Gifts sent" — the products this shopper received through the gift-orders
+     * campaigns, with images and dates. Its own key so a merchant who gifts
+     * privately (or not at all) can keep the list off the page.
+     */
+    public const SECTION_GIFTS = 'gifts';
 
     /**
      * WooCommerce's own Downloads tab. It has no block of ours to draw — it is
@@ -56,11 +71,13 @@ class MerchantPortalAppearance extends Model
 
     public const SECTION_KEYS = [
         self::SECTION_WELCOME,
+        self::SECTION_STATS,
         self::SECTION_SUBSCRIPTIONS,
         self::SECTION_UPCOMING,
         self::SECTION_BENEFITS,
         self::SECTION_LOYALTY,
         self::SECTION_ORDERS,
+        self::SECTION_GIFTS,
         self::SECTION_DOWNLOADS,
         self::SECTION_DOCUMENTS,
         self::SECTION_PROFILE,

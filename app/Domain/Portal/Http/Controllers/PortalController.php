@@ -280,6 +280,9 @@ final class PortalController extends Controller
             return (bool) config('portal.allow_customer_cancel', true);
         }
 
-        return MerchantBillingSettings::current()->allowsCustomerCancel();
+        // SELF-SERVICE only: in contact mode the account area shows the
+        // merchant's contact card instead, and this signed page — which has no
+        // card of its own — must not stay a back door around that policy.
+        return MerchantBillingSettings::current()->allowsSelfServiceCancel();
     }
 }

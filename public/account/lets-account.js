@@ -17,7 +17,12 @@
 
    Public API:
      window.LetsAccount.render(mountEl, model, options)
-       options = { endpoint, nonce, preview, onUpdate }
+       options = { endpoint, nonce, nonceHeader, preview, onUpdate }
+
+   `nonce` is whatever the HOST uses to prove the request came from its own
+   page, and `nonceHeader` names the header it travels in — 'X-WP-Nonce' inside
+   WordPress (the default, so the plugin needs no change), 'X-CSRF-TOKEN' on the
+   SaaS-hosted personal area, which is a Laravel session and speaks Laravel's.
 
    The model is exactly what AccountPresenter produces; no field is computed
    here, and no money is ever recalculated client-side.
@@ -30,6 +35,11 @@
     var BUSY_CLASS = 'is-busy';
     var TOAST_MS = 3200;
 
+    /* The header a nonce travels in when the caller does not name one. The
+       WordPress plugin has always sent a WP nonce and passes no header name, so
+       this default is what keeps it working untouched. */
+    var DEFAULT_NONCE_HEADER = 'X-WP-Nonce';
+
     /* Section key → the function that draws it. A key with no renderer is
        simply skipped, so the server can ship a new section before the plugin
        that knows how to draw it has been updated. */
@@ -37,6 +47,7 @@
         welcome: renderWelcome,
         subscriptions: renderSubscriptions,
         upcoming: renderUpcoming,
+        gifts: renderGifts,
         benefits: renderBenefits,
         loyalty: renderLoyalty,
         support: renderSupport
@@ -179,6 +190,7 @@
             model: model,
             endpoint: options.endpoint || '',
             nonce: options.nonce || '',
+            nonceHeader: options.nonceHeader || DEFAULT_NONCE_HEADER,
             preview: !!options.preview,
             signInUrl: options.signInUrl || '',
             onUpdate: typeof options.onUpdate === 'function' ? options.onUpdate : null
@@ -303,8 +315,16 @@
         );
         append(hero, text);
 
-        var stats = renderStats(state);
-        if (stats) { append(hero, stats); }
+        // The strip is the merchant's to hide: 'stats' in the section list.
+        // The server auto-enables the key for every shop that predates it, so
+        // a list WITHOUT it is a real choice, not an old payload — and an empty
+        // list (a preview fragment, a legacy shape) keeps the strip, because
+        // hiding on missing data would hide it for everyone the day this ships.
+        var sections = state.model.sections || [];
+        if (!sections.length || sections.indexOf('stats') !== -1) {
+            var stats = renderStats(state);
+            if (stats) { append(hero, stats); }
+        }
 
         return hero;
     }
@@ -345,6 +365,51 @@
         return box;
     }
 
+    /**
+     * "Gifts from us" — the products this shopper received through the
+     * merchant's gift campaigns: image, title, the date it went out. Draws
+     * nothing at all for a shopper who never got one; a shelf of zero keepsakes
+     * is not a section.
+     */
+    function renderGifts(state) {
+        var m = state.model;
+        var gifts = Array.isArray(m.gifts) ? m.gifts : [];
+        if (!gifts.length) { return null; }
+
+        var wrap = el('section', 'la-block');
+        append(wrap, sectionHead(m.copy.gifts_heading));
+
+        var card = el('div', 'la-card');
+        var list = el('div', 'la-gifts');
+
+        gifts.forEach(function (gift) {
+            var row = el('div', 'la-gift');
+
+            if (gift.image) {
+                var img = el('img', 'la-gift__image');
+                attr(img, 'src', gift.image);
+                attr(img, 'alt', gift.title || '');
+                attr(img, 'loading', 'lazy');
+                append(row, img);
+            }
+
+            var text = el('div', 'la-gift__text');
+            append(text, el('span', 'la-gift__title', gift.title || ''));
+            if (gift.sent_at) {
+                append(text, el('span', 'la-gift__date',
+                    m.copy.gift_sent_on + ' ' + dateLong(gift.sent_at) + ' ' + dateYear(gift.sent_at)));
+            }
+            append(row, text);
+
+            append(list, row);
+        });
+
+        append(card, list);
+        append(wrap, card);
+
+        return wrap;
+    }
+
     function renderSubscriptions(state) {
         var m = state.model;
         var subs = m.subscriptions || [];
@@ -382,9 +447,11 @@
         // --- head: title + status
         var head = el(collapsed ? 'summary' : 'div', 'la-sub__head');
         var titles = el('div');
+        // No visible reference number: `sub.id` is a machine key (it still rides
+        // every action payload and data-subscription), not something a shopper
+        // should have to read past. Support asks for the email, not the id.
         append(titles,
-            el('h3', 'la-sub__title', sub.title || m.copy.subscriptions_heading),
-            attr(el('span', 'la-sub__id la-ltr', '#' + sub.id), 'dir', 'ltr')
+            el('h3', 'la-sub__title', sub.title || m.copy.subscriptions_heading)
         );
         var badge = el('span', 'la-badge', statusLabel(m, sub));
         attr(badge, 'data-tone', sub.tone);
@@ -410,7 +477,7 @@
         if (sub.kind === 'installments' && sub.remaining !== null) {
             append(facts, fact(m.copy.remaining, money(sub.remaining, sub)));
         }
-        append(facts, fact(m.copy.payment_method, null, sub.card ? cardChip(sub.card) : el('span', 'la-card-chip', m.copy.no_card)));
+        append(facts, fact(m.copy.payment_method, null, paymentMethodValue(state, sub)));
         append(card, facts);
 
         // --- progress
@@ -478,6 +545,25 @@
         append(chip, attr(el('span', 'la-ltr', '•••• ' + card.last_four), 'dir', 'ltr'));
         if (card.expires) { append(chip, attr(el('span', 'la-ltr', card.expires), 'dir', 'ltr')); }
         return chip;
+    }
+
+    /**
+     * The payment-method row: the chip (or "no saved card") plus, when the
+     * server offers the verb, the update/add button. The verb answers with a
+     * LINK to PayPlus's secure page — perform() navigates on `body.link`.
+     */
+    function paymentMethodValue(state, sub) {
+        var m = state.model;
+        var wrap = el('span', 'la-card-row');
+
+        append(wrap, sub.card ? cardChip(sub.card) : el('span', 'la-card-chip', m.copy.no_card));
+
+        if ((sub.actions || []).indexOf('update_card') !== -1) {
+            var label = sub.card ? m.copy.action_update_card : (m.copy.action_add_card || m.copy.action_update_card);
+            append(wrap, actionButton(state, sub, 'update_card', label, 'la-btn la-btn--small'));
+        }
+
+        return wrap;
     }
 
     /**
@@ -559,7 +645,8 @@
     function renderActions(state, sub, dateEditor) {
         var m = state.model;
         var available = sub.actions || [];
-        if (!available.length) { return null; }
+        var contactCancel = !!sub.cancel_contact && m.cancel_contact;
+        if (!available.length && !contactCancel) { return null; }
 
         var bar = el('div', 'la-actions');
 
@@ -589,9 +676,81 @@
             append(bar, el('span', 'la-actions__spacer'));
             var cancel = actionButton(state, sub, 'cancel', m.copy.action_cancel, 'la-btn la-btn--danger', m.copy.confirm_cancel);
             append(bar, cancel);
+        } else if (contactCancel) {
+            // The merchant's policy is "through support": the SAME button, but
+            // the click opens their contact card. No request leaves the page —
+            // the server refuses the verb in this mode anyway.
+            append(bar, el('span', 'la-actions__spacer'));
+            var contactBtn = el('button', 'la-btn la-btn--danger', m.copy.action_cancel);
+            attr(contactBtn, 'type', 'button');
+            contactBtn.addEventListener('click', function () {
+                if (state.preview) { return; }
+                openCancelContact(state);
+            });
+            append(bar, contactBtn);
         }
 
         return bar;
+    }
+
+    /**
+     * The contact card behind a contact-mode cancel button. Built on demand,
+     * removed on close — one overlay at a time, Escape and the backdrop both
+     * close it, and nothing here talks to the server.
+     */
+    function openCancelContact(state) {
+        var m = state.model;
+        var contact = m.cancel_contact || {};
+
+        var overlay = el('div', 'la-dialog');
+        var card = el('div', 'la-dialog__card');
+        attr(card, 'role', 'dialog');
+        attr(card, 'aria-modal', 'true');
+
+        append(card, el('h3', 'la-dialog__title', m.copy.cancel_contact_heading));
+        append(card, el('p', 'la-dialog__body', contact.note || m.copy.cancel_contact_body));
+
+        if (contact.email) {
+            var emailRow = el('p', 'la-dialog__row');
+            append(emailRow, el('span', 'la-dialog__label', m.copy.cancel_contact_email_label));
+            var mail = el('a', 'la-dialog__link', contact.email);
+            attr(mail, 'href', 'mailto:' + contact.email);
+            attr(mail, 'dir', 'ltr');
+            append(emailRow, mail);
+            append(card, emailRow);
+        }
+
+        if (contact.phone) {
+            var phoneRow = el('p', 'la-dialog__row');
+            append(phoneRow, el('span', 'la-dialog__label', m.copy.cancel_contact_phone_label));
+            var tel = el('a', 'la-dialog__link', contact.phone);
+            attr(tel, 'href', 'tel:' + contact.phone.replace(/[^0-9+]/g, ''));
+            attr(tel, 'dir', 'ltr');
+            append(phoneRow, tel);
+            append(card, phoneRow);
+        }
+
+        var close = el('button', 'la-btn la-dialog__close', m.copy.close);
+        attr(close, 'type', 'button');
+        append(card, close);
+        append(overlay, card);
+
+        function dismiss() {
+            if (overlay.parentNode) { overlay.parentNode.removeChild(overlay); }
+            document.removeEventListener('keydown', onKey);
+        }
+        function onKey(event) {
+            if (event.key === 'Escape') { dismiss(); }
+        }
+
+        close.addEventListener('click', dismiss);
+        overlay.addEventListener('click', function (event) {
+            if (event.target === overlay) { dismiss(); }
+        });
+        document.addEventListener('keydown', onKey);
+
+        append(state.mount, overlay);
+        close.focus();
     }
 
     function actionButton(state, sub, action, label, className, confirmText) {
@@ -651,7 +810,7 @@
         state.mount.classList.add(BUSY_CLASS);
 
         var headers = { 'Content-Type': 'application/json' };
-        if (state.nonce) { headers['X-WP-Nonce'] = state.nonce; }
+        if (state.nonce) { headers[state.nonceHeader || DEFAULT_NONCE_HEADER] = state.nonce; }
 
         window.fetch(state.endpoint.replace('{action}', action), {
             method: 'POST',
@@ -663,6 +822,13 @@
         }).then(function (body) {
             state.mount.classList.remove(BUSY_CLASS);
 
+            // A verb that answers with a LINK (update_card → PayPlus's secure
+            // page) is a navigation, not a redraw: go there and stop.
+            if (body && body.ok && body.link) {
+                window.location.href = body.link;
+                return;
+            }
+
             // A REFUSED verb can ship the account too, and when it does the page
             // is redrawn before the shopper is told why: "that offer is no longer
             // available" beside an offer still sitting on the page is a page that
@@ -672,6 +838,7 @@
                 var options = {
                     endpoint: state.endpoint,
                     nonce: state.nonce,
+                    nonceHeader: state.nonceHeader,
                     preview: state.preview,
                     onUpdate: state.onUpdate
                 };
@@ -1183,7 +1350,7 @@
 
     // === Export ===
 
-    window.LetsAccount = { render: render, version: 6 };
+    window.LetsAccount = { render: render, version: 7 };
 
     /**
      * Preview bridge. The admin's iframe posts a draft appearance on every

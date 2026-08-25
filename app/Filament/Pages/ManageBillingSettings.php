@@ -18,9 +18,11 @@ use Filament\Forms\Components\TagsInput;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Forms\Components\ToggleButtons;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
+use Filament\Forms\Get;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
@@ -102,6 +104,10 @@ class ManageBillingSettings extends Page implements HasForms
 
             'allow_customer_pause' => $settings->allowsCustomerPause(),
             'allow_customer_cancel' => $settings->allowsCustomerCancel(),
+            'customer_cancel_mode' => $settings->customerCancelMode(),
+            'cancel_contact_email' => $settings->cancel_contact_email,
+            'cancel_contact_phone' => $settings->cancel_contact_phone,
+            'cancel_contact_note' => $settings->cancel_contact_note,
             'allow_customer_skip' => $settings->allowsCustomerSkip(),
             'allow_customer_reschedule' => $settings->allowsCustomerReschedule(),
             'allow_customer_edit_items' => $settings->allowsCustomerEditItems(),
@@ -274,7 +280,47 @@ class ManageBillingSettings extends Page implements HasForms
                     ->helperText(__('billing.settings.self_service.allow_pause_help')),
                 Toggle::make('allow_customer_cancel')
                     ->label(__('billing.settings.self_service.allow_cancel'))
-                    ->helperText(__('billing.settings.self_service.allow_cancel_help')),
+                    ->helperText(__('billing.settings.self_service.allow_cancel_help'))
+                    ->live(),
+
+                /*
+                 * HOW they cancel, once they may. Self-service is the one-click
+                 * verb; "through support" keeps the button but turns the click
+                 * into the contact card below — and the server refuses the verb.
+                 */
+                ToggleButtons::make('customer_cancel_mode')
+                    ->label(__('billing.settings.self_service.cancel_mode'))
+                    ->options([
+                        MerchantBillingSettings::CANCEL_SELF_SERVICE => __('billing.settings.self_service.cancel_mode_self'),
+                        MerchantBillingSettings::CANCEL_CONTACT => __('billing.settings.self_service.cancel_mode_contact'),
+                    ])
+                    ->default(MerchantBillingSettings::CANCEL_SELF_SERVICE)
+                    ->inline()
+                    ->live()
+                    ->visible(fn (Get $get): bool => (bool) $get('allow_customer_cancel')),
+
+                TextInput::make('cancel_contact_email')
+                    ->label(__('billing.settings.self_service.cancel_contact_email'))
+                    ->helperText(__('billing.settings.self_service.cancel_contact_email_help'))
+                    ->email()
+                    ->visible(fn (Get $get): bool => (bool) $get('allow_customer_cancel')
+                        && $get('customer_cancel_mode') === MerchantBillingSettings::CANCEL_CONTACT),
+
+                TextInput::make('cancel_contact_phone')
+                    ->label(__('billing.settings.self_service.cancel_contact_phone'))
+                    ->maxLength(32)
+                    ->visible(fn (Get $get): bool => (bool) $get('allow_customer_cancel')
+                        && $get('customer_cancel_mode') === MerchantBillingSettings::CANCEL_CONTACT),
+
+                Textarea::make('cancel_contact_note')
+                    ->label(__('billing.settings.self_service.cancel_contact_note'))
+                    ->helperText(__('billing.settings.self_service.cancel_contact_note_help'))
+                    ->rows(2)
+                    ->maxLength(300)
+                    ->columnSpanFull()
+                    ->visible(fn (Get $get): bool => (bool) $get('allow_customer_cancel')
+                        && $get('customer_cancel_mode') === MerchantBillingSettings::CANCEL_CONTACT),
+
                 Toggle::make('allow_customer_skip')
                     ->label(__('billing.settings.self_service.allow_skip'))
                     ->helperText(__('billing.settings.self_service.allow_skip_help')),
@@ -343,6 +389,12 @@ class ManageBillingSettings extends Page implements HasForms
 
         $settings->allow_customer_pause = (bool) ($input['allow_customer_pause'] ?? true);
         $settings->allow_customer_cancel = (bool) ($input['allow_customer_cancel'] ?? true);
+        $settings->customer_cancel_mode = in_array($input['customer_cancel_mode'] ?? null, MerchantBillingSettings::CANCEL_MODES, true)
+            ? $input['customer_cancel_mode']
+            : MerchantBillingSettings::CANCEL_SELF_SERVICE;
+        $settings->cancel_contact_email = $this->blankToNull($input['cancel_contact_email'] ?? null);
+        $settings->cancel_contact_phone = $this->blankToNull($input['cancel_contact_phone'] ?? null);
+        $settings->cancel_contact_note = $this->blankToNull($input['cancel_contact_note'] ?? null);
         $settings->allow_customer_skip = (bool) ($input['allow_customer_skip'] ?? true);
         $settings->allow_customer_reschedule = (bool) ($input['allow_customer_reschedule'] ?? true);
         $settings->allow_customer_edit_items = (bool) ($input['allow_customer_edit_items'] ?? true);

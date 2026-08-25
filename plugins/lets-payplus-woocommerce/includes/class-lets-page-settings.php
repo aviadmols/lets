@@ -59,6 +59,9 @@ add_action('admin_post_lets_payplus_save_page_settings', function () {
     // Local (not a SaaS setting): email the admin on payment/iframe errors.
     update_option(LETS_PAYPLUS_NOTIFY_OPT, empty($_POST["lets_notify_on_error"]) ? "0" : "1");
 
+    // Local: the GOV address autocomplete at checkout (class-lets-address-autocomplete).
+    update_option(LETS_ADDRESS_OPT, empty($_POST['lets_address_autocomplete']) ? '0' : '1');
+
     $body = array(
         'language_code'             => isset($_POST['language_code']) ? sanitize_text_field(wp_unslash($_POST['language_code'])) : 'he',
         'charge_default'            => isset($_POST['charge_default']) ? sanitize_text_field(wp_unslash($_POST['charge_default'])) : '',
@@ -319,6 +322,19 @@ function lets_payplus_render_page_settings()
                     </label>
                     <p class="description">
                         <?php echo esc_html(sprintf(__('Alerts go to %s (Settings → General).', 'lets-payplus'), get_option('admin_email'))); ?>
+                    </p>
+                </td>
+            </tr>
+
+            <tr>
+                <th scope="row"><?php esc_html_e('Address autocomplete', 'lets-payplus'); ?></th>
+                <td>
+                    <label>
+                        <input type="checkbox" name="lets_address_autocomplete" value="1" <?php checked(lets_payplus_address_enabled()); ?>>
+                        <?php esc_html_e('Suggest city and street names at checkout from the Israeli government address registry', 'lets-payplus'); ?>
+                    </label>
+                    <p class="description">
+                        <?php esc_html_e('The registry holds cities and streets only — the shopper still types the house number. If the registry is unreachable, the fields simply behave as plain text.', 'lets-payplus'); ?>
                     </p>
                 </td>
             </tr>

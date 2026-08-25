@@ -4,13 +4,16 @@ namespace App\Domain\Account;
 
 use App\Domain\Account\Offers\AccountOfferAcceptService;
 use App\Domain\Account\Offers\AccountOfferOutcome;
+use App\Domain\Installments\CardUpdateService;
 use App\Domain\Lifecycle\SubscriptionEditService;
 use App\Domain\Lifecycle\SubscriptionLifecycleService;
 use App\Models\InstallmentPlan;
 use App\Models\MerchantBillingSettings;
+use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Support\Tenant;
 use Illuminate\Support\Carbon;
 
 /**
@@ -60,6 +63,15 @@ final class CustomerSubscriptionActions
      */
     public const ACTION_ACCEPT_OFFER = 'accept_offer';
 
+    /**
+     * "Update my card" — mints a PayPlus hosted re-vault page and answers with
+     * its LINK. Moves no money and changes no state here; the swap happens when
+     * PayPlus's callback lands (CardUpdateService). Deliberately behind NO
+     * merchant switch, the same doctrine as the Shopify contract verb: a shop
+     * must never be able to withhold the way a shopper fixes a failing card.
+     */
+    public const ACTION_UPDATE_CARD = 'update_card';
+
     public const ACTIONS = [
         self::ACTION_PAUSE,
         self::ACTION_RESUME,
@@ -68,6 +80,7 @@ final class CustomerSubscriptionActions
         self::ACTION_RESCHEDULE,
         self::ACTION_ITEMS,
         self::ACTION_ACCEPT_OFFER,
+        self::ACTION_UPDATE_CARD,
     ];
 
     /** Written to the Timeline so an audit can tell a shopper's edit from a merchant's. */
@@ -78,7 +91,12 @@ final class CustomerSubscriptionActions
 
     private const RESUMABLE = [PlanStatus::PAUSED];
 
-    private const CANCELLABLE = [
+    /**
+     * Public because AccountPresenter asks the same question for the
+     * contact-mode cancel button: "would a cancel have been offered here?"
+     * must have exactly one answer.
+     */
+    public const CANCELLABLE = [
         PlanStatus::ACTIVE,
         PlanStatus::PAUSED,
         PlanStatus::AWAITING_FIRST_PAYMENT,
@@ -161,6 +179,7 @@ final class CustomerSubscriptionActions
                 (string) ($input['target'] ?? ''),
                 $input['amount'] ?? null,
             ),
+            self::ACTION_UPDATE_CARD => $this->updateCard($plan),
         };
     }
 
@@ -183,11 +202,42 @@ final class CustomerSubscriptionActions
         return [
             self::ACTION_PAUSE => $mayExit && $settings->allowsCustomerPause() && in_array($plan->status, self::PAUSABLE, true),
             self::ACTION_RESUME => $settings->allowsCustomerPause() && in_array($plan->status, self::RESUMABLE, true),
-            self::ACTION_CANCEL => $mayExit && $settings->allowsCustomerCancel() && in_array($plan->status, self::CANCELLABLE, true),
+            // Self-service only: in contact mode the button still exists, but it
+            // opens the merchant's contact card (AccountPresenter::plan's
+            // `cancel_contact`), never this verb.
+            self::ACTION_CANCEL => $mayExit && $settings->allowsSelfServiceCancel() && in_array($plan->status, self::CANCELLABLE, true),
             self::ACTION_SKIP => $settings->allowsCustomerSkip() && $recurring && $plan->status === PlanStatus::ACTIVE,
             self::ACTION_RESCHEDULE => $settings->allowsCustomerReschedule() && $recurring && $plan->status === PlanStatus::ACTIVE,
             self::ACTION_ITEMS => $settings->allowsCustomerEditItems() && $recurring && $plan->status === PlanStatus::ACTIVE,
+            // No merchant switch, and offered even with NO saved card (that is
+            // the "add a card" case). CardUpdateService owns the shop half of
+            // the answer (PayPlus connected + a callback token to come home to).
+            self::ACTION_UPDATE_CARD => Tenant::current() instanceof Shop
+                && CardUpdateService::availableFor(Tenant::current(), $plan),
         ];
+    }
+
+    /**
+     * Mint the PayPlus re-vault page. The LINK is the outcome — the renderer
+     * navigates to it; nothing on the plan moves until the callback lands.
+     */
+    private function updateCard(InstallmentPlan $plan): array
+    {
+        $shop = Tenant::current();
+
+        if (! $shop instanceof Shop || ! CardUpdateService::availableFor($shop, $plan)) {
+            return $this->fail(self::RESULT_NOT_ALLOWED);
+        }
+
+        $link = app(CardUpdateService::class)->mintPage($shop, $plan);
+
+        if ($link === null) {
+            // The gateway refused or is misconfigured — a state problem, not a
+            // permission one; the generic failure toast fits.
+            return $this->fail(self::RESULT_BAD_STATE);
+        }
+
+        return $this->ok($plan) + ['link' => $link];
     }
 
     // === Verbs ===
@@ -232,7 +282,10 @@ final class CustomerSubscriptionActions
 
     private function cancel(InstallmentPlan $plan): array
     {
-        if (! MerchantBillingSettings::current()->allowsCustomerCancel()) {
+        // SELF-SERVICE only. In contact mode this endpoint refuses even though
+        // a cancel button exists on the page — that button opens the contact
+        // card, and a crafted request must not be a way around the policy.
+        if (! MerchantBillingSettings::current()->allowsSelfServiceCancel()) {
             return $this->fail(self::RESULT_NOT_ALLOWED);
         }
         // The commitment, enforced on the server as well as in the layout.

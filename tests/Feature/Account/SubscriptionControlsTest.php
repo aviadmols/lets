@@ -116,12 +116,12 @@ final class SubscriptionControlsTest extends TestCase
 
             app()->setLocale('he');
             $he = app(AccountPresenter::class)->present($visitor)['subscriptions'][0];
-            $this->assertSame('כל חודש', $he['cadence']);
+            $this->assertSame('בחודש', $he['cadence']);
             $this->assertSame('₪', $he['currency_symbol']);
 
             app()->setLocale('en');
             $en = app(AccountPresenter::class)->present($visitor)['subscriptions'][0];
-            $this->assertSame('every month', $en['cadence']);
+            $this->assertSame('per month', $en['cadence']);
 
             app()->setLocale($previous);
         });

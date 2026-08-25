@@ -36,6 +36,27 @@ enum BillingFrequency: string
         };
     }
 
+    /**
+     * Step a boundary BACK by one cycle — the inverse of addTo(), for callers
+     * that hold the END of a period (next_charge_at) and need its start (the
+     * proration denominator). A separate method rather than a signed count:
+     * addTo() clamps its count to ≥1, so a negative there silently steps
+     * FORWARD — the exact bug this method exists to make unwritable.
+     */
+    public function subFrom(CarbonInterface $base, int $intervalCount = 1): CarbonInterface
+    {
+        $n = max(1, $intervalCount);
+
+        return match ($this) {
+            self::DAILY => $base->copy()->subDays($n),
+            self::WEEKLY => $base->copy()->subWeeks($n),
+            self::BIWEEKLY => $base->copy()->subWeeks(2 * $n),
+            self::MONTHLY => $base->copy()->subMonthsNoOverflow($n),
+            self::QUARTERLY => $base->copy()->subMonthsNoOverflow(3 * $n),
+            self::YEARLY => $base->copy()->subYearsNoOverflow($n),
+        };
+    }
+
     /** A stable cycle-date stamp for the idempotency key (recurring:{...}:{date}). */
     public function cycleStamp(CarbonInterface $when): string
     {

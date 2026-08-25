@@ -70,4 +70,20 @@ return [
         'return_cancel_body' => 'No problem — nothing was charged. You can close this window.',
         'return_back' => 'Back to the store',
     ],
+
+    /*
+     * The card-update re-vault flow: the PayPlus page's line-item name and the
+     * landing the shopper returns to. Its own sentences — "your card was
+     * updated" is not "your payment went through".
+     */
+    'card_update' => [
+        'item' => 'Payment method update',
+        'return_success_title' => 'Your card was updated',
+        'return_success_body' => 'Done — your next charges will use the new card.',
+        'return_failure_title' => 'The card was not updated',
+        'return_failure_body' => 'Nothing changed — your current card stays as it was. You can close this window and try again.',
+        'return_cancel_title' => 'Update cancelled',
+        'return_cancel_body' => 'No problem — nothing changed. You can close this window.',
+        'return_back' => 'Back to my account',
+    ],
 ];

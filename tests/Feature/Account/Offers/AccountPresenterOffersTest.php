@@ -41,7 +41,8 @@ final class AccountPresenterOffersTest extends TestCase
     private const TARGET_KEYS = [
         'key', 'index', 'kind', 'mode', 'timing', 'fulfilment', 'product', 'quantity',
         'amount', 'currency', 'currency_symbol', 'price_display', 'cadence',
-        'first_charge_at', 'next_order_at', 'button_text', 'disclosure',
+        'first_charge_at', 'next_order_at', 'due_now', 'due_now_display',
+        'button_text', 'disclosure',
     ];
 
     protected function tearDown(): void
@@ -101,7 +102,7 @@ final class AccountPresenterOffersTest extends TestCase
             $this->assertSame('ILS', $target['currency']);
             $this->assertSame('₪', $target['currency_symbol']);
             $this->assertSame('49 ₪', $target['price_display']);
-            $this->assertSame('every month', $target['cadence']);
+            $this->assertSame('per month', $target['cadence']);
             $this->assertSame(AccountOfferTarget::MODE_REPLACE, $target['mode']);
             $this->assertSame(AccountOfferTarget::TIMING_IMMEDIATE, $target['timing']);
             $this->assertNull($target['fulfilment'], 'a subscription has no fulfilment to report');
@@ -156,7 +157,7 @@ final class AccountPresenterOffersTest extends TestCase
             $this->assertSame(AccountOfferTarget::KIND_SUBSCRIPTION, $first['kind']);
             $this->assertSame(49.0, $first['amount']);
             $this->assertSame(1, $first['quantity']);
-            $this->assertSame('every month', $first['cadence']);
+            $this->assertSame('per month', $first['cadence']);
             $this->assertSame('Switch to monthly', $first['button_text']);
 
             // The one-time target: priced from the catalog x quantity, no cadence,
@@ -249,7 +250,7 @@ final class AccountPresenterOffersTest extends TestCase
             $this->assertStringContainsString('Go monthly', $html);
             $this->assertStringContainsString('Membership 2675', $html);
             $this->assertStringContainsString('49 ₪', $html);
-            $this->assertStringContainsString('every month', $html);
+            $this->assertStringContainsString('per month', $html);
             $this->assertStringNotContainsString('{{', $html);
 
             // The button is a sentinel the renderer replaces with a control IT

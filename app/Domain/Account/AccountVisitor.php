@@ -34,8 +34,14 @@ final class AccountVisitor
     public const NUMERIC_REF_COLUMN = 'customer_id';
 
     public const SOURCE_WOOCOMMERCE = 'woocommerce';  // plugin server → HMAC
+
     public const SOURCE_PROXY = 'proxy';              // Shopify App Proxy (signed query)
+
+    public const SOURCE_EXTENSION = 'extension';      // Shopify customer-account extension (session token)
+
     public const SOURCE_PREVIEW = 'preview';          // the admin's appearance preview
+
+    public const SOURCE_HOSTED = 'hosted';            // the SaaS-hosted area opened from an emailed login link
 
     private function __construct(
         public readonly Shop $shop,

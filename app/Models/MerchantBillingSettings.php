@@ -59,6 +59,18 @@ class MerchantBillingSettings extends Model
 
     public const DEFAULT_ALLOW_CUSTOMER_CANCEL = true;
 
+    /**
+     * HOW a customer cancels, once cancelling is allowed at all. SELF is the
+     * one-click cancel that always existed; CONTACT keeps the button but turns
+     * the click into the merchant's contact card — the subscription then ends
+     * only through support. `allow_customer_cancel` off still means no button.
+     */
+    public const CANCEL_SELF_SERVICE = 'self_service';
+
+    public const CANCEL_CONTACT = 'contact';
+
+    public const CANCEL_MODES = [self::CANCEL_SELF_SERVICE, self::CANCEL_CONTACT];
+
     public const DEFAULT_ALLOW_CUSTOMER_SKIP = true;
 
     public const DEFAULT_ALLOW_CUSTOMER_RESCHEDULE = true;
@@ -221,6 +233,51 @@ class MerchantBillingSettings extends Model
     public function allowsCustomerCancel(): bool
     {
         return (bool) ($this->allow_customer_cancel ?? self::DEFAULT_ALLOW_CUSTOMER_CANCEL);
+    }
+
+    /** The cancel mode, guarded — an unreadable value is self-service (today's law). */
+    public function customerCancelMode(): string
+    {
+        $mode = (string) ($this->customer_cancel_mode ?? '');
+
+        return in_array($mode, self::CANCEL_MODES, true) ? $mode : self::CANCEL_SELF_SERVICE;
+    }
+
+    /** May the shopper end the subscription themselves, in one click? */
+    public function allowsSelfServiceCancel(): bool
+    {
+        return $this->allowsCustomerCancel()
+            && $this->customerCancelMode() === self::CANCEL_SELF_SERVICE;
+    }
+
+    /** Is the cancel button a door to support rather than a verb? */
+    public function cancelsViaContact(): bool
+    {
+        return $this->allowsCustomerCancel()
+            && $this->customerCancelMode() === self::CANCEL_CONTACT;
+    }
+
+    /**
+     * The contact card the popup shows, or null when the mode is not contact —
+     * every field trimmed and guarded, because it renders on a shopper's page.
+     *
+     * @return array{email: ?string, phone: ?string, note: ?string}|null
+     */
+    public function cancelContact(): ?array
+    {
+        if (! $this->cancelsViaContact()) {
+            return null;
+        }
+
+        $email = trim((string) ($this->cancel_contact_email ?? ''));
+        $phone = trim((string) ($this->cancel_contact_phone ?? ''));
+        $note = trim((string) ($this->cancel_contact_note ?? ''));
+
+        return [
+            'email' => filter_var($email, FILTER_VALIDATE_EMAIL) !== false ? $email : null,
+            'phone' => $phone !== '' ? mb_substr($phone, 0, 32) : null,
+            'note' => $note !== '' ? mb_substr($note, 0, 300) : null,
+        ];
     }
 
     public function allowsCustomerSkip(): bool

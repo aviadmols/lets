@@ -59,16 +59,25 @@ class AccountOfferTarget extends Model
     public const MODES = [self::MODE_ADD, self::MODE_REPLACE];
 
     /**
-     * WHEN a replacement takes effect. IMMEDIATE charges the saved card on the
-     * click and ends the old plan once the money lands. PERIOD_END schedules the
-     * new plan's first charge for the day the old one would have renewed and ends
-     * the old plan now — no proration, no double charge, no gap.
+     * WHEN — and for HOW MUCH — a replacement takes effect. All three switch the
+     * subscription immediately; they differ only in the money:
+     *
+     *   IMMEDIATE   charges the full new price on the click; the cycle restarts
+     *               today.
+     *   PRORATED    charges only the DIFFERENCE for the remainder of the paid
+     *               period (ReplaceProration), keeps the old renewal date, and
+     *               bills the full new price from that date on. A downgrade
+     *               prorates to zero — we never refund automatically.
+     *   PERIOD_END  charges nothing today; the new plan's first (full) charge
+     *               falls on the day the old one would have renewed.
      */
     public const TIMING_IMMEDIATE = 'immediate';
 
+    public const TIMING_PRORATED = 'prorated';
+
     public const TIMING_PERIOD_END = 'period_end';
 
-    public const TIMINGS = [self::TIMING_IMMEDIATE, self::TIMING_PERIOD_END];
+    public const TIMINGS = [self::TIMING_IMMEDIATE, self::TIMING_PRORATED, self::TIMING_PERIOD_END];
 
     /**
      * HOW a one-time product reaches the shopper.

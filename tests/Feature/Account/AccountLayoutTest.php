@@ -22,12 +22,19 @@ final class AccountLayoutTest extends TestCase
 {
     // === CONSTANTS ===
     private const PLUGIN_CSS = 'plugins/lets-payplus-woocommerce/assets/css/lets-account.css';
+
     private const PLUGIN_JS = 'plugins/lets-payplus-woocommerce/assets/js/lets-account.js';
+
     private const SAAS_CSS = 'public/account/lets-account.css';
+
     private const SAAS_JS = 'public/account/lets-account.js';
+
     private const PLUGIN_PHP = 'plugins/lets-payplus-woocommerce/includes/class-lets-account.php';
+
     private const SHELL_TEMPLATE = 'plugins/lets-payplus-woocommerce/templates/myaccount/my-account.php';
+
     private const DASHBOARD_TEMPLATE = 'plugins/lets-payplus-woocommerce/templates/myaccount/dashboard.php';
+
     private const SHELL_JS = 'plugins/lets-payplus-woocommerce/assets/js/lets-account-shell.js';
 
     public function test_the_two_copies_of_the_area_are_byte_identical(): void
@@ -167,7 +174,7 @@ final class AccountLayoutTest extends TestCase
         // The merchant's own markup places each button by key; a slot is matched
         // by the target it names, never by its position in the string.
         $this->assertStringContainsString('data-target', $js);
-        $this->assertStringContainsString("slot.getAttribute(OFFER_SLOT_KEY)", $js);
+        $this->assertStringContainsString('slot.getAttribute(OFFER_SLOT_KEY)', $js);
         $this->assertStringContainsString('slot.parentNode.removeChild(slot)', $js);
 
         // A payload with no targets is not a card with nothing to click — it is
@@ -203,8 +210,10 @@ final class AccountLayoutTest extends TestCase
         );
 
         // The renderer's version is the plugin's compatibility handle: a payload
-        // shape this wide has to be visible to the page that mounts it.
-        $this->assertStringContainsString('version: 6', $js);
+        // shape this wide has to be visible to the page that mounts it. Bumped
+        // to 7 when the renderer learned `nonceHeader` — the SaaS-hosted area
+        // sends Laravel's CSRF token, WordPress keeps its X-WP-Nonce default.
+        $this->assertStringContainsString('version: 7', $js);
     }
 
     /**

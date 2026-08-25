@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.38.0
+Stable tag: 0.40.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,19 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.40.0 =
+* Passwordless arrivals now carry a MODE: campaign-email sign-in links land the
+  CUSTOMER in their own account (no impersonation banner, quick registration
+  for a first-time address when the store allows it); the admin "log in as
+  customer" flow is unchanged.
+* Israeli GOV address autocomplete at checkout: city + street suggestions from
+  the data.gov.il registry, proxied through the plugin (toggle on Settings →
+  LETS; the shopper still types the house number).
+* Personal area: welcome greeting, per-cycle pricing, a toggleable quick-stats
+  strip and "gifts from us" list, no visible internal subscription id,
+  cancel-via-support contact popup, and a secure PayPlus card-update page from
+  the payment-method row.
 
 = 0.38.0 =
 * A subscription that has ENDED — cancelled or completed — now opens folded in

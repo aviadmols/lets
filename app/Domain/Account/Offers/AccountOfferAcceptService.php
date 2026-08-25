@@ -211,14 +211,27 @@ final class AccountOfferAcceptService
             return $this->purchases->purchase($offer, $target, $quote, $source);
         }
 
-        $immediate = $target->chargesNow();
-        $firstChargeAt = $this->firstChargeAt($target, $source);
+        // A PRORATED switch charges only the remainder-of-period difference —
+        // re-derived HERE, never trusted from the page: days only shrink between
+        // the load and the click, so the charge can only be less than shown.
+        // Null = not a prorated target; 0.0 = prorated, nothing chargeable
+        // (a downgrade, or a period already over) → mechanically a period-end.
+        $dueNow = ReplaceProration::dueNow($target, $source, $quote->amount);
+
+        $immediate = $target->chargesNow() && ($dueNow === null || $dueNow >= ReplaceProration::MIN_CHARGE);
+        $firstChargeAt = $this->firstChargeAt($source, $immediate);
+
+        // A prorated charge stamps TODAY (its idempotency cycle), so the
+        // orchestrator's success path advances next_charge_at from today — a
+        // month too early. The date the FULL price resumes is remembered on the
+        // plan and restored after the money lands (and by the crash repair).
+        $resumeAt = ($dueNow !== null && $immediate) ? $this->periodEnd($source) : null;
 
         // === Step A ===
-        $new = DB::transaction(function () use ($visitor, $offer, $target, $quote, $source, $firstChargeAt, $immediate, $settings): InstallmentPlan {
-            $new = $this->createPlan($visitor, $offer, $target, $quote, $source, $firstChargeAt, $immediate);
-            $this->writeConsent($new, $offer, $quote, $source, $settings);
-            $this->recordAcceptance($offer, $target, $quote, $source, $new);
+        $new = DB::transaction(function () use ($visitor, $offer, $target, $quote, $source, $firstChargeAt, $immediate, $dueNow, $resumeAt, $settings): InstallmentPlan {
+            $new = $this->createPlan($visitor, $offer, $target, $quote, $source, $firstChargeAt, $immediate, $dueNow, $resumeAt);
+            $this->writeConsent($new, $offer, $quote, $source, $settings, $dueNow);
+            $this->recordAcceptance($offer, $target, $quote, $source, $new, $dueNow);
 
             return $new;
         });
@@ -241,6 +254,8 @@ final class AccountOfferAcceptService
             DB::transaction(function () use ($offer, $target, $source, $new): void {
                 $this->completeSwitch($offer, $target, $source, $new->refresh());
             });
+
+            $this->restoreRenewalDate($new->refresh());
 
             return AccountOfferOutcome::ok($new->refresh());
         }
@@ -270,6 +285,8 @@ final class AccountOfferAcceptService
         InstallmentPlan $source,
         Carbon $firstChargeAt,
         bool $immediate,
+        ?float $dueNow = null,
+        ?Carbon $resumeAt = null,
     ): InstallmentPlan {
         return $this->plans->createForCustomer($visitor->shop, [
             'product_gid' => (string) ($quote->product->external_id ?? ''),
@@ -305,6 +322,18 @@ final class AccountOfferAcceptService
                     // True only across the window between the money landing and
                     // the old plan being closed.
                     'replace_pending' => $immediate && $target->isReplace(),
+                    // A PRORATED switch's one-off first charge. Read by
+                    // CycleAmountResolver for charge #1 ONLY — `amount` above
+                    // stays the plan's real per-cycle price, so the proration
+                    // can never quietly become the subscription's price.
+                    ...($immediate && $dueNow !== null
+                        ? [InstallmentPlan::META_OFFER_FIRST_CHARGE => round($dueNow, 2)]
+                        : []),
+                    // …and the date the FULL price resumes, restored after the
+                    // prorated money lands (Step C, or the crash repair).
+                    ...($resumeAt !== null
+                        ? [InstallmentPlan::META_OFFER_RESUME_AT => $resumeAt->toDateString()]
+                        : []),
                 ],
             ],
         ]);
@@ -326,7 +355,27 @@ final class AccountOfferAcceptService
         AccountOfferQuote $quote,
         InstallmentPlan $source,
         MerchantBillingSettings $settings,
+        ?float $dueNow = null,
     ): void {
+        // A prorated switch's one-off difference is part of what was AGREED —
+        // a consent that only names the per-cycle price would misdescribe the
+        // very first charge, which is the one disputes are about.
+        $amountDescription = sprintf(
+            '%s %s per billing cycle, charged to the saved card — accepted from the account-area offer "%s" on subscription %s',
+            (string) $quote->amount,
+            $quote->currency,
+            (string) $offer->name,
+            (string) $source->public_id,
+        );
+
+        if ($dueNow !== null && $dueNow >= ReplaceProration::MIN_CHARGE) {
+            $amountDescription .= sprintf(
+                ' — with a one-off prorated first charge of %s %s for the remainder of the current period',
+                number_format($dueNow, 2, '.', ''),
+                $quote->currency,
+            );
+        }
+
         CustomerConsent::query()->firstOrCreate(
             [
                 'shop_id' => (int) $new->shop_id,
@@ -340,13 +389,7 @@ final class AccountOfferAcceptService
                 'accepted_at' => now(),
                 'accepted_terms_version' => self::CONSENT_VERSION_PREFIX.':'.$settings->termsVersion(),
                 'cancellation_policy_snapshot' => $settings->cancellationPolicyText(),
-                'billing_amount_description' => sprintf(
-                    '%s %s per billing cycle, charged to the saved card — accepted from the account-area offer "%s" on subscription %s',
-                    (string) $quote->amount,
-                    $quote->currency,
-                    (string) $offer->name,
-                    (string) $source->public_id,
-                ),
+                'billing_amount_description' => $amountDescription,
                 'billing_frequency_description' => $quote->frequency->value,
             ],
         );
@@ -359,6 +402,7 @@ final class AccountOfferAcceptService
         AccountOfferQuote $quote,
         InstallmentPlan $source,
         InstallmentPlan $new,
+        ?float $dueNow = null,
     ): void {
         $details = [
             'offer_id' => (string) $offer->getKey(),
@@ -371,6 +415,9 @@ final class AccountOfferAcceptService
             'currency' => $quote->currency,
             'source_plan' => (string) $source->public_id,
             'new_plan' => (string) $new->public_id,
+            // The prorated one-off, when there is one — the feed must show the
+            // number that actually moved today, not only the per-cycle price.
+            ...($dueNow !== null ? ['first_charge_amount' => round($dueNow, 2)] : []),
         ];
 
         foreach ([$new->getKey(), $source->getKey()] as $planId) {
@@ -560,6 +607,10 @@ final class AccountOfferAcceptService
             });
         }
 
+        // The prorated deal's second half, said here too: a crash between the
+        // money landing and this repair left next_charge_at a month early.
+        $this->restoreRenewalDate($plan->refresh());
+
         $this->clearPending($plan);
     }
 
@@ -590,25 +641,58 @@ final class AccountOfferAcceptService
     /**
      * When the new subscription's first charge falls.
      *
-     * Immediate: today. Period end: the day the replaced plan would have renewed —
-     * clamped forward to today, because an imported member whose renewal date
-     * passed during a migration hold would otherwise be given a date in the past,
-     * which the scheduler reads as "overdue" and charges anyway. Saying today is
-     * the same outcome, honestly labelled on the shopper's own disclosure.
+     * `$immediate` already answers the whole question: a charge that happens NOW
+     * (full or prorated) stamps today; everything else — period end, and a
+     * prorated switch whose due-now rounded to zero — waits for the day the
+     * replaced plan would have renewed. Clamped forward to today, because an
+     * imported member whose renewal date passed during a migration hold would
+     * otherwise be given a date in the past, which the scheduler reads as
+     * "overdue" and charges anyway.
      */
-    private function firstChargeAt(AccountOfferTarget $target, InstallmentPlan $source): Carbon
+    private function firstChargeAt(InstallmentPlan $source, bool $immediate): Carbon
+    {
+        if ($immediate) {
+            return now()->startOfDay();
+        }
+
+        return $this->periodEnd($source) ?? now()->startOfDay();
+    }
+
+    /** The replaced plan's renewal date, or null when it is past or unset. */
+    private function periodEnd(InstallmentPlan $source): ?Carbon
     {
         $today = now()->startOfDay();
-
-        if ($target->chargesNow()) {
-            return $today;
-        }
 
         $renewal = $source->next_charge_at instanceof Carbon
             ? $source->next_charge_at->copy()->startOfDay()
             : null;
 
-        return $renewal !== null && $renewal->greaterThan($today) ? $renewal : $today;
+        return $renewal !== null && $renewal->greaterThan($today) ? $renewal : null;
+    }
+
+    /**
+     * After a PRORATED charge lands: put the plan back on the old renewal date.
+     * The orchestrator advanced next_charge_at from TODAY (the charge's own
+     * stamp); the shopper's deal is "the difference now, the full price from the
+     * old date" — this is the second half of that sentence. Reads the meta so
+     * the crash repair can say it too.
+     */
+    private function restoreRenewalDate(InstallmentPlan $plan): void
+    {
+        $resume = trim((string) ($plan->accountOfferMeta()[InstallmentPlan::META_OFFER_RESUME_AT] ?? ''));
+        if ($resume === '') {
+            return;
+        }
+
+        try {
+            $resumeAt = Carbon::parse($resume)->startOfDay();
+        } catch (Throwable) {
+            return;
+        }
+
+        if ($resumeAt->greaterThan(now()->startOfDay())) {
+            $plan->forceFill(['next_charge_at' => $resumeAt])->save();
+        }
     }
 
     private function clearPending(InstallmentPlan $plan): void

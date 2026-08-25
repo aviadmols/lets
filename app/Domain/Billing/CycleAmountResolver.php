@@ -29,7 +29,11 @@ final class CycleAmountResolver
     // === CONSTANTS ===
     /** Ladder rungs, for logging/tests. */
     public const SOURCE_OVERRIDE = 'next_order_override';
+
+    public const SOURCE_FIRST_CHARGE = 'offer_first_charge';
+
     public const SOURCE_REGULAR = 'regular_amount';
+
     public const SOURCE_STEADY = 'installment_amount';
 
     /**
@@ -44,14 +48,23 @@ final class CycleAmountResolver
     /**
      * The amount to charge for charge #$chargeNumber. Ladder:
      *   1. the one-time next-order override (W25) — still wins over everything;
-     *   2. past the intro window → regular_amount (the stepped-up price);
-     *   3. the steady-state installment_amount.
+     *   2. a PRORATED switch's one-off first charge (charge #1 only): the plan
+     *      was born from an offer whose deal is "the difference now, the full
+     *      price from the old renewal" — installment_amount stays that full
+     *      price, and this rung is what makes the first slot the difference;
+     *   3. past the intro window → regular_amount (the stepped-up price);
+     *   4. the steady-state installment_amount.
      */
     public function amountForCharge(InstallmentPlan $plan, int $chargeNumber): float
     {
         $override = $plan->nextOrderOverride();
         if ($override !== null && isset($override['amount'])) {
             return round((float) $override['amount'], 2);
+        }
+
+        $firstCharge = $plan->offerFirstChargeAmount();
+        if ($firstCharge !== null && $chargeNumber <= 1) {
+            return $firstCharge;
         }
 
         if ($this->windowEndedAt($plan, $chargeNumber)) {

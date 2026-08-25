@@ -530,11 +530,6 @@
     letter-spacing: -0.01em;
 }
 
-.la-sub__id {
-    font-size: 0.75rem;
-    color: var(--la-faint);
-}
-
 .la-sub__price {
     display: flex;
     align-items: baseline;
@@ -2279,4 +2274,128 @@ a.la-banner:focus-visible {
 /* An ended card is history: it recedes until the shopper opens it. */
 .la-sub[data-collapsed]:not([open]) {
     background: var(--la-card-2);
+}
+
+/* -------------------------------------------------------------------------
+   The contact-mode cancel dialog (`openCancelContact`). One overlay at a
+   time; tokens only, so the merchant's theme colours it like everything else.
+   ------------------------------------------------------------------------- */
+
+.la-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--la-gap);
+    background: rgba(16, 24, 40, 0.45);
+}
+
+.la-dialog__card {
+    inline-size: 100%;
+    max-inline-size: 26rem;
+    padding: var(--la-pad);
+    background: var(--la-card);
+    border: 1px solid var(--la-border);
+    border-radius: var(--la-radius);
+    box-shadow: 0 20px 50px rgba(16, 24, 40, 0.25);
+    text-align: start;
+}
+
+.la-dialog__title {
+    margin: 0 0 10px;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--la-fg);
+}
+
+.la-dialog__body {
+    margin: 0 0 16px;
+    color: var(--la-muted);
+    line-height: 1.55;
+}
+
+.la-dialog__row {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    margin: 0 0 8px;
+}
+
+.la-dialog__label {
+    color: var(--la-faint);
+    font-size: 0.85rem;
+}
+
+.la-dialog__link {
+    color: var(--la-calm);
+    text-decoration: none;
+    unicode-bidi: isolate;
+}
+
+.la-dialog__link:hover {
+    text-decoration: underline;
+}
+
+.la-dialog__close {
+    margin-block-start: 12px;
+}
+
+/* -------------------------------------------------------------------------
+   The payment-method row: chip + the update/add-card button beside it.
+   ------------------------------------------------------------------------- */
+
+.la-card-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.la-btn--small {
+    padding: 4px 12px;
+    font-size: 0.8rem;
+}
+
+/* -------------------------------------------------------------------------
+   "Gifts from us" (`renderGifts`) — the keepsake shelf.
+   ------------------------------------------------------------------------- */
+
+.la-gifts {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.la-gift {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.la-gift__image {
+    inline-size: 56px;
+    block-size: 56px;
+    object-fit: cover;
+    border-radius: var(--la-radius-sm);
+    border: 1px solid var(--la-border);
+    flex: none;
+}
+
+.la-gift__text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-inline-size: 0;
+}
+
+.la-gift__title {
+    font-weight: 600;
+    color: var(--la-fg);
+}
+
+.la-gift__date {
+    font-size: 0.85rem;
+    color: var(--la-muted);
 }

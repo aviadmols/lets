@@ -26,8 +26,11 @@ final class PortalSignedUrlService
 {
     // === CONSTANTS ===
     public const ROUTE_SHOW = 'portal.show';
+
     public const ROUTE_PAUSE = 'portal.pause';
+
     public const ROUTE_RESUME = 'portal.resume';
+
     public const ROUTE_CANCEL = 'portal.cancel';
 
     /**
