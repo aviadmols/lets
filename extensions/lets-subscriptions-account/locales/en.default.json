@@ -51,6 +51,7 @@
     "skip_ok": "Done — your next delivery is skipped.",
     "reschedule_ok": "Your next charge date is updated.",
     "cancel_ok": "Your subscription is cancelled.",
+    "saved": "Saved.",
     "failed": "That didn't work. Please try again.",
     "failed_bad_date": "Please pick a future date (YYYY-MM-DD).",
     "failed_not_yours": "We couldn't find that subscription on your account.",

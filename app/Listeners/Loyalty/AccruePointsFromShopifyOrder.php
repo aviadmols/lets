@@ -65,8 +65,8 @@ final class AccruePointsFromShopifyOrder
         $customerRef = trim((string) (data_get($order, 'customer.id') ?? ''));
         $amount = round((float) (data_get($order, 'total_price') ?? 0), 2);
 
-        if ($customerRef === '' || $amount <= 0) {
-            return; // a guest checkout has no identity to credit
+        if ($amount <= 0) {
+            return;
         }
 
         $shop = Shop::query()->find($shopId);
@@ -75,7 +75,27 @@ final class AccruePointsFromShopifyOrder
         }
 
         Tenant::run($shop, function () use ($shop, $customerRef, $amount, $orderId, $order): void {
+            // A guest checkout still carries the order-level email even when
+            // there is no customer record.
             $email = data_get($order, 'customer.email') ?? data_get($order, 'email');
+            $email = is_string($email) && trim($email) !== '' ? trim($email) : null;
+
+            // The referral is judged BEFORE the buyer's identity wall: a guest
+            // has no member account to credit, but the friend who sent them
+            // still earned their share — the order's email is enough to block
+            // a self-referral.
+            app(ReferralService::class)->attribute(
+                shop: $shop,
+                codes: $this->discountCodes($order),
+                externalOrderId: $orderId,
+                amount: $amount,
+                buyerRef: $customerRef !== '' ? $customerRef : null,
+                buyerEmail: $email,
+            );
+
+            if ($customerRef === '') {
+                return; // a guest checkout has no identity to credit
+            }
 
             app(PointsEngine::class)->accrue(
                 customerRef: $customerRef,
@@ -83,22 +103,29 @@ final class AccruePointsFromShopifyOrder
                 idempotencyKey: LoyaltyPointEvent::keyForShopifyOrder($orderId),
                 meta: [
                     'email' => $email,
+                    'name' => $this->customerName($order),
                     'context' => 'shopify_order',
                     'order_id' => $orderId,
                 ],
             );
-
-            // The friend's purchase also pays the member who referred them —
-            // the referral code rode in on the order as a discount code.
-            app(ReferralService::class)->attribute(
-                shop: $shop,
-                codes: $this->discountCodes($order),
-                externalOrderId: $orderId,
-                amount: $amount,
-                buyerRef: $customerRef,
-                buyerEmail: is_string($email) ? $email : null,
-            );
         });
+    }
+
+    /**
+     * The shopper's name as the order names them — kept on the accrual event so
+     * a member who joined through the proxy page (which knows only a numeric
+     * id) can have their loyalty account enriched later.
+     *
+     * @param  array<string, mixed>  $order
+     */
+    private function customerName(array $order): ?string
+    {
+        $name = trim(implode(' ', array_filter([
+            trim((string) (data_get($order, 'customer.first_name') ?? '')),
+            trim((string) (data_get($order, 'customer.last_name') ?? '')),
+        ])));
+
+        return $name !== '' ? $name : null;
     }
 
     /**

@@ -1,6 +1,8 @@
 <?php
 
+use App\Domain\Account\CustomerSubscriptionActions;
 use App\Domain\ShopifySubscriptions\Http\CustomerContractController;
+use App\Http\Controllers\Shopify\Account\ShopifyAccountController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -15,8 +17,10 @@ use Illuminate\Support\Facades\Route;
  * The controller then matches the token's `sub` (the logged-in customer) against
  * the contract's owner, so a shopper can act on THEIR subscription only.
  *
- * READS are deliberately absent: the extension reads contracts via shopify.query
- * on the Customer Account API, which scopes to the logged-in customer natively.
+ * ONE transport for reads AND verbs: the extension bootstraps the whole
+ * personal area from GET /account (the AccountPresenter payload — contracts
+ * included) and posts every verb back here. The old shopify.query contracts
+ * read is retired; the payload is the single source the page draws from.
  * Stateless JSON — no session/CSRF (the JWT bearer is the auth).
  */
 Route::prefix('subscriptions/api')
@@ -32,4 +36,19 @@ Route::prefix('subscriptions/api')
             ->name('subscriptions.reschedule');
         Route::match(['post', 'options'], '/cancel', [CustomerContractController::class, 'cancel'])
             ->name('subscriptions.cancel');
+        // Card update: Shopify emails the shopper its own secure card page —
+        // the one verb with no merchant switch (it moves no money).
+        Route::match(['post', 'options'], '/card-update', [CustomerContractController::class, 'cardUpdate'])
+            ->name('subscriptions.card_update');
+
+        // The personal area (PayPlus rail) for the same extension: ONE bootstrap
+        // payload (AccountPresenter — the model the WooCommerce area renders),
+        // and the same customer verbs, keyed to the token's `sub` customer. The
+        // GET carries the Authorization header, so it needs the OPTIONS
+        // preflight too.
+        Route::match(['get', 'options'], '/account', [ShopifyAccountController::class, 'bootstrap'])
+            ->name('subscriptions.account');
+        Route::match(['post', 'options'], '/account/{action}', [ShopifyAccountController::class, 'action'])
+            ->whereIn('action', CustomerSubscriptionActions::ACTIONS)
+            ->name('subscriptions.account.act');
     });

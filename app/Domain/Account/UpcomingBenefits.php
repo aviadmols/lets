@@ -33,16 +33,24 @@ final class UpcomingBenefits
 {
     // === CONSTANTS ===
     public const KIND_NEXT_DELIVERY = 'next_delivery';
+
     public const KIND_NEXT_ORDER_EXTRA = 'next_order_extra';
+
     public const KIND_INTRO_ENDING = 'intro_ending';
+
     public const KIND_PLAN_COMPLETES = 'plan_completes';
+
     public const KIND_BIRTHDAY_POINTS = 'birthday_points';
+
     public const KIND_TIER_PROGRESS = 'tier_progress';
+
     public const KIND_REDEEM_READY = 'redeem_ready';
 
     /** Positive news, a heads-up, or something to work toward. Drives the badge. */
     public const TONE_GOOD = 'good';
+
     public const TONE_INFO = 'info';
+
     public const TONE_WARN = 'warn';
 
     /** Beyond this the "benefit" is not upcoming, it is hypothetical. */

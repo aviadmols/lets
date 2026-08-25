@@ -6,8 +6,10 @@ use App\Models\AccountOffer;
 use App\Models\AccountOfferTarget;
 use App\Models\InstallmentPlan;
 use App\Models\MerchantBillingSettings;
+use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Support\Tenant;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -38,6 +40,9 @@ final class AccountOfferEligibility
 
     /** A plan in one of these has ended; it can neither be replaced nor added to. */
     private const TERMINAL_STATUSES = [PlanStatus::CANCELLED, PlanStatus::COMPLETED];
+
+    /** Per-instance memo of storeCanRecordOrders() — asked once per card. */
+    private ?bool $storeWritable = null;
 
     /**
      * Is the PROMOTION live for this shop right now?
@@ -84,7 +89,36 @@ final class AccountOfferEligibility
             return false;
         }
 
+        // A buy-now target also needs a store that can RECORD the sale: the
+        // purchase service refuses the click when the order writer is
+        // unavailable (fail closed, before money), so drawing the button would
+        // only promise a refusal. Next-order targets ride the scheduler and
+        // stay visible.
+        if ($target->chargesNow() && ! $this->storeCanRecordOrders()) {
+            return false;
+        }
+
         return ! ($target->isSubscription() && $target->isAdd() && $settings->allowsOneSubscriptionOnly());
+    }
+
+    /**
+     * Can the tenant shop's store take an account-offer order right now?
+     * Memoised per instance — this is asked once per card on a page render.
+     */
+    private function storeCanRecordOrders(): bool
+    {
+        if ($this->storeWritable !== null) {
+            return $this->storeWritable;
+        }
+
+        $shop = Tenant::current();
+        if (! $shop instanceof Shop) {
+            return $this->storeWritable = false;
+        }
+
+        $writer = OfferOrderWriterFactory::for($shop);
+
+        return $this->storeWritable = ($writer !== null && $writer->available($shop));
     }
 
     /**

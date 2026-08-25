@@ -5,6 +5,7 @@ namespace App\Filament\Pages;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Models\MerchantPortalAppearance;
 use App\Models\MerchantSmsSettings;
+use App\Models\Shop;
 use App\Support\Tenant;
 use Filament\Forms\Components\ColorPicker;
 use Filament\Forms\Components\Hidden;
@@ -86,15 +87,26 @@ class ManageCustomerArea extends Page implements HasForms
             ->statePath('data')
             ->schema([
                 Tabs::make('customer_area')
-                    ->tabs([
+                    ->tabs(array_values(array_filter([
                         Tabs\Tab::make(__('account.admin.tab.sections'))->schema([$this->sectionsSection()]),
                         Tabs\Tab::make(__('account.admin.tab.appearance'))->schema([$this->appearanceSection()]),
                         Tabs\Tab::make(__('account.admin.tab.banners'))->schema([$this->bannersSection()]),
-                        Tabs\Tab::make(__('account.admin.tab.login'))->schema([$this->loginSection(), $this->smsSection()]),
+                        // Shopify owns customer login end to end (new customer
+                        // accounts), so the sign-in tab would be dead
+                        // configuration there — hidden rather than ignored.
+                        $this->isShopifyTenant()
+                            ? null
+                            : Tabs\Tab::make(__('account.admin.tab.login'))->schema([$this->loginSection(), $this->smsSection()]),
                         Tabs\Tab::make(__('account.admin.tab.copy'))->schema([$this->copySection()]),
-                    ])
+                    ])))
                     ->columnSpanFull(),
             ]);
+    }
+
+    /** Is the bound tenant a Shopify shop? (Settings are otherwise shared.) */
+    private function isShopifyTenant(): bool
+    {
+        return Tenant::current()?->platform === Shop::PLATFORM_SHOPIFY;
     }
 
     // === Tabs ===
@@ -134,6 +146,14 @@ class ManageCustomerArea extends Page implements HasForms
         return Section::make(__('account.admin.tab.appearance'))
             ->description(__('account.admin.appearance.font_note'))
             ->schema([
+                // On Shopify the area renders inside the sandboxed customer
+                // account, which follows the store's own branding — saying so
+                // beats letting a merchant tune colours that cannot apply.
+                Placeholder::make('shopify_branding_note')
+                    ->label(__('account.admin.appearance.shopify_note_heading'))
+                    ->content(__('account.admin.appearance.shopify_note_body'))
+                    ->visible(fn (): bool => $this->isShopifyTenant())
+                    ->columnSpanFull(),
                 // Language first: it changes every word on the page, so it is not
                 // a detail to find under the colours.
                 ToggleButtons::make('page_locale')
@@ -144,25 +164,31 @@ class ManageCustomerArea extends Page implements HasForms
                     ->columnSpanFull(),
                 ColorPicker::make('accent_color')
                     ->label(__('account.admin.appearance.accent'))
+                    ->visible(fn (): bool => ! $this->isShopifyTenant())
                     ->live(onBlur: true),
                 ColorPicker::make('accent_text_color')
                     ->label(__('account.admin.appearance.accent_text'))
+                    ->visible(fn (): bool => ! $this->isShopifyTenant())
                     ->live(onBlur: true),
                 ToggleButtons::make('theme_mode')
                     ->label(__('account.admin.appearance.theme'))
                     ->options($this->options(MerchantPortalAppearance::THEME_MODES, 'theme_option'))
+                    ->visible(fn (): bool => ! $this->isShopifyTenant())
                     ->inline()->live(),
                 ToggleButtons::make('corner_radius')
                     ->label(__('account.admin.appearance.radius'))
                     ->options($this->options(MerchantPortalAppearance::CORNER_RADII, 'radius_option'))
+                    ->visible(fn (): bool => ! $this->isShopifyTenant())
                     ->inline()->live(),
                 ToggleButtons::make('density')
                     ->label(__('account.admin.appearance.density'))
                     ->options($this->options(MerchantPortalAppearance::DENSITIES, 'density_option'))
+                    ->visible(fn (): bool => ! $this->isShopifyTenant())
                     ->inline()->live(),
                 ToggleButtons::make('card_style')
                     ->label(__('account.admin.appearance.card'))
                     ->options($this->options(MerchantPortalAppearance::CARD_STYLES, 'card_option'))
+                    ->visible(fn (): bool => ! $this->isShopifyTenant())
                     ->inline()->live(),
             ])
             ->columns(2);
@@ -456,18 +482,28 @@ class ManageCustomerArea extends Page implements HasForms
     /** A transient, GUARDED model built from raw form input — the sanitisation seam. */
     private function cleanFrom(array $input): MerchantPortalAppearance
     {
+        $stored = MerchantPortalAppearance::current();
+
+        // ABSENT is not the same as BLANK, and it now happens by design: the
+        // theming fields and the whole sign-in tab are hidden for a Shopify
+        // tenant, so Filament never submits them. A hidden field keeps its
+        // stored value rather than being silently reset by an unrelated save.
+        $keep = static fn (string $key, mixed $fallback): mixed => array_key_exists($key, $input)
+            ? $input[$key]
+            : $fallback;
+
         $model = new MerchantPortalAppearance;
         $model->forceFill([
-            'accent_color' => $input['accent_color'] ?? null,
-            'accent_text_color' => $input['accent_text_color'] ?? null,
-            'theme_mode' => $input['theme_mode'] ?? null,
-            'corner_radius' => $input['corner_radius'] ?? null,
-            'density' => $input['density'] ?? null,
-            'card_style' => $input['card_style'] ?? null,
+            'accent_color' => $keep('accent_color', $stored->accent_color),
+            'accent_text_color' => $keep('accent_text_color', $stored->accent_text_color),
+            'theme_mode' => $keep('theme_mode', $stored->theme_mode),
+            'corner_radius' => $keep('corner_radius', $stored->corner_radius),
+            'density' => $keep('density', $stored->density),
+            'card_style' => $keep('card_style', $stored->card_style),
             'page_locale' => $input['page_locale'] ?? null,
             'sections' => $this->normalizeSections($input['sections'] ?? []),
             'banners' => $this->normalizeBanners($input['banners'] ?? []),
-            'login_code_enabled' => (bool) ($input['login_code_enabled'] ?? false),
+            'login_code_enabled' => (bool) $keep('login_code_enabled', $stored->login_code_enabled),
             // ABSENT is not the same as BLANK. Filament drops a hidden field from
             // the submitted state, and the channel picker is hidden whenever code
             // sign-in is switched off — so a merchant on SMS who toggles the
@@ -475,8 +511,10 @@ class ManageCustomerArea extends Page implements HasForms
             // key is missing we keep what is stored.
             'login_code_channel' => array_key_exists('login_code_channel', $input)
                 ? $input['login_code_channel']
-                : MerchantPortalAppearance::current()->loginCodeChannel(),
-            'login_google_client_id' => $this->blankToNull($input['login_google_client_id'] ?? null),
+                : $stored->loginCodeChannel(),
+            'login_google_client_id' => array_key_exists('login_google_client_id', $input)
+                ? $this->blankToNull($input['login_google_client_id'])
+                : $stored->login_google_client_id,
             'welcome_heading' => $this->blankToNull($input['welcome_heading'] ?? null),
             'welcome_subtext' => $this->blankToNull($input['welcome_subtext'] ?? null),
             'support_email' => $this->blankToNull($input['support_email'] ?? null),

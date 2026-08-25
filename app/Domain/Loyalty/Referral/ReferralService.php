@@ -120,6 +120,14 @@ final class ReferralService
             return null;
         }
 
+        // A buyer with NO identity at all (phone-only / POS checkouts carry
+        // neither a customer id nor an email) cannot be checked against the
+        // self-referral wall — and a wall that cannot run must refuse, not
+        // wave through: a member could farm their own code anonymously.
+        if (trim((string) $buyerRef) === '' && trim((string) $buyerEmail) === '') {
+            return null;
+        }
+
         $referrer = $this->referrerFor($codes);
         if ($referrer === null) {
             return null;

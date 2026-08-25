@@ -42,6 +42,12 @@ return [
             'no_email' => 'No subscription of this customer carries an email address, so the store cannot tell who they are.',
             'unavailable' => 'This store is not connected to WooCommerce.',
         ],
+
+        'view_as' => [
+            'label' => 'View as customer',
+            'heading' => 'Customer account — read-only view',
+            'note' => 'You are viewing this customer\'s real account, read-only. Nothing here can be clicked on their behalf; the open was recorded on their timeline.',
+        ],
         'panel' => [
             'overview' => 'Customer overview',
             'comm_prefs' => 'Communication preferences',

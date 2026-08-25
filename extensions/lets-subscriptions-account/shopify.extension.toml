@@ -5,16 +5,17 @@
 # subscriptions OUR app created — pause, resume, skip a delivery, move the next
 # charge date, cancel. Merchants can link it from the account navigation menu.
 #
-# Data path (two directions, deliberately different):
-#   READS  → shopify.query() on the Customer Account API (subscriptionContracts).
-#            Scoped natively to the LOGGED-IN customer AND to contracts our app
-#            owns (customer_read_own_subscription_contracts) — no backend hop,
-#            no way to read someone else's subscription.
+# Data path (one transport since Phase 3):
+#   READS  → GET /subscriptions/api/account with a session-token (JWT) bearer —
+#            the whole AccountPresenter model, PayPlus plans AND the mirrored
+#            Shopify-Payments contracts, every string and button decided
+#            server-side. (The earlier shopify.query read on the Customer
+#            Account API is retired; SubscriptionsPage.jsx records it.)
 #   ACTIONS → direct fetch to the app's absolute /subscriptions/api/* endpoints
-#            with a session-token (JWT) bearer — the same transport contract the
-#            lets-thank-you extension proved. The backend re-verifies the token,
-#            binds the shop, and matches the token's customer against the
-#            contract's owner before any verb runs.
+#            with the same bearer — the transport contract the lets-thank-you
+#            extension proved. The backend re-verifies the token, binds the
+#            shop, matches the token's customer against the contract's owner,
+#            and obeys the merchant's self-service switches before any verb runs.
 #
 # Billing itself is app-driven server-side (subscriptionBillingAttemptCreate);
 # this page never touches money — it only manages the contract.
@@ -31,7 +32,7 @@ type = "ui_extension"
 
   [[extensions.targeting]]
   target = "customer-account.page.render"
-  module = "./src/SubscriptionsPage.jsx"
+  module = "./src/AccountPage.jsx"
 
   [extensions.capabilities]
   network_access = true

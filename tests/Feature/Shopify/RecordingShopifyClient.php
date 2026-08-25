@@ -81,8 +81,20 @@ final class RecordingShopifyClient implements ShopifyAdminApi
         return ['id' => $id, 'admin_graphql_api_id' => 'gid://shopify/Order/'.$id, 'name' => '#'.$id, 'financial_status' => $orderPayload['financial_status'] ?? 'paid'];
     }
 
+    /** @var array<int, array<string, mixed>> Draft payloads, for shape assertions. */
+    public array $draftOrders = [];
+
+    /** When set, createDraftOrder() throws — a store that refused the draft. */
+    public ?\Throwable $draftOrderThrows = null;
+
     public function createDraftOrder(array $draftPayload): array
     {
+        if ($this->draftOrderThrows !== null) {
+            throw $this->draftOrderThrows;
+        }
+
+        $this->draftOrders[] = $draftPayload;
+
         return ['id' => '777', 'admin_graphql_api_id' => 'gid://shopify/DraftOrder/777'];
     }
 

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\ShopifySubscriptions;
 
+use App\Models\MerchantBillingSettings;
 use App\Models\Shop;
 use App\Models\SubscriptionContract;
 use App\Services\Shopify\ShopifyClientFactory;
@@ -103,6 +104,86 @@ final class CustomerContractOwnershipTest extends TestCase
         $this->assertCount(0, $recorder->graphqlCalls, 'A past date must never reach Shopify.');
     }
 
+    public function test_a_customer_can_ask_for_the_card_update_email(): void
+    {
+        [$shop, $contract] = $this->shopWithContract(ownerCustomerId: 77);
+        $contract->forceFill(['payment_method_gid' => 'gid://shopify/CustomerPaymentMethod/pm-1'])->save();
+        $recorder = $this->fakeCardUpdateSuccess();
+
+        $response = $this->postJson('/subscriptions/api/card-update', [
+            'contract_gid' => (string) $contract->shopify_gid,
+        ], ['Authorization' => 'Bearer '.$this->token($shop, sub: '77')]);
+
+        $response->assertOk()->assertJson(['ok' => true]);
+        $this->assertCount(1, $recorder->graphqlCalls);
+        $this->assertStringContainsString('customerPaymentMethodSendUpdateEmail', $recorder->graphqlCalls[0]['query']);
+        $this->assertSame(
+            'gid://shopify/CustomerPaymentMethod/pm-1',
+            $recorder->graphqlCalls[0]['variables']['customerPaymentMethodId'],
+        );
+    }
+
+    public function test_card_update_stands_behind_the_same_ownership_wall(): void
+    {
+        [$shop, $contract] = $this->shopWithContract(ownerCustomerId: 77);
+        $contract->forceFill(['payment_method_gid' => 'gid://shopify/CustomerPaymentMethod/pm-1'])->save();
+        $recorder = $this->fakeCardUpdateSuccess(); // must never be reached
+
+        // Customer 88, same shop, valid token — a STOLEN contract GID.
+        $response = $this->postJson('/subscriptions/api/card-update', [
+            'contract_gid' => (string) $contract->shopify_gid,
+        ], ['Authorization' => 'Bearer '.$this->token($shop, sub: '88')]);
+
+        $response->assertNotFound()->assertJson(['ok' => false, 'reason' => 'not_yours']);
+        $this->assertCount(0, $recorder->graphqlCalls, 'No email may be asked for on someone else\'s contract.');
+    }
+
+    public function test_a_verb_the_merchant_switched_off_is_refused(): void
+    {
+        [$shop, $contract] = $this->shopWithContract(ownerCustomerId: 77);
+        $recorder = $this->fakePauseSuccess($contract); // must never be reached
+
+        Tenant::run($shop, function (): void {
+            $settings = MerchantBillingSettings::current();
+            $settings->allow_customer_pause = false;
+            $settings->save();
+        });
+
+        // The rightful OWNER, a valid token — and still refused: a hidden
+        // button is presentation, the switch is policy.
+        $response = $this->postJson('/subscriptions/api/pause', [
+            'contract_gid' => (string) $contract->shopify_gid,
+        ], ['Authorization' => 'Bearer '.$this->token($shop, sub: '77')]);
+
+        $response->assertUnprocessable()->assertJson(['ok' => false, 'reason' => 'not_allowed']);
+        $this->assertSame('ACTIVE', $contract->fresh()->status, 'The contract must be untouched.');
+        $this->assertCount(0, $recorder->graphqlCalls, 'A switched-off verb must never reach Shopify.');
+    }
+
+    public function test_card_update_needs_no_merchant_switch(): void
+    {
+        [$shop, $contract] = $this->shopWithContract(ownerCustomerId: 77);
+        $contract->forceFill(['payment_method_gid' => 'gid://shopify/CustomerPaymentMethod/pm-1'])->save();
+        $recorder = $this->fakeCardUpdateSuccess();
+
+        // Every switch off — the way a shopper fixes a failing card stays open.
+        Tenant::run($shop, function (): void {
+            $settings = MerchantBillingSettings::current();
+            $settings->allow_customer_pause = false;
+            $settings->allow_customer_cancel = false;
+            $settings->allow_customer_skip = false;
+            $settings->allow_customer_reschedule = false;
+            $settings->save();
+        });
+
+        $this->postJson('/subscriptions/api/card-update', [
+            'contract_gid' => (string) $contract->shopify_gid,
+        ], ['Authorization' => 'Bearer '.$this->token($shop, sub: '77')])
+            ->assertOk()->assertJson(['ok' => true]);
+
+        $this->assertCount(1, $recorder->graphqlCalls);
+    }
+
     // === Helpers ===
 
     /** @return array{0:Shop,1:SubscriptionContract} */
@@ -128,6 +209,17 @@ final class CustomerContractOwnershipTest extends TestCase
         ])->save();
 
         return [$shop->fresh(), $contract];
+    }
+
+    private function fakeCardUpdateSuccess(): RecordingShopifyClient
+    {
+        $recorder = new RecordingShopifyClient();
+        $recorder->graphqlResponses = [
+            ['data' => ['customerPaymentMethodSendUpdateEmail' => ['userErrors' => []]]],
+        ];
+        ShopifyClientFactory::fake(fn (): RecordingShopifyClient => $recorder);
+
+        return $recorder;
     }
 
     private function fakePauseSuccess(SubscriptionContract $contract): RecordingShopifyClient

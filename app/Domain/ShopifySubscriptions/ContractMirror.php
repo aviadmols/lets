@@ -78,6 +78,11 @@ final class ContractMirror
                 // share one.
                 'product_id' => (string) data_get($edge, 'node.productId', '') ?: null,
                 'variant_id' => (string) data_get($edge, 'node.variantId', '') ?: null,
+                // The product's image, for the personal-area card. Nullable and
+                // ABSENT from rows mirrored before this field existed — every
+                // reader must render a line without it (a card with no picture,
+                // never a broken one).
+                'image_url' => (string) data_get($edge, 'node.image.url', '') ?: null,
             ],
             (array) data_get($node, 'lines.edges', []),
         );

@@ -83,7 +83,6 @@ final class AccountOfferPurchaseService
 
     public function __construct(
         private readonly SubscriptionEditService $edits = new SubscriptionEditService,
-        private readonly AccountOfferOrderWriter $orders = new AccountOfferOrderWriter,
     ) {}
 
     /**
@@ -111,6 +110,20 @@ final class AccountOfferPurchaseService
     ): AccountOfferOutcome {
         $shop = $source->shop;
         if (! $shop instanceof Shop) {
+            return AccountOfferOutcome::unavailable();
+        }
+
+        // FAIL CLOSED, BEFORE MONEY. We know in advance whether the store can
+        // record the order; a shop whose writer is missing or disconnected gets
+        // a refusal now — never a charge whose order silently does not exist.
+        $writer = OfferOrderWriterFactory::for($shop);
+        if ($writer === null || ! $writer->available($shop)) {
+            Log::warning('account_offer.purchase.store_unavailable', [
+                'shop_id' => $source->shop_id,
+                'offer_id' => $offer->getKey(),
+                'platform' => (string) $shop->platform,
+            ]);
+
             return AccountOfferOutcome::unavailable();
         }
 
@@ -217,7 +230,7 @@ final class AccountOfferPurchaseService
             'failure_message' => null,
         ]);
 
-        $orderId = $this->orders->create($shop, $source, $offer, $target, $quote);
+        $orderId = $writer->create($shop, $source, $offer, $target, $quote);
         if ($orderId !== null) {
             $ledger->forceFill(['child_order_id' => $orderId])->save();
         } else {

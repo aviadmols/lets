@@ -86,6 +86,22 @@ class CustomerDetail extends Page
     {
         return [
             /*
+             * "View as customer", read-only — the personal area with this
+             * shopper's real data, in a new tab, with every control inert. All
+             * platforms: on Shopify it is the ONLY view-as there is (Shopify
+             * mints no customer storefront sessions), and on WooCommerce it is
+             * the safer first reach before a real session. The open itself is
+             * logged + pinned to the Timeline by the controller.
+             */
+            HeaderAction::make('viewAsCustomer')
+                ->label(__('customers.detail.view_as.label'))
+                ->icon('heroicon-m-eye')
+                ->color('gray')
+                ->visible(fn (): bool => $this->plans()->isNotEmpty())
+                ->url(fn (): string => route('filament.admin.account.view_as', ['customer' => $this->customer]))
+                ->openUrlInNewTab(),
+
+            /*
              * "Log in as this customer." The support call where nothing else will
              * do: the merchant lands on the store signed in AS the person on the
              * phone, on their own account page, seeing what they see and able to

@@ -1,4 +1,13 @@
 /** @jsxImportSource preact */
+// === RETIRED — superseded by the account bootstrap payload (Phase 3) ===
+//
+// AccountPage.jsx no longer references this file: the Shopify-Payments
+// contracts now arrive INSIDE GET /subscriptions/api/account
+// (AccountPresenter's `contracts` key) and are drawn by
+// components/ContractCard.jsx, so the shopify.query read below — and the
+// ContractsSection that rendered it — are no longer part of the page. Kept in
+// place, unreferenced, as the record of the original standalone page.
+//
 // === Target: customer-account.page.render — the LETS Subscriptions personal area ===
 //
 // A full page inside the shopper's native Shopify account: every subscription OUR
@@ -34,6 +43,24 @@ const STATUS_TONE = {
 };
 
 function SubscriptionsPage() {
+  const t = makeTranslator(shopify?.i18n);
+
+  return (
+    <s-page heading={t('page.title')}>
+      <ContractsSection />
+    </s-page>
+  );
+}
+
+/**
+ * The Shopify-Payments contract list, without the page chrome — so the same
+ * section can stand alone (the original page) or sit inside AccountPage's
+ * subscriptions section beside the PayPlus-rail plan cards. `showEmpty` lets
+ * the host page suppress the "no subscriptions yet" card when OTHER
+ * subscriptions are already on screen — an empty contract list beside a live
+ * PayPlus plan is not an empty account.
+ */
+export function ContractsSection({ showEmpty = true }) {
   const [state, setState] = useState({ phase: 'loading', contracts: [] });
   const [notice, setNotice] = useState(null); // {tone, text} after a verb
   const t = makeTranslator(shopify?.i18n);
@@ -68,43 +95,41 @@ function SubscriptionsPage() {
   }
 
   return (
-    <s-page heading={t('page.title')}>
-      <s-stack direction="block" gap="base">
-        {notice && (
-          <s-banner tone={notice.tone} dismissible onDismiss={() => setNotice(null)}>
-            <s-text>{notice.text}</s-text>
-          </s-banner>
-        )}
+    <s-stack direction="block" gap="base">
+      {notice && (
+        <s-banner tone={notice.tone} dismissible onDismiss={() => setNotice(null)}>
+          <s-text>{notice.text}</s-text>
+        </s-banner>
+      )}
 
-        {state.phase === 'loading' && (
-          <s-section>
-            <s-stack direction="inline" gap="base" inlineAlignment="center">
-              <s-spinner accessibilityLabel={t('page.loading')} />
-            </s-stack>
-          </s-section>
-        )}
+      {state.phase === 'loading' && (
+        <s-section>
+          <s-stack direction="inline" gap="base" inlineAlignment="center">
+            <s-spinner accessibilityLabel={t('page.loading')} />
+          </s-stack>
+        </s-section>
+      )}
 
-        {state.phase === 'error' && (
-          <s-banner tone="critical">
-            <s-text>{t('page.error')}</s-text>
-          </s-banner>
-        )}
+      {state.phase === 'error' && (
+        <s-banner tone="critical">
+          <s-text>{t('page.error')}</s-text>
+        </s-banner>
+      )}
 
-        {state.phase === 'empty' && (
-          <s-section>
-            <s-stack direction="block" gap="small-100" inlineAlignment="center">
-              <s-heading>{t('empty.title')}</s-heading>
-              <s-text tone="subdued">{t('empty.body')}</s-text>
-            </s-stack>
-          </s-section>
-        )}
+      {state.phase === 'empty' && showEmpty && (
+        <s-section>
+          <s-stack direction="block" gap="small-100" inlineAlignment="center">
+            <s-heading>{t('empty.title')}</s-heading>
+            <s-text tone="subdued">{t('empty.body')}</s-text>
+          </s-stack>
+        </s-section>
+      )}
 
-        {state.phase === 'list' &&
-          state.contracts.map((contract) => (
-            <ContractCard key={contract.gid} contract={contract} act={act} t={t} i18n={shopify?.i18n} />
-          ))}
-      </s-stack>
-    </s-page>
+      {state.phase === 'list' &&
+        state.contracts.map((contract) => (
+          <ContractCard key={contract.gid} contract={contract} act={act} t={t} i18n={shopify?.i18n} />
+        ))}
+    </s-stack>
   );
 }
 
@@ -312,7 +337,7 @@ function formatDate(iso, i18n) {
 }
 
 /** translate(key) with an EN-safe fallback, mirroring the upsell widget. */
-function makeTranslator(i18n) {
+export function makeTranslator(i18n) {
   return (key, fallback) => {
     try {
       const value = i18n?.translate?.(key);

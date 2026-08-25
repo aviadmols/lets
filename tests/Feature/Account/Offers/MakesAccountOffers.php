@@ -51,6 +51,13 @@ trait MakesAccountOffers
         ]);
 
         $shop->payplus_credentials = ['api_key' => 'k', 'secret_key' => 's', 'terminal_uid' => 't'];
+        // Connected: a buy-now offer is only ever DRAWN when the store can
+        // record the sale (the OfferOrderWriter wall), and these tests model a
+        // working shop.
+        $shop->woocommerce_credentials = [
+            'base_url' => 'https://'.$domain,
+            'consumer_key' => 'ck', 'consumer_secret' => 'cs',
+        ];
         $shop->save();
 
         return $shop;

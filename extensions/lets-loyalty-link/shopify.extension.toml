@@ -1,0 +1,22 @@
+# LETS loyalty link — the storefront doorway to the members club page.
+#
+# A THEME app extension (type = "theme") with a single app block: a plain
+# link/button to the club page the App Proxy already serves on the merchant's
+# own domain (/apps/{subpath}/loyalty). The page exists the moment the app is
+# installed — what merchants were missing was a way for shoppers to FIND it,
+# and the manual alternative is a 5-step menu edit. Dropping this block in the
+# theme editor is the easy path.
+#
+# Deliberately promise-free: the block renders only a link, whatever state the
+# club is in — the page itself explains when the program is inactive, so the
+# block never advertises rewards that are switched off.
+#
+# NOTE: no `uid` yet — the Shopify CLI stamps one into this file on the first
+# `shopify app deploy`, exactly as it did for lets-installments.
+
+api_version = "2026-04"
+
+[[extensions]]
+name = "LETS loyalty link"
+handle = "lets-loyalty-link"
+type = "theme"

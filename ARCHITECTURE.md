@@ -102,5 +102,6 @@ gateway (`Services/PayPlus/PayPlusInstallmentGateway.php` → factory),
 (`Models/InstallmentPlanEvent`, `Support/PlanEventPresenter`,
 `Support/EmailPreviewRenderer`, `resources/views/filament/components/plan-events-*`),
 the **portal** (`pps_installments.portal.show`, `Services/SignedUrlService`),
-and **refunds/store-credit** (`PayPlusInstallmentGateway::refund()`,
-`InstallmentStoreCredit`, `ShopifyGiftCardStoreCreditIssuer`).
+and **refunds** (`PayPlusInstallmentGateway::refund()`). Store credit is NOT the
+reference engine's gift-card classes: it lives in this repo's loyalty club
+(`app/Domain/Loyalty/Credit/ShopifyStoreCreditIssuer` + `WooCouponIssuer`).

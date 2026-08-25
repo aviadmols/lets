@@ -2,13 +2,16 @@
 
 namespace App\Filament\Pages;
 
+use App\Domain\Loyalty\Credit\ShopifyCreditScopeProbe;
 use App\Domain\Loyalty\TierResolver;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Models\LoyaltyTier;
 use App\Models\MerchantLoyaltySettings;
+use App\Models\Shop;
 use App\Support\Tenant;
 use App\Support\Ui\Money;
 use Filament\Forms\Components\ColorPicker;
+use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
@@ -123,6 +126,14 @@ class ManageLoyalty extends Page implements HasForms
             Section::make(__('loyalty.admin.redeem.heading'))
                 ->description(__('loyalty.admin.redeem.intro'))
                 ->schema([
+                    // A shop installed before write_store_credit_accounts was
+                    // added fails every redemption with a generic "not right
+                    // now" the merchant never sees — this is where they see it.
+                    Placeholder::make('shopify_scope_warning')
+                        ->label(__('loyalty.admin.redeem.scope_warning_heading'))
+                        ->content(__('loyalty.admin.redeem.scope_warning_body'))
+                        ->visible(fn (): bool => $this->missingStoreCreditScope())
+                        ->columnSpanFull(),
                     TextInput::make('redeem_rate_points')
                         ->label(__('loyalty.admin.redeem.rate_points'))
                         ->numeric()->minValue(MerchantLoyaltySettings::MIN_REDEEM_RATE_POINTS)
@@ -501,6 +512,18 @@ class ManageLoyalty extends Page implements HasForms
                 'perks' => $tier->perkLines(),
             ])->all(),
         ];
+    }
+
+    /**
+     * True only when Shopify POSITIVELY answered that the store-credit scope is
+     * missing — unknown (transport blip, non-Shopify shop) shows no banner.
+     */
+    private function missingStoreCreditScope(): bool
+    {
+        $shop = Tenant::current();
+
+        return $shop instanceof Shop
+            && app(ShopifyCreditScopeProbe::class)->hasStoreCreditScope($shop) === false;
     }
 
     /** A worked example of the redemption rate, for the Program tab. */

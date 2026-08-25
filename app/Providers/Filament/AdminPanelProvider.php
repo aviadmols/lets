@@ -7,6 +7,7 @@ use App\Domain\Upsell\Http\Controllers\AdminUpsellPreviewController;
 use App\Domain\Upsell\Http\Controllers\PostPurchaseController;
 use App\Domain\Upsell\Rendering\UpsellCardPresenter;
 use App\Http\Controllers\Admin\AdminAccountPreviewController;
+use App\Http\Controllers\Admin\AdminCustomerAccountViewController;
 use App\Http\Middleware\BindDevTenant;
 use App\Http\Middleware\BindTenantFromUser;
 use App\Http\Middleware\DevAutoLogin;
@@ -230,6 +231,14 @@ class AdminPanelProvider extends PanelProvider
                 Route::get('account/preview', AdminAccountPreviewController::class)
                     ->middleware(Authenticate::class)
                     ->name('account.preview');
+
+                // The same page with ONE REAL shopper's data behind it — the
+                // read-only "view as customer" window CustomerDetail opens.
+                // Every open is logged + pinned to the customer's Timeline.
+                //   → GET /admin/account/view-as/{customer}  (name filament.admin.account.view_as)
+                Route::get('account/view-as/{customer}', AdminCustomerAccountViewController::class)
+                    ->middleware(Authenticate::class)
+                    ->name('account.view_as');
             })
             ->navigationGroups($this->navigationGroups())
             // Platform-admin link to the Horizon dashboard (queues, throughput, FAILED

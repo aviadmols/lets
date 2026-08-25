@@ -225,6 +225,9 @@ return [
          */
         'upsell_hold' => 'upsell-hold',
         'payment_order' => 'installments-payment',
+        // A one-time product bought from an offer inside the personal area,
+        // charged on the subscription's saved card.
+        'account_offer' => 'account-offer',
         // A loyalty gift: zero-total, given not sold. Tagged so the merchant can
         // filter these out of revenue reporting at a glance.
         'gift_order' => 'lets-gift',

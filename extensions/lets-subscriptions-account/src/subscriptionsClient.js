@@ -1,3 +1,10 @@
+// === RETIRED — superseded by the account bootstrap payload (Phase 3) ===
+//
+// AccountPage.jsx no longer references this file: contract READS now ride the
+// account bootstrap (accountClient.fetchAccount → account.contracts) and the
+// contract VERBS go through accountClient.contractAction — one transport, one
+// policy source. Kept in place, unreferenced, with SubscriptionsPage.jsx.
+//
 // === LETS Subscriptions — data client for the personal-area page ===
 //
 // Two directions, deliberately different:

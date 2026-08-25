@@ -83,7 +83,7 @@ final class PointsEngine
                 'points_balance' => (int) $locked->points_balance + $points,
                 'lifetime_points' => (int) $locked->lifetime_points + $points,
                 'lifetime_spend' => round((float) $locked->lifetime_spend + $amount, 2),
-            ])->save();
+            ] + $this->contactFill($locked, $meta))->save();
 
             $this->settleTier($locked, $settings);
 
@@ -275,6 +275,32 @@ final class PointsEngine
         return $email !== ''
             ? LoyaltyAccount::query()->where('customer_email', $email)->first()
             : null;
+    }
+
+    /**
+     * A member who joined through the Shopify proxy page exists as a bare
+     * numeric ref — no email, no name — until a purchase tells us who they are.
+     * Best-effort and write-once: a value the merchant (or an earlier order)
+     * already put there is never overwritten.
+     *
+     * @param  array<string, mixed>  $meta
+     * @return array<string, string>
+     */
+    private function contactFill(LoyaltyAccount $locked, array $meta): array
+    {
+        $fill = [];
+
+        $email = trim((string) ($meta['email'] ?? ''));
+        if (trim((string) $locked->customer_email) === '' && filter_var($email, FILTER_VALIDATE_EMAIL) !== false) {
+            $fill['customer_email'] = $email;
+        }
+
+        $name = trim((string) ($meta['name'] ?? ''));
+        if (trim((string) $locked->customer_name) === '' && $name !== '') {
+            $fill['customer_name'] = $name;
+        }
+
+        return $fill;
     }
 
     private function cap(int $points): int

@@ -42,20 +42,19 @@ use Throwable;
  * money, never a second charge. A failure here never unwinds it — the ledger
  * stands, we log loudly and return null so the caller can flag a reconcile.
  */
-final class AccountOfferOrderWriter
+final class WooAccountOfferOrderWriter implements OfferOrderWriter
 {
     // === CONSTANTS ===
     /** Names what the order IS (the key the invoicing walls already read). */
     public const META_ORDER_ROLE = WooOrderTags::META_ROLE;
 
-    public const ROLE_ACCOUNT_OFFER = 'account_offer_order';
-
-    public const META_OFFER_ID = 'lets_account_offer_id';
-
-    public const META_TARGET_ID = 'lets_account_offer_target_id';
-
     /** A fulfillable, paid add-on order: the money already moved through PayPlus. */
     private const STATUS = 'completed';
+
+    public function available(Shop $shop): bool
+    {
+        return $shop->platform === Shop::PLATFORM_WOOCOMMERCE && $shop->hasWooConnection();
+    }
 
     /**
      * Record the purchase. Returns the created order id, or null when the store
@@ -68,10 +67,11 @@ final class AccountOfferOrderWriter
         AccountOfferTarget $target,
         AccountOfferQuote $quote,
     ): ?string {
-        if (! $shop->hasWooConnection()) {
+        if (! $this->available($shop)) {
             // Decoupled: the engine charged and recorded it; we simply cannot write
             // an order for a store we are not connected to. Safe no-op — but NEVER
-            // silent, because the money moved.
+            // silent, because the money moved. (The purchase service refuses
+            // up-front through available(); this is the last-line belt.)
             Log::warning('account_offer.order.no_woo_connection', [
                 'shop_id' => $shop->getKey(),
                 'offer_id' => $offer->getKey(),

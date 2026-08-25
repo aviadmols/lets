@@ -14,6 +14,7 @@ use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactor
 use App\Services\WooCommerce\WooCommerceShopProvisioner;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
@@ -74,6 +75,13 @@ final class AccountOfferEndpointTest extends TestCase
                 return GatewayResult::fromResponse(['results' => ['status' => 'success']]);
             }
         });
+
+        // The store's REST API, faked at the HTTP boundary (WooCommerceClient is
+        // final): a buy-now acceptance now records a real order after the charge.
+        Http::fake([
+            '*/wp-json/wc/v3/orders' => Http::response(['id' => 9001], 201),
+            '*' => Http::response([], 200),
+        ]);
     }
 
     protected function tearDown(): void
@@ -248,6 +256,11 @@ final class AccountOfferEndpointTest extends TestCase
         $data = (array) json_decode($json, true);
 
         $shop->payplus_credentials = ['api_key' => 'k', 'secret_key' => 's', 'terminal_uid' => 't'];
+        // REST credentials too: a buy-now offer is only drawn — and only sold —
+        // when the store can record the order (the OfferOrderWriter wall).
+        $shop->woocommerce_credentials = array_merge($shop->woocommerce_credentials ?: [], [
+            'consumer_key' => 'ck', 'consumer_secret' => 'cs',
+        ]);
         $shop->save();
 
         return [$shop->fresh(), (string) $data['k'], (string) $data['s']];

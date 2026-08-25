@@ -39,6 +39,8 @@ return [
             'minimum' => 'Minimum to redeem',
             'minimum_help' => 'Points a customer must hold before they can cash in. 0 = no minimum.',
             'example' => 'Right now :points points are worth :amount.',
+            'scope_warning_heading' => 'Redemption is not authorized yet',
+            'scope_warning_body' => 'Shopify has not granted this store the store-credit permission, so cashing in points will fail. Open the app once from your Shopify admin to re-authorize — nothing else is needed.',
         ],
 
         'bonus' => [
@@ -151,6 +153,24 @@ return [
             'adjust_done' => 'Points adjusted.',
             'adjust_failed' => 'Nothing changed — check the amount.',
         ],
+    ],
+
+    // === The merchant's referral report (Customers → Referrals) ===
+    'referrals' => [
+        'title' => 'Referrals',
+        'single' => 'Referral',
+        'subheading' => 'Every purchase a member brought in — who sent it, what it was worth, and the points it paid.',
+        'col' => [
+            'date' => 'Date',
+            'referrer' => 'Referred by',
+            'code' => 'Code',
+            'buyer' => 'Buyer',
+            'order' => 'Order',
+            'amount' => 'Order amount',
+            'points' => 'Points awarded',
+        ],
+        'empty' => 'No referred purchases yet',
+        'empty_help' => 'When someone buys through a member\'s link, the purchase lands here and the member is paid in points. Attribution rides the order\'s discount code — every row is a real order, not a click.',
     ],
 
     // === The customer-facing members page ===

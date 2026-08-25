@@ -1,0 +1,98 @@
+{%- comment -%}
+  LETS loyalty club link — one tasteful doorway to the members page.
+
+  The club page is ALREADY live on the merchant's own domain through the App
+  Proxy (/apps/{proxy_subpath}/loyalty); this block only links to it. No
+  JavaScript, no promises about the program: if the club is off, the page
+  itself says so — the block stays a plain link either way.
+
+  Settings (theme editor): label (empty = the localized default), style
+  (link vs button), alignment, and the App Proxy subpath for the rare shop
+  that customized it. The button style borrows currentColor so it sits inside
+  any theme's palette instead of fighting it.
+{%- endcomment -%}
+
+{%- assign proxy_subpath = block.settings.proxy_subpath | default: 'payplus' -%}
+{%- assign default_label = 'loyalty_link.label' | t -%}
+{%- assign label = block.settings.label | default: default_label -%}
+{%- assign style = block.settings.style | default: 'link' -%}
+{%- assign alignment = block.settings.alignment | default: 'start' -%}
+
+<div class="lets-loyalty-link lets-loyalty-link--{{ alignment }}" {{ block.shopify_attributes }}>
+  <a class="lets-loyalty-link__anchor lets-loyalty-link__anchor--{{ style }}"
+     href="/apps/{{ proxy_subpath }}/loyalty">{{ label }}</a>
+</div>
+
+{% stylesheet %}
+  .lets-loyalty-link {
+    margin: 8px 0;
+    display: flex;
+  }
+  /* Logical values, because Hebrew storefronts read right-to-left. */
+  .lets-loyalty-link--start { justify-content: flex-start; }
+  .lets-loyalty-link--center { justify-content: center; }
+  .lets-loyalty-link--end { justify-content: flex-end; }
+
+  .lets-loyalty-link__anchor {
+    font: inherit;
+    color: currentColor;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .lets-loyalty-link__anchor--link {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .lets-loyalty-link__anchor--button {
+    display: inline-block;
+    padding: 10px 22px;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    line-height: 1.3;
+    transition: opacity 0.2s ease;
+  }
+  .lets-loyalty-link__anchor--button:hover { opacity: 0.75; }
+{% endstylesheet %}
+
+{% schema %}
+{
+  "name": "Loyalty club link",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "label",
+      "label": "Label",
+      "info": "Leave empty to use the store language's default (\"Members club\")."
+    },
+    {
+      "type": "select",
+      "id": "style",
+      "label": "Style",
+      "options": [
+        { "value": "link", "label": "Link" },
+        { "value": "button", "label": "Button" }
+      ],
+      "default": "link"
+    },
+    {
+      "type": "select",
+      "id": "alignment",
+      "label": "Alignment",
+      "options": [
+        { "value": "start", "label": "Start" },
+        { "value": "center", "label": "Center" },
+        { "value": "end", "label": "End" }
+      ],
+      "default": "start"
+    },
+    {
+      "type": "text",
+      "id": "proxy_subpath",
+      "label": "App Proxy subpath",
+      "info": "Must match the app's App Proxy subpath (default: payplus). Change only if you customized it.",
+      "default": "payplus"
+    }
+  ]
+}
+{% endschema %}

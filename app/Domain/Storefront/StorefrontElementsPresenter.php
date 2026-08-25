@@ -41,6 +41,15 @@ final class StorefrontElementsPresenter
     public const BLOCK_SUBSCRIPTIONS = 'subscription_options';
     public const BLOCK_DEPOSIT = 'installments_button';
 
+    /**
+     * The loyalty doorway lives in its OWN theme extension
+     * (extensions/lets-loyalty-link/blocks/loyalty-link.liquid), so it has its
+     * own uuid and `themeEditorLink()` (which carries the installments
+     * extension's uuid) cannot deep-link to it. The handle is still named here
+     * because the placement copy points merchants at the block by name.
+     */
+    public const BLOCK_LOYALTY_LINK = 'loyalty-link';
+
     /** Status vocabulary: what the merchant must know at a glance. */
     public const STATUS_READY = 'ready';           // live / will render
     public const STATUS_NEEDS_SETUP = 'needs_setup'; // one more step needed
@@ -104,13 +113,16 @@ final class StorefrontElementsPresenter
             $elements[] = [
                 'key' => self::ELEMENT_LOYALTY,
                 'status' => self::STATUS_READY,
-                // Straight to Online Store → Navigation. The App Proxy already
-                // serves the page on the merchant's OWN domain, so there is no
-                // theme edit and nothing to install — the only missing piece is
-                // a link, and finding the menu editor is the actual friction.
+                // The App Proxy already serves the page on the merchant's OWN
+                // domain — nothing to install. The EASY path is the
+                // "Loyalty club link" app block (step 1 of the copy names it);
+                // the deep link stays Online Store → Navigation for the manual
+                // menu-link alternative the remaining steps describe, because
+                // the block lives in its own extension whose uuid we cannot
+                // address from here (see BLOCK_LOYALTY_LINK).
                 'deep_link' => $this->adminLink($shop, 'menus'),
                 'deep_link_kind' => self::LINK_MENUS,
-                'block' => null,
+                'block' => self::BLOCK_LOYALTY_LINK,
                 'steps' => 5,
                 'snippet' => null,
                 'shortcode' => null,
