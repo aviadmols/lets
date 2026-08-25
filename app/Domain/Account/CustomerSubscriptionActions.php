@@ -7,12 +7,14 @@ use App\Domain\Account\Offers\AccountOfferOutcome;
 use App\Domain\Installments\CardUpdateService;
 use App\Domain\Lifecycle\SubscriptionEditService;
 use App\Domain\Lifecycle\SubscriptionLifecycleService;
+use App\Models\ActivityEvent;
 use App\Models\InstallmentPlan;
 use App\Models\MerchantBillingSettings;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Support\Tenant;
 use Illuminate\Support\Carbon;
 
@@ -165,7 +167,7 @@ final class CustomerSubscriptionActions
             return $this->fail(self::RESULT_INVALID);
         }
 
-        return match ($action) {
+        $outcome = match ($action) {
             self::ACTION_PAUSE => $this->pause($plan),
             self::ACTION_RESUME => $this->resume($plan),
             self::ACTION_CANCEL => $this->cancel($plan),
@@ -181,6 +183,22 @@ final class CustomerSubscriptionActions
             ),
             self::ACTION_UPDATE_CARD => $this->updateCard($plan),
         };
+
+        // The success twin of the controllers' account_action_failed: what the
+        // customer DID lands on their feed too, in one scannable kind, with the
+        // verb in the details. accept_offer and update_card write their own
+        // richer kinds; a duplicate line beside those would be noise.
+        if (($outcome['result'] ?? null) === self::RESULT_OK
+            && ! in_array($action, [self::ACTION_ACCEPT_OFFER, self::ACTION_UPDATE_CARD], true)) {
+            Timeline::record(
+                kind: Timeline::KIND_ACCOUNT_ACTION,
+                details: ['action' => $action],
+                planId: (int) $plan->getKey(),
+                actor: ActivityEvent::ACTOR_CUSTOMER,
+            );
+        }
+
+        return $outcome;
     }
 
     /** Which verbs to offer for this plan right now — the renderer draws from this. */
@@ -236,6 +254,16 @@ final class CustomerSubscriptionActions
             // permission one; the generic failure toast fits.
             return $this->fail(self::RESULT_BAD_STATE);
         }
+
+        // The click itself, on the record: the swap is KIND_CARD_UPDATED (the
+        // callback's), and the gap between the two is the dunning signal —
+        // "they tried to fix their card and gave up".
+        Timeline::record(
+            kind: Timeline::KIND_CARD_UPDATE_STARTED,
+            details: ['action' => self::ACTION_UPDATE_CARD],
+            planId: (int) $plan->getKey(),
+            actor: ActivityEvent::ACTOR_CUSTOMER,
+        );
 
         return $this->ok($plan) + ['link' => $link];
     }

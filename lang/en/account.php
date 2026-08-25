@@ -58,6 +58,7 @@ return [
         'action_items' => 'Edit products',
         'action_update_card' => 'Update card',
         'action_add_card' => 'Add a card',
+        'card_update_new_tab' => 'Not loading? Open in a new window',
         'confirm_cancel' => 'Cancel this subscription? This cannot be undone.',
 
         /*

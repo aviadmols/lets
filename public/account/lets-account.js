@@ -694,6 +694,77 @@
     }
 
     /**
+     * The PayPlus card-update page, inside the account instead of in place of it.
+     *
+     * An iframe dialog: the shopper types their card on PAYPLUS'S page (the
+     * frame's origin — nothing here can read it), and the return landing that
+     * renders inside the frame posts `lets-card-update` up. Success closes the
+     * dialog and reloads, so the card chip shows the new digits; failure keeps
+     * the frame open — the shopper is looking at PayPlus's own explanation.
+     * The new-tab link is the escape hatch for anything that refuses to frame.
+     */
+    function openCardUpdateDialog(state, url) {
+        var m = state.model;
+
+        var overlay = el('div', 'la-dialog la-dialog--frame');
+        var card = el('div', 'la-dialog__card la-dialog__card--frame');
+        attr(card, 'role', 'dialog');
+        attr(card, 'aria-modal', 'true');
+
+        var head = el('div', 'la-dialog__head');
+        append(head, el('h3', 'la-dialog__title', m.copy.action_update_card));
+
+        var close = el('button', 'la-btn la-btn--small la-dialog__close', m.copy.close);
+        attr(close, 'type', 'button');
+        append(head, close);
+        append(card, head);
+
+        var frame = el('iframe', 'la-dialog__iframe');
+        attr(frame, 'src', url);
+        attr(frame, 'title', m.copy.action_update_card);
+        attr(frame, 'referrerpolicy', 'no-referrer');
+        append(card, frame);
+
+        if (m.copy.card_update_new_tab) {
+            var fallback = el('a', 'la-dialog__alt', m.copy.card_update_new_tab);
+            attr(fallback, 'href', url);
+            attr(fallback, 'target', '_blank');
+            attr(fallback, 'rel', 'noopener noreferrer');
+            append(card, fallback);
+        }
+
+        append(overlay, card);
+
+        function dismiss(reloadPage) {
+            if (overlay.parentNode) { overlay.parentNode.removeChild(overlay); }
+            window.removeEventListener('message', onMessage);
+            document.removeEventListener('keydown', onKey);
+            if (reloadPage) { window.location.reload(); }
+        }
+        function onKey(event) {
+            if (event.key === 'Escape') { dismiss(false); }
+        }
+        function onMessage(event) {
+            var data = event.data;
+            if (!data || data.type !== 'lets-card-update') { return; }
+            if (data.status === 'success') {
+                // Reload rather than redraw: the callback that vaulted the card
+                // already landed server-side, and a fresh payload is the truth.
+                dismiss(true);
+            }
+        }
+
+        close.addEventListener('click', function () { dismiss(false); });
+        overlay.addEventListener('click', function (event) {
+            if (event.target === overlay) { dismiss(false); }
+        });
+        document.addEventListener('keydown', onKey);
+        window.addEventListener('message', onMessage);
+
+        append(state.mount, overlay);
+    }
+
+    /**
      * The contact card behind a contact-mode cancel button. Built on demand,
      * removed on close — one overlay at a time, Escape and the backdrop both
      * close it, and nothing here talks to the server.
@@ -823,9 +894,12 @@
             state.mount.classList.remove(BUSY_CLASS);
 
             // A verb that answers with a LINK (update_card → PayPlus's secure
-            // page) is a navigation, not a redraw: go there and stop.
+            // page) opens IN PLACE: an iframe dialog over the account, so the
+            // shopper never leaves their own page. The return landing inside it
+            // posts the outcome up; success closes the dialog and re-reads the
+            // page so the new card shows.
             if (body && body.ok && body.link) {
-                window.location.href = body.link;
+                openCardUpdateDialog(state, body.link);
                 return;
             }
 

@@ -2399,3 +2399,42 @@ a.la-banner:focus-visible {
     font-size: 0.85rem;
     color: var(--la-muted);
 }
+
+/* -------------------------------------------------------------------------
+   The card-update iframe dialog (`openCardUpdateDialog`) — PayPlus's page,
+   framed inside the account.
+   ------------------------------------------------------------------------- */
+
+.la-dialog--frame .la-dialog__card--frame {
+    max-inline-size: 34rem;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.la-dialog__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.la-dialog__head .la-dialog__title {
+    margin: 0;
+}
+
+.la-dialog__iframe {
+    inline-size: 100%;
+    block-size: min(70vh, 560px);
+    border: 1px solid var(--la-border);
+    border-radius: var(--la-radius-sm);
+    background: #ffffff;
+}
+
+.la-dialog__alt {
+    align-self: center;
+    font-size: 0.85rem;
+    color: var(--la-muted);
+    text-decoration: underline;
+}

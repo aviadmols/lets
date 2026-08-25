@@ -135,6 +135,29 @@ final class Timeline
     public const KIND_CARD_UPDATED = 'card_updated';
 
     /**
+     * The customer OPENED the card-update page (the click; the swap itself is
+     * KIND_CARD_UPDATED, written by the callback). Both exist because "they
+     * tried to fix their card and gave up" is dunning gold the merchant can act
+     * on, and only the gap between these two kinds shows it.
+     */
+    public const KIND_CARD_UPDATE_STARTED = 'card_update_started';
+
+    /**
+     * A customer self-service verb SUCCEEDED (pause, resume, cancel, skip,
+     * reschedule, edit items). The lifecycle rows already record what changed;
+     * this row records WHO asked, in one scannable kind — the success twin of
+     * KIND_ACCOUNT_ACTION_FAILED. details: {action}.
+     */
+    public const KIND_ACCOUNT_ACTION = 'account_action';
+
+    /**
+     * The customer updated their address in the STORE (WooCommerce's own
+     * edit-address form; the plugin reports it over the signed channel).
+     * details: {type: billing|shipping}.
+     */
+    public const KIND_CUSTOMER_ADDRESS_UPDATED = 'customer_address_updated';
+
+    /**
      * A marketing campaign email was sent to this customer. details:
      * {campaign_id, campaign}. On their own feed, because "what have we sent
      * this person" is a question the merchant asks while looking at them — and

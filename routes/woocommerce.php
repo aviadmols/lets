@@ -2,6 +2,7 @@
 
 use App\Domain\Account\CustomerSubscriptionActions;
 use App\Http\Controllers\WooCommerce\Account\AccountActionController;
+use App\Http\Controllers\WooCommerce\Account\AccountAddressUpdatedController;
 use App\Http\Controllers\WooCommerce\Account\AccountBootstrapController;
 use App\Http\Controllers\WooCommerce\Account\AccountIdentityController;
 use App\Http\Controllers\WooCommerce\Account\AccountOtpController;
@@ -251,6 +252,11 @@ Route::middleware(VerifyWooCommerceSignature::class)
         // the plugin's server says is buying.
         Route::post('/account/subscription-eligibility', SubscriptionEligibilityController::class)
             ->name('woocommerce.account.subscription_eligibility');
+
+        // The plugin reports "this customer saved their address in the store" —
+        // a Timeline fact on their feed, never a warehoused copy of the address.
+        Route::post('/account/address-updated', AccountAddressUpdatedController::class)
+            ->name('woocommerce.account.address_updated');
     });
 
 /*

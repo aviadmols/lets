@@ -92,6 +92,11 @@ final class EventPresenter
         // SUCCESS: a failing card replaced by the customer themselves is the
         // best outcome a dunning cycle has.
         'card_updated' => ['success', 'timeline.kind.card_updated'],
+        'card_update_started' => ['info', 'timeline.kind.card_update_started'],
+        // The success twin of account_action_failed: the shopper asked, and it
+        // happened. The summary names the verb (details.action → timeline.action.*).
+        'account_action' => ['info', 'timeline.kind.account_action'],
+        'customer_address_updated' => ['info', 'timeline.kind.customer_address_updated'],
         'campaign_email_sent' => ['info', 'timeline.kind.campaign_email_sent'],
         'campaign_login_used' => ['info', 'timeline.kind.campaign_login_used'],
         'campaign_unsubscribed' => ['gray', 'timeline.kind.campaign_unsubscribed'],

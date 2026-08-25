@@ -45,5 +45,24 @@
             <a class="lets-back" href="{{ $backUrl }}">{{ __($keyPrefix.'back') }}</a>
         @endif
     </div>
+
+    @if (! empty($frameMessage))
+        {{-- Rendered inside the personal area's dialog: hand the outcome up so
+             the popup can close itself, and drop the redundant back link — the
+             account is already behind the overlay. Harmless at top level. --}}
+        <script>
+            (function () {
+                if (window.parent === window) { return; }
+                var back = document.querySelector('.lets-back');
+                if (back) { back.hidden = true; }
+                try {
+                    window.parent.postMessage(
+                        { type: @json($frameMessage), status: @json($state) },
+                        '*'
+                    );
+                } catch (e) { /* a sandboxed parent is fine — the close button remains */ }
+            }());
+        </script>
+    @endif
 </body>
 </html>

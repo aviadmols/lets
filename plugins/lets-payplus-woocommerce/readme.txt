@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.40.0
+Stable tag: 0.41.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,15 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.41.0 =
+* Checkout addresses take the Israeli shape: city first (and it must be a real
+  city, chosen from the registry list — enforced server-side, failing open when
+  the registry is down), then street, then separate building / apartment /
+  floor / entrance fields, folded back into the standard WooCommerce address on
+  the order.
+* Saving an address in My Account now leaves a dated line on the customer's
+  LETS timeline.
 
 = 0.40.0 =
 * Passwordless arrivals now carry a MODE: campaign-email sign-in links land the

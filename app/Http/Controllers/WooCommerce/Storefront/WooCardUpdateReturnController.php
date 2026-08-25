@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\WooCommerce\Storefront;
 
+use App\Domain\Installments\CardUpdateService;
 use App\Models\Shop;
+use App\Support\Tenant;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 
@@ -34,6 +36,16 @@ final class WooCardUpdateReturnController
             ->where('wc_shop_token', $wc_shop_token)
             ->first();
 
+        // The page speaks the account's language: the mint stamped it into the
+        // URL; an old or stripped link falls back to the shop's own setting.
+        $lang = (string) $request->query('lang', '');
+        if (! in_array($lang, ['he', 'en'], true)) {
+            $lang = $shop !== null
+                ? Tenant::run($shop, static fn (): string => CardUpdateService::shopperLocale())
+                : 'he';
+        }
+        app()->setLocale($lang);
+
         // Back to where their subscriptions live: the Woo My Account page when
         // the shop has one, else nothing (the hosted shopper closes the tab).
         $base = $shop !== null ? trim((string) ($shop->wooCredential('base_url') ?? '')) : '';
@@ -43,8 +55,11 @@ final class WooCardUpdateReturnController
             'state' => $state,
             'backUrl' => $backUrl,
             'keyPrefix' => self::KEY_PREFIX,
-            'locale' => app()->getLocale(),
-            'dir' => app()->getLocale() === 'he' ? 'rtl' : 'ltr',
+            // Rendered INSIDE the account's dialog: tell the parent how it went,
+            // so the popup can close itself and the page can show the new card.
+            'frameMessage' => 'lets-card-update',
+            'locale' => $lang,
+            'dir' => $lang === 'he' ? 'rtl' : 'ltr',
         ]);
     }
 }

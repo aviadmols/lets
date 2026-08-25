@@ -147,6 +147,14 @@ final class CardUpdateTest extends TestCase
             $fresh = $plan->fresh();
             $this->assertSame(PlanStatus::ACTIVE, $fresh->status);
             $this->assertNull($fresh->payment_method_id, 'the swap happens on the callback, never on the click');
+
+            // The CLICK is on the record — the gap between this and
+            // card_updated is the "tried and gave up" dunning signal.
+            $this->assertDatabaseHas('activity_events', [
+                'plan_id' => $plan->getKey(),
+                'kind' => Timeline::KIND_CARD_UPDATE_STARTED,
+                'actor' => ActivityEvent::ACTOR_CUSTOMER,
+            ]);
         });
     }
 

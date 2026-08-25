@@ -39,3 +39,15 @@
 .lets-address__item.is-active {
     background: #f3f4f6;
 }
+
+/* The "choose from the list" nudge on an unconfirmed city. */
+
+.lets-address__input--unconfirmed {
+    border-color: #f59e0b !important;
+}
+
+.lets-address__hint {
+    margin: 4px 0 0;
+    font-size: 0.85em;
+    color: #b45309;
+}

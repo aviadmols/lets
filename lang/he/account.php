@@ -49,6 +49,7 @@ return [
         'action_items' => 'עריכת המוצרים',
         'action_update_card' => 'עדכון כרטיס',
         'action_add_card' => 'הוספת כרטיס',
+        'card_update_new_tab' => 'לא נטען? פתיחה בחלון נפרד',
         'confirm_cancel' => 'לבטל את המנוי? אי אפשר לשחזר את הפעולה.',
 
         /*

@@ -5,6 +5,8 @@ namespace App\Domain\Installments;
 use App\Models\ActivityEvent;
 use App\Models\InstallmentPaymentMethod;
 use App\Models\InstallmentPlan;
+use App\Models\MerchantLoyaltySettings;
+use App\Models\MerchantPortalAppearance;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
@@ -257,6 +259,31 @@ final class CardUpdateService
         return route('woocommerce.cardupdate.return', [
             'wc_shop_token' => (string) $shop->wc_shop_token,
             'status' => $status,
+            // The landing must speak the language the ACCOUNT spoke — decided
+            // at mint time, when the tenant is bound, and carried in the URL so
+            // the return request (which arrives with no session, no tenant)
+            // does not have to rediscover it.
+            'lang' => self::shopperLocale(),
         ]);
+    }
+
+    /**
+     * The language this shop's personal area is written in — the portal
+     * appearance choice, falling through AUTO to the club page's language, the
+     * same ladder ResolvesShopperLocale climbs when no request locale exists.
+     */
+    public static function shopperLocale(): string
+    {
+        try {
+            $choice = MerchantPortalAppearance::current()->pageLocale();
+
+            if ($choice !== MerchantPortalAppearance::LOCALE_AUTO) {
+                return $choice;
+            }
+
+            return MerchantLoyaltySettings::current()->pageLocale();
+        } catch (Throwable) {
+            return 'he';
+        }
     }
 }

@@ -7,9 +7,12 @@
    every failure path — a dead API, a blocked fetch, a missing field — degrades
    to a plain text input.
 
-   The registry knows cities and streets; the house number stays typed. The
-   street field therefore keeps accepting free text after a pick, and nothing
-   here ever blocks or rewrites what the shopper wrote.
+   THE CITY MUST COME FROM THE LIST. A click on a suggestion — or typing a name
+   that exactly matches one — confirms the field; anything else is marked and
+   hinted, and the SERVER refuses the checkout for a city the registry does not
+   know (failing open only when the registry itself is down). The street stays
+   free text after its pick: the registry has no house numbers, and the number
+   fields that follow are the shopper's to type.
    ========================================================================= */
 (function (window, document) {
     'use strict';
@@ -42,6 +45,8 @@
         box.className = 'lets-address__list';
         box.hidden = true;
 
+        var hint = null;
+
         // Positioned against the field's own wrapper, whatever the theme made it.
         var host = input.parentNode;
         if (host) {
@@ -53,9 +58,12 @@
 
         var timer = null;
         var active = -1;
+        var lastNames = [];   // the latest suggestions, for exact-match confirmation
+        var confirmed = '';   // the last value that came FROM the list
 
         input.addEventListener('input', function () {
             if (timer) { window.clearTimeout(timer); }
+            clearCityWarning();
             var term = input.value.trim();
 
             if (term.length < (cfg.minChars || 2)) { hide(); return; }
@@ -81,9 +89,13 @@
             }
         });
 
-        // Blur closes AFTER a click on a suggestion has had its moment.
+        // Blur closes AFTER a click on a suggestion has had its moment — and,
+        // for a city, is the moment the "from the list" rule speaks up.
         input.addEventListener('blur', function () {
-            window.setTimeout(hide, 150);
+            window.setTimeout(function () {
+                hide();
+                if (field.kind === 'city') { enforceCityPick(); }
+            }, 150);
         });
 
         function lookup(term) {
@@ -103,7 +115,8 @@
             }).then(function (response) {
                 return response.ok ? response.json() : { suggestions: [] };
             }).then(function (body) {
-                show((body && body.suggestions) || []);
+                lastNames = (body && body.suggestions) || [];
+                show(lastNames);
             }).catch(function () {
                 hide(); // the registry being down is not the shopper's problem
             });
@@ -138,10 +151,44 @@
 
         function pick(value) {
             input.value = value;
+            confirmed = value;
+            clearCityWarning();
             hide();
             // Tell WooCommerce (and any listening script) the field changed.
             input.dispatchEvent(new Event('change', { bubbles: true }));
             input.focus();
+        }
+
+        /**
+         * The rule, said gently and without data loss: an unconfirmed city is
+         * MARKED and hinted, never cleared — the server is what refuses it, so
+         * a valid name pasted faster than the lookup can answer still checks
+         * out. Typing an exact suggestion counts as choosing it.
+         */
+        function enforceCityPick() {
+            var value = input.value.trim();
+            if (!value || value === confirmed) { return; }
+
+            if (lastNames.indexOf(value) !== -1) {
+                confirmed = value;
+                return;
+            }
+
+            input.classList.add('lets-address__input--unconfirmed');
+            if (!hint && host) {
+                hint = document.createElement('p');
+                hint.className = 'lets-address__hint';
+                hint.textContent = cfg.cityHint || '';
+                host.appendChild(hint);
+            }
+        }
+
+        function clearCityWarning() {
+            input.classList.remove('lets-address__input--unconfirmed');
+            if (hint && hint.parentNode) {
+                hint.parentNode.removeChild(hint);
+                hint = null;
+            }
         }
 
         function hide() {
