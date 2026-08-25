@@ -37,6 +37,13 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Support\Facades\Route::middleware('web')
                 ->group(base_path('routes/portal.php'));
 
+            // EMAIL CAMPAIGN public pages: the passwordless login landing, the
+            // signed unsubscribe page and the SaaS-hosted personal area. The
+            // token / URL signature is the auth; `web` for the session + CSRF
+            // token the landing page's one POST button needs.
+            \Illuminate\Support\Facades\Route::middleware('web')
+                ->group(base_path('routes/campaigns.php'));
+
             // App-Proxy seam for the checkout/post-purchase EXTENSIONS. Stateless
             // JSON — no session, no CSRF token (server-to-server via the Shopify
             // proxy). VerifyShopifyAppProxy is the auth (Shopify `signature`) and
@@ -106,6 +113,12 @@ return Application::configure(basePath: dirname(__DIR__))
             // opaque wc_shop_token segment + idempotent activation/mark-paid, not CSRF).
             'woocommerce/deposit/callback/*',
             'woocommerce/gateway/callback/*',
+            // PayPlus → SaaS card-update callback (server-to-server; the opaque
+            // wc_shop_token segment + idempotent vaulting are the auth, not CSRF).
+            'woocommerce/cardupdate/callback/*',
+            // RFC 8058 one-click unsubscribe: the mailbox provider POSTs with no
+            // CSRF token. The URL signature is the auth (routes/campaigns.php).
+            'c/unsubscribe/*',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

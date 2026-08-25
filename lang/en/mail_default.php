@@ -73,6 +73,17 @@ return [
         'footer' => 'Did not ask for a code? You can ignore this — it cannot sign anyone in on its own. · {business_name}',
     ],
 
+    /* The first draft a new EMAIL CAMPAIGN opens with — not a fallback: a
+       campaign has whatever the merchant wrote. It ships compliant (a CTA on the
+       passwordless account link, an unsubscribe line in the footer). */
+    'campaign' => [
+        'subject' => 'A quick update from {business_name}',
+        'lead' => 'We have something new for you. Everything about your subscription — your next delivery, your payment method, your details — is one click away.',
+        'cta' => 'Open my account',
+        'signature' => '{business_name}',
+        'unsubscribe' => 'Unsubscribe from these emails',
+    ],
+
     'order_updated' => [
         'heading' => 'Your order was updated',
         'lead' => 'You added items to order <strong>#{order_number}</strong> after checkout. Here is what changed:',

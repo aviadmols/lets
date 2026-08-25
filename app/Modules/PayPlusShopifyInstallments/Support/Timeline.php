@@ -78,6 +78,13 @@ final class Timeline
     public const KIND_CUSTOMER_IMPERSONATED = 'customer_impersonated';
 
     /**
+     * The admin OPENED a read-only view of this customer's personal area —
+     * a separate kind from impersonation, because "looked at their account"
+     * and "became them in the store" must never blur in an audit.
+     */
+    public const KIND_CUSTOMER_VIEWED_AS = 'customer_viewed_as';
+
+    /**
      * The shopper accepted an offer in their own account area. Written on BOTH
      * plans — the one it created and the one it was taken from — because the
      * question a merchant asks is "where did this subscription come from" as
@@ -119,6 +126,32 @@ final class Timeline
      * details: {context, reason}.
      */
     public const KIND_STORE_ORDER_FAILED = 'store_order_failed';
+
+    /**
+     * The customer re-vaulted their card on the PayPlus hosted page and the
+     * plan (plus any siblings on the old card) now charges the new one.
+     * details: {brand, last_four, plans} — never a token.
+     */
+    public const KIND_CARD_UPDATED = 'card_updated';
+
+    /**
+     * A marketing campaign email was sent to this customer. details:
+     * {campaign_id, campaign}. On their own feed, because "what have we sent
+     * this person" is a question the merchant asks while looking at them — and
+     * because a complaint is answered by a date, not by a mail server log.
+     */
+    public const KIND_CAMPAIGN_EMAIL_SENT = 'campaign_email_sent';
+
+    /**
+     * The customer used the passwordless link from a campaign email and entered
+     * their account. Its OWN kind, never blurred with an admin's impersonation:
+     * "they let themselves in" and "somebody became them" are different events
+     * in every audit that matters. details: {campaign_id, platform}.
+     */
+    public const KIND_CAMPAIGN_LOGIN_USED = 'campaign_login_used';
+
+    /** The customer asked to stop receiving campaigns. details: {campaign_id}. */
+    public const KIND_CAMPAIGN_UNSUBSCRIBED = 'campaign_unsubscribed';
 
     /**
      * Record a Timeline event. Never throws.

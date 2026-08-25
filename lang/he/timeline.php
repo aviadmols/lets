@@ -13,6 +13,7 @@ return [
         'customer_details_updated' => 'פרטי ההתקשרות עודכנו',
         'admin_note' => 'הערה',
         'customer_impersonated' => 'כניסה לחנות בתור הלקוח',
+        'customer_viewed_as' => 'צפייה באזור האישי של הלקוח (קריאה בלבד)',
         'plan_completed' => 'התוכנית הושלמה',
         'plan_cancelled' => 'התוכנית בוטלה',
         'plan_paused' => 'התוכנית הושהתה',
@@ -39,6 +40,10 @@ return [
         'shopify_subscription_bill_now' => 'נשלחה בקשת חיוב מיידי ל-Shopify',
         'shopify_subscription_products_edited' => 'מוצרי המנוי עודכנו',
         'shopify_subscription_card_update_email' => 'נשלח ללקוח מייל לעדכון כרטיס',
+        'card_updated' => 'הלקוח עדכן את הכרטיס',
+        'campaign_email_sent' => 'נשלח מייל קמפיין',
+        'campaign_login_used' => 'כניסה לאזור האישי מקישור במייל קמפיין',
+        'campaign_unsubscribed' => 'הסרה מרשימת הדיוור',
         'generic' => 'פעילות',
     ],
 

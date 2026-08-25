@@ -22,6 +22,7 @@ use App\Filament\Pages\PostPurchaseOffers;
 use App\Filament\Pages\ProductDetail;
 use App\Filament\Pages\StorefrontElements;
 use App\Filament\Resources\AccountOfferResource;
+use App\Filament\Resources\CampaignResource;
 use App\Filament\Resources\IssuedDocumentResource;
 use App\Filament\Resources\PaymentLedgerResource;
 use App\Filament\Resources\ProductResource;
@@ -65,6 +66,8 @@ final class EmbeddedMenu
 
     public const AREA_GIFT_ORDERS = 'gift_orders';
 
+    public const AREA_CAMPAIGNS = 'campaigns';
+
     public const AREA_IMPORT = 'import';
 
     public const AREA_PRODUCTS = 'products';
@@ -103,6 +106,7 @@ final class EmbeddedMenu
         self::AREA_SUBSCRIPTIONS => 'embedded.areas.subscriptions',
         self::AREA_LOYALTY => 'embedded.areas.loyalty',
         self::AREA_GIFT_ORDERS => 'embedded.areas.gift_orders',
+        self::AREA_CAMPAIGNS => 'embedded.areas.campaigns',
         self::AREA_IMPORT => 'embedded.areas.import',
         self::AREA_PRODUCTS => 'embedded.areas.products',
         self::AREA_PAYMENTS => 'embedded.areas.payments',
@@ -137,6 +141,7 @@ final class EmbeddedMenu
         LoyaltyMembers::class => self::AREA_LOYALTY,
 
         GiftOrders::class => self::AREA_GIFT_ORDERS,
+        CampaignResource::class => self::AREA_CAMPAIGNS,
         ImportSubscriptions::class => self::AREA_IMPORT,
 
         ProductResource::class => self::AREA_PRODUCTS,

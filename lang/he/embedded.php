@@ -9,6 +9,7 @@ return [
         'subscriptions' => 'מנויים',
         'loyalty' => 'מועדון לקוחות',
         'gift_orders' => 'הזמנות מתנה',
+        'campaigns' => 'קמפיינים',
         'import' => 'ייבוא מנויים',
         'products' => 'מוצרים',
         'payments' => 'תשלומים',

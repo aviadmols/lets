@@ -110,6 +110,31 @@ final class DefaultEmailTemplates
         return self::PLACEHOLDERS[$template] ?? [];
     }
 
+    /**
+     * The STARTER body a new email campaign opens with.
+     *
+     * Not a fallback like the templates above — a campaign has no default copy,
+     * it has whatever the merchant wrote. This is the first draft they edit, and
+     * it ships compliant: a call to action on the passwordless account link, and
+     * an unsubscribe line in the footer, both as {tokens} the send fills in.
+     */
+    public static function campaignStarter(): string
+    {
+        return self::card(
+            self::greeting()
+            .self::line('mail_default.campaign.lead', self::P)
+            .self::cta('mail_default.campaign.cta', '{account_login_url}')
+            .'<p '.self::MUTED.'>'.__('mail_default.campaign.signature')
+            .'<br><a href="{unsubscribe_url}" style="color:#6b7280;">'.__('mail_default.campaign.unsubscribe').'</a></p>'
+        );
+    }
+
+    /** The subject a new campaign opens with. */
+    public static function campaignStarterSubject(): string
+    {
+        return (string) __('mail_default.campaign.subject');
+    }
+
     /** Reading direction for the CURRENT locale — drives the card and the layout. */
     public static function direction(): string
     {

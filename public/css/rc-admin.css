@@ -416,6 +416,186 @@
     color: var(--rc-blue);
 }
 
+/* =========================================================================
+   EMAIL CAMPAIGNS — the public shopper pages + the admin's audience preview.
+
+   TOKEN REFERENCE (declared once in theme.css, never redeclared here):
+     --rc-bg --rc-card --rc-surface --rc-ink --rc-ink-muted --rc-ink-on-primary
+     --rc-border --rc-blue
+     --rc-radius-card --rc-radius-control --rc-shadow-card
+     --rc-space-2 … --rc-space-7
+     --rc-font --rc-type-title --rc-type-body --rc-type-caption
+
+   Note the type tokens are FONT SHORTHANDS (weight size/line-height family),
+   so they are consumed with `font:`, never `font-size:`.
+
+   Two audiences in one file: the standalone pages a CUSTOMER sees (sign-in
+   landing, unsubscribe, the hosted personal area's chrome) and the recipients
+   preview inside the admin. They share the card and the button.
+   ========================================================================= */
+
+/* --- The standalone shopper pages ------------------------------------- */
+
+.rc-campaign-page {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--rc-space-5);
+    background: var(--rc-bg);
+    color: var(--rc-ink);
+    font: var(--rc-type-body);
+}
+
+.rc-campaign-card {
+    width: 100%;
+    max-width: 30rem;
+    padding: var(--rc-space-6);
+    background: var(--rc-card);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-card);
+    box-shadow: var(--rc-shadow-card);
+    text-align: center;
+}
+
+.rc-campaign-card__logo {
+    display: block;
+    margin: 0 auto var(--rc-space-5);
+    height: 2rem;
+}
+
+.rc-campaign-card__title {
+    margin: 0 0 var(--rc-space-3);
+    font: var(--rc-type-title);
+}
+
+.rc-campaign-card__body {
+    margin: 0 0 var(--rc-space-5);
+    font: var(--rc-type-body);
+    color: var(--rc-ink-muted);
+}
+
+.rc-campaign-card__actions {
+    margin: 0 0 var(--rc-space-5);
+}
+
+.rc-campaign-card__hint {
+    margin: 0;
+    font: var(--rc-type-caption);
+    color: var(--rc-ink-muted);
+}
+
+.rc-campaign-btn {
+    display: inline-block;
+    width: 100%;
+    padding: var(--rc-space-3) var(--rc-space-5);
+    border: 0;
+    border-radius: var(--rc-radius-control);
+    background: var(--rc-blue);
+    color: var(--rc-ink-on-primary);
+    font: var(--rc-type-body-strong);
+    cursor: pointer;
+}
+
+.rc-campaign-btn:hover {
+    filter: brightness(0.95);
+}
+
+.rc-campaign-btn:focus-visible {
+    outline: none;
+    box-shadow: var(--rc-ring);
+}
+
+/* --- The hosted personal area's chrome -------------------------------- */
+
+.rc-hosted {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--rc-bg);
+    color: var(--rc-ink);
+    font: var(--rc-type-body);
+}
+
+.rc-hosted__bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--rc-space-4);
+    padding: var(--rc-space-3) var(--rc-space-5);
+    border-bottom: 1px solid var(--rc-border);
+    background: var(--rc-card);
+}
+
+.rc-hosted__who {
+    font: var(--rc-type-caption);
+    color: var(--rc-ink-muted);
+}
+
+.rc-hosted__logout {
+    padding: var(--rc-space-2) var(--rc-space-4);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    background: transparent;
+    color: var(--rc-ink);
+    font: var(--rc-type-caption);
+    cursor: pointer;
+}
+
+.rc-hosted__mount {
+    display: block;
+    max-width: 60rem;
+    margin: 0 auto;
+    padding: var(--rc-space-5);
+}
+
+/* --- The admin's "who would get it" preview ---------------------------- */
+
+.rc-campaign-audience {
+    display: flex;
+    flex-direction: column;
+    gap: var(--rc-space-2);
+}
+
+.rc-campaign-audience__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--rc-space-3);
+    padding: var(--rc-space-2) var(--rc-space-3);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    font: var(--rc-type-caption);
+}
+
+.rc-campaign-audience__person {
+    display: flex;
+    flex-direction: column;
+    gap: var(--rc-space-1);
+    min-width: 0;
+}
+
+/* An address reads left-to-right even on an RTL screen; isolate keeps a
+   Hebrew name beside it from reordering the two. */
+.rc-campaign-audience__email {
+    color: var(--rc-ink-muted);
+    direction: ltr;
+    unicode-bidi: isolate;
+}
+
+.rc-campaign-audience__flags {
+    display: flex;
+    gap: var(--rc-space-2);
+    flex-shrink: 0;
+    color: var(--rc-ink-muted);
+}
+
+.rc-campaign-audience__summary {
+    margin: var(--rc-space-3) 0 0;
+    font: var(--rc-type-caption);
+    color: var(--rc-ink-muted);
+}
+
 /* code-editor.css — HtmlCodeEditor (merchant email-body HTML source editor)
    TOKENS: --rc-card --rc-border --rc-border-strong --rc-radius-control
            --rc-ink --rc-ink-muted --rc-space-2 --rc-space-3 --rc-ring --rc-blue

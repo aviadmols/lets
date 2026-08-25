@@ -3,6 +3,8 @@
 namespace App\Support\Ui;
 
 use App\Models\ActivityEvent;
+use App\Models\User;
+use App\Support\PlatformContext;
 
 /**
  * Humanizes an ActivityEvent for the Timeline / dashboard activity feed
@@ -34,6 +36,7 @@ final class EventPresenter
         // It is the one entry that explains an action nobody on the team remembers
         // taking, so it must stand out in the scan somebody runs to find it.
         'customer_impersonated' => ['warning', 'timeline.kind.customer_impersonated'],
+        'customer_viewed_as' => ['gray', 'timeline.kind.customer_viewed_as'],
         'plan_completed' => ['success', 'timeline.kind.plan_completed'],
         'plan_cancelled' => ['info', 'timeline.kind.plan_cancelled'],
         'plan_paused' => ['info', 'timeline.kind.plan_paused'],
@@ -84,6 +87,14 @@ final class EventPresenter
         'shopify_subscription_bill_now' => ['info', 'timeline.kind.shopify_subscription_bill_now'],
         'shopify_subscription_products_edited' => ['info', 'timeline.kind.shopify_subscription_products_edited'],
         'shopify_subscription_card_update_email' => ['info', 'timeline.kind.shopify_subscription_card_update_email'],
+        // Email campaigns. The LOGIN is deliberately its own line and not a
+        // variant of the impersonation kind: the customer let themselves in.
+        // SUCCESS: a failing card replaced by the customer themselves is the
+        // best outcome a dunning cycle has.
+        'card_updated' => ['success', 'timeline.kind.card_updated'],
+        'campaign_email_sent' => ['info', 'timeline.kind.campaign_email_sent'],
+        'campaign_login_used' => ['info', 'timeline.kind.campaign_login_used'],
+        'campaign_unsubscribed' => ['gray', 'timeline.kind.campaign_unsubscribed'],
     ];
 
     public const FALLBACK = ['info', 'timeline.kind.generic'];
@@ -168,7 +179,7 @@ final class EventPresenter
      * Detail keys that are SAFE to surface in the UI. Anything else (notably
      * invoice_url / document_url / raw token / payplus_* secrets) is dropped.
      */
-    public const SAFE_DETAIL_KEYS = ['amount', 'currency', 'sequence', 'from', 'to', 'context', 'reason', 'changed', 'from_amount', 'to_amount', 'charge_number', 'coupon_codes', 'action', 'result', 'subscription'];
+    public const SAFE_DETAIL_KEYS = ['amount', 'currency', 'sequence', 'from', 'to', 'context', 'reason', 'changed', 'from_amount', 'to_amount', 'charge_number', 'coupon_codes', 'action', 'result', 'subscription', 'campaign'];
 
     public static function tone(ActivityEvent $event): string
     {
@@ -194,14 +205,14 @@ final class EventPresenter
         // A platform admin acting on the merchant's behalf (W2): actor is
         // "platform_admin:{id}". Surfaced distinctly so the merchant Timeline shows
         // WHO touched their data — the app owner, not "system".
-        if (str_starts_with($actor, \App\Support\PlatformContext::ACTOR_PREFIX)) {
+        if (str_starts_with($actor, PlatformContext::ACTOR_PREFIX)) {
             return __('common.actor.platform_admin');
         }
 
         // A merchant / staff user acting in the admin (W25): actor is "admin:{id}". Resolve the
         // actual name so the merchant sees WHO changed the subscription, not a generic "Admin".
-        if (str_starts_with($actor, \App\Support\PlatformContext::ADMIN_PREFIX)) {
-            return self::adminName((int) substr($actor, strlen(\App\Support\PlatformContext::ADMIN_PREFIX)));
+        if (str_starts_with($actor, PlatformContext::ADMIN_PREFIX)) {
+            return self::adminName((int) substr($actor, strlen(PlatformContext::ADMIN_PREFIX)));
         }
 
         return match ($actor) {
@@ -245,7 +256,7 @@ final class EventPresenter
             $parts[] = __('subscriptions.detail.installment_n', ['n' => $safe['sequence']]);
         }
         if (isset($safe['from'], $safe['to'])) {
-            $parts[] = __('billing.status.' . $safe['from']) . ' → ' . __('billing.status.' . $safe['to']);
+            $parts[] = __('billing.status.'.$safe['from']).' → '.__('billing.status.'.$safe['to']);
         }
         // A refused account action: which verb, and why it was refused. Both
         // resolve through the catalog and degrade to the raw value, so a verb
@@ -274,9 +285,9 @@ final class EventPresenter
     /** A catalogue lookup that degrades to the raw value instead of a missing-translation token. */
     private static function catalogued(string $prefix, string $value): string
     {
-        $translated = __($prefix . $value);
+        $translated = __($prefix.$value);
 
-        return $translated === $prefix . $value ? $value : $translated;
+        return $translated === $prefix.$value ? $value : $translated;
     }
 
     /** "Field: old → new" for a single edited field. Amount fields format as money. */
@@ -292,12 +303,12 @@ final class EventPresenter
                 : (string) $v;
         };
 
-        $label = __('timeline.field.' . $field);
-        if ($label === 'timeline.field.' . $field) {
+        $label = __('timeline.field.'.$field);
+        if ($label === 'timeline.field.'.$field) {
             $label = ucfirst(str_replace('_', ' ', $field));
         }
 
-        return $label . ': ' . $format($change['from'] ?? null) . ' → ' . $format($change['to'] ?? null);
+        return $label.': '.$format($change['from'] ?? null).' → '.$format($change['to'] ?? null);
     }
 
     /** The display name for an "admin:{id}" actor (request-static cache), else the generic label. */
@@ -309,7 +320,7 @@ final class EventPresenter
             return __('common.actor.admin');
         }
         if (! array_key_exists($id, self::$adminNameCache)) {
-            $user = \App\Models\User::query()->find($id);
+            $user = User::query()->find($id);
             $name = $user !== null ? trim((string) ($user->name ?: $user->email)) : '';
             self::$adminNameCache[$id] = $name !== '' ? $name : __('common.actor.admin');
         }

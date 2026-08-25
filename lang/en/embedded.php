@@ -11,6 +11,7 @@ return [
         'subscriptions' => 'Subscriptions',
         'loyalty' => 'Loyalty club',
         'gift_orders' => 'Gift orders',
+        'campaigns' => 'Campaigns',
         'import' => 'Import subscriptions',
         'products' => 'Products',
         'payments' => 'Payments',

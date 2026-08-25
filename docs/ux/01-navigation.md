@@ -33,6 +33,7 @@ breadcrumbs inside detail pages are secondary.
 │    Subscriptions        │
 │    Orders               │
 │    Order Errors    (3)  │  ← count badge when >0
+│    Campaigns            │
 │    Segments             │
 │    Credits              │
 │  Products           ▸   │
@@ -72,13 +73,14 @@ Group headers expand/collapse and persist their open/closed state per user (loca
 | | Subscriptions | `nav.subscriptions` ✓ | [30-subscriptions.md](30-subscriptions.md) (list) | installments + recurring | none |
 | | Orders | `nav.orders` ✓ | Orders (Processed/Upcoming/Gift tabs) | installments + recurring + upsell | none |
 | | Order Errors | `nav.order_errors` ✓ | Order Errors cockpit | all | none |
+| | Campaigns | `campaigns.nav.label` ✓ | Email campaigns (audience + designed email + passwordless account link) | platform | none |
 | | Segments | `nav.segments` ✗ NEW | Segments builder | platform | Growth+ (TODO-GATE) |
 | | Credits | `nav.credits` ✗ NEW | Store-credit / gift-card ledger (engine `InstallmentStoreCredit`) | platform | none |
 | **Products** | Products | `nav.products` ✓ | Products (eligibility + rules) | all | none |
 | | Discounts | `nav.discounts` ✓ | Discounts | installments + recurring | none |
 | — | Cross-Sell & Upsell | `nav.cross_sell_upsell` ✓ | Upsell hub → Post-Purchase Offers | upsell | Pro (TODO-GATE) |
 | | Post-Purchase Offers | `nav.post_purchase_offers` ✓ | [40-post-purchase-offers.md](40-post-purchase-offers.md) | upsell | Pro (TODO-GATE) |
-| — | Loyalty | `nav.loyalty` ✗ NEW | placeholder (future) | platform | gated/coming-soon |
+| — | Loyalty | `nav.loyalty` ✓ | Loyalty club (`ManageLoyalty` + `LoyaltyMembers`), shipped 2026-08-03 | platform | none |
 | — | Churn tools | `nav.churn_tools` ✗ NEW | placeholder (future) | platform | gated/coming-soon |
 | — | SMS | `nav.sms` ✗ NEW | placeholder (future) | platform | gated/coming-soon |
 | — | Email | `nav.email` ✗ NEW | Mail Settings ([50-settings.md](50-settings.md) → Mail) | platform | none |
