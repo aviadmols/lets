@@ -233,11 +233,11 @@ function lets_payplus_account_own_tabs()
 {
     $tabs = array(LETS_ACCOUNT_ENDPOINT => lets_payplus_account_menu_label());
 
-    if (lets_payplus_account_section_on('loyalty')) {
+    if (lets_payplus_account_tab_on('loyalty')) {
         $tabs[LETS_LOYALTY_ENDPOINT] = lets_payplus_account_loyalty_label();
     }
 
-    if (lets_payplus_account_section_on('gifts')) {
+    if (lets_payplus_account_tab_on('gifts')) {
         $tabs[LETS_GIFTS_ENDPOINT] = lets_payplus_account_gifts_label();
     }
 
@@ -245,21 +245,43 @@ function lets_payplus_account_own_tabs()
 }
 
 /**
- * Is one of OUR sections switched on for this shop?
+ * Is one of OUR tabs switched on for this shop?
  *
- * An empty sections list means "we do not know" and ADDS nothing — the opposite
- * of the hide map further down, which fails open. A tab is a promise of
- * content, so unknown means absent.
+ * Reads the NAVIGATION list, not the sections one: what the personal area's
+ * main column draws and which tabs the navigation carries are different
+ * questions, and the merchant answers them on two lists.
  *
- * @param  string  $section
+ * An empty list means "we do not know" and ADDS nothing — the opposite of the
+ * hide map further down, which fails open. A tab is a promise of content, so
+ * unknown means absent.
+ *
+ * @param  string  $tab
  * @return bool
  */
-function lets_payplus_account_section_on($section)
+function lets_payplus_account_tab_on($tab)
+{
+    return in_array($tab, lets_payplus_account_nav_tabs(), true);
+}
+
+/**
+ * The tab keys this shop's navigation carries.
+ *
+ * A LETS that predates the navigation list sends none, and the sections are
+ * what decided the tabs then — so falling back to them keeps a store on an
+ * older pairing rendering exactly what it rendered yesterday.
+ *
+ * @return array<int, string>
+ */
+function lets_payplus_account_nav_tabs()
 {
     $config = lets_payplus_account_shell_config();
-    $sections = isset($config['sections']) ? (array) $config['sections'] : array();
 
-    return in_array($section, $sections, true);
+    $tabs = isset($config['nav_tabs']) ? (array) $config['nav_tabs'] : array();
+    if (array() !== $tabs) {
+        return $tabs;
+    }
+
+    return isset($config['sections']) ? (array) $config['sections'] : array();
 }
 
 /**
@@ -292,7 +314,7 @@ function lets_payplus_account_menu_label()
 function lets_payplus_account_gifts_tab_on()
 {
     // Kept as the named reading of the rule; the shared helper is the rule.
-    return lets_payplus_account_section_on('gifts');
+    return lets_payplus_account_tab_on('gifts');
 }
 
 /**
@@ -315,12 +337,10 @@ function lets_payplus_account_gifts_label()
 /**
  * WooCommerce endpoints the merchant has switched off, as a lookup.
  *
- * The "sections" setting has always said it "hides the section from every
- * shopper", but for WooCommerce's OWN tabs it only ever hid the block we draw —
- * the navigation kept the tab, so unchecking Orders did nothing a shopper could
- * see. These four keys map a section onto the endpoint it names, which makes the
- * setting mean what it says, and gives a shop with nothing downloadable a way to
- * take the empty Downloads tab out of its customers' navigation.
+ * These four keys map WooCommerce's OWN tabs onto the navigation list, so the
+ * merchant turns Orders or Downloads off in the same place they turn ours off —
+ * one screen answering one question. (They used to follow the SECTIONS list,
+ * which conflated "draw this block on the dashboard" with "carry this tab".)
  *
  * FAIL-OPEN. An unreadable config hides nothing: a shopper losing their orders
  * tab because LETS was briefly unreachable is far worse than an empty tab.
@@ -336,8 +356,7 @@ function lets_payplus_account_hidden_endpoints()
         'edit-address' => 'addresses',
     );
 
-    $config = lets_payplus_account_shell_config();
-    $sections = isset($config['sections']) ? (array) $config['sections'] : array();
+    $sections = lets_payplus_account_nav_tabs();
 
     if (array() === $sections) {
         return array();
@@ -785,6 +804,12 @@ function lets_payplus_account_shell_config()
         // navigation, which hides a WooCommerce tab whose section is switched
         // off. Empty means "we do not know" and nothing is hidden.
         'sections'   => array(),
+        /**
+         * The VISIBLE TAB keys, in the merchant's order. Read by the account
+         * navigation for our own tabs and for hiding WooCommerce's. Empty means
+         * "we do not know" — see lets_payplus_account_nav_tabs().
+         */
+        'nav_tabs'   => array(),
         // What the gifts tab is called — the merchant's own gifts heading, or
         // the short default the SaaS picked. '' means "no answer", short default.
         'gifts_label' => '',
@@ -820,6 +845,9 @@ function lets_payplus_account_shell_config()
         }
         if (! empty($account['sections'])) {
             $config['sections'] = array_values(array_map('strval', (array) $account['sections']));
+        }
+        if (! empty($account['nav_tabs'])) {
+            $config['nav_tabs'] = array_values(array_map('strval', (array) $account['nav_tabs']));
         }
         if (! empty($account['copy']['gifts_tab_label'])) {
             $config['gifts_label'] = (string) $account['copy']['gifts_tab_label'];

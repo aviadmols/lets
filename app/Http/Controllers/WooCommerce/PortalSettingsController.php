@@ -74,6 +74,10 @@ final class PortalSettingsController extends WooStorefrontController
                 $settings->sections = $this->cleanSections((array) $request->input('sections', []));
             }
 
+            if ($request->has('nav_tabs')) {
+                $settings->nav_tabs = $this->cleanTabs((array) $request->input('nav_tabs', []));
+            }
+
             if ($request->has('banners')) {
                 $settings->banners = $this->cleanBanners(
                     (array) $request->input('banners', []),
@@ -200,6 +204,37 @@ final class PortalSettingsController extends WooStorefrontController
     }
 
     /**
+     * The merchant's ordered TAB list — the same three rules as the sections,
+     * over the navigation's own vocabulary.
+     *
+     * @param  array<int, mixed>  $rows
+     * @return list<array{key: string, enabled: bool}>
+     */
+    private function cleanTabs(array $rows): array
+    {
+        $out = [];
+        $seen = [];
+
+        foreach ($rows as $row) {
+            $key = is_array($row) ? (string) ($row['key'] ?? '') : (string) $row;
+
+            if (! in_array($key, MerchantPortalAppearance::TAB_KEYS, true) || isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $enabled = is_array($row) ? (bool) ($row['enabled'] ?? false) : true;
+
+            $out[] = [
+                'key' => $key,
+                'enabled' => in_array($key, MerchantPortalAppearance::LOCKED_TABS, true) || $enabled,
+            ];
+        }
+
+        return $out === [] ? MerchantPortalAppearance::defaultTabs() : $out;
+    }
+
+    /**
      * The banners. Empty slots are kept as rows so the plugin's three forms
      * stay stable across a save, but a slot with neither heading nor image can
      * never reach a shopper — the model drops it on read.
@@ -296,6 +331,7 @@ final class PortalSettingsController extends WooStorefrontController
 
                 // --- structure ---
                 'sections' => $s->sections(),
+                'nav_tabs' => $s->navTabs(),
                 'banners' => $banners,
 
                 // What the shopper will ACTUALLY see: a banner missing a heading
@@ -317,6 +353,8 @@ final class PortalSettingsController extends WooStorefrontController
                 // --- catalogues the plugin renders its controls from ---
                 'available_sections' => MerchantPortalAppearance::SECTION_KEYS,
                 'locked_sections' => MerchantPortalAppearance::LOCKED_SECTIONS,
+                'available_tabs' => MerchantPortalAppearance::TAB_KEYS,
+                'locked_tabs' => MerchantPortalAppearance::LOCKED_TABS,
                 'available_themes' => MerchantPortalAppearance::THEME_MODES,
                 'available_radii' => MerchantPortalAppearance::CORNER_RADII,
                 'available_densities' => MerchantPortalAppearance::DENSITIES,

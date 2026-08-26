@@ -305,6 +305,96 @@ final class CustomerAreaSettingsTest extends TestCase
         $this->assertNull($model['loyalty']);
     }
 
+    // === The navigation, as its own list ===
+
+    /**
+     * The two lists answer two questions. Before they were separate, a merchant
+     * who wanted the club as a TAB had to accept its card on the dashboard too.
+     */
+    public function test_a_tab_and_a_section_are_switched_independently(): void
+    {
+        $loyalty = MerchantLoyaltySettings::current();
+        $loyalty->enabled = true;
+        $loyalty->save();
+
+        $settings = MerchantPortalAppearance::current();
+        // The club: a tab, but NOT a card on the main page.
+        $settings->sections = array_map(
+            static fn (array $row): array => $row['key'] === MerchantPortalAppearance::SECTION_LOYALTY
+                ? ['key' => $row['key'], 'enabled' => false]
+                : $row,
+            MerchantPortalAppearance::defaultSections(),
+        );
+        $settings->nav_tabs = MerchantPortalAppearance::defaultTabs();
+        $settings->save();
+
+        $model = app(AccountPresenter::class)->sample($settings->refresh());
+
+        $this->assertNotContains(MerchantPortalAppearance::SECTION_LOYALTY, $model['sections']);
+        $this->assertContains(MerchantPortalAppearance::TAB_LOYALTY, $model['nav_tabs']);
+
+        // And the other way round: a card, no tab.
+        $settings->sections = MerchantPortalAppearance::defaultSections();
+        $settings->nav_tabs = array_map(
+            static fn (array $row): array => $row['key'] === MerchantPortalAppearance::TAB_LOYALTY
+                ? ['key' => $row['key'], 'enabled' => false]
+                : $row,
+            MerchantPortalAppearance::defaultTabs(),
+        );
+        $settings->save();
+
+        $model = app(AccountPresenter::class)->sample($settings->refresh());
+
+        $this->assertContains(MerchantPortalAppearance::SECTION_LOYALTY, $model['sections']);
+        $this->assertNotContains(MerchantPortalAppearance::TAB_LOYALTY, $model['nav_tabs']);
+    }
+
+    /**
+     * The navigation a shop had before it had a navigation setting. The column
+     * is null for every existing shop on the day this ships, and the answer has
+     * to be the tabs they can see today — not "everything on".
+     */
+    public function test_a_shop_that_never_chose_keeps_the_navigation_its_sections_gave_it(): void
+    {
+        $settings = MerchantPortalAppearance::current();
+        $settings->sections = array_map(
+            static fn (array $row): array => $row['key'] === MerchantPortalAppearance::SECTION_ORDERS
+                ? ['key' => $row['key'], 'enabled' => false]
+                : $row,
+            MerchantPortalAppearance::defaultSections(),
+        );
+        $settings->nav_tabs = null;
+        $settings->save();
+
+        $tabs = $settings->refresh()->visibleTabs();
+
+        $this->assertNotContains(MerchantPortalAppearance::TAB_ORDERS, $tabs);
+        $this->assertContains(MerchantPortalAppearance::TAB_SUBSCRIPTIONS, $tabs);
+    }
+
+    public function test_the_subscriptions_tab_cannot_be_switched_off(): void
+    {
+        $settings = MerchantPortalAppearance::current();
+        $settings->nav_tabs = [['key' => MerchantPortalAppearance::TAB_SUBSCRIPTIONS, 'enabled' => false]];
+        $settings->save();
+
+        // A shopper who cannot reach their subscription cannot cancel it.
+        $this->assertContains(MerchantPortalAppearance::TAB_SUBSCRIPTIONS, $settings->refresh()->visibleTabs());
+    }
+
+    public function test_a_tab_added_by_a_later_release_arrives_switched_on(): void
+    {
+        $settings = MerchantPortalAppearance::current();
+        // A list saved before the club tab existed.
+        $settings->nav_tabs = [
+            ['key' => MerchantPortalAppearance::TAB_SUBSCRIPTIONS, 'enabled' => true],
+            ['key' => MerchantPortalAppearance::TAB_ORDERS, 'enabled' => true],
+        ];
+        $settings->save();
+
+        $this->assertContains(MerchantPortalAppearance::TAB_LOYALTY, $settings->refresh()->visibleTabs());
+    }
+
     /**
      * The club's TAB in the store account navigation. The plugin reads this
      * label off the payload, so the tab and the page inside it always agree —

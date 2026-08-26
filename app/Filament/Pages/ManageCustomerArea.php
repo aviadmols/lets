@@ -89,6 +89,16 @@ class ManageCustomerArea extends Page implements HasForms
                 Tabs::make('customer_area')
                     ->tabs(array_values(array_filter([
                         Tabs\Tab::make(__('account.admin.tab.sections'))->schema([$this->sectionsSection()]),
+                        // The NAVIGATION is its own question: which tabs the
+                        // store's account menu carries, as against what the
+                        // dashboard draws. One list used to answer both, which
+                        // meant a merchant could not have the club as a tab
+                        // without also having its card on the dashboard.
+                        Tabs\Tab::make(__('account.admin.tab.tabs'))
+                            ->schema([$this->navTabsSection()])
+                            // WooCommerce owns this navigation; the Shopify
+                            // customer-account extension renders its own.
+                            ->visible(fn (): bool => ! $this->isShopifyTenant()),
                         Tabs\Tab::make(__('account.admin.tab.appearance'))->schema([$this->appearanceSection()]),
                         Tabs\Tab::make(__('account.admin.tab.banners'))->schema([$this->bannersSection()]),
                         // Shopify owns customer login end to end (new customer
@@ -139,6 +149,46 @@ class ManageCustomerArea extends Page implements HasForms
                     ->collapsible(false)
                     ->live(),
             ]);
+    }
+
+    /**
+     * The tabs down the side of My Account. Same shape as the sections list —
+     * drag to order, a switch to hide — over a different question, and the
+     * subscriptions tab is locked for the reason its section is.
+     */
+    private function navTabsSection(): Section
+    {
+        return Section::make(__('account.admin.tab.tabs'))
+            ->description(__('account.admin.tabs.help'))
+            ->schema([
+                Repeater::make('nav_tabs')
+                    ->hiddenLabel()
+                    ->schema([
+                        Hidden::make('key'),
+                        Placeholder::make('label')
+                            ->hiddenLabel()
+                            ->content(fn (Get $get): string => __('account.admin.tabs.label.'.$get('key'))),
+                        Toggle::make('enabled')
+                            ->label(__('account.admin.banners.enabled'))
+                            ->inline(false)
+                            ->disabled(fn (Get $get): bool => $this->isLockedTab((string) $get('key')))
+                            ->helperText(fn (Get $get): ?string => $this->isLockedTab((string) $get('key'))
+                                ? __('account.admin.tabs.locked')
+                                : null),
+                    ])
+                    ->columns(2)
+                    ->reorderable()
+                    ->reorderableWithButtons()
+                    ->deletable(false)
+                    ->addable(false)
+                    ->collapsible(false)
+                    ->live(),
+            ]);
+    }
+
+    private function isLockedTab(string $key): bool
+    {
+        return in_array($key, MerchantPortalAppearance::LOCKED_TABS, true);
     }
 
     private function appearanceSection(): Section
@@ -446,6 +496,7 @@ class ManageCustomerArea extends Page implements HasForms
             'card_style' => $s->cardStyle(),
             'page_locale' => $s->pageLocale(),
             'sections' => $s->sections(),
+            'nav_tabs' => $s->navTabs(),
             'banners' => $this->bannerRows($s),
             'login_code_enabled' => $s->loginCodeEnabled(),
             'login_code_channel' => $s->loginCodeChannel(),
@@ -509,6 +560,12 @@ class ManageCustomerArea extends Page implements HasForms
             'card_style' => $keep('card_style', $stored->card_style),
             'page_locale' => $input['page_locale'] ?? null,
             'sections' => $this->normalizeSections($input['sections'] ?? []),
+            // Absent (the Shopify tenant never renders this tab) keeps what is
+            // stored, rather than blanking a Woo-side navigation from a screen
+            // that did not present it.
+            'nav_tabs' => array_key_exists('nav_tabs', $input)
+                ? $this->normalizeSections($input['nav_tabs'])
+                : $stored->nav_tabs,
             'banners' => $this->normalizeBanners($input['banners'] ?? []),
             'login_code_enabled' => (bool) $keep('login_code_enabled', $stored->login_code_enabled),
             // ABSENT is not the same as BLANK. Filament drops a hidden field from

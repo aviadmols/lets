@@ -279,15 +279,32 @@ return [
         'subheading' => 'What your customers see in their account, and how it looks.',
 
         'tab' => [
-            'sections' => 'Sections',
+            'sections' => 'Page sections',
+            'tabs' => 'Navigation tabs',
             'appearance' => 'Appearance',
             'banners' => 'Side banners',
             'login' => 'Sign-in',
             'copy' => 'Wording',
         ],
 
+        // The side navigation — a separate question from the sections: what the
+        // main page draws, against which tabs the store's account menu carries.
+        'tabs' => [
+            'help' => 'The tabs down the side of the account area in your store; clicking one opens its own page. This is a separate list from the sections: you can carry the club as a tab without drawing it on the main page, or the other way round. Drag to reorder.',
+            'locked' => 'Always shown — a customer must be able to reach their own subscription.',
+            'label' => [
+                'subscriptions' => 'My subscriptions',
+                'loyalty' => 'Members club',
+                'gifts' => 'Gifts',
+                'orders' => 'Orders (WooCommerce tab)',
+                'downloads' => 'Downloads (WooCommerce tab)',
+                'addresses' => 'Addresses (WooCommerce tab)',
+                'profile' => 'Account details (WooCommerce tab)',
+            ],
+        ],
+
         'sections' => [
-            'help' => 'Drag to reorder. Turn a section off to hide it from every customer.',
+            'help' => 'What the personal area\'s main page draws. Drag to reorder. Turn a section off to hide it from every customer. The side tabs are set on the "Navigation tabs" tab.',
             'locked' => 'Always shown — a customer must be able to reach their own subscription.',
             'label' => [
                 'welcome' => 'Welcome header',

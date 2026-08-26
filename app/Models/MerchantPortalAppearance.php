@@ -93,6 +93,46 @@ class MerchantPortalAppearance extends Model
      */
     public const LOCKED_SECTIONS = [self::SECTION_SUBSCRIPTIONS];
 
+    /**
+     * THE NAVIGATION, which is a different question from the sections above.
+     *
+     * `sections` decides what the personal area's main column DRAWS. These keys
+     * decide which TABS the store's account navigation carries — the ones our
+     * plugin adds (the subscriptions page, the club, the gifts shelf) beside
+     * the ones WooCommerce owns and we merely re-skin. A merchant may want the
+     * club as a tab but not as a card on the dashboard, or the reverse; the two
+     * lists let them say so.
+     *
+     * The values deliberately reuse the section keys where a tab has a section
+     * of the same name, so one vocabulary covers both screens.
+     */
+    public const TAB_SUBSCRIPTIONS = self::SECTION_SUBSCRIPTIONS;
+
+    public const TAB_LOYALTY = self::SECTION_LOYALTY;
+
+    public const TAB_GIFTS = self::SECTION_GIFTS;
+
+    public const TAB_ORDERS = self::SECTION_ORDERS;
+
+    public const TAB_DOWNLOADS = self::SECTION_DOWNLOADS;
+
+    public const TAB_ADDRESSES = self::SECTION_ADDRESSES;
+
+    public const TAB_PROFILE = self::SECTION_PROFILE;
+
+    public const TAB_KEYS = [
+        self::TAB_SUBSCRIPTIONS,
+        self::TAB_LOYALTY,
+        self::TAB_GIFTS,
+        self::TAB_ORDERS,
+        self::TAB_DOWNLOADS,
+        self::TAB_ADDRESSES,
+        self::TAB_PROFILE,
+    ];
+
+    /** Same reason as the locked section: a shopper must be able to reach their plan. */
+    public const LOCKED_TABS = [self::TAB_SUBSCRIPTIONS];
+
     public const THEME_LIGHT = 'light';
 
     public const THEME_DARK = 'dark';
@@ -227,6 +267,7 @@ class MerchantPortalAppearance extends Model
     {
         return [
             'sections' => 'array',
+            'nav_tabs' => 'array',
             'banners' => 'array',
             'login_code_enabled' => 'boolean',
         ];
@@ -310,6 +351,97 @@ class MerchantPortalAppearance extends Model
         }
 
         return $out;
+    }
+
+    // === Navigation tabs ===
+
+    /** Everything on, in the order a shopper reads the navigation. */
+    public static function defaultTabs(): array
+    {
+        return array_map(
+            static fn (string $key): array => ['key' => $key, 'enabled' => true],
+            self::TAB_KEYS,
+        );
+    }
+
+    /**
+     * The merchant's ordered TAB list, sanitised by the same three rules the
+     * sections follow: unknown keys dropped, duplicates collapsed, locked tabs
+     * forced present and enabled.
+     *
+     * NEVER CHOSEN falls back to the SECTIONS, not to the defaults. Until this
+     * list existed the section toggles were what put a tab in the navigation,
+     * and a shop that had switched Orders off there must not have the tab
+     * reappear the day this shipped — the migration leaves the column null
+     * precisely so this branch answers for them, once, until they save.
+     *
+     * @return list<array{key: string, enabled: bool}>
+     */
+    public function navTabs(): array
+    {
+        $raw = $this->nav_tabs;
+
+        if (! is_array($raw) || $raw === []) {
+            return $this->tabsFromSections();
+        }
+
+        $out = [];
+        $seen = [];
+
+        foreach ($raw as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $key = is_string($row['key'] ?? null) ? $row['key'] : '';
+            if (! in_array($key, self::TAB_KEYS, true) || isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $out[] = [
+                'key' => $key,
+                'enabled' => in_array($key, self::LOCKED_TABS, true) || (bool) ($row['enabled'] ?? false),
+            ];
+        }
+
+        if ($out === []) {
+            return $this->tabsFromSections();
+        }
+
+        // A tab a saved list predates arrives ENABLED — the same forward-compat
+        // rule the sections use, and for the same reason: shipping a new tab
+        // must not read as "off" for every shop that saved before it existed.
+        foreach (self::TAB_KEYS as $key) {
+            if (! isset($seen[$key])) {
+                $out[] = ['key' => $key, 'enabled' => true];
+            }
+        }
+
+        return $out;
+    }
+
+    /** The navigation a shop had before it had a navigation setting. */
+    private function tabsFromSections(): array
+    {
+        $visible = $this->visibleSections();
+
+        return array_map(
+            static fn (string $key): array => [
+                'key' => $key,
+                'enabled' => in_array($key, self::LOCKED_TABS, true) || in_array($key, $visible, true),
+            ],
+            self::TAB_KEYS,
+        );
+    }
+
+    /** @return list<string> the tab keys a shopper's navigation carries */
+    public function visibleTabs(): array
+    {
+        return array_values(array_map(
+            static fn (array $t): string => $t['key'],
+            array_filter($this->navTabs(), static fn (array $t): bool => $t['enabled']),
+        ));
     }
 
     /** Is a section visible? Unknown keys are not. */

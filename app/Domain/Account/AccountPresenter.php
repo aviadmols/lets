@@ -559,18 +559,22 @@ final class AccountPresenter
     private function shell(MerchantPortalAppearance $settings, MerchantLoyaltySettings $loyalty, array $banners): array
     {
         $sections = $settings->visibleSections();
+        $tabs = $settings->visibleTabs();
 
-        // A loyalty section on a shop with no club is an empty promise; drop it
-        // here rather than teaching the renderer about program state.
+        // A loyalty card, or a club TAB, on a shop with no club is an empty
+        // promise; dropped here rather than teaching the renderer and the
+        // plugin's navigation about programme state separately.
         if (! $loyalty->enabled) {
-            $sections = array_values(array_filter(
-                $sections,
-                static fn (string $key): bool => $key !== MerchantPortalAppearance::SECTION_LOYALTY,
-            ));
+            $withoutClub = static fn (string $key): bool => $key !== MerchantPortalAppearance::SECTION_LOYALTY;
+            $sections = array_values(array_filter($sections, $withoutClub));
+            $tabs = array_values(array_filter($tabs, $withoutClub));
         }
 
         return [
             'sections' => $sections,
+            // WHAT THE NAVIGATION CARRIES — a different question from what the
+            // main column draws, and the plugin reads this list for its tabs.
+            'nav_tabs' => $tabs,
             'appearance' => [
                 'accent' => $settings->accentColor(),
                 'accent_text' => $settings->accentTextColor(),

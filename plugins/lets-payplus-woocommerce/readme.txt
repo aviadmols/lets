@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.43.0
+Stable tag: 0.44.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,13 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.44.0 =
+* The account TABS are now their own setting (LETS dashboard → Customer area →
+  "Navigation tabs"), separate from the page sections: carry the club as a tab
+  without drawing its card on the main page, or the reverse. WooCommerce's own
+  tabs (Orders, Downloads, Addresses, Account details) are switched there too.
+  A store that never opens the new list keeps exactly the navigation it has.
 
 = 0.43.0 =
 * The members club gets its own My Account tab — the FULL club page (points,
