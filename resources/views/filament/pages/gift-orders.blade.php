@@ -355,10 +355,15 @@
                                         </td>
                                         <td class="rc-ltr">{{ $recipient->external_order_id ?: '—' }}</td>
                                         <td>
-                                            {{-- Only a REJECTED attempt may be retried. `creating`
+                                            {{-- FAILED and SKIPPED never reached the store, so a
+                                                 retry is safe — fix the cause (an address on the
+                                                 subscription, a price) and send again. `creating`
                                                  and `unresolved` may already have an order in the
                                                  store, and a retry there ships a second package. --}}
-                                            @if($recipient->status === \App\Domain\Campaigns\Models\GiftRecipient::STATUS_FAILED)
+                                            @if(in_array($recipient->status, [
+                                                \App\Domain\Campaigns\Models\GiftRecipient::STATUS_FAILED,
+                                                \App\Domain\Campaigns\Models\GiftRecipient::STATUS_SKIPPED,
+                                            ], true))
                                                 <button type="button" class="rc-link"
                                                         wire:click="retryRecipient({{ $recipient->getKey() }})">
                                                     {{ __('gifts.action.retry') }}

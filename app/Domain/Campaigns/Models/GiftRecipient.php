@@ -29,13 +29,18 @@ class GiftRecipient extends Model
 
     /** Enrolled, no order attempted yet — the only state a job may act on. */
     public const STATUS_PENDING = 'pending';
+
     /** The API call is in flight, or died mid-flight. A HUMAN resolves this. */
     public const STATUS_CREATING = 'creating';
+
     public const STATUS_CREATED = 'created';
+
     /** We chose not to create the order (see `reason`) — no order exists. */
     public const STATUS_SKIPPED = 'skipped';
+
     /** The platform REJECTED the call — no order exists, so a retry is safe. */
     public const STATUS_FAILED = 'failed';
+
     /**
      * The call's outcome is UNKNOWN — the store answered 5xx, or timed out, after
      * we had already sent the order. It may well exist there. Never auto-retried
@@ -46,19 +51,28 @@ class GiftRecipient extends Model
 
     /** The two subscription rails a recipient can come from. */
     public const SOURCE_PLAN = 'plan';
+
     public const SOURCE_CONTRACT = 'contract';
 
     /** Reason codes; the UI translates each one. */
     public const REASON_NO_ADDRESS = 'no_address';
+
     public const REASON_ADDRESS_ACCESS_PENDING = 'address_access_pending';
+
     public const REASON_NO_PRICE = 'no_price';
+
     public const REASON_API_ERROR = 'api_error';
+
     /** The store broke mid-request; we could not tell whether the order landed. */
     public const REASON_UNKNOWN_OUTCOME = 'unknown_outcome';
 
     /** Where the shipping address came from — shown so the merchant can judge it. */
     public const ADDRESS_FROM_PROFILE = 'customer_profile';
+
     public const ADDRESS_FROM_ORDER = 'origin_order';
+
+    /** The plan's own stored address — an imported member's, or an admin's edit. */
+    public const ADDRESS_FROM_PLAN = 'plan_contact';
 
     /** status is guarded: it moves only through the mark* helpers below. */
     protected $guarded = ['id', 'shop_id', 'status'];
@@ -142,9 +156,13 @@ class GiftRecipient extends Model
     /** Put a REJECTED attempt back in the queue. Never valid for `creating`. */
     public function resetForRetry(): bool
     {
+        // FAILED and SKIPPED both mean nothing reached the store: a failure is
+        // the store's explicit refusal, a skip happened BEFORE the API call (no
+        // address, no price). Retrying either cannot ship a second package —
+        // unlike `creating`/`unresolved`, whose order may already exist.
         return static::query()
             ->whereKey($this->getKey())
-            ->where('status', self::STATUS_FAILED)
+            ->whereIn('status', [self::STATUS_FAILED, self::STATUS_SKIPPED])
             ->update(['status' => self::STATUS_PENDING, 'reason' => null, 'updated_at' => now()]) === 1;
     }
 }

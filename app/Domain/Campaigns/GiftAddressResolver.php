@@ -20,9 +20,15 @@ use Illuminate\Support\Facades\Log;
  * its own GDPR redaction path.
  *
  * The chain, in order, and it fails CLOSED:
- *   1. the customer's profile on the platform — their current address;
+ *   1. the customer's profile on the platform — their current address — found by
+ *      the id the plan carries, or by EMAIL when the plan carries none (an
+ *      imported member who later opened a store account);
  *   2. the order the subscription began with — what they typed at checkout;
- *   3. nothing → the recipient is SKIPPED with a reason. A gift order with no
+ *   3. the plan's OWN stored address — an imported member's, in the import's
+ *      vocabulary, or an admin's correction on the subscription screen. The
+ *      same fallback subscription orders already use (WooOrderAddress), read
+ *      through the same single mapping;
+ *   4. nothing → the recipient is SKIPPED with a reason. A gift order with no
  *      address is a package nobody can deliver; skipping and saying why beats
  *      creating paperwork that cannot ship.
  *
@@ -73,9 +79,24 @@ final class GiftAddressResolver
             return $this->nothing(GiftRecipient::REASON_NO_ADDRESS);
         }
 
-        return $shop->platform === Shop::PLATFORM_WOOCOMMERCE
+        $resolved = $shop->platform === Shop::PLATFORM_WOOCOMMERCE
             ? $this->fromWoo($shop, $plan)
             : $this->fromShopify($shop, (string) $plan->externalCustomerId(), (string) $plan->externalOrderId());
+
+        // The store had nothing — but the PLAN may hold an address of its own:
+        // an imported member's (most have no store account at all), or the one
+        // an admin typed on the subscription screen. Same rung, same mapping,
+        // as the address a renewal order ships to. A Shopify access-pending
+        // reason is NOT overridden by its absence — only a plain "no address"
+        // falls through to here.
+        if ($resolved['address'] === null && $resolved['reason'] === GiftRecipient::REASON_NO_ADDRESS) {
+            $stored = GiftShippingAddress::fromPlanContact($plan);
+            if ($stored !== null) {
+                return $this->found($stored, GiftRecipient::ADDRESS_FROM_PLAN);
+            }
+        }
+
+        return $resolved;
     }
 
     /**
@@ -119,6 +140,19 @@ final class GiftAddressResolver
             $address = $this->pickWooBlock($customer);
             if ($address !== null) {
                 return $this->found($address, GiftRecipient::ADDRESS_FROM_PROFILE);
+            }
+        }
+
+        // No id (an imported member, a guest) — but the store may still know
+        // this PERSON: same email, same customer. The account they opened after
+        // being imported carries the address they keep current.
+        if ($customerId <= 0) {
+            $byEmail = $client->findCustomerIdByEmail((string) ($plan->customer_email ?? ''));
+            if ($byEmail !== null && $byEmail > 0) {
+                $address = $this->pickWooBlock($client->fetchCustomer($byEmail));
+                if ($address !== null) {
+                    return $this->found($address, GiftRecipient::ADDRESS_FROM_PROFILE);
+                }
             }
         }
 

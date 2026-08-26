@@ -38,11 +38,8 @@ use App\Models\Shop;
 final class WooOrderAddress
 {
     // === CONSTANTS ===
-    /** Joins a street with its building number: "הרצל 12". */
-    private const STREET_SEPARATOR = ' ';
-
-    /** Prefix for the apartment line — address_2 on a Woo block. */
-    private const APARTMENT_PREFIX = 'דירה ';
+    // (The plan-address mapping consts moved WITH the mapping to
+    // GiftShippingAddress::fromPlanContact — one mapping, shared with gifts.)
 
     /**
      * The `billing` and `shipping` blocks for one order.
@@ -98,41 +95,11 @@ final class WooOrderAddress
 
     /**
      * The address the plan itself carries — an imported member's, in the import's
-     * own vocabulary.
+     * own vocabulary. The mapping lives on GiftShippingAddress so gift orders and
+     * subscription orders can never disagree about where the same person lives.
      */
     private static function fromPlan(InstallmentPlan $plan): ?GiftShippingAddress
     {
-        $stored = $plan->contactAddress();
-        if ($stored === []) {
-            return null;
-        }
-
-        $street = trim(implode(self::STREET_SEPARATOR, array_filter([
-            $stored['street'] ?? null,
-            $stored['building_number'] ?? null,
-        ])));
-
-        $apartment = trim((string) ($stored['apartment_number'] ?? ''));
-
-        $address = new GiftShippingAddress(
-            firstName: self::blankToNull((string) ($plan->customer_name ?? '')),
-            address1: self::blankToNull($street),
-            address2: $apartment !== '' ? self::APARTMENT_PREFIX.$apartment : null,
-            city: self::blankToNull((string) ($stored['city'] ?? '')),
-            zip: self::blankToNull((string) ($stored['zip_code'] ?? '')),
-            countryCode: self::blankToNull((string) ($stored['country'] ?? '')),
-            phone: self::blankToNull((string) ($plan->customer_phone ?? '')),
-        );
-
-        // A half-filled import (a city and nothing else) is not an address; sending
-        // it would look like a delivery instruction it cannot fulfil.
-        return $address->isShippable() ? $address : null;
-    }
-
-    private static function blankToNull(string $value): ?string
-    {
-        $value = trim($value);
-
-        return $value !== '' ? $value : null;
+        return GiftShippingAddress::fromPlanContact($plan);
     }
 }

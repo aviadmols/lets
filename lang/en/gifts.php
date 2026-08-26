@@ -87,6 +87,7 @@ return [
         ],
         'source' => [
             'customer_profile' => 'Customer profile',
+            'plan_contact' => 'The address stored on the subscription in LETS',
             'origin_order' => 'The order they subscribed with',
         ],
         'truncated' => ':count more recipients were left out of this file.',
@@ -119,7 +120,7 @@ return [
     ],
 
     'reason' => [
-        'no_address' => 'No shipping address on file — a gift needs somewhere to go.',
+        'no_address' => 'No shipping address anywhere — not on the store profile, not on the origin order, not on the subscription in LETS. Add one on the subscription screen and retry.',
         'address_access_pending' => 'Shopify has not granted this app access to customer addresses. Select the Address field in the Partner Dashboard under Protected customer data, then retry.',
         'no_price' => 'The gift has no price, so its value could not be shown on the order.',
         'api_error' => 'The store refused the order. Retry once the cause is fixed.',

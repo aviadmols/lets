@@ -400,6 +400,21 @@ final class GiftOrdersPageTest extends TestCase
         Queue::assertPushed(GiftOrderJob::class, 1);
     }
 
+    public function test_a_skipped_recipient_can_be_retried_once_the_cause_is_fixed(): void
+    {
+        Queue::fake();
+        $campaign = $this->campaign();
+        // Skipped happens BEFORE the store is called (no address), so nothing
+        // exists there and a retry cannot ship a second package.
+        $skipped = $this->recipient($campaign, GiftRecipient::STATUS_SKIPPED, 3);
+
+        Livewire::test(GiftOrders::class)->call('retryRecipient', (int) $skipped->getKey());
+
+        $this->assertSame(GiftRecipient::STATUS_PENDING, $skipped->fresh()->status);
+        $this->assertNull($skipped->fresh()->reason);
+        Queue::assertPushed(GiftOrderJob::class, 1);
+    }
+
     public function test_another_shops_recipient_cannot_be_retried_here(): void
     {
         Queue::fake();

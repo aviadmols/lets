@@ -97,9 +97,70 @@ final class GiftAddressResolverTest extends TestCase
         $this->assertSame(GiftRecipient::REASON_NO_ADDRESS, $result['reason']);
     }
 
+    public function test_an_imported_member_ships_to_the_address_the_import_carried(): void
+    {
+        // The store knows nothing: no profile (no id, email finds nobody), no
+        // origin order. Exactly the shape of the 1,362 imported members.
+        Http::fake(['*' => Http::response([], 200)]);
+
+        [$shop, $recipient] = $this->wooRecipient(customerId: '', orderId: '', meta: [
+            'import' => ['address' => [
+                'street' => 'ביאליק', 'building_number' => '7', 'apartment_number' => '3',
+                'city' => 'רמת גן', 'zip_code' => '5252217', 'country' => 'IL',
+            ]],
+        ]);
+
+        $result = Tenant::run($shop, fn () => app(GiftAddressResolver::class)->resolve($shop, $recipient));
+
+        // The same composed shape a renewal order ships to — one mapping.
+        $this->assertSame('ביאליק 7', $result['address']->address1);
+        $this->assertSame('דירה 3', $result['address']->address2);
+        $this->assertSame('רמת גן', $result['address']->city);
+        $this->assertSame(GiftRecipient::ADDRESS_FROM_PLAN, $result['source']);
+    }
+
+    public function test_an_imported_member_with_a_store_account_prefers_its_current_address(): void
+    {
+        Http::fake([
+            // The email lookup finds the account they opened AFTER being imported…
+            '*/wp-json/wc/v3/customers/88*' => Http::response([
+                'id' => 88,
+                'shipping' => ['address_1' => 'הרצל 12', 'city' => 'חיפה', 'country' => 'IL'],
+            ], 200),
+            '*/wp-json/wc/v3/customers*' => Http::response([['id' => 88]], 200),
+            '*' => Http::response([], 200),
+        ]);
+
+        // The plan carries no store id AND an imported address — the account,
+        // which the customer keeps current, still wins over the import snapshot.
+        [$shop, $recipient] = $this->wooRecipient(customerId: '', orderId: '', meta: [
+            'import' => ['address' => ['street' => 'ישן', 'building_number' => '1', 'city' => 'עיר ישנה']],
+        ]);
+
+        $result = Tenant::run($shop, fn () => app(GiftAddressResolver::class)->resolve($shop, $recipient));
+
+        $this->assertSame('הרצל 12', $result['address']->address1);
+        $this->assertSame(GiftRecipient::ADDRESS_FROM_PROFILE, $result['source']);
+    }
+
+    public function test_a_half_filled_import_address_still_skips(): void
+    {
+        Http::fake(['*' => Http::response([], 200)]);
+
+        // A city and nothing else is not a delivery instruction.
+        [$shop, $recipient] = $this->wooRecipient(customerId: '', orderId: '', meta: [
+            'import' => ['address' => ['city' => 'תל אביב']],
+        ]);
+
+        $result = Tenant::run($shop, fn () => app(GiftAddressResolver::class)->resolve($shop, $recipient));
+
+        $this->assertNull($result['address']);
+        $this->assertSame(GiftRecipient::REASON_NO_ADDRESS, $result['reason']);
+    }
+
     public function test_shopify_reads_the_customers_default_address(): void
     {
-        $recorder = new RecordingShopifyClient();
+        $recorder = new RecordingShopifyClient;
         $recorder->graphqlResponses = [[
             'data' => ['customer' => ['defaultAddress' => [
                 'address1' => 'Dizengoff 100', 'city' => 'Tel Aviv', 'countryCode' => 'IL',
@@ -117,7 +178,7 @@ final class GiftAddressResolverTest extends TestCase
 
     public function test_a_protected_data_refusal_names_the_approval_the_merchant_needs(): void
     {
-        $recorder = new RecordingShopifyClient();
+        $recorder = new RecordingShopifyClient;
         // Shopify gates ADDRESS separately from name/email: a shop approved for one
         // can still be refused the other.
         $recorder->graphqlThrows = new \RuntimeException(
@@ -137,7 +198,7 @@ final class GiftAddressResolverTest extends TestCase
 
     public function test_a_transport_failure_never_throws(): void
     {
-        $recorder = new RecordingShopifyClient();
+        $recorder = new RecordingShopifyClient;
         $recorder->graphqlThrows = new \RuntimeException('shopify.graphql_failed — status=500');
         ShopifyClientFactory::fake(fn (): RecordingShopifyClient => $recorder);
 
@@ -152,8 +213,11 @@ final class GiftAddressResolverTest extends TestCase
 
     // === Fixtures ===
 
-    /** @return array{0: Shop, 1: GiftRecipient} */
-    private function wooRecipient(string $customerId, string $orderId): array
+    /**
+     * @param  array<string, mixed>  $meta
+     * @return array{0: Shop, 1: GiftRecipient}
+     */
+    private function wooRecipient(string $customerId, string $orderId, array $meta = []): array
     {
         $shop = Shop::create([
             'woocommerce_domain' => 'gift-addr.example.com',
@@ -168,10 +232,11 @@ final class GiftAddressResolverTest extends TestCase
         $shop->save();
         $shop = $shop->fresh();
 
-        return [$shop, $this->recipientFor($shop, [
+        return [$shop, $this->recipientFor($shop, array_filter([
             'external_customer_id' => $customerId,
             'external_order_id' => $orderId,
-        ])];
+            'meta' => $meta !== [] ? $meta : null,
+        ], static fn ($v): bool => $v !== null))];
     }
 
     /** @return array{0: Shop, 1: GiftRecipient} */

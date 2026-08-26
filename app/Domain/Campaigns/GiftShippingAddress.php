@@ -2,6 +2,8 @@
 
 namespace App\Domain\Campaigns;
 
+use App\Models\InstallmentPlan;
+
 /**
  * A shipping address, normalised from whichever platform shape it came out of.
  *
@@ -21,6 +23,12 @@ final readonly class GiftShippingAddress
      * telling the merchant why.
      */
     private const REQUIRED = ['address1', 'city'];
+
+    /** Joins a street with its building number: "הרצל 12". */
+    private const STREET_SEPARATOR = ' ';
+
+    /** Prefix for the apartment line — address_2 on a Woo block. */
+    private const APARTMENT_PREFIX = 'דירה ';
 
     public function __construct(
         public ?string $firstName = null,
@@ -73,6 +81,43 @@ final readonly class GiftShippingAddress
             phone: self::clean($node['phone'] ?? null),
             company: self::clean($node['company'] ?? null),
         );
+    }
+
+    /**
+     * The address the plan ITSELF carries — an imported member's, in the
+     * import's own vocabulary (street, building number, apartment), or an
+     * admin's correction. This is THE one mapping of that shape; recurring
+     * orders (WooOrderAddress) and gift orders both read through here, so the
+     * two can never disagree about where the same person lives.
+     *
+     * Null when the plan holds no shippable address — a half-filled import
+     * (a city and nothing else) is not a delivery instruction.
+     */
+    public static function fromPlanContact(InstallmentPlan $plan): ?self
+    {
+        $stored = $plan->contactAddress();
+        if ($stored === []) {
+            return null;
+        }
+
+        $street = trim(implode(self::STREET_SEPARATOR, array_filter([
+            $stored['street'] ?? null,
+            $stored['building_number'] ?? null,
+        ])));
+
+        $apartment = trim((string) ($stored['apartment_number'] ?? ''));
+
+        $address = new self(
+            firstName: self::clean($plan->customer_name),
+            address1: self::clean($street),
+            address2: $apartment !== '' ? self::APARTMENT_PREFIX.$apartment : null,
+            city: self::clean($stored['city'] ?? null),
+            zip: self::clean($stored['zip_code'] ?? null),
+            countryCode: self::clean($stored['country'] ?? null),
+            phone: self::clean($plan->customer_phone),
+        );
+
+        return $address->isShippable() ? $address : null;
     }
 
     /** Is there enough here to actually ship a package? */
