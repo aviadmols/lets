@@ -18,6 +18,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
@@ -99,7 +100,7 @@ final class GiftOrdersPageTest extends TestCase
             ->assertSet('previewed', true)
             // A list shown for one gift must not stand as approval for a different
             // one.
-            ->call('selectProduct', (int) $product->getKey())
+            ->call('addGiftItem', (int) $product->getKey())
             ->assertSet('previewed', false);
 
         $this->assertCount(0, $page->instance()->qualifying());
@@ -131,7 +132,7 @@ final class GiftOrdersPageTest extends TestCase
         Livewire::test(GiftOrders::class)
             ->set('campaignTitle', 'Thank you')
             ->set('minCycles', 3)
-            ->call('selectProduct', (int) $product->getKey())
+            ->call('addGiftItem', (int) $product->getKey())
             ->call('preview')
             ->call('generate');
 
@@ -153,7 +154,7 @@ final class GiftOrdersPageTest extends TestCase
             ->set('campaignTitle', '  Thank you, March  ')
             ->set('minCycles', 3)
             ->set('shippingLabel', 'Gift delivery')
-            ->call('selectProduct', (int) $product->getKey())
+            ->call('addGiftItem', (int) $product->getKey())
             ->call('preview')
             ->call('generate')
             // The form clears so the next campaign starts from a blank rule rather
@@ -177,9 +178,90 @@ final class GiftOrdersPageTest extends TestCase
         Queue::assertPushed(GiftOrderJob::class, 1);
     }
 
+    public function test_a_gift_can_hold_several_products_and_snapshots_them_all(): void
+    {
+        Queue::fake();
+        $this->subscriber('Dana', succeeded: 4);
+        [$book] = $this->giftProduct(price: 73.50);
+        [$second] = $this->giftProduct(price: 26.50, externalId: '501', title: 'Second Book');
+
+        Livewire::test(GiftOrders::class)
+            ->set('campaignTitle', 'Two books')
+            ->set('minCycles', 3)
+            ->call('addGiftItem', (int) $book->getKey())
+            ->call('addGiftItem', (int) $second->getKey())
+            ->call('preview')
+            ->call('generate');
+
+        $campaign = GiftCampaign::query()->sole();
+        $items = $campaign->giftItems();
+
+        $this->assertCount(2, $items);
+        $this->assertSame('Gift Product', $items[0]['title']);
+        $this->assertSame('Second Book', $items[1]['title']);
+        // Snapshots, and a total that is the sum of both presents.
+        $this->assertSame(100.0, $campaign->totalValue());
+        // The legacy columns mirror the FIRST line, so every older reader —
+        // the account shelf, the campaign list — still has a title and a price.
+        $this->assertSame('Gift Product', $campaign->product_title);
+        $this->assertSame('73.50', number_format((float) $campaign->unit_price, 2, '.', ''));
+
+        Queue::assertPushed(GiftOrderJob::class, 1);
+    }
+
+    public function test_one_priceless_line_refuses_the_whole_gift(): void
+    {
+        Queue::fake();
+        $this->subscriber('Dana', succeeded: 4);
+        [$priced] = $this->giftProduct(price: 40.00);
+        [$priceless] = $this->giftProduct(price: 0.0, externalId: '502', title: 'Unsynced');
+
+        Livewire::test(GiftOrders::class)
+            ->set('campaignTitle', 'Half a gift')
+            ->set('minCycles', 3)
+            ->call('addGiftItem', (int) $priced->getKey())
+            ->call('addGiftItem', (int) $priceless->getKey())
+            ->call('preview')
+            ->call('generate');
+
+        // A partial present that silently dropped a line would not be the
+        // campaign the merchant confirmed.
+        $this->assertSame(0, GiftCampaign::query()->count());
+        Queue::assertNothingPushed();
+    }
+
+    public function test_named_emails_narrow_the_campaign_to_those_people(): void
+    {
+        Queue::fake();
+        $this->subscriber('Dana', succeeded: 4); // dana@example.com
+        $this->subscriber('Meir', succeeded: 4, email: 'meir@example.com');
+        [$product] = $this->giftProduct(price: 40.00);
+
+        $page = Livewire::test(GiftOrders::class)
+            ->set('campaignTitle', 'Just Dana')
+            ->set('minCycles', 3)
+            // Case and separators are the merchant's typing, not the match.
+            ->set('sourceEmailsText', "DANA@example.com,\nnobody-here@example.com")
+            ->call('addGiftItem', (int) $product->getKey())
+            ->call('preview');
+
+        $rows = $page->instance()->qualifying();
+        $this->assertCount(1, $rows);
+        $this->assertSame('dana@example.com', mb_strtolower((string) $rows->first()['email']));
+
+        $page->call('generate');
+
+        // The list narrows enrolment too — the saved campaign remembers WHO it
+        // was for, so a re-run cannot quietly widen back to everyone.
+        $recipient = GiftRecipient::query()->sole();
+        $this->assertSame('Dana', $recipient->customer_name);
+        $this->assertSame(['dana@example.com', 'nobody-here@example.com'], GiftCampaign::query()->sole()->sourceEmails());
+        Queue::assertPushed(GiftOrderJob::class, 1);
+    }
+
     public function test_the_export_hands_back_a_downloadable_file(): void
     {
-        \Illuminate\Support\Facades\Http::fake(['*' => \Illuminate\Support\Facades\Http::response([], 200)]);
+        Http::fake(['*' => Http::response([], 200)]);
         $this->subscriber('Dana', succeeded: 4);
 
         $response = Livewire::test(GiftOrders::class)
@@ -201,7 +283,7 @@ final class GiftOrdersPageTest extends TestCase
         Livewire::test(GiftOrders::class)
             ->set('campaignTitle', 'Later')
             ->set('minCycles', 3)
-            ->call('selectProduct', (int) $product->getKey())
+            ->call('addGiftItem', (int) $product->getKey())
             ->call('save');
 
         $campaign = GiftCampaign::query()->sole();
@@ -219,7 +301,7 @@ final class GiftOrdersPageTest extends TestCase
 
         Livewire::test(GiftOrders::class)
             ->set('campaignTitle', 'First name')
-            ->call('selectProduct', (int) $product->getKey())
+            ->call('addGiftItem', (int) $product->getKey())
             ->call('save')
             ->set('campaignTitle', 'Better name')
             ->call('save');
@@ -237,7 +319,7 @@ final class GiftOrdersPageTest extends TestCase
         Livewire::test(GiftOrders::class)
             ->set('campaignTitle', 'Saved then sent')
             ->set('minCycles', 3)
-            ->call('selectProduct', (int) $product->getKey())
+            ->call('addGiftItem', (int) $product->getKey())
             ->call('save')
             ->call('preview')
             ->call('generate')
@@ -259,7 +341,7 @@ final class GiftOrdersPageTest extends TestCase
             ->set('campaignTitle', 'Saved for later')
             ->set('minCycles', 3)
             ->set('shippingLabel', 'By courier')
-            ->call('selectProduct', (int) $product->getKey())
+            ->call('addGiftItem', (int) $product->getKey())
             ->call('save')
             ->call('newCampaign')
             ->assertSet('campaignTitle', '');
@@ -269,7 +351,7 @@ final class GiftOrdersPageTest extends TestCase
         $draft->call('editCampaign', $campaignId)
             ->assertSet('campaignTitle', 'Saved for later')
             ->assertSet('shippingLabel', 'By courier')
-            ->assertSet('selectedProductId', (int) $product->getKey())
+            ->assertSet('giftItems.0.product_id', (int) $product->getKey())
             // A rule pulled back onto the screen has not been reviewed yet.
             ->assertSet('previewed', false);
 
@@ -346,14 +428,14 @@ final class GiftOrdersPageTest extends TestCase
     // === Fixtures ===
 
     /** @return array{0: Product, 1: ProductVariant} */
-    private function giftProduct(float $price): array
+    private function giftProduct(float $price, string $externalId = '500', string $title = 'Gift Product'): array
     {
         $product = new Product;
         $product->forceFill([
             'shop_id' => $this->shop->getKey(),
             'source' => Product::SOURCE_WOOCOMMERCE,
-            'external_id' => '500',
-            'title' => 'Gift Product',
+            'external_id' => $externalId,
+            'title' => $title,
             'status' => Product::STATUS_ACTIVE,
         ])->save();
 
@@ -361,7 +443,7 @@ final class GiftOrdersPageTest extends TestCase
         $variant->forceFill([
             'shop_id' => $this->shop->getKey(),
             'product_id' => $product->getKey(),
-            'external_variant_id' => '500',
+            'external_variant_id' => $externalId,
             'title' => 'Default',
             'price' => $price,
             'position' => 1,

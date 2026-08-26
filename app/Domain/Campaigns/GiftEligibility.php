@@ -36,24 +36,36 @@ final class GiftEligibility
      * Everyone who qualifies, as display rows.
      *
      * `$productIds` are LOCAL Product ids narrowing the rule to the subscribers of
-     * those products; empty means every product. When a campaign is given and no
-     * ids are passed, the campaign's own choice applies — so the preview, the
-     * generator and the "would receive now" count can never disagree about who a
-     * saved campaign is for.
+     * those products; empty means every product. `$emails` narrows further to the
+     * SPECIFIC people named (matched on the same lowercased email every other
+     * block trusts); empty means everyone the rule reaches. When a campaign is
+     * given and neither is passed, the campaign's own choices apply — so the
+     * preview, the generator and the "would receive now" count can never disagree
+     * about who a saved campaign is for.
      *
      * @param  array<int, int>  $productIds
+     * @param  array<int, string>  $emails
      * @return Collection<int, array{
      *     source_type: string, source_id: int, label: string, email: ?string,
      *     rail: string, cycles: int, already_gifted: bool
      * }>
      */
-    public function qualifying(int $minCycles, ?GiftCampaign $campaign = null, array $productIds = []): Collection
+    public function qualifying(int $minCycles, ?GiftCampaign $campaign = null, array $productIds = [], array $emails = []): Collection
     {
         $minCycles = max(self::MIN_THRESHOLD, $minCycles);
 
         if ($productIds === [] && $campaign !== null) {
             $productIds = $campaign->sourceProductIds();
         }
+
+        if ($emails === [] && $campaign !== null) {
+            $emails = $campaign->sourceEmails();
+        }
+
+        $emails = array_values(array_filter(array_map(
+            static fn ($email): string => mb_strtolower(trim((string) $email)),
+            $emails,
+        ), static fn (string $email): bool => $email !== ''));
 
         $externalIds = $this->externalIds($productIds);
 
@@ -66,6 +78,14 @@ final class GiftEligibility
 
         $rows = $this->fromPlans($minCycles, $externalIds)
             ->concat($this->fromContracts($minCycles, $externalIds));
+
+        // The named-people filter. A row with NO email cannot be one of the
+        // people the merchant named, so it is excluded — the opposite of the
+        // unfiltered case, where anonymity keeps a row in.
+        if ($emails !== []) {
+            $rows = $rows->filter(static fn (array $row): bool => $row['email'] !== null
+                && in_array(mb_strtolower($row['email']), $emails, true))->values();
+        }
 
         $rows = $this->dedupeByEmail($rows);
 

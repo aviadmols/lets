@@ -5,6 +5,9 @@ namespace App\Services\WooCommerce\Orders;
 use App\Domain\Campaigns\GiftShippingAddress;
 use App\Domain\Campaigns\Models\GiftCampaign;
 use App\Domain\Campaigns\Models\GiftRecipient;
+use App\Models\InstallmentPlan;
+use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\Shop;
 use App\Services\WooCommerce\WooClientFactory;
 use Illuminate\Support\Facades\Log;
@@ -34,9 +37,12 @@ final class WooGiftOrderService
 
     /** Reuses the role key WooUpsellChildOrderService already stamps. */
     private const META_ORDER_ROLE = 'lets_order_role';
+
     private const META_CAMPAIGN_ID = 'lets_gift_campaign_id';
+
     /** Public: GiftOrderReconciler searches the store on exactly this key. */
     public const META_RECIPIENT_ID = 'lets_gift_recipient_id';
+
     public const ROLE_GIFT = 'gift_order';
 
     /** The shipping line's machine id; its TITLE is the merchant's own label. */
@@ -66,7 +72,7 @@ final class WooGiftOrderService
                 'phone' => $address->phone,
             ], static fn (?string $v): bool => $v !== null && $v !== ''),
             'shipping' => $address->toWooBlock(),
-            'line_items' => [$this->lineItem($campaign)],
+            'line_items' => $this->lineItems($campaign),
             'shipping_lines' => [[
                 'method_id' => self::SHIPPING_METHOD_ID,
                 'method_title' => (string) ($campaign->shipping_label ?: __('gifts.default_shipping_label')),
@@ -101,7 +107,7 @@ final class WooGiftOrderService
         try {
             $client->addOrderNote($orderId, __('gifts.order_note', [
                 'campaign' => (string) $campaign->title,
-                'value' => number_format((float) $campaign->unit_price, 2, '.', ''),
+                'value' => number_format($campaign->totalValue(), 2, '.', ''),
             ]), false);
         } catch (\Throwable $e) {
             // The gift exists; a note is not worth failing it over.
@@ -114,17 +120,34 @@ final class WooGiftOrderService
     }
 
     /**
-     * The gift line: full value as `subtotal`, nothing as `total`.
+     * The gift lines — one per item, each with its full value as `subtotal` and
+     * nothing as `total`. A single-product campaign (every campaign before
+     * multi-item gifts) reads through giftItems() as a one-line list.
      *
+     * @return list<array<string, mixed>>
+     */
+    private function lineItems(GiftCampaign $campaign): array
+    {
+        return array_values(array_map(
+            fn (array $item): array => $this->lineItem($item),
+            $campaign->giftItems(),
+        ));
+    }
+
+    /**
+     * @param  array{product_id: ?int, product_variant_id: ?int, title: string, unit_price: float}  $item
      * @return array<string, mixed>
      */
-    private function lineItem(GiftCampaign $campaign): array
+    private function lineItem(array $item): array
     {
-        $productId = (int) ($campaign->product?->external_id ?? 0);
+        $product = $item['product_id'] !== null
+            ? Product::query()->find($item['product_id'])
+            : null;
+        $productId = (int) ($product?->external_id ?? 0);
 
         $line = [
             'quantity' => 1,
-            'subtotal' => number_format((float) $campaign->unit_price, 2, '.', ''),
+            'subtotal' => number_format($item['unit_price'], 2, '.', ''),
             'total' => '0.00',
         ];
 
@@ -132,13 +155,16 @@ final class WooGiftOrderService
             $line['product_id'] = $productId;
         } else {
             // No catalog id — name the gift so the order still reads sensibly.
-            $line['name'] = (string) ($campaign->product_title ?: __('gifts.default_line_name'));
+            $line['name'] = (string) ($item['title'] ?: __('gifts.default_line_name'));
         }
 
         // The W23 trap: a SIMPLE WooCommerce product is cached with its variant id
         // equal to its product id. Echoing that back as `variation_id` makes WC
         // reject the whole order, so a variation is sent only when it is real.
-        $variationId = (int) ($campaign->variant?->external_variant_id ?? 0);
+        $variant = $item['product_variant_id'] !== null
+            ? ProductVariant::query()->find($item['product_variant_id'])
+            : null;
+        $variationId = (int) ($variant?->external_variant_id ?? 0);
         if ($variationId > 0 && $variationId !== $productId) {
             $line['variation_id'] = $variationId;
         }
@@ -149,7 +175,7 @@ final class WooGiftOrderService
     private function customerId(GiftRecipient $recipient): int
     {
         $plan = $recipient->source_type === GiftRecipient::SOURCE_PLAN
-            ? \App\Models\InstallmentPlan::query()->find($recipient->source_id)
+            ? InstallmentPlan::query()->find($recipient->source_id)
             : null;
 
         return (int) ($plan?->externalCustomerId() ?? 0);

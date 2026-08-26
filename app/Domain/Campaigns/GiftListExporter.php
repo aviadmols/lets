@@ -46,6 +46,7 @@ final class GiftListExporter
 
     /** RFC-4180 CSV: quotes are doubled, nothing is backslash-escaped. */
     private const SEPARATOR = ',';
+
     private const ENCLOSURE = '"';
 
     /**
@@ -60,12 +61,15 @@ final class GiftListExporter
         private readonly GiftAddressResolver $addresses,
     ) {}
 
-    /** @param  array<int, int>  $productIds  local Product ids; empty = every product */
-    public function download(Shop $shop, int $minCycles, array $productIds = []): StreamedResponse
+    /**
+     * @param  array<int, int>  $productIds  local Product ids; empty = every product
+     * @param  array<int, string>  $emails  specific people; empty = everyone the rule reaches
+     */
+    public function download(Shop $shop, int $minCycles, array $productIds = [], array $emails = []): StreamedResponse
     {
         // Built eagerly, not inside the stream callback: the tenant binding and the
         // store reads belong to the request, not to response-send time.
-        $csv = $this->csv($shop, $minCycles, $productIds);
+        $csv = $this->csv($shop, $minCycles, $productIds, $emails);
         $filename = 'gift-recipients-'.now()->format('Y-m-d').'.csv';
 
         return response()->streamDownload(
@@ -77,11 +81,14 @@ final class GiftListExporter
         );
     }
 
-    /** @param  array<int, int>  $productIds  local Product ids; empty = every product */
-    public function csv(Shop $shop, int $minCycles, array $productIds = []): string
+    /**
+     * @param  array<int, int>  $productIds  local Product ids; empty = every product
+     * @param  array<int, string>  $emails  specific people; empty = everyone the rule reaches
+     */
+    public function csv(Shop $shop, int $minCycles, array $productIds = [], array $emails = []): string
     {
-        return Tenant::run($shop, function () use ($shop, $minCycles, $productIds): string {
-            $rows = $this->eligibility->qualifying($minCycles, null, $productIds);
+        return Tenant::run($shop, function () use ($shop, $minCycles, $productIds, $emails): string {
+            $rows = $this->eligibility->qualifying($minCycles, null, $productIds, $emails);
             $total = $rows->count();
 
             $handle = fopen('php://temp', 'r+');

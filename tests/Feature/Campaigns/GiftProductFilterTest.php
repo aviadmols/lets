@@ -4,6 +4,7 @@ namespace Tests\Feature\Campaigns;
 
 use App\Domain\Campaigns\GiftEligibility;
 use App\Domain\Campaigns\Models\GiftCampaign;
+use App\Domain\Campaigns\Models\GiftRecipient;
 use App\Filament\Pages\GiftOrders;
 use App\Models\InstallmentPayment;
 use App\Models\InstallmentPlan;
@@ -187,7 +188,7 @@ final class GiftProductFilterTest extends TestCase
             ->set('campaignTitle', 'Coffee thanks')
             ->set('minCycles', 1)
             ->call('addSourceProduct', (int) $coffee->getKey())
-            ->call('selectProduct', (int) $gift->getKey())
+            ->call('addGiftItem', (int) $gift->getKey())
             ->call('save');
 
         $campaign = GiftCampaign::query()->sole();
@@ -213,11 +214,11 @@ final class GiftProductFilterTest extends TestCase
             ->set('campaignTitle', 'Coffee thanks')
             ->set('minCycles', 1)
             ->call('addSourceProduct', (int) $coffee->getKey())
-            ->call('selectProduct', (int) $gift->getKey())
+            ->call('addGiftItem', (int) $gift->getKey())
             ->call('preview')
             ->call('generate');
 
-        $recipients = \App\Domain\Campaigns\Models\GiftRecipient::query()->get();
+        $recipients = GiftRecipient::query()->get();
 
         // The generator reads the rule off the SAVED campaign, so what was
         // previewed is what goes out.

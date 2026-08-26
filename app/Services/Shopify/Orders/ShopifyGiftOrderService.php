@@ -5,6 +5,7 @@ namespace App\Services\Shopify\Orders;
 use App\Domain\Campaigns\GiftShippingAddress;
 use App\Domain\Campaigns\Models\GiftCampaign;
 use App\Domain\Campaigns\Models\GiftRecipient;
+use App\Models\ProductVariant;
 use App\Models\Shop;
 use App\Services\Shopify\ShopifyClientFactory;
 
@@ -34,18 +35,22 @@ final class ShopifyGiftOrderService
 
     /** The discount that zeroes the line. Shopify prints this code on the order. */
     private const DISCOUNT_CODE = 'GIFT';
+
     private const DISCOUNT_TYPE = 'fixed_amount';
 
     private const SHIPPING_CODE = 'lets_gift';
 
     private const ROLE_ATTRIBUTE = 'lets_order_role';
+
     private const CAMPAIGN_ATTRIBUTE = 'lets_gift_campaign_id';
+
     /**
      * Public: GiftOrderReconciler searches Shopify on exactly this attribute when
      * an attempt's outcome is unknown. Without it stamped, a gift that landed
      * during an outage could never be traced back to its recipient.
      */
     public const RECIPIENT_ATTRIBUTE = 'lets_gift_recipient_id';
+
     public const ROLE_GIFT = 'gift_order';
 
     /** The tag used when the config names none — also the reconciler's search. */
@@ -64,12 +69,31 @@ final class ShopifyGiftOrderService
             return null;
         }
 
-        $variantId = (int) ($campaign->variant?->external_variant_id ?? 0);
-        if ($variantId <= 0) {
-            return null; // Shopify sells variants; without one there is no line to create.
+        // Shopify sells variants; a line without one cannot be created — and one
+        // missing variant refuses the WHOLE order rather than shipping a partial
+        // gift that claims to be the campaign.
+        $lines = [];
+        foreach ($campaign->giftItems() as $item) {
+            $variantId = (int) (($item['product_variant_id'] !== null
+                ? ProductVariant::query()->find($item['product_variant_id'])?->external_variant_id
+                : null) ?? 0);
+            if ($variantId <= 0) {
+                return null;
+            }
+
+            $lines[] = [
+                'variant_id' => $variantId,
+                'quantity' => 1,
+                'price' => number_format($item['unit_price'], 2, '.', ''), // the line's real value
+                'requires_shipping' => true,
+            ];
         }
 
-        $price = number_format((float) $campaign->unit_price, 2, '.', '');
+        if ($lines === []) {
+            return null;
+        }
+
+        $price = number_format($campaign->totalValue(), 2, '.', '');
 
         $payload = [
             'email' => (string) ($recipient->customer_email ?? ''),
@@ -81,15 +105,10 @@ final class ShopifyGiftOrderService
             'send_fulfillment_receipt' => false,
             'financial_status' => self::FINANCIAL_STATUS,
             'inventory_behaviour' => self::INVENTORY_BEHAVIOUR,
-            'line_items' => [[
-                'variant_id' => $variantId,
-                'quantity' => 1,
-                'price' => $price,          // the gift's real value
-                'requires_shipping' => true,
-            ]],
+            'line_items' => $lines,
             'discount_codes' => [[
                 'code' => self::DISCOUNT_CODE,
-                'amount' => $price,          // …covered in full
+                'amount' => $price,          // the gift's whole value, covered in full
                 'type' => self::DISCOUNT_TYPE,
             ]],
             'shipping_lines' => [[

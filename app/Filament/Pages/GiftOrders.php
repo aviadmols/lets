@@ -11,6 +11,7 @@ use App\Domain\Campaigns\Models\GiftRecipient;
 use App\Filament\Concerns\PicksProducts;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\Shop;
 use App\Support\Tenant;
 use Filament\Notifications\Notification;
@@ -38,8 +39,11 @@ class GiftOrders extends Page
 
     // === CONSTANTS ===
     protected static ?string $navigationIcon = 'heroicon-o-gift';
+
     protected static string $view = 'filament.pages.gift-orders';
+
     protected static ?string $slug = 'gift-orders';
+
     protected static ?int $navigationSort = 30;
 
     /** How many past campaigns the screen lists. */
@@ -71,7 +75,9 @@ class GiftOrders extends Page
     // --- Campaign form state (plain Livewire props; this page has no Filament form) ---
     /** The campaign's name. NOT $title — Filament's BasePage owns that one statically. */
     public string $campaignTitle = '';
+
     public int $minCycles = 3;
+
     public string $shippingLabel = '';
 
     /**
@@ -84,8 +90,14 @@ class GiftOrders extends Page
 
     // --- Gift picker state (WHAT is sent) ---
     public string $productSearch = '';
-    public ?int $selectedProductId = null;
-    public ?int $selectedVariantId = null;
+
+    /**
+     * The gift's lines: one row per product, in the order they will appear on
+     * the order. Each row is ['product_id' => int, 'variant_id' => int|null].
+     *
+     * @var array<int, array{product_id: int, variant_id: int|null}>
+     */
+    public array $giftItems = [];
 
     // --- Rule picker state (WHICH subscribers qualify) ---
     /**
@@ -95,7 +107,15 @@ class GiftOrders extends Page
      * @var array<int, int>
      */
     public array $sourceProductIds = [];
+
     public string $sourceSearch = '';
+
+    /**
+     * SPECIFIC people, typed by the merchant — one email per line (commas work
+     * too). Empty means the rule alone decides, which is every campaign before
+     * this field existed. Parsed by sourceEmailList().
+     */
+    public string $sourceEmailsText = '';
 
     /** Set once the merchant has previewed THIS rule — Generate stays shut until then. */
     public bool $previewed = false;
@@ -137,61 +157,81 @@ class GiftOrders extends Page
     /** @return Collection<int, Product> */
     public function productOptions(): Collection
     {
+        $chosen = array_column($this->giftItems, 'product_id');
+
         return $this->pickerTermSearchable($this->productSearch)
             ? $this->pickerResults($this->productSearch)
+                ->reject(fn (Product $p): bool => in_array((int) $p->getKey(), $chosen, true))
             : collect();
     }
 
-    public function selectProduct(int $productId): void
+    /** Add a product to the gift. The same product twice is one line — remove and re-add to change it. */
+    public function addGiftItem(int $productId): void
     {
         $product = $this->pickedProduct($productId);
         if ($product === null) {
             return;
         }
 
-        $this->selectedProductId = (int) $product->getKey();
-        $this->selectedVariantId = (int) ($product->primaryVariant()?->getKey() ?? 0) ?: null;
+        foreach ($this->giftItems as $item) {
+            if ($item['product_id'] === (int) $product->getKey()) {
+                return;
+            }
+        }
+
+        $this->giftItems[] = [
+            'product_id' => (int) $product->getKey(),
+            'variant_id' => (int) ($product->primaryVariant()?->getKey() ?? 0) ?: null,
+        ];
         $this->productSearch = '';
         $this->previewed = false; // the gift changed — re-preview before generating.
     }
 
-    public function clearProduct(): void
+    public function removeGiftItem(int $index): void
     {
-        $this->selectedProductId = null;
-        $this->selectedVariantId = null;
+        unset($this->giftItems[$index]);
+        $this->giftItems = array_values($this->giftItems);
         $this->previewed = false;
     }
 
-    public function selectedProduct(): ?Product
+    /** A variant picked on one of the gift's lines (wire:model on the row's select). */
+    public function updatedGiftItems(): void
     {
-        return $this->selectedProductId !== null
-            ? $this->pickedProduct($this->selectedProductId)
-            : null;
+        $this->previewed = false;
     }
 
-    /** @return Collection<int, \App\Models\ProductVariant> */
-    public function variantOptions(): Collection
+    /** The Product model behind one gift line, or null when the catalog lost it. */
+    public function itemProduct(int $index): ?Product
     {
-        return $this->selectedProduct()?->variants()->orderBy('position')->orderBy('id')->get() ?? collect();
+        $id = (int) ($this->giftItems[$index]['product_id'] ?? 0);
+
+        return $id > 0 ? $this->pickedProduct($id) : null;
+    }
+
+    /** @return Collection<int, ProductVariant> */
+    public function itemVariantOptions(int $index): Collection
+    {
+        return $this->itemProduct($index)?->variants()->orderBy('position')->orderBy('id')->get() ?? collect();
     }
 
     /**
-     * The gift's value — the variant's cached price. Null blocks generation.
+     * One line's value — the variant's cached price. Null blocks generation.
      *
      * Zero counts as NO price, not as a free gift: the price column is NOT NULL
      * with a default of 0, so a product whose price never made it through the sync
      * looks exactly like one worth nothing. Printing "0" on the order would state
      * the present had no value, in the order and in every report built off it.
      */
-    public function unitPrice(): ?float
+    public function itemPrice(int $index): ?float
     {
-        $product = $this->selectedProduct();
+        $product = $this->itemProduct($index);
         if ($product === null) {
             return null;
         }
 
-        $variant = $this->selectedVariantId !== null
-            ? $this->pickedVariant($product, $this->selectedVariantId)
+        $variantId = $this->giftItems[$index]['variant_id'] ?? null;
+        $variant = $variantId !== null && (int) $variantId > 0
+            ? $this->pickedVariant($product, (int) $variantId)
             : $product->primaryVariant();
 
         $price = $variant?->price;
@@ -200,6 +240,25 @@ class GiftOrders extends Page
         }
 
         return round((float) $price, 2);
+    }
+
+    /** The whole gift's value, or null while any line is missing a price. */
+    public function totalValue(): ?float
+    {
+        if ($this->giftItems === []) {
+            return null;
+        }
+
+        $total = 0.0;
+        foreach (array_keys($this->giftItems) as $index) {
+            $price = $this->itemPrice($index);
+            if ($price === null) {
+                return null;
+            }
+            $total += $price;
+        }
+
+        return round($total, 2);
     }
 
     // === Which subscriptions qualify (the rule's product filter) ===
@@ -242,6 +301,30 @@ class GiftOrders extends Page
             : Product::query()->whereKey($this->sourceProductIds)->orderBy('title')->get();
     }
 
+    // === Which PEOPLE qualify (the rule's email filter) ===
+
+    /**
+     * The typed emails as a clean, lowercased list. Anything without an @ is
+     * dropped rather than matched against nothing — a stray "shirly" line must
+     * not silently turn the campaign into one that reaches nobody.
+     *
+     * @return array<int, string>
+     */
+    public function sourceEmailList(): array
+    {
+        $parts = preg_split('/[\s,;]+/u', $this->sourceEmailsText) ?: [];
+
+        return array_values(array_unique(array_filter(array_map(
+            static fn (string $part): string => mb_strtolower(trim($part)),
+            $parts,
+        ), static fn (string $part): bool => str_contains($part, '@'))));
+    }
+
+    public function updatedSourceEmailsText(): void
+    {
+        $this->previewed = false; // the rule changed — re-preview before sending.
+    }
+
     // === Preview ===
 
     public function preview(): void
@@ -256,7 +339,7 @@ class GiftOrders extends Page
             return collect();
         }
 
-        return app(GiftEligibility::class)->qualifying($this->minCycles, null, $this->sourceProductIds);
+        return app(GiftEligibility::class)->qualifying($this->minCycles, null, $this->sourceProductIds, $this->sourceEmailList());
     }
 
     // === Export ===
@@ -275,7 +358,7 @@ class GiftOrders extends Page
 
         // The same rule the preview above it is showing — a file that disagreed
         // with the list on screen would be worse than no file.
-        return app(GiftListExporter::class)->download($shop, $this->minCycles, $this->sourceProductIds);
+        return app(GiftListExporter::class)->download($shop, $this->minCycles, $this->sourceProductIds, $this->sourceEmailList());
     }
 
     // === Save ===
@@ -295,8 +378,8 @@ class GiftOrders extends Page
     public function newCampaign(): void
     {
         $this->reset([
-            'campaignId', 'campaignTitle', 'selectedProductId', 'selectedVariantId',
-            'sourceProductIds', 'sourceSearch', 'previewed',
+            'campaignId', 'campaignTitle', 'giftItems', 'productSearch',
+            'sourceProductIds', 'sourceSearch', 'sourceEmailsText', 'previewed',
         ]);
         $this->shippingLabel = __('gifts.default_shipping_label');
     }
@@ -313,9 +396,17 @@ class GiftOrders extends Page
         $this->campaignTitle = (string) $campaign->title;
         $this->minCycles = (int) $campaign->min_cycles;
         $this->sourceProductIds = $campaign->sourceProductIds();
+        $this->sourceEmailsText = implode("\n", $campaign->sourceEmails());
         $this->shippingLabel = (string) $campaign->shipping_label;
-        $this->selectedProductId = $campaign->product_id !== null ? (int) $campaign->product_id : null;
-        $this->selectedVariantId = $campaign->product_variant_id !== null ? (int) $campaign->product_variant_id : null;
+        // giftItems() reads old single-product rows and new multi-item rows the
+        // same way, so a legacy draft loads as a one-line gift.
+        $this->giftItems = array_values(array_map(static fn (array $item): array => [
+            'product_id' => (int) ($item['product_id'] ?? 0),
+            'variant_id' => $item['product_variant_id'] !== null ? (int) $item['product_variant_id'] : null,
+        ], array_filter(
+            $campaign->giftItems(),
+            static fn (array $item): bool => ($item['product_id'] ?? null) !== null,
+        )));
         $this->previewed = false; // a rule reloaded is a rule not yet reviewed.
     }
 
@@ -393,26 +484,45 @@ class GiftOrders extends Page
             return null;
         }
 
-        $product = $this->selectedProduct();
-        if ($product === null) {
+        if ($this->giftItems === []) {
             $this->fail(__('gifts.error.no_product'));
 
             return null;
         }
 
-        // The gift's VALUE is what makes the 100% discount meaningful. Without a
-        // price we would create an order that says the present was worth nothing —
-        // refuse rather than invent a number.
-        $price = $this->unitPrice();
-        if ($price === null) {
-            $this->fail(__('gifts.error.no_price'));
+        // Every line is snapshotted — id, variant, title, price — because a
+        // campaign records what was given away, not pointers into a catalog that
+        // keeps changing. The gift's VALUE is what makes the 100% discount
+        // meaningful: a line without a price would state the present was worth
+        // nothing, so the whole save refuses rather than invent a number.
+        $items = [];
+        foreach (array_keys($this->giftItems) as $index) {
+            $product = $this->itemProduct($index);
+            if ($product === null) {
+                $this->fail(__('gifts.error.no_product'));
 
-            return null;
+                return null;
+            }
+
+            $price = $this->itemPrice($index);
+            if ($price === null) {
+                $this->fail(__('gifts.error.no_price'));
+
+                return null;
+            }
+
+            $variantId = $this->giftItems[$index]['variant_id'] ?? null;
+            $variant = $variantId !== null && (int) $variantId > 0
+                ? $this->pickedVariant($product, (int) $variantId)
+                : $product->primaryVariant();
+
+            $items[] = [
+                'product_id' => (int) $product->getKey(),
+                'product_variant_id' => $variant?->getKey(),
+                'title' => (string) $product->title,
+                'unit_price' => $price,
+            ];
         }
-
-        $variant = $this->selectedVariantId !== null
-            ? $this->pickedVariant($product, $this->selectedVariantId)
-            : $product->primaryVariant();
 
         // Saving twice edits the same draft instead of leaving a trail of them.
         // The lookup is tenant-scoped, and a campaign that has already been sent is
@@ -422,7 +532,7 @@ class GiftOrders extends Page
             : null;
 
         if ($campaign === null || $campaign->status !== GiftCampaign::STATUS_DRAFT) {
-            $campaign = new GiftCampaign();
+            $campaign = new GiftCampaign;
         }
 
         $campaign->forceFill([
@@ -432,10 +542,14 @@ class GiftOrders extends Page
             // Null, not [], when unrestricted: the column reads as "no filter"
             // rather than as an empty one.
             'source_product_ids' => $this->sourceProductIds !== [] ? array_values($this->sourceProductIds) : null,
-            'product_id' => $product->getKey(),
-            'product_variant_id' => $variant?->getKey(),
-            'product_title' => (string) $product->title,
-            'unit_price' => $price,
+            'source_emails' => $this->sourceEmailList() !== [] ? $this->sourceEmailList() : null,
+            // The legacy single-product columns mirror the FIRST line, so every
+            // reader from before multi-item gifts keeps working on new rows.
+            'product_id' => $items[0]['product_id'],
+            'product_variant_id' => $items[0]['product_variant_id'],
+            'product_title' => $items[0]['title'],
+            'unit_price' => $items[0]['unit_price'],
+            'items' => count($items) > 1 ? $items : null,
             'currency' => (string) config('payplus.currency', 'ILS'),
             'shipping_label' => trim($this->shippingLabel) ?: __('gifts.default_shipping_label'),
             'status' => GiftCampaign::STATUS_DRAFT,

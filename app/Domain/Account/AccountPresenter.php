@@ -17,6 +17,7 @@ use App\Models\MerchantBillingSettings;
 use App\Models\MerchantLoyaltySettings;
 use App\Models\MerchantPortalAppearance;
 use App\Models\PaymentLedger;
+use App\Models\Product;
 use App\Models\SubscriptionContract;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
@@ -774,22 +775,44 @@ final class AccountPresenter
             return [];
         }
 
-        return GiftRecipient::query()
+        $recipients = GiftRecipient::query()
             ->where('status', GiftRecipient::STATUS_CREATED)
             ->whereRaw('LOWER(customer_email) = ?', [$visitor->email])
             ->with('campaign.product')
             ->orderByDesc('updated_at')
             ->limit(self::MAX_GIFTS)
-            ->get()
-            ->map(static function (GiftRecipient $gift): array {
-                $campaign = $gift->campaign;
+            ->get();
 
-                return [
-                    'title' => trim((string) ($campaign?->product_title ?: $campaign?->title ?: '')) ?: (string) __('account.ui.gifts_heading'),
-                    'image' => $campaign?->product?->image_url ?: null,
+        // A multi-item gift is several presents in one box — the shelf shows
+        // each of them. One image query for every product on every listed gift,
+        // not one per row.
+        $productIds = $recipients
+            ->flatMap(static fn (GiftRecipient $gift) => array_column((array) $gift->campaign?->giftItems(), 'product_id'))
+            ->filter()
+            ->unique()
+            ->values();
+        $images = $productIds->isEmpty()
+            ? collect()
+            : Product::query()->whereKey($productIds)->pluck('image_url', 'id');
+
+        return $recipients
+            ->flatMap(static function (GiftRecipient $gift) use ($images): array {
+                $campaign = $gift->campaign;
+                if ($campaign === null) {
+                    return [[
+                        'title' => (string) __('account.ui.gifts_heading'),
+                        'image' => null,
+                        'sent_at' => $gift->updated_at?->toDateString(),
+                    ]];
+                }
+
+                return array_map(static fn (array $item): array => [
+                    'title' => trim((string) ($item['title'] ?: $campaign->title ?: '')) ?: (string) __('account.ui.gifts_heading'),
+                    'image' => $item['product_id'] !== null ? ($images[$item['product_id']] ?? null) : null,
                     'sent_at' => $gift->updated_at?->toDateString(),
-                ];
+                ], $campaign->giftItems());
             })
+            ->take(self::MAX_GIFTS)
             ->values()
             ->all();
     }

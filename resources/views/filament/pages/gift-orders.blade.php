@@ -81,6 +81,21 @@
                                 : __('gifts.field.source_products_hint') }}
                         </p>
                     </div>
+
+                    {{-- SPECIFIC people. Empty = everyone the rule reaches — which
+                         is what every campaign meant before this field existed. --}}
+                    <div class="rc-field">
+                        <label class="rc-field__label" for="gift-emails">{{ __('gifts.field.source_emails') }}</label>
+                        <textarea id="gift-emails" rows="3" class="rc-input"
+                                  wire:model.live.debounce.600ms="sourceEmailsText"
+                                  placeholder="{{ __('gifts.field.source_emails_placeholder') }}"></textarea>
+                        <p class="rc-field__hint">
+                            @php $emailCount = count($this->sourceEmailList()); @endphp
+                            {{ $emailCount > 0
+                                ? __('gifts.field.source_emails_count', ['count' => $emailCount])
+                                : __('gifts.field.source_emails_hint') }}
+                        </p>
+                    </div>
                 </div>
 
                 {{-- WHAT --}}
@@ -90,53 +105,68 @@
                     <div class="rc-field">
                         <label class="rc-field__label" for="gift-product">{{ __('gifts.field.product') }}</label>
 
-                        @php $picked = $this->selectedProduct(); @endphp
-                        @if($picked)
-                            <div class="rc-picker__selected">
+                        {{-- The gift's lines — one row per product, each with its
+                             variant (when it really has more than one) and value. --}}
+                        @foreach($giftItems as $index => $item)
+                            @php
+                                $itemProduct = $this->itemProduct($index);
+                                $itemVariants = $this->itemVariantOptions($index);
+                                $itemPrice = $this->itemPrice($index);
+                            @endphp
+                            <div class="rc-picker__selected" wire:key="gift-item-{{ $index }}-{{ $item['product_id'] }}">
                                 <span class="rc-picker__selected-info">
-                                    <span class="rc-strong">{{ $picked->title }}</span>
+                                    <span class="rc-strong">{{ $itemProduct?->title ?? '—' }}</span>
+                                    <span class="rc-muted">
+                                        @if($itemPrice === null)
+                                            {{ __('gifts.error.no_price') }}
+                                        @else
+                                            {{ \App\Support\Ui\Money::format($itemPrice) }}
+                                        @endif
+                                    </span>
                                 </span>
-                                <button type="button" class="rc-picker__change rc-link" wire:click="clearProduct">
-                                    {{ __('gifts.field.change_product') }}
+                                <button type="button" class="rc-picker__change rc-link"
+                                        wire:click="removeGiftItem({{ $index }})">
+                                    {{ __('gifts.action.remove_item') }}
                                 </button>
                             </div>
-
-                            @php $variants = $this->variantOptions(); @endphp
-                            @if($variants->count() > 1)
-                                <select class="rc-input" wire:model.live="selectedVariantId">
-                                    @foreach($variants as $variant)
+                            @if($itemVariants->count() > 1)
+                                <select class="rc-input" wire:model.live="giftItems.{{ $index }}.variant_id"
+                                        wire:key="gift-item-variant-{{ $index }}-{{ $item['product_id'] }}">
+                                    @foreach($itemVariants as $variant)
                                         <option value="{{ $variant->getKey() }}">
-                                            {{ $variant->title ?: $picked->title }}
+                                            {{ $variant->title ?: $itemProduct?->title }}
                                             @if($variant->price !== null) — {{ \App\Support\Ui\Money::format((float) $variant->price) }}@endif
                                         </option>
                                     @endforeach
                                 </select>
                             @endif
+                        @endforeach
 
-                            @php $price = $this->unitPrice(); @endphp
+                        <input id="gift-product" type="text" class="rc-input" wire:model.live.debounce.400ms="productSearch"
+                               placeholder="{{ $giftItems === [] ? __('gifts.field.product_placeholder') : __('gifts.field.add_product_placeholder') }}">
+                        @php $options = $this->productOptions(); @endphp
+                        @if($options->isNotEmpty())
+                            <ul class="rc-picker__results">
+                                @foreach($options as $option)
+                                    <li class="rc-picker__result">
+                                        <button type="button" class="rc-picker__option"
+                                                wire:click="addGiftItem({{ $option->getKey() }})">
+                                            <span class="rc-picker__option-info">{{ $option->title }}</span>
+                                        </button>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        @endif
+
+                        @if(count($giftItems) > 0)
+                            @php $total = $this->totalValue(); @endphp
                             <p class="rc-field__hint">
-                                @if($price === null)
+                                @if($total === null)
                                     {{ __('gifts.error.no_price') }}
                                 @else
-                                    {{ __('gifts.field.gift_value', ['value' => \App\Support\Ui\Money::format($price)]) }}
+                                    {{ __('gifts.field.gift_value', ['value' => \App\Support\Ui\Money::format($total)]) }}
                                 @endif
                             </p>
-                        @else
-                            <input id="gift-product" type="text" class="rc-input" wire:model.live.debounce.400ms="productSearch"
-                                   placeholder="{{ __('gifts.field.product_placeholder') }}">
-                            @php $options = $this->productOptions(); @endphp
-                            @if($options->isNotEmpty())
-                                <ul class="rc-picker__results">
-                                    @foreach($options as $option)
-                                        <li class="rc-picker__result">
-                                            <button type="button" class="rc-picker__option"
-                                                    wire:click="selectProduct({{ $option->getKey() }})">
-                                                <span class="rc-picker__option-info">{{ $option->title }}</span>
-                                            </button>
-                                        </li>
-                                    @endforeach
-                                </ul>
-                            @endif
                         @endif
                     </div>
 
