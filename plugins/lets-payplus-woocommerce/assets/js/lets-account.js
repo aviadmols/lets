@@ -201,6 +201,24 @@
             return;
         }
 
+        /* Single-section view: a dedicated My Account tab (the plugin's gifts
+           endpoint) mounts the SAME renderer with `view` naming one section.
+           Only that section draws — no hero, no banners, no rail — and, unlike
+           the dashboard flow, an empty section still shows its heading and an
+           empty line, because a tab that opens blank reads as broken. */
+        if (options.view && SECTIONS[options.view]) {
+            var single = SECTIONS[options.view](state);
+            if (!single) {
+                single = el('section', 'la-block');
+                append(single, sectionHead(model.copy[options.view + '_heading'] || ''));
+                var singleEmpty = el('div', 'la-card');
+                append(singleEmpty, el('p', 'la-empty', model.copy[options.view + '_empty'] || ''));
+                append(single, singleEmpty);
+            }
+            append(mount, single);
+            return;
+        }
+
         var banners = Array.isArray(model.banners) ? model.banners : [];
         // A LETS that predates placement sends no top_banners at all; an empty
         // list then draws nothing, which is exactly the old behaviour.
@@ -1424,7 +1442,7 @@
 
     // === Export ===
 
-    window.LetsAccount = { render: render, version: 7 };
+    window.LetsAccount = { render: render, version: 8 };
 
     /**
      * Preview bridge. The admin's iframe posts a draft appearance on every

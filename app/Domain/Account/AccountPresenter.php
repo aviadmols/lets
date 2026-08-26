@@ -686,7 +686,7 @@ final class AccountPresenter
     {
         $keys = [
             'welcome_heading', 'welcome_subtext', 'subscriptions_heading', 'upcoming_heading',
-            'benefits_heading', 'loyalty_heading', 'orders_heading', 'gifts_heading', 'gift_sent_on', 'documents_heading',
+            'benefits_heading', 'loyalty_heading', 'orders_heading', 'gifts_heading', 'gifts_empty', 'gift_sent_on', 'documents_heading',
             'profile_heading', 'addresses_heading', 'support_heading', 'empty_subscriptions',
             'empty_upcoming', 'next_charge', 'every', 'status', 'payment_method', 'no_card',
             'action_pause', 'action_resume', 'action_cancel', 'action_skip',
@@ -708,6 +708,11 @@ final class AccountPresenter
         // Merchant overrides last so they always win.
         $copy['welcome_heading'] = $settings->welcomeHeading() ?? $copy['welcome_heading'];
         $copy['welcome_subtext'] = $settings->welcomeSubtext() ?? $copy['welcome_subtext'];
+        $copy['gifts_heading'] = $settings->giftsHeading() ?? $copy['gifts_heading'];
+        // The gifts TAB in the store account navigation. The merchant's heading
+        // names both the shelf and its tab; the untouched default splits — the
+        // full sentence on the shelf, one word in the nav.
+        $copy['gifts_tab_label'] = $settings->giftsHeading() ?? (string) __('account.ui.gifts_tab');
 
         foreach ($this->benefitKinds() as $kind) {
             $copy['benefit_'.$kind] = __('account.benefit.'.$kind);

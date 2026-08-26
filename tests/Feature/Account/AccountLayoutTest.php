@@ -213,7 +213,7 @@ final class AccountLayoutTest extends TestCase
         // shape this wide has to be visible to the page that mounts it. Bumped
         // to 7 when the renderer learned `nonceHeader` — the SaaS-hosted area
         // sends Laravel's CSRF token, WordPress keeps its X-WP-Nonce default.
-        $this->assertStringContainsString('version: 7', $js);
+        $this->assertStringContainsString('version: 8', $js);
     }
 
     /**

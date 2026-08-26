@@ -281,6 +281,7 @@ final class WooPortalSettingsTest extends TestCase
 
         $this->signed('POST', $key, $secret, self::PATH, [
             'welcome_heading' => 'The account',
+            'gifts_heading' => 'Your books',
             'support_email' => 'help@example.com',
         ])->assertOk();
 
@@ -292,6 +293,7 @@ final class WooPortalSettingsTest extends TestCase
 
             $this->assertSame('#0f766e', $s->accent_color);
             $this->assertSame('The account', $s->welcome_heading);
+            $this->assertSame('Your books', $s->gifts_heading);
             $this->assertSame('help@example.com', $s->support_email);
         });
     }

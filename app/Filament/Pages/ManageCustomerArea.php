@@ -321,6 +321,12 @@ class ManageCustomerArea extends Page implements HasForms
                     ->placeholder(__('account.ui.welcome_subtext'))
                     ->maxLength(300)
                     ->live(onBlur: true),
+                TextInput::make('gifts_heading')
+                    ->label(__('account.admin.copy.gifts_heading'))
+                    ->helperText(__('account.admin.copy.gifts_heading_help'))
+                    ->placeholder(__('account.ui.gifts_heading'))
+                    ->maxLength(80)
+                    ->live(onBlur: true),
                 TextInput::make('support_email')
                     ->label(__('account.admin.copy.support_email'))
                     ->email()
@@ -446,6 +452,7 @@ class ManageCustomerArea extends Page implements HasForms
             'login_google_client_id' => $s->loginGoogleClientId(),
             'welcome_heading' => $s->welcomeHeading(),
             'welcome_subtext' => $s->welcomeSubtext(),
+            'gifts_heading' => $s->giftsHeading(),
             'support_email' => $s->supportEmail(),
             'support_url' => $s->supportUrl(),
         ];
@@ -517,6 +524,7 @@ class ManageCustomerArea extends Page implements HasForms
                 : $stored->login_google_client_id,
             'welcome_heading' => $this->blankToNull($input['welcome_heading'] ?? null),
             'welcome_subtext' => $this->blankToNull($input['welcome_subtext'] ?? null),
+            'gifts_heading' => $this->blankToNull($input['gifts_heading'] ?? null),
             'support_email' => $this->blankToNull($input['support_email'] ?? null),
             'support_url' => $this->blankToNull($input['support_url'] ?? null),
         ]);

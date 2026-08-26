@@ -64,6 +64,30 @@ final class GiftsSectionTest extends TestCase
         });
     }
 
+    public function test_the_merchant_names_the_shelf_and_its_tab(): void
+    {
+        $shop = $this->shop('gifts-named.example.com');
+
+        Tenant::run($shop, function () use ($shop): void {
+            $this->plan($shop, 'g4', 'dana@example.com');
+
+            // Untouched: the shelf keeps the full default sentence, but the TAB
+            // gets the one-word default — a nav label is not a heading.
+            $model = app(AccountPresenter::class)->present($this->visitor($shop, 'g4', 'dana@example.com'));
+            $this->assertSame(__('account.ui.gifts_heading'), $model['copy']['gifts_heading']);
+            $this->assertSame(__('account.ui.gifts_tab'), $model['copy']['gifts_tab_label']);
+
+            // The merchant's own wording wins in BOTH places at once.
+            $appearance = MerchantPortalAppearance::current();
+            $appearance->gifts_heading = 'הספרים שקיבלתם במתנה';
+            $appearance->save();
+
+            $model = app(AccountPresenter::class)->present($this->visitor($shop, 'g4', 'dana@example.com'));
+            $this->assertSame('הספרים שקיבלתם במתנה', $model['copy']['gifts_heading']);
+            $this->assertSame('הספרים שקיבלתם במתנה', $model['copy']['gifts_tab_label']);
+        });
+    }
+
     public function test_the_merchant_can_switch_the_section_off(): void
     {
         $shop = $this->shop('gifts-off.example.com');

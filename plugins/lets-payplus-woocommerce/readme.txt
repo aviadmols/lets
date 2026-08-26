@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.41.0
+Stable tag: 0.42.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,11 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.42.0 =
+* The gifts shelf gets its own My Account tab, shown while the merchant's
+  gifts section is on. The tab (and the shelf) are named by the merchant's own
+  gifts heading, set in the LETS dashboard under Customer area → Wording.
 
 = 0.41.0 =
 * Checkout addresses take the Israeli shape: city first (and it must be a real

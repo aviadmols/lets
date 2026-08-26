@@ -22,6 +22,8 @@ return [
         'loyalty_heading' => 'מועדון הלקוחות',
         'orders_heading' => 'היסטוריית הזמנות',
         'gifts_heading' => 'מתנות שקיבלתם מאיתנו',
+        'gifts_empty' => 'עוד לא נשלחו אליך מתנות.',
+        'gifts_tab' => 'מתנות',
         'gift_sent_on' => 'נשלח בתאריך',
         'documents_heading' => 'חשבוניות וקבלות',
         'profile_heading' => 'הפרטים שלי',
@@ -351,6 +353,8 @@ return [
         'copy' => [
             'welcome_heading' => 'כותרת הפתיחה',
             'welcome_subtext' => 'טקסט הפתיחה',
+            'gifts_heading' => 'כותרת אזור המתנות',
+            'gifts_heading_help' => 'הכותרת של מדף המתנות — וגם שם הטאב שלו בניווט של אזור החשבון בחנות.',
             'support_email' => 'מייל תמיכה',
             'support_url' => 'עמוד תמיכה',
             'blank_help' => 'השאירו ריק כדי להשתמש בנוסח הדיפולטיבי.',

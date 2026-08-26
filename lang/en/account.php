@@ -31,6 +31,8 @@ return [
         'loyalty_heading' => 'Rewards',
         'orders_heading' => 'Order history',
         'gifts_heading' => 'Gifts from us',
+        'gifts_empty' => 'No gifts have been sent to you yet.',
+        'gifts_tab' => 'Gifts',
         'gift_sent_on' => 'Sent on',
         'documents_heading' => 'Invoices & receipts',
         'profile_heading' => 'My details',
@@ -370,6 +372,8 @@ return [
         'copy' => [
             'welcome_heading' => 'Welcome heading',
             'welcome_subtext' => 'Welcome subtext',
+            'gifts_heading' => 'Gifts section heading',
+            'gifts_heading_help' => 'The gifts shelf title — and the label of its own tab in the store account navigation.',
             'support_email' => 'Support email',
             'support_url' => 'Support page',
             'blank_help' => 'Leave blank to use the default wording.',

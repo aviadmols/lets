@@ -525,6 +525,12 @@ class MerchantPortalAppearance extends Model
         return $this->trimmedOrNull($this->welcome_subtext, self::MAX_SUBTEXT);
     }
 
+    /** The gifts shelf's title — "הספרים שקיבלתם במתנה" beats "מתנות" for a bookshop. */
+    public function giftsHeading(): ?string
+    {
+        return $this->trimmedOrNull($this->gifts_heading, self::MAX_HEADING);
+    }
+
     public function supportEmail(): ?string
     {
         $value = is_string($this->support_email) ? trim($this->support_email) : '';

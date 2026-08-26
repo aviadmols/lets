@@ -30,11 +30,18 @@ defined('ABSPATH') || exit;
 /** Our own My Account endpoints (also the URL segment and the query var). */
 define('LETS_ACCOUNT_ENDPOINT', 'lets-subscriptions');
 
+/**
+ * The gifts shelf as a tab of its own. It appears only while the merchant's
+ * "gifts" section is switched on, and its label is the merchant's own gifts
+ * heading — a bookshop calls it "הספרים שקיבלתם במתנה", not "מתנות".
+ */
+define('LETS_GIFTS_ENDPOINT', 'lets-gifts');
+
 /** How long a bootstrap payload is cached per user (seconds). Short: it carries dates. */
 define('LETS_ACCOUNT_CACHE_TTL', 60);
 
 /** Bumping this re-flushes the rewrite rules once per site. */
-define('LETS_ACCOUNT_REWRITE_VERSION', '1');
+define('LETS_ACCOUNT_REWRITE_VERSION', '2'); // 2: the lets-gifts endpoint.
 
 /** The wp_option holding the flushed-rules marker. */
 define('LETS_ACCOUNT_REWRITE_OPT', 'lets_payplus_account_rewrite');
@@ -150,6 +157,7 @@ add_action('init', 'lets_payplus_account_register_endpoint');
 function lets_payplus_account_register_endpoint()
 {
     add_rewrite_endpoint(LETS_ACCOUNT_ENDPOINT, EP_ROOT | EP_PAGES);
+    add_rewrite_endpoint(LETS_GIFTS_ENDPOINT, EP_ROOT | EP_PAGES);
 
     // The plugin has no activation hook (it is installed by upload as often as by
     // the installer), so flush once against a version marker rather than on every
@@ -165,6 +173,7 @@ add_filter('woocommerce_get_query_vars', 'lets_payplus_account_query_vars');
 function lets_payplus_account_query_vars($vars)
 {
     $vars[LETS_ACCOUNT_ENDPOINT] = LETS_ACCOUNT_ENDPOINT;
+    $vars[LETS_GIFTS_ENDPOINT] = LETS_GIFTS_ENDPOINT;
 
     return $vars;
 }
@@ -192,12 +201,18 @@ function lets_payplus_account_menu_items($items)
         $out[$key] = $label;
         if ('dashboard' === $key) {
             $out[LETS_ACCOUNT_ENDPOINT] = lets_payplus_account_menu_label();
+            if (lets_payplus_account_gifts_tab_on()) {
+                $out[LETS_GIFTS_ENDPOINT] = lets_payplus_account_gifts_label();
+            }
         }
     }
 
     // A theme that removed the dashboard item still gets the tab, at the end.
     if (! isset($out[LETS_ACCOUNT_ENDPOINT])) {
         $out[LETS_ACCOUNT_ENDPOINT] = lets_payplus_account_menu_label();
+        if (lets_payplus_account_gifts_tab_on()) {
+            $out[LETS_GIFTS_ENDPOINT] = lets_payplus_account_gifts_label();
+        }
     }
 
     return $out;
@@ -206,6 +221,37 @@ function lets_payplus_account_menu_items($items)
 function lets_payplus_account_menu_label()
 {
     return lets_payplus_account_is_he() ? 'המנויים שלי' : 'My subscriptions';
+}
+
+/**
+ * The gifts tab exists only while the merchant's "gifts" section is on — one
+ * switch (LETS → אזור אישי → sections) governs the shelf and its tab together.
+ * An empty sections list means "we do not know" and, unlike the hide map below,
+ * ADDS nothing: a tab is a promise of content, so unknown means absent.
+ */
+function lets_payplus_account_gifts_tab_on()
+{
+    $config = lets_payplus_account_shell_config();
+    $sections = isset($config['sections']) ? (array) $config['sections'] : array();
+
+    return in_array('gifts', $sections, true);
+}
+
+/**
+ * The tab is named by the merchant's own gifts heading (LETS → אזור אישי →
+ * טקסטים) so the shelf and its tab always agree; the short default steps in
+ * when they never set one.
+ */
+function lets_payplus_account_gifts_label()
+{
+    $config = lets_payplus_account_shell_config();
+    $label = isset($config['gifts_label']) ? trim((string) $config['gifts_label']) : '';
+
+    if ('' !== $label) {
+        return $label;
+    }
+
+    return lets_payplus_account_is_he() ? 'מתנות' : 'Gifts';
 }
 
 /**
@@ -257,6 +303,17 @@ function lets_payplus_account_render_endpoint()
 }
 
 /**
+ * The gifts tab: the SAME renderer and the SAME payload, told to draw one
+ * section only. The renderer owns the empty state, so the tab is never blank.
+ */
+add_action('woocommerce_account_' . LETS_GIFTS_ENDPOINT . '_endpoint', 'lets_payplus_account_render_gifts_endpoint');
+
+function lets_payplus_account_render_gifts_endpoint()
+{
+    echo lets_payplus_account_markup('gifts'); // phpcs:ignore WordPress.Security.EscapeOutput -- built from escaped parts.
+}
+
+/**
  * The dashboard tab too. WooCommerce's own dashboard is three sentences and a
  * link; a subscriber who lands there should see their subscription, not prose.
  */
@@ -276,9 +333,11 @@ function lets_payplus_account_render_dashboard()
  * without JavaScript. The fallback is deliberately thin — the next charge date
  * and the status, which is what a shopper opens this page to check.
  *
+ * @param  string  $view  '' for the whole area; a section key ('gifts') for a
+ *                        dedicated tab that draws that section alone.
  * @return string
  */
-function lets_payplus_account_markup()
+function lets_payplus_account_markup($view = '')
 {
     if (null === lets_payplus_connection() || ! is_user_logged_in()) {
         return '';
@@ -293,7 +352,7 @@ function lets_payplus_account_markup()
 
     ob_start();
     ?>
-    <div id="lets-account" class="lets-acct">
+    <div id="lets-account" class="lets-acct"<?php echo '' !== $view ? ' data-la-view="' . esc_attr($view) . '"' : ''; ?>>
         <noscript>
             <?php echo lets_payplus_account_fallback($model); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped inside.?>
         </noscript>
@@ -348,7 +407,8 @@ function lets_payplus_account_enqueue($model)
         . 'if(m&&window.LetsAccount&&window.LetsAccountData){'
         . 'window.LetsAccount.render(m,window.LetsAccountData.model,{'
         . 'endpoint:window.LetsAccountData.endpoint,nonce:window.LetsAccountData.nonce,'
-        . 'signInUrl:window.LetsAccountData.signIn});}});'
+        . 'signInUrl:window.LetsAccountData.signIn,'
+        . 'view:m.getAttribute("data-la-view")||""});}});'
     );
 }
 
@@ -649,6 +709,9 @@ function lets_payplus_account_shell_config()
         // navigation, which hides a WooCommerce tab whose section is switched
         // off. Empty means "we do not know" and nothing is hidden.
         'sections'   => array(),
+        // What the gifts tab is called — the merchant's own gifts heading, or
+        // the short default the SaaS picked. '' means "no answer", short default.
+        'gifts_label' => '',
         'login'      => array('enabled' => false, 'channel' => 'email', 'google_client_id' => ''),
         // Storefront purchase rules. They ride the SHELL because the shell is the
         // cached half: the storefront must know whether the one-subscription rule
@@ -679,6 +742,9 @@ function lets_payplus_account_shell_config()
         }
         if (! empty($account['sections'])) {
             $config['sections'] = array_values(array_map('strval', (array) $account['sections']));
+        }
+        if (! empty($account['copy']['gifts_tab_label'])) {
+            $config['gifts_label'] = (string) $account['copy']['gifts_tab_label'];
         }
         if (! empty($account['login'])) {
             $login = (array) $account['login'];
@@ -920,6 +986,7 @@ function lets_payplus_account_icon($endpoint)
     $paths = array(
         'dashboard'           => '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
         LETS_ACCOUNT_ENDPOINT => '<path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v4h-4"/>',
+        LETS_GIFTS_ENDPOINT   => '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v8h14v-8"/><path d="M12 8v12"/><path d="M12 8s-1.5-4-4.5-4a2.25 2.25 0 0 0 0 4.5"/><path d="M12 8s1.5-4 4.5-4a2.25 2.25 0 0 1 0 4.5"/>',
         'orders'              => '<path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4"/><path d="M9 12h7M9 16h5"/>',
         'downloads'           => '<path d="M12 4v10"/><path d="m8 11 4 4 4-4"/><path d="M5 19h14"/>',
         'edit-address'        => '<path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11Z"/><circle cx="12" cy="10" r="2.5"/>',
@@ -950,7 +1017,9 @@ function lets_payplus_account_tab_heading()
     }
 
     foreach (wc_get_account_menu_items() as $endpoint => $label) {
-        if ('dashboard' === $endpoint || LETS_ACCOUNT_ENDPOINT === $endpoint || 'customer-logout' === $endpoint) {
+        // Our own tabs draw their own headings, exactly like the dashboard.
+        if ('dashboard' === $endpoint || LETS_ACCOUNT_ENDPOINT === $endpoint
+            || LETS_GIFTS_ENDPOINT === $endpoint || 'customer-logout' === $endpoint) {
             continue;
         }
         if (is_wc_endpoint_url($endpoint)) {

@@ -35,6 +35,7 @@ final class PortalSettingsController extends WooStorefrontController
     private const TEXT_FIELDS = [
         'welcome_heading' => 120,
         'welcome_subtext' => 500,
+        'gifts_heading' => 120,
         'support_email' => 190,
     ];
 
@@ -304,6 +305,7 @@ final class PortalSettingsController extends WooStorefrontController
                 // --- copy ---
                 'welcome_heading' => $s->welcome_heading,
                 'welcome_subtext' => $s->welcome_subtext,
+                'gifts_heading' => $s->gifts_heading,
                 'support_email' => $s->support_email,
                 'support_url' => $s->support_url,
 
