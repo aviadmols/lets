@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Prunable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\DB;
 
 /**
  * One passwordless "enter my account" link, as minted into one email.
@@ -16,11 +17,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * THE ROW HOLDS THE HASH, NEVER THE TOKEN. The raw token exists only in the
  * email and the URL; this row cannot be replayed from a database read.
  *
- * SINGLE USE, ATOMICALLY. consume() is one conditional UPDATE and must move
- * exactly one row — a second click, a forwarded copy, a scanner's prefetch, all
- * find nothing to spend. A campaign-level revocation (`login_links_revoked_at`
- * on the campaign) is honoured too, so the merchant has one switch that kills
- * every link in a sent email at once.
+ * REUSABLE INSIDE A WINDOW ANCHORED AT THE FIRST CLICK. The same person opens
+ * the email on their phone in the morning and their laptop at night, and
+ * "already used" between those two moments reads as a broken shop — so the
+ * first consume() stamps `consumed_at` (the anchor, atomically: two racing
+ * first clicks stamp once) and MOVES `expires_at` to first-use + the
+ * campaign's TTL; every later consume() inside that window signs in again and
+ * bumps the use counters. What ends a link: the window running out, a
+ * per-token revoke, or the campaign-wide revocation switch — the merchant's
+ * one lever that kills every link in a sent email at once, which is also why
+ * reuse is acceptable: a leaked link is stoppable the moment it is known.
  */
 class CustomerLoginToken extends Model
 {
@@ -48,6 +54,8 @@ class CustomerLoginToken extends Model
         return [
             'expires_at' => 'datetime',
             'consumed_at' => 'datetime',
+            'last_used_at' => 'datetime',
+            'use_count' => 'integer',
             'revoked_at' => 'datetime',
         ];
     }
@@ -73,10 +81,15 @@ class CustomerLoginToken extends Model
         return hash('sha256', $token);
     }
 
-    /** Still spendable at this instant? (GET renders on this; POST spends with consume().) */
+    /**
+     * Still usable at this instant? (GET renders on this; POST signs in with
+     * consume().) A first click has already MOVED expires_at to its own window,
+     * so one comparison covers both the unclicked and the clicked life of a
+     * link — being consumed no longer ends it.
+     */
     public function isUsable(CarbonInterface $now): bool
     {
-        if ($this->consumed_at !== null || $this->revoked_at !== null) {
+        if ($this->revoked_at !== null) {
             return false;
         }
 
@@ -102,11 +115,23 @@ class CustomerLoginToken extends Model
     }
 
     /**
-     * Spend the token — ONE conditional UPDATE that must move exactly one row.
+     * Use the token — sign this visit in, and anchor the reuse window if this
+     * is the first.
      *
-     * The WHERE repeats every usability condition rather than trusting a prior
-     * isUsable() read: two POSTs in the same instant both pass the read, and only
-     * the database can make sure only one of them wins.
+     * Two conditional UPDATEs whose WHEREs repeat every usability condition
+     * rather than trusting a prior isUsable() read (two POSTs in the same
+     * instant both pass the read; only the database can arbitrate):
+     *
+     *   1. FIRST use: stamp consumed_at (the anchor) and MOVE expires_at to
+     *      now + the campaign's TTL — "valid for X days from the first click",
+     *      whatever was left of the click-by window. The ip/ua audit fields
+     *      record this first opener.
+     *   2. REPEAT use: inside that window, bump last_used_at + use_count. The
+     *      phone in the morning, the laptop at night.
+     *
+     * Racing first clicks: exactly one runs branch 1; the loser falls through
+     * to branch 2 and signs in too — both are the same person's devices, and
+     * both visits are counted.
      */
     public function consume(?string $ipHash, ?string $userAgent): bool
     {
@@ -114,15 +139,29 @@ class CustomerLoginToken extends Model
             return false;
         }
 
-        $moved = static::query()
+        $first = static::query()
             ->whereKey($this->getKey())
             ->whereNull('consumed_at')
             ->whereNull('revoked_at')
             ->where('expires_at', '>', now())
             ->update([
                 'consumed_at' => now(),
+                'expires_at' => now()->addHours($this->reuseWindowHours()),
+                'use_count' => 1,
+                'last_used_at' => now(),
                 'consumed_ip_hash' => $ipHash,
                 'consumed_user_agent' => $userAgent !== null ? mb_substr($userAgent, 0, 255) : null,
+                'updated_at' => now(),
+            ]) === 1;
+
+        $moved = $first || static::query()
+            ->whereKey($this->getKey())
+            ->whereNotNull('consumed_at')
+            ->whereNull('revoked_at')
+            ->where('expires_at', '>', now())
+            ->update([
+                'use_count' => DB::raw('use_count + 1'),
+                'last_used_at' => now(),
                 'updated_at' => now(),
             ]) === 1;
 
@@ -131,6 +170,19 @@ class CustomerLoginToken extends Model
         }
 
         return $moved;
+    }
+
+    /** How long a link stays live from its FIRST click — the campaign's own TTL. */
+    private function reuseWindowHours(): int
+    {
+        $campaign = $this->relationLoaded('campaign')
+            ? $this->campaign
+            : ($this->email_campaign_id !== null
+                ? EmailCampaign::acrossAllTenants()->whereKey($this->email_campaign_id)->first()
+                : null);
+
+        return $campaign?->loginTtlHours()
+            ?? max(1, (int) config('campaigns.login_link_ttl_hours', 168));
     }
 
     /** Pull this one token (a send failure, a support request). */

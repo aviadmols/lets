@@ -85,7 +85,7 @@ return [
         'scheduled_at' => 'Send at',
         'scheduled_at_help' => 'Leave empty to send it yourself with the button above.',
         'login_ttl' => 'The sign-in link stays valid for',
-        'login_ttl_help' => 'Counted from the moment the email is sent. Each link works once, for one person.',
+        'login_ttl_help' => 'Twice over: the first click must happen within this window of the send, and from that first click the link keeps working for the same window — phone, laptop, wherever. Each link is personal to one person, and "Revoke sign-in links" kills them all at once.',
         'ttl_option' => [
             '24' => '1 day',
             '72' => '3 days',

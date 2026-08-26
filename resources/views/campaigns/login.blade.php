@@ -1,10 +1,12 @@
 {{--
     The landing page behind a campaign email's sign-in link.
 
-    IT SPENDS NOTHING. Getting here consumes no token — mail-security scanners
-    follow every link in an email before the person does, and a token they burnt
-    is a customer told "already used". The one POST button below is the click
-    that spends it.
+    THE GET ITSELF SPENDS NOTHING — the sign-in is the POST below, and the page
+    SUBMITS IT ITSELF on load, so a person clicks once in their email and lands
+    inside their account with no second button. The no-JS button stays as the
+    fallback (and is all a scriptless mail-scanner ever sees). A scanner that
+    does run JS merely starts the reuse window early: the token is multi-use
+    within its window now, so nobody gets locked out by a machine's click.
 
     It shows the shop's name and a MASKED address: enough for the person to
     recognise themselves, not enough for anyone else to harvest.
@@ -40,12 +42,28 @@
             {{ __('campaigns.login.lead', ['shop' => $shopName, 'email' => $maskedEmail]) }}
         </p>
 
-        <form class="rc-campaign-card__actions" method="POST" action="{{ $continueUrl }}">
+        <form id="rc-continue" class="rc-campaign-card__actions" method="POST" action="{{ $continueUrl }}">
             @csrf
             <button type="submit" class="rc-campaign-btn">{{ __('campaigns.login.continue') }}</button>
         </form>
 
         <p class="rc-campaign-card__hint">{{ __('campaigns.login.note') }}</p>
     </main>
+
+    {{-- Straight in: the click already happened, in the email. Submitted once,
+         guarded, so a slow redirect cannot double-post; without JS the button
+         above does the same thing by hand. --}}
+    <script>
+        (function () {
+            var sent = false;
+            var form = document.getElementById('rc-continue');
+            if (!form) { return; }
+            document.addEventListener('DOMContentLoaded', function () {
+                if (sent) { return; }
+                sent = true;
+                form.submit();
+            });
+        })();
+    </script>
 </body>
 </html>

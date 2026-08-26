@@ -22,11 +22,13 @@ use Tests\TestCase;
  * Four laws, and they are the whole thing:
  *
  *   - A GET SPENDS NOTHING. Mail scanners follow every link in an email before
- *     the person does; a token they burnt is a customer locked out.
- *   - A POST spends it ONCE. The second click, the forwarded copy, the back
- *     button — all answered the same way.
- *   - EVERY REFUSAL LOOKS ALIKE. Expired, spent, revoked, forged: one 410, so
- *     the page never becomes an oracle for which tokens exist.
+ *     the person does; the sign-in is the POST (the page submits it itself for
+ *     a human with JavaScript).
+ *   - A POST signs in AGAIN AND AGAIN — but only inside the window the FIRST
+ *     click anchors. The phone in the morning and the laptop at night both get
+ *     in; the window's end, a revoke, or the campaign's kill-switch end it.
+ *   - EVERY REFUSAL LOOKS ALIKE. Expired, revoked, forged: one 410, so the
+ *     page never becomes an oracle for which tokens exist.
  *   - THE SHOP COMES FROM THE ROW. A token resolves for its own shop, and only
  *     ever sends the browser to that shop's store.
  */
@@ -108,7 +110,21 @@ final class CampaignLoginTokenTest extends TestCase
         }
     }
 
-    public function test_a_post_spends_it_once_and_then_the_page_is_gone(): void
+    public function test_the_landing_page_continues_in_by_itself(): void
+    {
+        [, $raw] = $this->mintFor($this->makeShop());
+
+        $response = $this->get('/c/login/'.$raw);
+
+        // The click already happened, in the email: the page auto-submits its
+        // own POST, so a human lands inside the account with no second button.
+        // The form stays as the no-JS fallback.
+        $response->assertOk();
+        $response->assertSee('rc-continue');
+        $response->assertSee('form.submit()', escape: false);
+    }
+
+    public function test_the_link_keeps_working_across_devices_inside_its_window(): void
     {
         [$shop, $raw, $token] = $this->mintFor($this->makeShop());
 
@@ -118,8 +134,53 @@ final class CampaignLoginTokenTest extends TestCase
 
         $this->assertNotNull($token->fresh()->consumed_at);
 
-        $this->post('/c/login/'.$raw)->assertStatus(410);
+        // The laptop, two days after the phone: still in, not "already used".
+        $this->travel(2)->days();
+        $this->get('/c/login/'.$raw)->assertOk();
+        $this->post('/c/login/'.$raw)->assertRedirect();
+
+        $this->assertSame(2, (int) $token->fresh()->use_count);
+        $this->assertNotNull($token->fresh()->last_used_at);
+    }
+
+    public function test_the_window_is_anchored_at_the_first_click(): void
+    {
+        [, $raw, $token] = $this->mintFor($this->makeShop());
+        $ttlHours = (int) config('campaigns.login_link_ttl_hours', 168);
+
+        // Clicked late — most of the click-by window already gone. The link
+        // still gets its FULL window from this moment: "X days from the first
+        // click", which is the promise the setting now makes.
+        $this->travelTo($token->expires_at->copy()->subHour());
+        $this->post('/c/login/'.$raw)->assertRedirect();
+
+        $anchor = $token->fresh()->consumed_at;
+        $this->assertSame(
+            $anchor->copy()->addHours($ttlHours)->toDateTimeString(),
+            $token->fresh()->expires_at->toDateTimeString(),
+        );
+
+        // Inside the anchored window: in. Past it: the same 410 as everything.
+        $this->travelTo($anchor->copy()->addHours($ttlHours)->subMinute());
+        $this->post('/c/login/'.$raw)->assertRedirect();
+
+        $this->travelTo($anchor->copy()->addHours($ttlHours)->addMinute());
         $this->get('/c/login/'.$raw)->assertStatus(410);
+        $this->post('/c/login/'.$raw)->assertStatus(410);
+    }
+
+    public function test_a_revoke_ends_an_already_clicked_link_at_once(): void
+    {
+        [$shop, $raw, $token] = $this->mintFor($this->makeShop());
+
+        $this->post('/c/login/'.$raw)->assertRedirect();
+
+        // Reuse is acceptable BECAUSE this lever exists: the moment a leaked
+        // link is known, the merchant ends it — mid-window, no argument.
+        $this->inShop($shop, fn () => $token->fresh()->revoke());
+
+        $this->get('/c/login/'.$raw)->assertStatus(410);
+        $this->post('/c/login/'.$raw)->assertStatus(410);
     }
 
     public function test_an_expired_token_is_gone(): void

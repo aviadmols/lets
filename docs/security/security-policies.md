@@ -86,16 +86,21 @@ account with no password. It is a credential, and is treated as one:
 - **Minted per recipient, at send time**, and only when the body actually uses
   the token. 48 random alphanumerics; the row stores **sha256 only**, so the
   link cannot be reconstructed from a database read, and it is never logged.
-- **A GET spends nothing.** `/c/login/{token}` renders an interstitial; a
-  CSRF-protected POST is the click that consumes it. Mail-security scanners
-  follow links before the person does, and a token they burnt is a customer
-  locked out.
-- **Single use, atomically** (one conditional UPDATE that must move one row),
-  with a per-campaign TTL (default 7 days from the send, cap 14) and two
-  revocation paths: per token (a failed send revokes its own) and per campaign
-  (the merchant's "Revoke sign-in links", which kills every link in one email).
-- **Uniform 410** for missing, malformed, expired, spent or revoked — the page
-  is never an oracle for which tokens exist. Rate-limited per IP and per token
+- **A GET spends nothing.** `/c/login/{token}` renders a landing page whose
+  CSRF-protected POST is the sign-in; the page **submits that POST itself** so
+  a person clicks once in their email and is inside (the button remains as the
+  no-JS fallback — and is all a scriptless mail-scanner ever sees).
+- **Reusable inside a window anchored at the first click** (2026-08-27; was
+  single-use). The first consume stamps the anchor atomically and moves the
+  expiry to first-click + the campaign's TTL (default 7 days, cap 14; the same
+  TTL is the click-by window from the send). The phone in the morning and the
+  laptop at night both get in; every use bumps an audit counter. This is safe
+  to offer BECAUSE revocation exists — per token (a failed send revokes its
+  own) and per campaign (the merchant's "Revoke sign-in links", which kills
+  every link in one email at once, mid-window included). A scanner that runs
+  JS merely starts the window early; it can no longer lock anyone out.
+- **Uniform 410** for missing, malformed, expired or revoked — the page is
+  never an oracle for which tokens exist. Rate-limited per IP and per token
   hash. `Referrer-Policy: no-referrer`, `Cache-Control: no-store`,
   `X-Robots-Tag: noindex` on every `/c/*` response; the landing page shows the
   shop name and a **masked** address only.
@@ -109,7 +114,8 @@ account with no password. It is a credential, and is treated as one:
 - **Audited.** Each redemption writes `privacy.personal_data_accessed`
   (surface `campaign_login`) and a `campaign_login_used` Timeline event on the
   customer's own feed — deliberately a different kind from an admin's
-  `customer_impersonated`. The token row keeps a hashed IP and the user agent.
+  `customer_impersonated`. The token row keeps the FIRST opener's hashed IP
+  and user agent, plus `use_count`/`last_used_at` for the window's later uses.
 - **Previews and test sends mint nothing** — they render sample URLs, the same
   discipline `EmailPreviewRenderer` follows. Spent tokens are pruned 30 days
   after expiry.

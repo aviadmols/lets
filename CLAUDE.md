@@ -118,8 +118,10 @@ Composer: `<php84> C:\Users\user\.config\herd\bin\composer.phar`
   the account-offer shape widened to every customer LETS knows (subscribers on
   both rails, deposit/instalment buyers, club members), deduped to one email per
   person. `{account_login_url}` is a **passwordless credential**: minted per
-  recipient at send time, stored as sha256, spent once by a POST (a GET spends
-  nothing — mail scanners click first), revocable per token and per campaign,
+  recipient at send time, stored as sha256, signed in by a POST the landing
+  page auto-submits (a GET spends nothing — mail scanners click first),
+  reusable within a TTL window anchored at the FIRST click (phone now, laptop
+  later), revocable per token and per campaign mid-window,
   and it never mints a WordPress session itself (WooCommerce gets a 120s
   `ImpersonationTicket` in `customer` mode; Shopify gets our hosted account
   page, because Shopify mints no storefront session for an app). Rules in

@@ -26,6 +26,7 @@ use Filament\Navigation\NavigationItem;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Assets\Css;
+use Filament\Support\Assets\Js;
 use Filament\Support\Colors\Color;
 use Filament\Support\Facades\FilamentAsset;
 use Filament\View\PanelsRenderHook;
@@ -59,6 +60,17 @@ class AdminPanelProvider extends PanelProvider
     public const THEME_ASSET_ID = 'rc-admin-theme';
 
     public const THEME_ASSET_PATH = 'css/rc-admin.css';
+
+    /**
+     * The campaign composer's live-preview script — a PANEL asset, not an inline
+     * script beside its component: the panel is SPA-mode, and a body <script> is
+     * not executed when wire:navigate swaps a page in, so the component's
+     * factory would exist after a hard refresh and be undefined after a sidebar
+     * click (an Alpine error on x-data, a permanently blank preview).
+     */
+    public const CAMPAIGN_PREVIEW_ASSET_ID = 'rc-campaign-preview';
+
+    public const CAMPAIGN_PREVIEW_ASSET_PATH = 'js/rc-campaign-preview.js';
 
     /** Standalone brand files for slots that cannot render Blade (favicon, docs). */
     public const LOGO_PATH = 'images/lets-logo.svg';
@@ -105,8 +117,14 @@ class AdminPanelProvider extends PanelProvider
      */
     private static function themeAssetUrl(): string
     {
-        $url = asset(self::THEME_ASSET_PATH);
-        $path = public_path(self::THEME_ASSET_PATH);
+        return self::versionedAssetUrl(self::THEME_ASSET_PATH);
+    }
+
+    /** A public asset URL with a content cache-buster (see themeAssetUrl's note). */
+    private static function versionedAssetUrl(string $assetPath): string
+    {
+        $url = asset($assetPath);
+        $path = public_path($assetPath);
 
         return is_file($path) ? $url.'?v='.filemtime($path) : $url;
     }
@@ -127,6 +145,7 @@ class AdminPanelProvider extends PanelProvider
         // components inherit it. The full --rc-* ramp is re-pointed in theme.css.
         FilamentAsset::register([
             Css::make(self::THEME_ASSET_ID, self::themeAssetUrl()),
+            Js::make(self::CAMPAIGN_PREVIEW_ASSET_ID, self::versionedAssetUrl(self::CAMPAIGN_PREVIEW_ASSET_PATH)),
         ]);
 
         // RTL is automatic: Filament reads <html dir> from the translation key

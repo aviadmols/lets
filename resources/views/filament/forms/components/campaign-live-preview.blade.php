@@ -17,7 +17,6 @@
             vars: @js($getSampleVars()),
             debounce: @js(\App\Filament\Forms\Components\CampaignLivePreview::DEBOUNCE_MS),
         })"
-        x-init="init()"
         class="rc-live"
     >
         <div class="rc-live__meta">
@@ -57,63 +56,8 @@
     </div>
 </x-dynamic-component>
 
-@once
-    <script>
-        // rcCampaignPreview — the browser half of the composer.
-        //
-        // It substitutes the SAME token map production uses, by flat string
-        // replacement (the browser's strtr): no template engine here, and none
-        // in production either, so a body carrying template syntax of any other
-        // flavour previews as the inert text it will remain. The result is
-        // written to a sandboxed iframe's srcdoc, never into this document.
-        window.rcCampaignPreview = function (config) {
-            return {
-                body: config.body,
-                subject: config.subject,
-                vars: config.vars || {},
-                debounce: config.debounce || 250,
-                width: 'desktop',
-                renderedSubject: '',
-                timer: null,
-
-                init() {
-                    this.paint();
-                    // One watcher per source; both land on the same debounce, so
-                    // a fast typist redraws once per pause rather than per key.
-                    this.$watch('body', () => this.schedule());
-                    this.$watch('subject', () => this.schedule());
-                },
-
-                schedule() {
-                    clearTimeout(this.timer);
-                    this.timer = setTimeout(() => this.paint(), this.debounce);
-                },
-
-                /** Flat token replacement — the browser's strtr. */
-                fill(text) {
-                    var out = String(text == null ? '' : text);
-                    for (var token in this.vars) {
-                        if (!Object.prototype.hasOwnProperty.call(this.vars, token)) {
-                            continue;
-                        }
-                        out = out.split(token).join(this.vars[token]);
-                    }
-                    return out;
-                },
-
-                paint() {
-                    this.renderedSubject = this.fill(this.subject);
-
-                    var frame = this.$refs.frame;
-                    if (!frame) {
-                        return;
-                    }
-
-                    // srcdoc takes raw HTML; the iframe is sandbox="" so nothing
-                    // inside it can run or reach the admin around it.
-                    frame.srcdoc = this.fill(this.body);
-                },
-            };
-        };
-    </script>
-@endonce
+{{-- The rcCampaignPreview factory is a PANEL ASSET (public/js/rc-campaign-preview.js,
+     registered in AdminPanelProvider), NOT an inline script here: the panel is
+     SPA-mode, and a body <script> is not executed when wire:navigate swaps this
+     page in — the factory would exist after a hard refresh and be undefined
+     after a sidebar click, killing the whole component into a blank frame. --}}
