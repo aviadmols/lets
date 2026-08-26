@@ -7,8 +7,8 @@ use App\Domain\Invoicing\Contracts\InvoiceProvider;
 use App\Domain\Invoicing\DocumentContext;
 use App\Domain\Invoicing\DocumentIssuer;
 use App\Domain\Invoicing\InvoiceProviderFactory;
-use App\Domain\Invoicing\IssueDocumentRequest;
 use App\Domain\Invoicing\IssuedDocumentResult;
+use App\Domain\Invoicing\IssueDocumentRequest;
 use App\Models\InstallmentPlan;
 use App\Models\IssuedDocument;
 use App\Models\MerchantInvoicingSettings;
@@ -17,6 +17,7 @@ use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\LedgerStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Services\WooCommerce\Orders\WooCommerceOrderStrategy;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -47,7 +48,7 @@ final class DocumentIssuerTest extends TestCase
         $this->fakeProvider();
 
         $ledger = $this->succeededLedger($shop);
-        $issuer = new DocumentIssuer();
+        $issuer = new DocumentIssuer;
 
         $first = $issuer->issueForLedger((int) $shop->getKey(), (int) $ledger->getKey(), DocumentContext::RECURRING);
         $second = $issuer->issueForLedger((int) $shop->getKey(), (int) $ledger->getKey(), DocumentContext::RECURRING);
@@ -64,7 +65,7 @@ final class DocumentIssuerTest extends TestCase
         $this->fakeProvider(succeed: false);
 
         $ledger = $this->succeededLedger($shop);
-        $issuer = new DocumentIssuer();
+        $issuer = new DocumentIssuer;
 
         $failed = $issuer->issueForLedger((int) $shop->getKey(), (int) $ledger->getKey(), DocumentContext::RECURRING);
         $this->assertSame(IssuedDocument::STATUS_FAILED, $failed?->status);
@@ -85,7 +86,7 @@ final class DocumentIssuerTest extends TestCase
         $this->fakeProvider();
 
         $ledger = $this->succeededLedger($shop);
-        $issuer = new DocumentIssuer();
+        $issuer = new DocumentIssuer;
         $shopId = (int) $shop->getKey();
 
         $sale = $issuer->issueForLedger($shopId, (int) $ledger->getKey(), DocumentContext::RECURRING);
@@ -104,7 +105,7 @@ final class DocumentIssuerTest extends TestCase
         $this->fakeProvider();
 
         $ledger = $this->succeededLedger($shop);
-        $issuer = new DocumentIssuer();
+        $issuer = new DocumentIssuer;
         $shopId = (int) $shop->getKey();
 
         $issuer->issueForLedger($shopId, (int) $ledger->getKey(), DocumentContext::REFUND, amountOverride: 30.0);
@@ -122,7 +123,7 @@ final class DocumentIssuerTest extends TestCase
         $shop = $this->connectedShop('order.example.com', platform: Shop::PLATFORM_WOOCOMMERCE);
         $this->fakeProvider();
 
-        $issuer = new DocumentIssuer();
+        $issuer = new DocumentIssuer;
         $shopId = (int) $shop->getKey();
 
         // The same order reported twice — a WooCommerce order moving processing → completed.
@@ -131,6 +132,70 @@ final class DocumentIssuerTest extends TestCase
 
         $this->assertCount(1, $this->issued);
         $this->assertSame(1, IssuedDocument::acrossAllTenants()->count());
+    }
+
+    /**
+     * The wrong-order bug, reproduced (shop 2, document 93705).
+     *
+     * A recurring cycle's LEDGER carries the plan's ORIGINAL checkout order
+     * (copied onto every cycle's row), while the fresh cycle order's id lands
+     * in plan meta. The document must file against the CYCLE order — with the
+     * original ahead of it in the fallback chain, the invoice was issued and
+     * attached to a month-old order while the recurring order the merchant was
+     * looking at showed no paperwork at all.
+     */
+    public function test_a_cycle_document_files_against_the_cycle_order_not_the_original(): void
+    {
+        $shop = $this->connectedShop('cycle-order.example.com', platform: Shop::PLATFORM_WOOCOMMERCE);
+        $this->fakeProvider();
+
+        $ledger = Tenant::run($shop, function () use ($shop): PaymentLedger {
+            $plan = new InstallmentPlan;
+            $plan->fill([
+                'plan_kind' => PlanKind::RECURRING->value,
+                'charge_context' => 'recurring',
+                'total_amount' => 100,
+                'installment_amount' => 100,
+                'currency' => 'ILS',
+                'public_id' => (string) Str::ulid(),
+                'customer_name' => 'Dana Buyer',
+                'customer_email' => 'buyer@example.com',
+                'shopify_order_id' => '2819', // the ORIGINAL checkout order
+                'meta' => [
+                    InstallmentPlan::META_ITEM_TITLE => 'Monthly Coffee',
+                    // The cycle order the strategy stamped for THIS charge.
+                    WooCommerceOrderStrategy::META_RECURRING_ORDER_IDS => ['3192'],
+                ],
+            ]);
+            $plan->forceFill(['shop_id' => (int) $shop->getKey(), 'status' => PlanStatus::ACTIVE->value])->save();
+
+            $ledger = Ledger::open(
+                shopId: (int) $shop->getKey(),
+                chargeContext: PaymentLedger::CONTEXT_RECURRING,
+                idempotencyKey: 'recurring:'.$shop->getKey().':'.$plan->getKey().':2026-08-26',
+                amount: 100.0,
+                currency: 'ILS',
+                attributes: ['plan_id' => $plan->getKey(), 'shopify_order_id' => '2819'],
+            );
+
+            return Ledger::transition($ledger, LedgerStatus::SUCCEEDED);
+        });
+
+        $document = (new DocumentIssuer)->issueForLedger((int) $shop->getKey(), (int) $ledger->getKey(), DocumentContext::RECURRING);
+
+        $this->assertNotNull($document);
+        $this->assertSame('3192', (string) $document->external_order_id, 'the cycle order wins');
+
+        // …and a FIRST payment — no cycle order stamped yet — keeps the
+        // checkout order the ledger already names.
+        $first = $this->succeededLedger($shop);
+        Tenant::run($shop, function () use ($first): void {
+            PaymentLedger::query()->whereKey($first->getKey())->update(['shopify_order_id' => '3173']);
+        });
+
+        $firstDoc = (new DocumentIssuer)->issueForLedger((int) $shop->getKey(), (int) $first->getKey(), DocumentContext::RECURRING);
+
+        $this->assertSame('3173', (string) $firstDoc?->external_order_id, 'a first payment keeps its own checkout order');
     }
 
     /**
@@ -154,12 +219,12 @@ final class DocumentIssuerTest extends TestCase
             $this->fakeProvider();
             $this->issued = [];
 
-            \App\Support\Tenant::run($shop, function () use ($shop, $column): void {
-                $plan = new \App\Models\InstallmentPlan;
+            Tenant::run($shop, function () use ($shop, $column): void {
+                $plan = new InstallmentPlan;
                 $plan->fill([
                     'plan_kind' => 'recurring',
                     'charge_context' => 'recurring',
-                    'public_id' => (string) \Illuminate\Support\Str::ulid(),
+                    'public_id' => (string) Str::ulid(),
                     'total_amount' => 100,
                     'installment_amount' => 100,
                     'currency' => 'ILS',
@@ -168,7 +233,7 @@ final class DocumentIssuerTest extends TestCase
                 $plan->forceFill(['shop_id' => (int) $shop->getKey(), 'status' => 'active'])->save();
             });
 
-            $result = (new DocumentIssuer())->issueForPlatformOrder((int) $shop->getKey(), $this->orderPayload());
+            $result = (new DocumentIssuer)->issueForPlatformOrder((int) $shop->getKey(), $this->orderPayload());
 
             $this->assertNull($result, "a plan order must not be invoiced again via {$column}");
             $this->assertCount(0, $this->issued, 'the provider must never be called');
@@ -181,7 +246,7 @@ final class DocumentIssuerTest extends TestCase
         $this->fakeProvider();
 
         // Items total 80, but the order total is 95 (shipping the plugin did not itemise).
-        (new DocumentIssuer())->issueForPlatformOrder((int) $shop->getKey(), $this->orderPayload(
+        (new DocumentIssuer)->issueForPlatformOrder((int) $shop->getKey(), $this->orderPayload(
             total: 95.0,
             lines: [['description' => 'Mug', 'unit_price' => 40.0, 'quantity' => 2, 'catalog_number' => null]],
         ));
@@ -203,7 +268,7 @@ final class DocumentIssuerTest extends TestCase
         MerchantInvoicingSettings::forShop((int) $shop->getKey())->forceFill(['enabled' => false])->save();
 
         $ledger = $this->succeededLedger($shop);
-        $result = (new DocumentIssuer())->issueForLedger(
+        $result = (new DocumentIssuer)->issueForLedger(
             (int) $shop->getKey(),
             (int) $ledger->getKey(),
             DocumentContext::RECURRING,
@@ -221,7 +286,7 @@ final class DocumentIssuerTest extends TestCase
         $this->fakeProvider();
 
         $ledgerA = $this->succeededLedger($shopA);
-        (new DocumentIssuer())->issueForLedger((int) $shopA->getKey(), (int) $ledgerA->getKey(), DocumentContext::RECURRING);
+        (new DocumentIssuer)->issueForLedger((int) $shopA->getKey(), (int) $ledgerA->getKey(), DocumentContext::RECURRING);
 
         // Shop B can see none of shop A's paperwork through the tenant-scoped model.
         Tenant::run($shopB, function (): void {
@@ -243,7 +308,7 @@ final class DocumentIssuerTest extends TestCase
 
         // Shop B's id + shop A's ledger id: the lookup is scoped by BOTH, so it resolves
         // to nothing rather than billing A's money onto B's books.
-        $result = (new DocumentIssuer())->issueForLedger(
+        $result = (new DocumentIssuer)->issueForLedger(
             (int) $shopB->getKey(),
             (int) $ledgerA->getKey(),
             DocumentContext::RECURRING,
@@ -269,7 +334,7 @@ final class DocumentIssuerTest extends TestCase
                 return Shop::INVOICING_PROVIDER_GREEN_INVOICE;
             }
 
-            public function testConnection(): array
+            public function test_connection(): array
             {
                 return [true, null];
             }

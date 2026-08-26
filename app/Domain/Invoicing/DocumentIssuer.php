@@ -12,6 +12,7 @@ use App\Models\PaymentLedger;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Support\ResponseMasker;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
+use App\Services\WooCommerce\Orders\WooCommerceOrderStrategy;
 use App\Support\Tenant;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -48,7 +49,9 @@ final class DocumentIssuer
     // === CONSTANTS ===
     /** Failure codes this service originates (provider codes come from the result). */
     private const ERROR_BUILD_FAILED = 'build_failed';
+
     private const ERROR_NO_SHOP = 'no_shop';
+
     /** An attempt was interrupted; whether a document exists is unknown. */
     private const ERROR_OUTCOME_UNKNOWN = 'outcome_unknown';
 
@@ -139,18 +142,22 @@ final class DocumentIssuer
             return $this->issue($shop, $context, $key, $request, [
                 'ledger_id' => $ledger->getKey(),
                 'plan_id' => $ledger->plan_id,
-                // An UPSELL belongs to the purchase it followed: it carries the
-                // parent order, not an order of its own. Without this fallback its
-                // receipt named no order at all, so it never appeared on the order
-                // it was actually bought from. The LAST fallback is the recurring
-                // cycle's own store order: that order is created AFTER the ledger
-                // row (so the ledger never carries it), and this job runs after
-                // commit — by now the strategy has stamped the id on the plan.
-                // Without it a cycle receipt names no order, and the store's
-                // order screen shows a paid order with no paperwork behind it.
-                'external_order_id' => $ledger->shopify_order_id
-                    ?: $ledger->parent_order_id
-                    ?: $this->latestCycleOrderIdFor($context, $plan),
+                // A RECURRING cycle's document belongs to the CYCLE ORDER, and
+                // the cycle order must therefore be asked FIRST: the ledger's
+                // own shopify_order_id is the plan's ORIGINAL checkout order
+                // (copied onto every cycle's ledger row), so with it in front a
+                // cycle invoice was filed — and stamped, attach_to_order —
+                // against a July order while the fresh recurring order showed
+                // no paperwork at all (shop 2, order 3192 vs document 93705).
+                // The cycle order is created after the ledger row, inside the
+                // same charge transaction; this job runs after commit, so the
+                // strategy has already stamped the id on the plan. The ledger's
+                // order stays as the fallback (a first payment's ledger order
+                // IS the right order; an UPSELL belongs to the purchase it
+                // followed and carries the parent order).
+                'external_order_id' => $this->latestCycleOrderIdFor($context, $plan)
+                    ?: $ledger->shopify_order_id
+                    ?: $ledger->parent_order_id,
             ]);
         } catch (Throwable $e) {
             return $this->recordBuildFailure($shopId, $context, $e);
@@ -593,7 +600,7 @@ final class DocumentIssuer
             return null;
         }
 
-        $ids = (array) (((array) ($plan->fresh()->meta ?? []))[\App\Services\WooCommerce\Orders\WooCommerceOrderStrategy::META_RECURRING_ORDER_IDS] ?? []);
+        $ids = (array) (((array) ($plan->fresh()->meta ?? []))[WooCommerceOrderStrategy::META_RECURRING_ORDER_IDS] ?? []);
         $last = $ids === [] ? null : (string) end($ids);
 
         return $last !== '' ? $last : null;
