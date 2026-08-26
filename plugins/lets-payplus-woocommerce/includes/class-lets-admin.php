@@ -431,6 +431,13 @@ function lets_payplus_admin_copy($s, $he)
     );
 
     lets_payplus_admin_row(
+        $he ? 'כותרת אזור המתנות' : 'Gifts section heading',
+        '<input type="text" class="regular-text" maxlength="120" name="gifts_heading" value="'
+            . esc_attr(isset($s['gifts_heading']) ? (string) $s['gifts_heading'] : '') . '">',
+        $he ? 'הכותרת של מדף המתנות — וגם שם הטאב שלו בניווט אזור החשבון.' : 'The gifts shelf title — and the label of its own account tab.'
+    );
+
+    lets_payplus_admin_row(
         $he ? 'מייל תמיכה' : 'Support email',
         '<input type="email" class="regular-text" dir="ltr" name="support_email" value="'
             . esc_attr((string) $s['support_email']) . '">',
@@ -559,6 +566,7 @@ function lets_payplus_admin_body($tab)
     return array(
         'welcome_heading' => isset($_POST['welcome_heading']) ? sanitize_text_field(wp_unslash($_POST['welcome_heading'])) : '',
         'welcome_subtext' => isset($_POST['welcome_subtext']) ? sanitize_textarea_field(wp_unslash($_POST['welcome_subtext'])) : '',
+        'gifts_heading'   => isset($_POST['gifts_heading']) ? sanitize_text_field(wp_unslash($_POST['gifts_heading'])) : '',
         'support_email'   => isset($_POST['support_email']) ? sanitize_email(wp_unslash($_POST['support_email'])) : '',
         'support_url'     => isset($_POST['support_url']) ? esc_url_raw(wp_unslash($_POST['support_url'])) : '',
     );
