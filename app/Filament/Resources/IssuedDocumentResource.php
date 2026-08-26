@@ -38,8 +38,11 @@ class IssuedDocumentResource extends Resource
 
     // === CONSTANTS ===
     protected static ?string $model = IssuedDocument::class;
+
     protected static ?string $slug = 'invoices';
+
     protected static ?string $navigationIcon = 'heroicon-o-document-text';
+
     protected static ?int $navigationSort = 20;
 
     /** Statuses that need a human. Drives the nav badge + the default filter. */
@@ -163,6 +166,23 @@ class IssuedDocumentResource extends Resource
                     ->openUrlInNewTab()
                     ->visible(fn (IssuedDocument $record): bool => $record->isIssued()
                         && ! empty($record->document_url)),
+
+                // Also safe: nothing new is issued — the existing document's
+                // number + URL are re-sent to the store order it names, for when
+                // the order screen missed (or mis-received) the original stamp.
+                Tables\Actions\Action::make('restamp')
+                    ->label(__('invoices.action.restamp'))
+                    ->icon('heroicon-m-paper-airplane')
+                    ->color('gray')
+                    ->visible(fn (IssuedDocument $record): bool => $record->isIssued()
+                        && trim((string) $record->external_order_id) !== '')
+                    ->requiresConfirmation()
+                    ->modalHeading(__('invoices.action.restamp_heading'))
+                    ->modalDescription(__('invoices.action.restamp_body'))
+                    ->action(fn (IssuedDocument $record) => self::report(
+                        app(DocumentReconciliationService::class)->restamp($record),
+                        __('invoices.action.restamp_queued'),
+                    )),
 
                 // Safe retry: the provider rejected us outright, so nothing exists.
                 Tables\Actions\Action::make('retry')

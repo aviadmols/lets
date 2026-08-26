@@ -25,6 +25,7 @@ return [
         'document_issued' => 'הופקה חשבונית',
         'document_failed' => 'הפקת החשבונית נכשלה',
         'document_retried' => 'הסוחר ניסה להפיק את החשבונית מחדש',
+        'document_restamped' => 'הסוחר שלח את החשבונית מחדש להזמנה בחנות',
         'document_force_issued' => 'החשבונית הופקה לאחר שהסוחר בדק בחשבונית ירוקה',
         'price_stepped_up' => 'הנחת הפתיחה הסתיימה — המחיר עלה למחיר הרגיל',
         'checkout_discount_captured' => 'נקלט קופון מהזמנת הרכישה',

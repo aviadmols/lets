@@ -334,7 +334,7 @@ final class DocumentIssuerTest extends TestCase
                 return Shop::INVOICING_PROVIDER_GREEN_INVOICE;
             }
 
-            public function test_connection(): array
+            public function testConnection(): array
             {
                 return [true, null];
             }

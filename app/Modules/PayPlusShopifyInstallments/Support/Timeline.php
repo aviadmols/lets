@@ -60,6 +60,13 @@ final class Timeline
      */
     public const KIND_DOCUMENT_FORCE_ISSUED = 'document_force_issued';
 
+    /**
+     * A merchant re-sent an ISSUED document's number + URL to the store, so the
+     * order screen shows paperwork that already exists. No provider call — the
+     * one act here is a notification, which is why it is safe to offer freely.
+     */
+    public const KIND_DOCUMENT_RESTAMPED = 'document_restamped';
+
     /** The intro-discount window ended — the cycle price stepped up to regular_amount. */
     public const KIND_PRICE_STEPPED_UP = 'price_stepped_up';
 

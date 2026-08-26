@@ -34,10 +34,20 @@ final class DocumentReconciliationService
     // === CONSTANTS ===
     /** Outcome codes returned to the caller (the screen renders the message). */
     public const OK = 'ok';
+
     public const NOT_RETRYABLE = 'not_retryable';
+
     public const NOT_UNRESOLVED = 'not_unresolved';
+
     public const ALREADY_ISSUED = 'already_issued';
+
     public const MISSING_DOCUMENT_ID = 'missing_document_id';
+
+    public const NOT_ISSUED = 'not_issued';
+
+    /** The document names no store order — there is nothing to stamp. */
+    public const NO_ORDER = 'no_order';
+
     /** The original store-order report is gone, so nothing faithful can be sent. */
     public const NOT_REBUILDABLE = 'not_rebuildable';
 
@@ -167,6 +177,51 @@ final class DocumentReconciliationService
         return $this->ok();
     }
 
+    /**
+     * Re-send an ISSUED document's number + URL to the store order it names, so
+     * the WooCommerce order screen shows the paperwork.
+     *
+     * The one legitimate reason to want this is a document whose order LINKAGE
+     * was wrong when it was issued (the recurring-cycle bug filed cycle invoices
+     * against the plan's original checkout order): fixing external_order_id is a
+     * row update, but the store learned nothing — this verb replays the notify
+     * leg. It re-dispatches the ordinary IssueDocumentJob: the issuer
+     * short-circuits on the existing row by its idempotency key, so the provider
+     * is NEVER called and no second document can exist; only the notification
+     * runs. The row is healthy and is deliberately NOT reopened.
+     *
+     * @return array{ok: bool, reason: string}
+     */
+    public function restamp(IssuedDocument $document): array
+    {
+        if (! $document->isIssued()) {
+            return $this->fail(self::NOT_ISSUED);
+        }
+
+        if (trim((string) $document->external_order_id) === '') {
+            return $this->fail(self::NO_ORDER);
+        }
+
+        if (! $this->isRebuildable($document)) {
+            return $this->fail(self::NOT_REBUILDABLE);
+        }
+
+        $this->dispatch($document);
+
+        Timeline::record(
+            kind: Timeline::KIND_DOCUMENT_RESTAMPED,
+            details: [
+                'context' => (string) $document->context,
+                'document_number' => $document->document_number,
+                'external_order_id' => (string) $document->external_order_id,
+            ],
+            planId: $document->plan_id !== null ? (int) $document->plan_id : null,
+            shopId: (int) $document->shop_id,
+        );
+
+        return $this->ok();
+    }
+
     // === Internals ===
 
     /**
@@ -208,9 +263,9 @@ final class DocumentReconciliationService
      * the payload and rejected by the provider, leaving a retry button that could
      * never succeed.
      *
-     * @return array<string, mixed>|null  null when the report is gone (a row from
-     *                                    before this column existed, or a redacted
-     *                                    one) — the caller then refuses to re-issue.
+     * @return array<string, mixed>|null null when the report is gone (a row from
+     *                                   before this column existed, or a redacted
+     *                                   one) — the caller then refuses to re-issue.
      */
     private function orderPayload(IssuedDocument $document): ?array
     {

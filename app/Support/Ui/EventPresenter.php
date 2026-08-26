@@ -56,6 +56,7 @@ final class EventPresenter
         'document_failed' => ['failure', 'timeline.kind.document_failed'],
         'document_issue_requested' => ['info', 'timeline.kind.document_requested'],
         'document_retried' => ['info', 'timeline.kind.document_retried'],
+        'document_restamped' => ['info', 'timeline.kind.document_restamped'],
         // WARNING, not info: this is the one act in the module that can duplicate a
         // real tax document. Rendering it like routine traffic would hide it in the
         // exact scan someone runs when they suspect a duplicate.
