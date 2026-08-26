@@ -37,11 +37,19 @@ define('LETS_ACCOUNT_ENDPOINT', 'lets-subscriptions');
  */
 define('LETS_GIFTS_ENDPOINT', 'lets-gifts');
 
+/**
+ * The members club as a tab of its own — the FULL club page (points, tiers,
+ * rewards, referral), not the one-line summary card the personal area shows.
+ * It appears only while the merchant's "loyalty" section is on, which the SaaS
+ * already drops for a shop whose club is switched off entirely.
+ */
+define('LETS_LOYALTY_ENDPOINT', 'lets-club');
+
 /** How long a bootstrap payload is cached per user (seconds). Short: it carries dates. */
 define('LETS_ACCOUNT_CACHE_TTL', 60);
 
 /** Bumping this re-flushes the rewrite rules once per site. */
-define('LETS_ACCOUNT_REWRITE_VERSION', '2'); // 2: the lets-gifts endpoint.
+define('LETS_ACCOUNT_REWRITE_VERSION', '3'); // 2: lets-gifts. 3: lets-club.
 
 /** The wp_option holding the flushed-rules marker. */
 define('LETS_ACCOUNT_REWRITE_OPT', 'lets_payplus_account_rewrite');
@@ -158,6 +166,7 @@ function lets_payplus_account_register_endpoint()
 {
     add_rewrite_endpoint(LETS_ACCOUNT_ENDPOINT, EP_ROOT | EP_PAGES);
     add_rewrite_endpoint(LETS_GIFTS_ENDPOINT, EP_ROOT | EP_PAGES);
+    add_rewrite_endpoint(LETS_LOYALTY_ENDPOINT, EP_ROOT | EP_PAGES);
 
     // The plugin has no activation hook (it is installed by upload as often as by
     // the installer), so flush once against a version marker rather than on every
@@ -174,6 +183,7 @@ function lets_payplus_account_query_vars($vars)
 {
     $vars[LETS_ACCOUNT_ENDPOINT] = LETS_ACCOUNT_ENDPOINT;
     $vars[LETS_GIFTS_ENDPOINT] = LETS_GIFTS_ENDPOINT;
+    $vars[LETS_LOYALTY_ENDPOINT] = LETS_LOYALTY_ENDPOINT;
 
     return $vars;
 }
@@ -200,22 +210,72 @@ function lets_payplus_account_menu_items($items)
 
         $out[$key] = $label;
         if ('dashboard' === $key) {
-            $out[LETS_ACCOUNT_ENDPOINT] = lets_payplus_account_menu_label();
-            if (lets_payplus_account_gifts_tab_on()) {
-                $out[LETS_GIFTS_ENDPOINT] = lets_payplus_account_gifts_label();
-            }
+            $out += lets_payplus_account_own_tabs();
         }
     }
 
-    // A theme that removed the dashboard item still gets the tab, at the end.
+    // A theme that removed the dashboard item still gets the tabs, at the end.
     if (! isset($out[LETS_ACCOUNT_ENDPOINT])) {
-        $out[LETS_ACCOUNT_ENDPOINT] = lets_payplus_account_menu_label();
-        if (lets_payplus_account_gifts_tab_on()) {
-            $out[LETS_GIFTS_ENDPOINT] = lets_payplus_account_gifts_label();
-        }
+        $out += lets_payplus_account_own_tabs();
     }
 
     return $out;
+}
+
+/**
+ * OUR tabs, in order: the subscriptions, then whatever the merchant has
+ * switched on beside them. Built in one place so the two insertion points above
+ * cannot drift apart.
+ *
+ * @return array<string, string>
+ */
+function lets_payplus_account_own_tabs()
+{
+    $tabs = array(LETS_ACCOUNT_ENDPOINT => lets_payplus_account_menu_label());
+
+    if (lets_payplus_account_section_on('loyalty')) {
+        $tabs[LETS_LOYALTY_ENDPOINT] = lets_payplus_account_loyalty_label();
+    }
+
+    if (lets_payplus_account_section_on('gifts')) {
+        $tabs[LETS_GIFTS_ENDPOINT] = lets_payplus_account_gifts_label();
+    }
+
+    return $tabs;
+}
+
+/**
+ * Is one of OUR sections switched on for this shop?
+ *
+ * An empty sections list means "we do not know" and ADDS nothing — the opposite
+ * of the hide map further down, which fails open. A tab is a promise of
+ * content, so unknown means absent.
+ *
+ * @param  string  $section
+ * @return bool
+ */
+function lets_payplus_account_section_on($section)
+{
+    $config = lets_payplus_account_shell_config();
+    $sections = isset($config['sections']) ? (array) $config['sections'] : array();
+
+    return in_array($section, $sections, true);
+}
+
+/**
+ * The club tab is named by the merchant's own programme name (LETS → מועדון →
+ * שם התוכנית), so the tab and the page inside it agree.
+ */
+function lets_payplus_account_loyalty_label()
+{
+    $config = lets_payplus_account_shell_config();
+    $label = isset($config['loyalty_label']) ? trim((string) $config['loyalty_label']) : '';
+
+    if ('' !== $label) {
+        return $label;
+    }
+
+    return lets_payplus_account_is_he() ? 'מועדון הלקוחות' : 'Members club';
 }
 
 function lets_payplus_account_menu_label()
@@ -231,10 +291,8 @@ function lets_payplus_account_menu_label()
  */
 function lets_payplus_account_gifts_tab_on()
 {
-    $config = lets_payplus_account_shell_config();
-    $sections = isset($config['sections']) ? (array) $config['sections'] : array();
-
-    return in_array('gifts', $sections, true);
+    // Kept as the named reading of the rule; the shared helper is the rule.
+    return lets_payplus_account_section_on('gifts');
 }
 
 /**
@@ -311,6 +369,24 @@ add_action('woocommerce_account_' . LETS_GIFTS_ENDPOINT . '_endpoint', 'lets_pay
 function lets_payplus_account_render_gifts_endpoint()
 {
     echo lets_payplus_account_markup('gifts'); // phpcs:ignore WordPress.Security.EscapeOutput -- built from escaped parts.
+}
+
+/**
+ * The club tab: the FULL members page, exactly as the [lets_loyalty] shortcode
+ * renders it anywhere else on the store — one implementation, one signed URL,
+ * one iframe that reports its own height. A second rendering of the club would
+ * be a second thing to keep in step with the first.
+ */
+add_action('woocommerce_account_' . LETS_LOYALTY_ENDPOINT . '_endpoint', 'lets_payplus_account_render_loyalty_endpoint');
+
+function lets_payplus_account_render_loyalty_endpoint()
+{
+    if (! function_exists('lets_payplus_loyalty_shortcode')) {
+        return;
+    }
+
+    echo '<h2 class="la-shell__title">' . esc_html(lets_payplus_account_loyalty_label()) . '</h2>';
+    echo lets_payplus_loyalty_shortcode(); // phpcs:ignore WordPress.Security.EscapeOutput -- built from escaped parts.
 }
 
 /**
@@ -712,6 +788,8 @@ function lets_payplus_account_shell_config()
         // What the gifts tab is called — the merchant's own gifts heading, or
         // the short default the SaaS picked. '' means "no answer", short default.
         'gifts_label' => '',
+        /** What the club tab is called — the merchant's programme name. */
+        'loyalty_label' => '',
         'login'      => array('enabled' => false, 'channel' => 'email', 'google_client_id' => ''),
         // Storefront purchase rules. They ride the SHELL because the shell is the
         // cached half: the storefront must know whether the one-subscription rule
@@ -745,6 +823,9 @@ function lets_payplus_account_shell_config()
         }
         if (! empty($account['copy']['gifts_tab_label'])) {
             $config['gifts_label'] = (string) $account['copy']['gifts_tab_label'];
+        }
+        if (! empty($account['copy']['loyalty_tab_label'])) {
+            $config['loyalty_label'] = (string) $account['copy']['loyalty_tab_label'];
         }
         if (! empty($account['login'])) {
             $login = (array) $account['login'];
@@ -987,6 +1068,7 @@ function lets_payplus_account_icon($endpoint)
         'dashboard'           => '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
         LETS_ACCOUNT_ENDPOINT => '<path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v4h-4"/>',
         LETS_GIFTS_ENDPOINT   => '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v8h14v-8"/><path d="M12 8v12"/><path d="M12 8s-1.5-4-4.5-4a2.25 2.25 0 0 0 0 4.5"/><path d="M12 8s1.5-4 4.5-4a2.25 2.25 0 0 1 0 4.5"/>',
+        LETS_LOYALTY_ENDPOINT => '<path d="m12 3.5 2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.77l-5.2 2.73.99-5.78-4.21-4.1 5.82-.85z"/>',
         'orders'              => '<path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4"/><path d="M9 12h7M9 16h5"/>',
         'downloads'           => '<path d="M12 4v10"/><path d="m8 11 4 4 4-4"/><path d="M5 19h14"/>',
         'edit-address'        => '<path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11Z"/><circle cx="12" cy="10" r="2.5"/>',
@@ -1019,7 +1101,8 @@ function lets_payplus_account_tab_heading()
     foreach (wc_get_account_menu_items() as $endpoint => $label) {
         // Our own tabs draw their own headings, exactly like the dashboard.
         if ('dashboard' === $endpoint || LETS_ACCOUNT_ENDPOINT === $endpoint
-            || LETS_GIFTS_ENDPOINT === $endpoint || 'customer-logout' === $endpoint) {
+            || LETS_GIFTS_ENDPOINT === $endpoint || LETS_LOYALTY_ENDPOINT === $endpoint
+            || 'customer-logout' === $endpoint) {
             continue;
         }
         if (is_wc_endpoint_url($endpoint)) {

@@ -6,6 +6,7 @@ use App\Domain\Account\AccountPresenter;
 use App\Domain\Account\AccountVisitor;
 use App\Filament\Pages\ManageCustomerArea;
 use App\Models\InstallmentPlan;
+use App\Models\MerchantLoyaltySettings;
 use App\Models\MerchantPortalAppearance;
 use App\Models\MerchantSmsSettings;
 use App\Models\Shop;
@@ -302,6 +303,30 @@ final class CustomerAreaSettingsTest extends TestCase
         // A rewards tab on a shop with no club is an empty promise.
         $this->assertNotContains(MerchantPortalAppearance::SECTION_LOYALTY, $model['sections']);
         $this->assertNull($model['loyalty']);
+    }
+
+    /**
+     * The club's TAB in the store account navigation. The plugin reads this
+     * label off the payload, so the tab and the page inside it always agree —
+     * and the SECTION toggle is what puts the tab there at all.
+     */
+    public function test_the_club_tab_is_named_by_the_merchants_programme(): void
+    {
+        $loyalty = MerchantLoyaltySettings::current();
+        $loyalty->enabled = true;
+        $loyalty->save();
+
+        // Untouched: the house wording.
+        $model = app(AccountPresenter::class)->sample();
+        $this->assertSame(__('account.ui.loyalty_heading'), $model['copy']['loyalty_tab_label']);
+        $this->assertContains(MerchantPortalAppearance::SECTION_LOYALTY, $model['sections']);
+
+        // Named: a bookshop's club is "מועדון הקוראים", tab included.
+        $loyalty->program_name = 'מועדון הקוראים';
+        $loyalty->save();
+
+        $model = app(AccountPresenter::class)->sample();
+        $this->assertSame('מועדון הקוראים', $model['copy']['loyalty_tab_label']);
     }
 
     public function test_the_sample_payload_has_the_same_shape_as_a_live_one(): void

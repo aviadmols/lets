@@ -715,6 +715,12 @@ final class AccountPresenter
         // full sentence on the shelf, one word in the nav.
         $copy['gifts_tab_label'] = $settings->giftsHeading() ?? (string) __('account.ui.gifts_tab');
 
+        // The club's TAB in the store account navigation, named by the merchant's
+        // own programme name — a shop that calls its club "מועדון הקוראים" should
+        // not have a tab that says "מועדון הלקוחות" beside it.
+        $copy['loyalty_tab_label'] = MerchantLoyaltySettings::current()->programName()
+            ?? (string) __('account.ui.loyalty_heading');
+
         foreach ($this->benefitKinds() as $kind) {
             $copy['benefit_'.$kind] = __('account.benefit.'.$kind);
         }

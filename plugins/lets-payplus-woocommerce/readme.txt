@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.42.0
+Stable tag: 0.43.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,12 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.43.0 =
+* The members club gets its own My Account tab — the FULL club page (points,
+  status, rewards, referral), not the summary card. It appears while the
+  merchant's loyalty section is on and is named by the programme's own name,
+  so switching the section off in the LETS dashboard removes the tab too.
 
 = 0.42.0 =
 * The gifts shelf gets its own My Account tab, shown while the merchant's
