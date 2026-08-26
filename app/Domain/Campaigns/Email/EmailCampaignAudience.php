@@ -12,6 +12,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
@@ -23,6 +24,11 @@ use Illuminate\Support\Str;
  * kind of store purchase this app itself charged), and LOYALTY MEMBERS (one row
  * per person, whether or not they hold a plan). The status, cadence and product
  * filters narrow the plan-shaped rows; the tier filter narrows the members.
+ *
+ * OR a NAMED LIST. When the bag carries typed addresses, they REPLACE the rules
+ * entirely — the merchant is naming people, not describing a segment. Each one
+ * is still resolved against everything we know (so the mail can greet them and
+ * sign them in); an address that matches nobody is written to as a `manual` row.
  *
  * A customer is a PERSON, not a row: the union is deduped by lower-cased email,
  * and a row without an email is dropped — an email campaign cannot reach it,
@@ -57,6 +63,9 @@ final class EmailCampaignAudience
 
     public const RAIL_LOYALTY = 'loyalty';
 
+    /** An address the merchant typed that matches nobody this app knows. */
+    public const RAIL_MANUAL = 'manual';
+
     /**
      * Everyone the bag reaches, one row per PERSON.
      *
@@ -69,6 +78,19 @@ final class EmailCampaignAudience
     public function recipients(array $audience, ?EmailCampaign $campaign = null): Collection
     {
         $bag = EmailCampaign::cleanAudience($audience);
+
+        // A NAMED LIST REPLACES THE RULES. "Send this to these five people" is
+        // not a narrowing of "active subscribers of product X" — read as one it
+        // would silently drop the cancelled member the merchant meant to write
+        // to. The rules answer "who is this for"; the list answers "who", full
+        // stop, and the form says so above the field.
+        if ($bag['emails'] !== []) {
+            $rows = $this->fromNamedEmails($bag['emails']);
+            $rows = $this->flagUnsubscribed($rows);
+
+            return ($campaign !== null ? $this->flagEnrolled($rows, $campaign) : $rows)->values();
+        }
+
         $sources = $bag['sources'] === [] ? EmailCampaign::SOURCES : $bag['sources'];
 
         $rows = collect();
@@ -112,6 +134,118 @@ final class EmailCampaignAudience
     }
 
     // === Sources ===
+
+    /**
+     * The addresses the merchant TYPED, in the order they typed them.
+     *
+     * Each one is looked up across everything this app knows — and deliberately
+     * WITHOUT the rule filters: the merchant named a person, not a segment, so a
+     * cancelled subscriber or a member of the wrong tier is still that person.
+     * A match hands over the name and the customer_ref, which is what makes
+     * `{customer_name}` and `{account_login_url}` work for them; an address that
+     * matches nobody is still written to, as a `manual` row with no reference.
+     *
+     * @param  list<string>  $emails  already lower-cased and validated by the bag's guard
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function fromNamedEmails(array $emails): Collection
+    {
+        $known = [];
+
+        // Plans first, then contracts, then memberships — the same precedence
+        // the rule path dedupes by, so one person resolves to one row either way.
+        foreach ($this->lookupPlans($emails) as $row) {
+            $known[$row['email']] ??= $row;
+        }
+        foreach ($this->lookupContracts($emails) as $row) {
+            $known[$row['email']] ??= $row;
+        }
+        foreach ($this->lookupLoyalty($emails) as $row) {
+            $known[$row['email']] ??= $row;
+        }
+
+        $rows = [];
+        foreach ($emails as $email) {
+            $rows[] = $known[$email] ?? [
+                'source_type' => EmailCampaignRecipient::SOURCE_MANUAL,
+                // No row of ours stands behind this address. 0 rather than a
+                // made-up id: the recipient's source must never point at some
+                // other customer's plan.
+                'source_id' => 0,
+                'email' => $email,
+                'name' => null,
+                'customer_ref' => null,
+                'rail' => self::RAIL_MANUAL,
+                'already_enrolled' => false,
+                'unsubscribed' => false,
+            ];
+        }
+
+        return collect($rows);
+    }
+
+    /**
+     * @param  list<string>  $emails
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function lookupPlans(array $emails): Collection
+    {
+        return InstallmentPlan::query()
+            ->whereIn(DB::raw('lower(customer_email)'), $emails)
+            ->orderBy('id')
+            ->get()
+            ->map(fn (InstallmentPlan $plan): ?array => $this->row(
+                EmailCampaignRecipient::SOURCE_PLAN,
+                (int) $plan->getKey(),
+                $plan->customer_email,
+                $plan->customer_name,
+                $this->planRef($plan),
+                self::RAIL_PAYPLUS,
+            ))
+            ->filter();
+    }
+
+    /**
+     * @param  list<string>  $emails
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function lookupContracts(array $emails): Collection
+    {
+        return SubscriptionContract::query()
+            ->whereIn(DB::raw('lower(customer_email)'), $emails)
+            ->orderBy('id')
+            ->get()
+            ->map(fn (SubscriptionContract $c): ?array => $this->row(
+                EmailCampaignRecipient::SOURCE_CONTRACT,
+                (int) $c->getKey(),
+                $c->customer_email,
+                $c->customer_name,
+                $this->gidTail($c->shopify_customer_gid),
+                self::RAIL_SHOPIFY,
+            ))
+            ->filter();
+    }
+
+    /**
+     * @param  list<string>  $emails
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function lookupLoyalty(array $emails): Collection
+    {
+        return LoyaltyAccount::query()
+            ->whereIn(DB::raw('lower(customer_email)'), $emails)
+            ->orderBy('id')
+            ->get()
+            ->map(fn (LoyaltyAccount $a): ?array => $this->row(
+                EmailCampaignRecipient::SOURCE_LOYALTY,
+                (int) $a->getKey(),
+                $a->customer_email,
+                $a->customer_name,
+                $a->customer_ref,
+                self::RAIL_LOYALTY,
+            ))
+            ->filter();
+    }
 
     /**
      * The PayPlus rail, one kind at a time: recurring = subscribers, installments

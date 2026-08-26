@@ -46,6 +46,14 @@ class EmailCampaignRecipient extends Model
 
     public const SOURCE_LOYALTY = 'loyalty';
 
+    /**
+     * An address the merchant TYPED that matches nobody this app knows. It still
+     * receives the campaign — the merchant named it — but it carries no
+     * customer_ref, so a `{account_login_url}` in the body resolves to a link
+     * that signs nobody in rather than into somebody else's account.
+     */
+    public const SOURCE_MANUAL = 'manual';
+
     /** Reason codes; the UI translates each one. */
     public const REASON_UNSUBSCRIBED = 'unsubscribed';
 

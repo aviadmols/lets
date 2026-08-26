@@ -56,7 +56,16 @@ class EmailCampaign extends Model
     public const SOURCES = [self::SOURCE_SUBSCRIBERS, self::SOURCE_PURCHASERS, self::SOURCE_LOYALTY_MEMBERS];
 
     /** The audience filter keys, in the order the admin form draws them. */
-    public const AUDIENCE_KEYS = ['sources', 'statuses', 'frequencies', 'product_ids', 'loyalty_tier_ids'];
+    public const AUDIENCE_KEYS = ['emails', 'sources', 'statuses', 'frequencies', 'product_ids', 'loyalty_tier_ids'];
+
+    /**
+     * The named-people list. Unlike every other key in the bag it does not
+     * NARROW — it REPLACES: a campaign that lists addresses goes to exactly
+     * those addresses and the rule filters below stop applying. "Send this to
+     * these five people" cannot be said any other way, and saying it as a
+     * filter would silently drop anyone the default status list excludes.
+     */
+    public const MAX_AUDIENCE_EMAILS = 500;
 
     /** The statuses a campaign targets when the merchant named none. */
     public const DEFAULT_AUDIENCE_STATUSES = [
@@ -178,7 +187,7 @@ class EmailCampaign extends Model
      * column it reads, so the magic getter cannot be trusted on a model whose
      * attributes are not fully loaded.
      *
-     * @return array{sources: list<string>, statuses: list<string>, frequencies: list<string>, product_ids: list<string>, loyalty_tier_ids: list<int>}
+     * @return array{emails: list<string>, sources: list<string>, statuses: list<string>, frequencies: list<string>, product_ids: list<string>, loyalty_tier_ids: list<int>}
      */
     public function audience(): array
     {
@@ -196,11 +205,12 @@ class EmailCampaign extends Model
      * count runs over unsaved state, so the cleaning cannot live on the row alone.
      *
      * @param  array<string, mixed>  $raw
-     * @return array{sources: list<string>, statuses: list<string>, frequencies: list<string>, product_ids: list<string>, loyalty_tier_ids: list<int>}
+     * @return array{emails: list<string>, sources: list<string>, statuses: list<string>, frequencies: list<string>, product_ids: list<string>, loyalty_tier_ids: list<int>}
      */
     public static function cleanAudience(array $raw): array
     {
         return [
+            'emails' => self::emailList($raw['emails'] ?? [], self::MAX_AUDIENCE_EMAILS),
             'sources' => self::oneOfList($raw['sources'] ?? [], self::SOURCES),
             'statuses' => self::enumValues($raw['statuses'] ?? [], PlanStatus::class)
                 ?: self::DEFAULT_AUDIENCE_STATUSES,
@@ -409,6 +419,42 @@ class EmailCampaign extends Model
             }
             if (count($out) >= $max) {
                 break;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Addresses the merchant named, lower-cased and deduped. A value that is not
+     * an address is DROPPED rather than kept: this list decides whose inbox the
+     * mail lands in, and a typo that stayed would be a message sent nowhere while
+     * the count promised otherwise. Separators are accepted because a merchant
+     * pastes a column, not a tag at a time.
+     *
+     * @return list<string>
+     */
+    private static function emailList(mixed $raw, int $max): array
+    {
+        $out = [];
+
+        foreach ((array) $raw as $value) {
+            if (! is_string($value)) {
+                continue;
+            }
+
+            foreach (preg_split('/[\s,;]+/u', $value) ?: [] as $part) {
+                $part = mb_strtolower(trim($part));
+
+                if ($part === '' || filter_var($part, FILTER_VALIDATE_EMAIL) === false) {
+                    continue;
+                }
+                if (! in_array($part, $out, true)) {
+                    $out[] = $part;
+                }
+                if (count($out) >= $max) {
+                    return $out;
+                }
             }
         }
 

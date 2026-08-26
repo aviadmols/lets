@@ -1,0 +1,99 @@
+/* campaign-composer.css — Customers → Campaigns, the Klaviyo-shaped composer.
+   TOKENS: --rc-card --rc-bg --rc-border --rc-border-strong --rc-radius-control
+           --rc-ink --rc-ink-muted --rc-space-1 --rc-space-2 --rc-space-3
+   The live email preview that sits BESIDE the editor, so a merchant reads their
+   email as their customer will instead of reading its markup twice. ZERO inline
+   CSS here; the email HTML inside the srcdoc iframe is the sanctioned exception
+   (mail clients strip <style>) and it is sandboxed. */
+
+/* The preview column's own head: what the shopper sees before they open it. */
+.rc-live {
+    display: flex;
+    flex-direction: column;
+    gap: var(--rc-space-2);
+    /* Sticks while the merchant scrolls a long body — the whole point is that
+       the change and its result are on screen together. */
+    position: sticky;
+    inset-block-start: var(--rc-space-3);
+}
+
+.rc-live__meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--rc-space-2) var(--rc-space-3);
+    background: var(--rc-bg);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+}
+
+.rc-live__from {
+    font-size: 12px;
+    color: var(--rc-ink-muted);
+}
+
+.rc-live__subject {
+    font-weight: 600;
+    color: var(--rc-ink);
+}
+
+/* Desktop / phone. Two buttons, because "does this look right on a phone" is
+   the question a merchant asks about an email and cannot answer from a wide
+   canvas — most of their customers read it on one. */
+.rc-live__tabs {
+    display: flex;
+    gap: var(--rc-space-1);
+}
+
+.rc-live__tab {
+    font-size: 12px;
+    color: var(--rc-ink-muted);
+    background: transparent;
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    padding-block: 4px;
+    padding-inline: var(--rc-space-2);
+    cursor: pointer;
+}
+
+.rc-live__tab:hover {
+    color: var(--rc-ink);
+}
+
+.rc-live__tab[data-active='true'] {
+    color: var(--rc-ink);
+    background: var(--rc-card);
+    border-color: var(--rc-border-strong);
+    font-weight: 600;
+}
+
+/* The rendered email itself — the framed, sandboxed canvas. */
+.rc-live__stage {
+    background: var(--rc-bg);
+    border: 1px solid var(--rc-border-strong);
+    border-radius: var(--rc-radius-control);
+    padding: var(--rc-space-2);
+}
+
+.rc-live__frame {
+    inline-size: 100%;
+    block-size: 620px;
+    border: 0;
+    background: var(--rc-card);
+    border-radius: var(--rc-radius-control);
+}
+
+/* Phone width, for the merchant checking their layout the way most people
+   actually read email. The frame is centred so the narrow canvas reads as a
+   device rather than as a broken column. */
+.rc-live__stage[data-width='mobile'] .rc-live__frame {
+    inline-size: 390px;
+    max-inline-size: 100%;
+    margin-inline: auto;
+    display: block;
+}
+
+.rc-live__note {
+    font-size: 12px;
+    color: var(--rc-ink-muted);
+}

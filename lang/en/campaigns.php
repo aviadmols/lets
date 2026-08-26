@@ -31,6 +31,16 @@ return [
         'empty_help' => 'Write an email, choose who gets it, and send it to your subscribers, buyers or club members.',
     ],
 
+    // The screen's three steps: who first, then what they read, then when it goes.
+    'step' => [
+        'audience' => 'Audience',
+        'audience_help' => 'Who the email goes to',
+        'design' => 'Design',
+        'design_help' => 'What they see in the inbox',
+        'send' => 'Schedule & send',
+        'send_help' => 'When it goes out',
+    ],
+
     'section' => [
         'basics' => 'The message',
         'basics_help' => 'The name is yours alone — only the subject reaches the customer.',
@@ -48,6 +58,11 @@ return [
         'subject' => 'Subject',
         'is_marketing' => 'This is a marketing email',
         'is_marketing_help' => 'A marketing email must carry an unsubscribe link, and in Hebrew its subject is prefixed with "פרסומת" — the law requires both. Turn this off only for an operational notice.',
+        'emails' => 'Send to specific addresses',
+        'emails_placeholder' => 'Paste or type an address and press Enter',
+        'emails_help' => 'Leave empty to send by the rules below. Add addresses to send only to them — the rules then do not apply.',
+        'emails_active' => 'This campaign goes to those :count addresses only. An address we know also gets their name and a link to their account; one we do not know still gets the email, without those.',
+        'rules_muted' => 'The rules below are not in force — this campaign goes only to the addresses you listed above. They are saved as they are; clear the addresses to go back to them.',
         'sources' => 'Who counts as a customer',
         'sources_help' => 'Leave empty for everyone LETS knows.',
         'statuses' => 'Subscription status',
@@ -116,6 +131,7 @@ return [
         'payplus' => 'PayPlus',
         'shopify' => 'Shopify',
         'loyalty' => 'Club',
+        'manual' => 'Typed address',
     ],
 
     'action' => [
@@ -179,6 +195,9 @@ return [
 
     'preview' => [
         'heading' => 'Preview',
+        'no_subject' => '(no subject)',
+        'desktop' => 'Desktop',
+        'mobile' => 'Mobile',
         'note' => 'Sample details. The sign-in and unsubscribe links here are placeholders — a real one is created for each person as the email is sent.',
         'audience_heading' => 'Who would get it',
         'audience_summary' => 'Showing :shown of :total.',

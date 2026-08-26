@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Domain\Campaigns\Email\EmailCampaignAudience;
 use App\Domain\Campaigns\Email\Models\EmailCampaign;
 use App\Filament\Concerns\ShopScopedScreen;
+use App\Filament\Forms\Components\CampaignLivePreview;
 use App\Filament\Forms\Components\HtmlCodeEditor;
 use App\Filament\Resources\CampaignResource\Pages;
 use App\Models\LoyaltyTier;
@@ -14,13 +15,17 @@ use App\Support\DefaultEmailTemplates;
 use App\Support\Ui\Money;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\DateTimePicker;
+use Filament\Forms\Components\Grid;
+use Filament\Forms\Components\Group;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TagsInput;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Forms\Components\ToggleButtons;
+use Filament\Forms\Components\Wizard;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
 use Filament\Resources\Resource;
@@ -79,6 +84,9 @@ class CampaignResource extends Resource
 
     public const AUDIENCE_TIERS = 'audience.loyalty_tier_ids';
 
+    /** The named-people list. Non-empty, it REPLACES every rule beside it. */
+    public const AUDIENCE_EMAILS = 'audience.emails';
+
     /** A recipients preview nobody can scroll is a preview nobody reads. */
     public const MAX_PREVIEW_ROWS = 100;
 
@@ -102,14 +110,37 @@ class CampaignResource extends Resource
         return __(self::LANG.'.model.plural');
     }
 
+    /**
+     * THE COMPOSER IS A ROUTE, NOT A PILE OF PANELS. WHO first, then WHAT they
+     * read, then WHEN it goes — the order the decision is actually made in, and
+     * the order every campaign tool worth using asks in. Before this the five
+     * sections sat open at once and the audience filters, the editor and the
+     * schedule competed for the same glance.
+     *
+     * Skippable, because an edit is not a first draft: a merchant reopening a
+     * campaign to fix one word must not walk the whole route to reach it.
+     */
     public static function form(Form $form): Form
     {
         return $form->schema([
-            self::basicsSection(),
-            self::audienceSection(),
-            self::contentSection(),
-            self::scheduleSection(),
-            self::statsSection(),
+            Wizard::make([
+                Wizard\Step::make(__(self::LANG.'.step.audience'))
+                    ->description(__(self::LANG.'.step.audience_help'))
+                    ->icon('heroicon-o-users')
+                    ->schema([self::basicsSection(), self::audienceSection()]),
+
+                Wizard\Step::make(__(self::LANG.'.step.design'))
+                    ->description(__(self::LANG.'.step.design_help'))
+                    ->icon('heroicon-o-paint-brush')
+                    ->schema([self::contentSection()]),
+
+                Wizard\Step::make(__(self::LANG.'.step.send'))
+                    ->description(__(self::LANG.'.step.send_help'))
+                    ->icon('heroicon-o-paper-airplane')
+                    ->schema([self::scheduleSection(), self::statsSection()]),
+            ])
+                ->skippable()
+                ->columnSpanFull(),
         ]);
     }
 
@@ -125,22 +156,9 @@ class CampaignResource extends Resource
                     ->label(__(self::LANG.'.field.name'))
                     ->helperText(__(self::LANG.'.field.name_help'))
                     ->required()
-                    ->maxLength(EmailCampaign::MAX_NAME),
-
-                TextInput::make('subject')
-                    ->label(__(self::LANG.'.field.subject'))
-                    ->required()
-                    ->default(fn (): string => DefaultEmailTemplates::campaignStarterSubject())
-                    ->maxLength(EmailCampaign::MAX_SUBJECT),
-
-                Toggle::make('is_marketing')
-                    ->label(__(self::LANG.'.field.is_marketing'))
-                    ->helperText(__(self::LANG.'.field.is_marketing_help'))
-                    ->default(true)
-                    ->live()
+                    ->maxLength(EmailCampaign::MAX_NAME)
                     ->columnSpanFull(),
-            ])
-            ->columns(2);
+            ]);
     }
 
     /**
@@ -158,6 +176,42 @@ class CampaignResource extends Resource
             ->description(__(self::LANG.'.section.audience_help'))
             ->disabled(fn (?EmailCampaign $record): bool => $record !== null && ! $record->isEditable())
             ->schema([
+                /*
+                 * NAMED PEOPLE FIRST, and it REPLACES everything under it — a
+                 * merchant who can name the five people they mean should not
+                 * have to describe them as a segment, and reading the list as
+                 * one more filter would silently drop anyone the default
+                 * status list excludes. The helper text says which rule is in
+                 * force, and it changes as soon as an address is typed.
+                 */
+                TagsInput::make(self::AUDIENCE_EMAILS)
+                    ->label(__(self::LANG.'.field.emails'))
+                    ->placeholder(__(self::LANG.'.field.emails_placeholder'))
+                    ->helperText(fn (Get $get): string => self::emailListCount($get(self::AUDIENCE_EMAILS)) > 0
+                        ? __(self::LANG.'.field.emails_active', [
+                            'count' => self::emailListCount($get(self::AUDIENCE_EMAILS)),
+                        ])
+                        : __(self::LANG.'.field.emails_help'))
+                    // A merchant pastes a column out of a spreadsheet; each
+                    // separator the model's guard understands is split here too,
+                    // so what they paste becomes chips rather than one long tag.
+                    ->separator(',')
+                    ->splitKeys(['Enter', 'Tab', ' ', ';'])
+                    ->nestedRecursiveRules(['email'])
+                    ->live(onBlur: true)
+                    ->columnSpanFull(),
+
+                // The rules stay on screen and stay saved — a merchant who types
+                // an address to send one test-shaped campaign must not lose the
+                // segment they spent time describing. They are simply not in
+                // force, and the notice says so rather than leaving them looking
+                // like they still are.
+                Placeholder::make('audience_rules_muted')
+                    ->hiddenLabel()
+                    ->content(__(self::LANG.'.field.rules_muted'))
+                    ->visible(fn (Get $get): bool => self::emailListCount($get(self::AUDIENCE_EMAILS)) > 0)
+                    ->columnSpanFull(),
+
                 CheckboxList::make(self::AUDIENCE_SOURCES)
                     ->label(__(self::LANG.'.field.sources'))
                     ->helperText(__(self::LANG.'.field.sources_help'))
@@ -200,12 +254,18 @@ class CampaignResource extends Resource
     }
 
     /**
-     * The message itself.
+     * The message itself — the EDITOR on one side, the EMAIL on the other.
      *
      * The two editors are mounted side by side and one is hidden: they share the
      * `body_html` column, so nothing is copied or converted when the merchant
      * switches, and a body written in HTML survives a trip through the visual
      * tab unless they actually edit it there.
+     *
+     * What is new is the second column. A campaign body is a whole HTML document
+     * (mail clients strip `<style>`, so it has to be), which meant BOTH editors
+     * showed the merchant markup — the screen displayed the email twice and the
+     * email itself not once. CampaignLivePreview renders it as the inbox will,
+     * in the browser, so it keeps up with whichever editor is being typed in.
      */
     private static function contentSection(): Section
     {
@@ -213,33 +273,48 @@ class CampaignResource extends Resource
             ->description(__(self::LANG.'.section.content_help'))
             ->disabled(fn (?EmailCampaign $record): bool => $record !== null && ! $record->isEditable())
             ->schema([
-                ToggleButtons::make('editor_mode')
-                    ->label(__(self::LANG.'.field.editor_mode'))
-                    ->helperText(__(self::LANG.'.field.editor_help'))
-                    ->options(self::options(EmailCampaign::EDITORS, 'field.editor_option'))
-                    ->default(EmailCampaign::EDITOR_VISUAL)
-                    ->inline()
-                    ->live(),
+                Grid::make(2)->schema([
+                    Group::make([
+                        TextInput::make('subject')
+                            ->label(__(self::LANG.'.field.subject'))
+                            ->required()
+                            ->default(fn (): string => DefaultEmailTemplates::campaignStarterSubject())
+                            ->maxLength(EmailCampaign::MAX_SUBJECT)
+                            // The preview's header line is the subject; it has to
+                            // move as the merchant writes it, like the body does.
+                            ->live(onBlur: true),
 
-                Placeholder::make('placeholders')
-                    ->label(__(self::LANG.'.field.placeholders'))
-                    ->content(new HtmlString(self::placeholderChips())),
+                        ToggleButtons::make('editor_mode')
+                            ->label(__(self::LANG.'.field.editor_mode'))
+                            ->helperText(__(self::LANG.'.field.editor_help'))
+                            ->options(self::options(EmailCampaign::EDITORS, 'field.editor_option'))
+                            ->default(EmailCampaign::EDITOR_VISUAL)
+                            ->inline()
+                            ->live(),
 
-                RichEditor::make('body_html')
-                    ->label(__(self::LANG.'.field.body_visual'))
-                    ->default(fn (): string => DefaultEmailTemplates::campaignStarter())
-                    ->required()
-                    ->visible(fn (Get $get): bool => $get('editor_mode') !== EmailCampaign::EDITOR_HTML)
-                    ->columnSpanFull(),
+                        Placeholder::make('placeholders')
+                            ->label(__(self::LANG.'.field.placeholders'))
+                            ->content(new HtmlString(self::placeholderChips())),
 
-                HtmlCodeEditor::make('body_html')
-                    ->label(__(self::LANG.'.field.body'))
-                    ->default(fn (): string => DefaultEmailTemplates::campaignStarter())
-                    ->required()
-                    ->visible(fn (Get $get): bool => $get('editor_mode') === EmailCampaign::EDITOR_HTML)
-                    ->columnSpanFull(),
+                        RichEditor::make('body_html')
+                            ->label(__(self::LANG.'.field.body_visual'))
+                            ->default(fn (): string => DefaultEmailTemplates::campaignStarter())
+                            ->required()
+                            ->visible(fn (Get $get): bool => $get('editor_mode') !== EmailCampaign::EDITOR_HTML)
+                            ->live(onBlur: true),
+
+                        HtmlCodeEditor::make('body_html')
+                            ->label(__(self::LANG.'.field.body'))
+                            ->default(fn (): string => DefaultEmailTemplates::campaignStarter())
+                            ->required()
+                            ->visible(fn (Get $get): bool => $get('editor_mode') === EmailCampaign::EDITOR_HTML),
+                    ]),
+
+                    CampaignLivePreview::make('live_preview')
+                        ->label(__(self::LANG.'.preview.heading')),
+                ]),
             ])
-            ->columns(2);
+            ->columns(1);
     }
 
     private static function scheduleSection(): Section
@@ -247,6 +322,13 @@ class CampaignResource extends Resource
         return Section::make(__(self::LANG.'.section.schedule'))
             ->disabled(fn (?EmailCampaign $record): bool => $record !== null && ! $record->isEditable())
             ->schema([
+                Toggle::make('is_marketing')
+                    ->label(__(self::LANG.'.field.is_marketing'))
+                    ->helperText(__(self::LANG.'.field.is_marketing_help'))
+                    ->default(true)
+                    ->live()
+                    ->columnSpanFull(),
+
                 DateTimePicker::make('scheduled_at')
                     ->label(__(self::LANG.'.field.scheduled_at'))
                     ->helperText(__(self::LANG.'.field.scheduled_at_help'))
@@ -418,6 +500,16 @@ class CampaignResource extends Resource
         $data['audience'] = $audience;
 
         return $data;
+    }
+
+    /**
+     * How many usable addresses the merchant has actually named. Counted through
+     * the MODEL'S guard, so the number on screen is the number the send will
+     * use — a typo that the guard drops must not be promised here.
+     */
+    public static function emailListCount(mixed $raw): int
+    {
+        return count(EmailCampaign::cleanAudience(['emails' => (array) $raw])['emails']);
     }
 
     /** How many people this campaign would reach today. */
