@@ -98,6 +98,62 @@ return [
         'custom' => 'Customised',
     ],
 
+    // The sending domain — mail leaves through the PLATFORM's sending account,
+    // signed as the shop's own domain.
+    'sender' => [
+        'heading' => 'The domain your email is sent from',
+        'intro' => 'By default your email leaves from a LETS address. You can have it signed as your own domain instead — your customers see your name, and the mail lands in the inbox rather than in spam. You do not need an email service of your own: sending still goes through our account; you only add a few DNS records.',
+        'platform_off' => 'The platform sending service is not connected yet. Talk to us and we will set it up — until then your email keeps going out as before.',
+
+        'domain' => 'Your domain',
+        'domain_help' => 'The bare domain, no https and no www — for example example.co.il. We sign the mail under mail.example.co.il.',
+
+        'none' => 'No domain set yet. Type your domain and press "Create records" — we will hand you the DNS records to add.',
+        'pending_body' => 'Add the records below at your DNS provider (your registrar or DNS host — Cloudflare, GoDaddy, Namecheap and so on), then press "Check records". Until it verifies, your email keeps going out from the LETS address as before.',
+        'verified_body' => 'Verified. Your shop\'s email is sent and signed as :domain.',
+
+        'records_help' => 'Add these as CNAME records. Paste the middle column into "Name"/Host — some providers want only the part before your domain (em1234 rather than em1234.example.co.il). Paste the last column into "Value"/Points to. Do not proxy them (on Cloudflare the cloud must be grey, not orange).',
+        'propagation' => 'DNS changes take anywhere from minutes to 48 hours. If a check still says "missing", wait a little and check again — there is no need to create the records afresh.',
+        'checked_at' => 'Last checked: :when',
+
+        'status' => [
+            'pending' => 'Waiting for verification',
+            'verified' => 'Verified',
+            'failed' => 'Records not found yet',
+        ],
+
+        'col' => [
+            'type' => 'Type',
+            'host' => 'Name / Host',
+            'value' => 'Value / Points to',
+            'state' => 'State',
+        ],
+
+        'record' => [
+            'live' => 'Found',
+            'missing' => 'Missing',
+        ],
+
+        'action' => [
+            'request' => 'Create records',
+            'rerequest' => 'Change the domain',
+            'check' => 'Check records',
+            'remove' => 'Remove the domain',
+            'remove_confirm' => 'Remove the domain? Your email goes back to leaving from the LETS address.',
+        ],
+
+        'requested' => 'Records created. Add them to your DNS, then press "Check records".',
+        'verified_now' => 'The domain is verified. Your email now goes out as your own.',
+        'removed' => 'The domain was removed.',
+
+        'reason' => [
+            'not_configured' => 'The platform sending service is not connected yet — talk to us.',
+            'provider_unreachable' => 'We could not reach the sending service just now. Try again in a moment; nothing is broken.',
+            'records_missing' => 'Some records are not in your DNS yet. The table shows which — DNS changes can take up to 48 hours.',
+            'invalid_domain' => 'That does not look like a domain. Type the domain on its own, for example example.co.il.',
+        ],
+    ],
+
     'locale' => [
         'heading' => 'Language',
         'label' => 'Your customers read email in',

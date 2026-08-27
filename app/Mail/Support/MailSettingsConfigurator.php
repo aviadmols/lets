@@ -2,56 +2,51 @@
 
 namespace App\Mail\Support;
 
-use App\Models\MerchantMailSettings;
 use App\Models\Shop;
 use Illuminate\Support\Facades\Config;
 
 /**
- * Applies a SENDING shop's per-shop SMTP override into the live mail config for
- * the duration of a single send. When the shop has not opted into its own SMTP
- * (override_env_smtp = false) this is a no-op and the platform .env mailer is
- * used.
+ * Applies a SENDING shop's chosen relay into the live mail config for the
+ * duration of a single REQUEST-TIME send.
+ *
+ * The choice itself — the merchant's own SMTP, then the platform's SendGrid
+ * account, then the platform .env mailer — belongs to MailTransport, so this
+ * path and the queue-time one (CampaignMailer) can never disagree about where a
+ * shop's mail leaves from.
  *
  * Per-shop + runtime-scoped: the override is set just before a send and never
- * persisted into the shared config file, so two shops sending on the same worker
- * never cross From addresses or mailbox credentials. The SMTP password is read
- * through the model's `encrypted` cast (decrypted in-memory only here).
+ * persisted into the shared config file, so two shops sending on the same
+ * request never cross From addresses or credentials.
  *
- * Ported from the reference engine's mergeMailSettingsIntoConfig().
+ * ON A QUEUE WORKER, USE CampaignMailer INSTEAD. Laravel caches the resolved
+ * `smtp` mailer, and a worker does not end when a job does — the first shop to
+ * send would own the transport for every later job. This helper is only safe
+ * where the process ends with the request.
  */
 final class MailSettingsConfigurator
 {
     public static function apply(Shop $shop): void
     {
-        // Keyed EXPLICITLY by the sending shop id via the audited cross-tenant
-        // query: this reads exactly ONE shop's own settings row, correct even when
-        // applied outside a bound-tenant context. It can never read another shop's
-        // SMTP credentials (the where pins the id).
-        $settings = MerchantMailSettings::acrossAllTenants()
-            ->where('shop_id', $shop->getKey())
-            ->first();
+        $chosen = MailTransport::for($shop);
 
-        if ($settings === null || ! $settings->override_env_smtp || ! $settings->smtp_host) {
+        if ($chosen === null) {
             return; // platform .env mailer
         }
 
-        Config::set('mail.mailers.smtp.host', $settings->smtp_host);
+        $config = $chosen['config'];
 
-        if ($settings->smtp_port) {
-            Config::set('mail.mailers.smtp.port', $settings->smtp_port);
+        Config::set('mail.mailers.smtp.host', $config['host']);
+        Config::set('mail.mailers.smtp.port', $config['port']);
+        Config::set('mail.mailers.smtp.username', $config['username']);
+        Config::set('mail.mailers.smtp.password', $config['password']);
+
+        if (isset($config['scheme'])) {
+            Config::set('mail.mailers.smtp.scheme', $config['scheme']);
         }
-        if ($settings->smtp_encryption) {
-            Config::set('mail.mailers.smtp.scheme', $settings->smtp_encryption === 'tls' ? 'smtp' : 'smtps');
-        }
-        if ($settings->smtp_username) {
-            Config::set('mail.mailers.smtp.username', $settings->smtp_username);
-        }
-        if ($settings->smtp_password) {
-            Config::set('mail.mailers.smtp.password', $settings->smtp_password);
-        }
-        if ($settings->from_address) {
-            Config::set('mail.from.address', $settings->from_address);
-            Config::set('mail.from.name', $settings->from_name ?: $shop->name);
+
+        if ($chosen['from'] !== null) {
+            Config::set('mail.from.address', $chosen['from']['address']);
+            Config::set('mail.from.name', $chosen['from']['name']);
         }
 
         // Force the SMTP mailer for this send (the platform default may be `log`).

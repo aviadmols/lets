@@ -2,13 +2,18 @@
 
 namespace App\Filament\Pages;
 
+use App\Domain\Mail\SenderDomains;
+use App\Domain\Mail\SendGrid\SendGridClient;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Filament\Forms\Components\HtmlCodeEditor;
 use App\Mail\Support\MailSettingsConfigurator;
 use App\Models\MerchantMailSettings;
+use App\Models\Shop;
+use App\Models\ShopSenderDomain;
 use App\Support\DefaultEmailTemplates;
 use App\Support\EmailPreviewRenderer;
 use App\Support\Tenant;
+use Filament\Actions\Action as HeaderAction;
 use Filament\Forms\Components\Actions;
 use Filament\Forms\Components\Actions\Action;
 use Filament\Forms\Components\Grid;
@@ -18,13 +23,13 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Forms\Components\ToggleButtons;
+use Filament\Forms\Components\ViewField;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
-use Filament\Actions\Action as HeaderAction;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Contracts\View\View;
 use Illuminate\Mail\Mailables\Address;
@@ -59,8 +64,11 @@ class ManageMailSettings extends Page implements HasForms
 
     // === CONSTANTS ===
     protected static ?string $navigationIcon = 'heroicon-o-envelope';
+
     protected static string $view = 'filament.pages.mail-settings';
+
     protected static ?string $slug = 'settings/mail';
+
     protected static ?int $navigationSort = 40;
 
     /** The six notification templates, in spec/UI order (drives the Sections). */
@@ -77,6 +85,20 @@ class ManageMailSettings extends Page implements HasForms
 
     /** Form fields whose value is a secret → overwrite only when typed. */
     public const SECRET_FIELDS = ['smtp_password'];
+
+    /** The sending-domain panel: DNS records, status, the three buttons. */
+    public const SENDER_VIEW = 'filament.pages.partials.sender-domain';
+
+    /**
+     * The per-record DNS verdicts from the last check on THIS page view.
+     *
+     * Not persisted: a resolver answer is only true for the moment it was
+     * fetched, and a stored one would show a merchant a tick beside a record
+     * they deleted an hour ago.
+     *
+     * @var list<array<string, mixed>>
+     */
+    public array $senderRecords = [];
 
     /** @var array<string, mixed> the form state (statePath: data). */
     public array $data = [];
@@ -117,6 +139,10 @@ class ManageMailSettings extends Page implements HasForms
             'from_address' => $settings->from_address,
             'from_name' => $settings->from_name,
             'portal_store_page_url' => $settings->portal_store_page_url,
+            // The domain lives on its own row (a conversation with the provider,
+            // not a setting); the field is pre-filled so a merchant re-opening
+            // the screen sees what they asked for rather than an empty box.
+            'sender_domain' => $this->senderDomain()?->domain,
         ];
 
         // Pre-fill with the copy that actually goes out, custom or default.
@@ -147,6 +173,7 @@ class ManageMailSettings extends Page implements HasForms
             ->statePath('data')
             ->schema([
                 $this->localeSection(),
+                $this->senderDomainSection(),
                 Section::make(__('mail.edit.heading'))
                     ->description(__('mail.edit.intro'))
                     ->schema(array_map(fn (string $t): Section => $this->templateSection($t), self::TEMPLATES)),
@@ -184,6 +211,43 @@ class ManageMailSettings extends Page implements HasForms
      * version buried the preview action inside a collapsed section and merchants
      * reported the button as missing.
      */
+    /**
+     * The shop's own sending domain, on the platform's provider account.
+     *
+     * The merchant's whole job here is three CNAMEs, so the section is written
+     * as instructions rather than as fields: type the domain, publish what it
+     * gives you, press the button that says whether they are live. The DNS
+     * table lives in its own view because it is a table, and because a merchant
+     * copying values needs them selectable rather than squeezed into helper
+     * text.
+     */
+    private function senderDomainSection(): Section
+    {
+        return Section::make(__('mail.sender.heading'))
+            ->description(__('mail.sender.intro'))
+            ->collapsible()
+            ->schema([
+                Placeholder::make('sender_unavailable')
+                    ->hiddenLabel()
+                    ->content(__('mail.sender.platform_off'))
+                    ->visible(fn (): bool => ! SendGridClient::configured()),
+
+                TextInput::make('sender_domain')
+                    ->label(__('mail.sender.domain'))
+                    ->helperText(__('mail.sender.domain_help'))
+                    ->placeholder('example.co.il')
+                    ->maxLength(ShopSenderDomain::MAX_DOMAIN)
+                    ->extraInputAttributes(['dir' => 'ltr'])
+                    ->visible(fn (): bool => SendGridClient::configured()),
+
+                ViewField::make('sender_state')
+                    ->hiddenLabel()
+                    ->view(self::SENDER_VIEW)
+                    ->visible(fn (): bool => SendGridClient::configured())
+                    ->columnSpanFull(),
+            ]);
+    }
+
     private function templateSection(string $template): Section
     {
         return Section::make(__('mail.template.'.$template))
@@ -398,6 +462,99 @@ class ManageMailSettings extends Page implements HasForms
     }
 
     /** "Restore default" — clear a template's custom subject + body so the default is used. */
+    // === The sending domain ===
+
+    /** The shop's row, or null — read by the panel and by the actions below. */
+    public function senderDomain(): ?ShopSenderDomain
+    {
+        $shop = Tenant::current();
+
+        return $shop instanceof Shop ? ShopSenderDomain::forShop((int) $shop->getKey()) : null;
+    }
+
+    /**
+     * The records to show, each with whether it resolves RIGHT NOW.
+     *
+     * After a check, the check's own verdicts. Otherwise the stored records
+     * with no verdict at all — better an honest blank than a tick this page
+     * view did not earn.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function senderRecordRows(): array
+    {
+        if ($this->senderRecords !== []) {
+            return $this->senderRecords;
+        }
+
+        return array_map(
+            static fn (array $record): array => $record + ['resolved' => null],
+            $this->senderDomain()?->dnsRecords() ?? [],
+        );
+    }
+
+    /** Ask the provider to authenticate the typed domain. */
+    public function requestSenderDomain(): void
+    {
+        $shop = Tenant::current();
+        if (! $shop instanceof Shop) {
+            return;
+        }
+
+        $result = app(SenderDomains::class)->request($shop, (string) ($this->form->getState()['sender_domain'] ?? ''));
+
+        $this->senderRecords = [];
+        $this->report($result, __('mail.sender.requested'));
+    }
+
+    /**
+     * Check the DNS. Both readings are kept: the provider's verdict decides,
+     * and our own resolver read is what names the record still missing.
+     */
+    public function checkSenderDomain(): void
+    {
+        $shop = Tenant::current();
+        if (! $shop instanceof Shop) {
+            return;
+        }
+
+        $result = app(SenderDomains::class)->check($shop);
+        $this->senderRecords = $result['records'] ?? [];
+
+        $this->report($result, __('mail.sender.verified_now'));
+    }
+
+    /** Stop sending as this domain and give it back to the provider. */
+    public function removeSenderDomain(): void
+    {
+        $shop = Tenant::current();
+        if (! $shop instanceof Shop) {
+            return;
+        }
+
+        $result = app(SenderDomains::class)->remove($shop);
+
+        $this->senderRecords = [];
+        $this->data['sender_domain'] = null;
+        $this->report($result, __('mail.sender.removed'));
+    }
+
+    /** @param array{ok: bool, reason: ?string} $result */
+    private function report(array $result, string $success): void
+    {
+        if ($result['ok']) {
+            Notification::make()->success()->title($success)->send();
+
+            return;
+        }
+
+        Notification::make()
+            ->warning()
+            ->title(__('mail.sender.reason.'.($result['reason'] ?? SenderDomains::REASON_PROVIDER_UNREACHABLE)))
+            ->persistent()
+            ->send();
+    }
+
     public function restoreDefault(string $template): void
     {
         if (! in_array($template, self::TEMPLATES, true) || ! Tenant::check()) {

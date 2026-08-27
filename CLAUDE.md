@@ -127,6 +127,17 @@ Composer: `<php84> C:\Users\user\.config\herd\bin\composer.phar`
   page, because Shopify mints no storefront session for an app). Rules in
   `docs/security/security-policies.md` §5.1. Marketing mail must carry
   `{unsubscribe_url}` + `List-Unsubscribe`, and is subject-tagged "פרסומת".
+- `app/Domain/Mail/` — **who sends a shop's mail**. `MailTransport` owns the ONE
+  ladder (the merchant's own SMTP → the PLATFORM's SendGrid account → the .env
+  mailer); `MailSettingsConfigurator` (request-time) and `CampaignMailer`
+  (queue-time) both read it, so the two paths cannot disagree. The SendGrid key
+  is an **env var** (`SENDGRID_API_KEY`) — platform secrets live in env, per-shop
+  secrets are encrypted in the DB. A shop authenticates its OWN domain on that
+  one account (`SenderDomains` + `shop_sender_domains`): the merchant publishes
+  the CNAMEs the provider issues, and the screen resolves each record itself so
+  a failure names the missing host instead of saying "not verified". An
+  **unverified domain is never a From** — the provider refuses it, and an
+  unsigned message would spend the merchant's own domain reputation.
 - Admin = Filament 3 panel re-skinned to the Recharge spec.
 
 ## Status

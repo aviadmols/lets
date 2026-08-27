@@ -31,6 +31,7 @@ final class TemplateRenderer
     // === CONSTANTS ===
     /** Token delimiters — placeholders are written {snake_case}. */
     private const OPEN = '{';
+
     private const CLOSE = '}';
 
     /** Default product label when a plan has no product title. */
@@ -60,7 +61,7 @@ final class TemplateRenderer
     /**
      * Substitute {token} placeholders using strtr() ONLY.
      *
-     * @param array<string, scalar|null> $vars  token => value (without braces)
+     * @param  array<string, scalar|null>  $vars  token => value (without braces)
      */
     public static function render(string $template, array $vars): string
     {

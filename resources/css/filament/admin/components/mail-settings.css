@@ -37,6 +37,19 @@
     border-radius: var(--rc-radius-control);
 }
 
+/* The sending-domain DNS table. These are values a merchant copies by hand into
+   a registrar's panel, so they are LTR, monospaced, selectable and never
+   truncated — a shortened CNAME target is a support ticket. */
+.rc-dns {
+    overflow-x: auto;
+}
+.rc-dns__value {
+    font-family: ui-monospace, "SFMono-Regular", "Menlo", "Consolas", monospace;
+    font-size: 12px;
+    white-space: nowrap;
+    user-select: all;
+}
+
 /* The template list.
    It used to be six identical collapsed accordions with a code editor inside,
    and a merchant could not tell at a glance which emails were theirs, which were

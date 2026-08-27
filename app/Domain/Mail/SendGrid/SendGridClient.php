@@ -1,0 +1,227 @@
+<?php
+
+namespace App\Domain\Mail\SendGrid;
+
+use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+
+/**
+ * The platform's SendGrid account, as the only three calls we make against it.
+ *
+ * DOMAIN AUTHENTICATION, not sending: mail leaves over the SMTP relay (see
+ * MailTransport), and this class exists for the paperwork around it — asking
+ * SendGrid to authenticate a merchant's domain, reading back the CNAMEs the
+ * merchant must publish, and asking SendGrid to look again once they say they
+ * have.
+ *
+ * ONE ACCOUNT, MANY MERCHANTS. Every domain here belongs to the platform's
+ * SendGrid account; a merchant never holds a key. That is the whole point of
+ * the arrangement — one sending reputation we can actually manage — and it is
+ * also why `remove()` exists: a shop that leaves must not keep an authenticated
+ * domain on our account forever.
+ *
+ * NEVER THROWS ON A PROVIDER FAULT. Every method answers null (or false) and
+ * logs; a settings screen that 500s because a third party is slow is worse than
+ * one that says "we could not reach the provider, try again".
+ */
+final class SendGridClient
+{
+    // === CONSTANTS ===
+    /** Seconds before we stop waiting on the provider. A settings screen is waiting. */
+    private const TIMEOUT = 15;
+
+    /** SendGrid's own subuser-less default; we authenticate under the platform account. */
+    private const DEFAULT_SUBDOMAIN = 'mail';
+
+    /** Is the platform account configured at all? */
+    public static function configured(): bool
+    {
+        return trim((string) config('services.sendgrid.api_key')) !== '';
+    }
+
+    /**
+     * Ask SendGrid to authenticate a domain, and get back the records the
+     * merchant has to publish.
+     *
+     * `automatic_security` is ON: SendGrid then issues CNAMEs (not raw DKIM TXT
+     * records) and rotates the keys behind them itself. It is the difference
+     * between a merchant pasting three CNAMEs once and a merchant maintaining
+     * DKIM keys they did not ask for.
+     *
+     * @return array{id: int, records: list<array<string, mixed>>, subdomain: string}|null
+     */
+    public function authenticateDomain(string $domain, ?string $subdomain = null): ?array
+    {
+        $subdomain = trim((string) ($subdomain ?: config('services.sendgrid.subdomain', self::DEFAULT_SUBDOMAIN)));
+
+        $body = $this->post('/whitelabel/domains', [
+            'domain' => $domain,
+            'subdomain' => $subdomain !== '' ? $subdomain : self::DEFAULT_SUBDOMAIN,
+            'automatic_security' => true,
+        ]);
+
+        if ($body === null || (int) ($body['id'] ?? 0) <= 0) {
+            return null;
+        }
+
+        return [
+            'id' => (int) $body['id'],
+            'records' => self::flattenRecords($body['dns'] ?? []),
+            'subdomain' => (string) ($body['subdomain'] ?? $subdomain),
+        ];
+    }
+
+    /**
+     * Ask SendGrid to CHECK the DNS now.
+     *
+     * The answer carries the per-record verdicts, which is what makes a failed
+     * check actionable: "the domain is not verified" sends a merchant hunting,
+     * "this one CNAME is missing" sends them to the right line in their DNS.
+     *
+     * @return array{valid: bool, records: list<array<string, mixed>>}|null
+     */
+    public function validateDomain(int $domainId): ?array
+    {
+        $body = $this->post('/whitelabel/domains/'.$domainId.'/validate', []);
+
+        if ($body === null) {
+            return null;
+        }
+
+        $results = (array) ($body['validation_results'] ?? []);
+
+        return [
+            'valid' => (bool) ($body['valid'] ?? false),
+            'records' => self::flattenRecords($results),
+        ];
+    }
+
+    /** The domain as SendGrid holds it now — used to re-read records we lost. */
+    public function fetchDomain(int $domainId): ?array
+    {
+        $body = $this->get('/whitelabel/domains/'.$domainId);
+
+        if ($body === null) {
+            return null;
+        }
+
+        return [
+            'id' => (int) ($body['id'] ?? $domainId),
+            'valid' => (bool) ($body['valid'] ?? false),
+            'records' => self::flattenRecords($body['dns'] ?? []),
+            'subdomain' => (string) ($body['subdomain'] ?? ''),
+        ];
+    }
+
+    /** Give the domain back. A shop that left keeps nothing on our account. */
+    public function removeDomain(int $domainId): bool
+    {
+        try {
+            return $this->request()->delete($this->url('/whitelabel/domains/'.$domainId))->successful();
+        } catch (\Throwable $e) {
+            $this->logFailure('delete', $e->getMessage());
+
+            return false;
+        }
+    }
+
+    // === Internals ===
+
+    /**
+     * SendGrid returns its records as an OBJECT keyed by purpose
+     * (`mail_cname`, `dkim1`, `dkim2`, …), and the keys differ with the
+     * account's settings — so they are flattened to a list and the purpose is
+     * kept only as a label. A reader that expected `dkim1` to exist would break
+     * the day an account was configured differently.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function flattenRecords(mixed $dns): array
+    {
+        $out = [];
+
+        foreach ((array) $dns as $key => $record) {
+            $record = (array) $record;
+
+            $host = trim((string) ($record['host'] ?? ''));
+            $value = trim((string) ($record['data'] ?? ''));
+
+            if ($host === '' || $value === '') {
+                continue;
+            }
+
+            $out[] = [
+                'key' => is_string($key) ? $key : '',
+                'host' => $host,
+                'type' => mb_strtoupper((string) ($record['type'] ?? 'cname')),
+                'data' => $value,
+                'valid' => (bool) ($record['valid'] ?? false),
+            ];
+        }
+
+        return $out;
+    }
+
+    /** @param array<string, mixed> $payload @return array<string, mixed>|null */
+    private function post(string $path, array $payload): ?array
+    {
+        try {
+            $response = $this->request()->post($this->url($path), $payload);
+        } catch (\Throwable $e) {
+            $this->logFailure($path, $e->getMessage());
+
+            return null;
+        }
+
+        if (! $response->successful()) {
+            $this->logFailure($path, 'status='.$response->status());
+
+            return null;
+        }
+
+        $body = $response->json();
+
+        return is_array($body) ? $body : null;
+    }
+
+    /** @return array<string, mixed>|null */
+    private function get(string $path): ?array
+    {
+        try {
+            $response = $this->request()->get($this->url($path));
+        } catch (\Throwable $e) {
+            $this->logFailure($path, $e->getMessage());
+
+            return null;
+        }
+
+        if (! $response->successful()) {
+            $this->logFailure($path, 'status='.$response->status());
+
+            return null;
+        }
+
+        $body = $response->json();
+
+        return is_array($body) ? $body : null;
+    }
+
+    private function request(): PendingRequest
+    {
+        return Http::withToken((string) config('services.sendgrid.api_key'))
+            ->acceptJson()
+            ->timeout(self::TIMEOUT);
+    }
+
+    private function url(string $path): string
+    {
+        return rtrim((string) config('services.sendgrid.api_base'), '/').$path;
+    }
+
+    /** The key is never in the message — only the path and the provider's verdict. */
+    private function logFailure(string $path, string $reason): void
+    {
+        Log::warning('mail.sendgrid.call_failed', ['path' => $path, 'reason' => $reason]);
+    }
+}
