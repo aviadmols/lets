@@ -10,6 +10,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -112,7 +113,7 @@ final class DispatchRemindersCommandTest extends TestCase
 
     private function makePlan(
         Shop $shop,
-        \Illuminate\Support\Carbon $next,
+        Carbon $next,
         int $offsetHours,
         bool $enabled = true,
         string $email = 'dana@example.com',

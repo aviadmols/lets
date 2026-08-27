@@ -2,6 +2,7 @@
 
 namespace App\Domain\Mail\SendGrid;
 
+use App\Models\PlatformMailSettings;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -34,10 +35,23 @@ final class SendGridClient
     /** SendGrid's own subuser-less default; we authenticate under the platform account. */
     private const DEFAULT_SUBDOMAIN = 'mail';
 
-    /** Is the platform account configured at all? */
+    /**
+     * Is the platform account configured at all?
+     *
+     * Through PlatformMailSettings, never straight off the config: the owner may
+     * have saved the key on the platform screen rather than into a deploy
+     * variable, and a reader that only knew about env would tell every merchant
+     * the service is not connected while it happily sends.
+     */
     public static function configured(): bool
     {
-        return trim((string) config('services.sendgrid.api_key')) !== '';
+        return PlatformMailSettings::current()->isConnected();
+    }
+
+    /** The key this call authenticates with — saved value first, env second. */
+    private static function key(): string
+    {
+        return (string) PlatformMailSettings::current()->apiKey();
     }
 
     /**
@@ -53,7 +67,7 @@ final class SendGridClient
      */
     public function authenticateDomain(string $domain, ?string $subdomain = null): ?array
     {
-        $subdomain = trim((string) ($subdomain ?: config('services.sendgrid.subdomain', self::DEFAULT_SUBDOMAIN)));
+        $subdomain = trim((string) ($subdomain ?: PlatformMailSettings::current()->subdomain()));
 
         $body = $this->post('/whitelabel/domains', [
             'domain' => $domain,
@@ -209,7 +223,7 @@ final class SendGridClient
 
     private function request(): PendingRequest
     {
-        return Http::withToken((string) config('services.sendgrid.api_key'))
+        return Http::withToken(self::key())
             ->acceptJson()
             ->timeout(self::TIMEOUT);
     }

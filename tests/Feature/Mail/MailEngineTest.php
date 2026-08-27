@@ -126,7 +126,7 @@ final class MailEngineTest extends TestCase
     {
         $shop = $this->makeShop('choice.myshopify.com');
 
-        Tenant::run($shop, function () use ($shop): void {
+        Tenant::run($shop, function (): void {
             $settings = MerchantMailSettings::current();
 
             // Blank => default. Confirm the preview falls back to the default body.

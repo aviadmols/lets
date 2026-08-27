@@ -131,8 +131,10 @@ Composer: `<php84> C:\Users\user\.config\herd\bin\composer.phar`
   ladder (the merchant's own SMTP → the PLATFORM's SendGrid account → the .env
   mailer); `MailSettingsConfigurator` (request-time) and `CampaignMailer`
   (queue-time) both read it, so the two paths cannot disagree. The SendGrid key
-  is an **env var** (`SENDGRID_API_KEY`) — platform secrets live in env, per-shop
-  secrets are encrypted in the DB. A shop authenticates its OWN domain on that
+  lives on `platform_mail_settings` (one row, no tenant, encrypted, managed on
+  **Platform → Email delivery**, platform-admins only) with `SENDGRID_API_KEY`
+  as the FALLBACK — a saved key wins, so a fresh environment can still come up
+  from variables alone. A shop authenticates its OWN domain on that
   one account (`SenderDomains` + `shop_sender_domains`): the merchant publishes
   the CNAMEs the provider issues, and the screen resolves each record itself so
   a failure names the missing host instead of saying "not verified". An

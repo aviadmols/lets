@@ -186,54 +186,16 @@ final class SenderDomains
     }
 
     /**
-     * Each expected record, with whether it RESOLVES right now.
-     *
-     * A DNS answer is the merchant's own publication seen from the outside, so
-     * a resolver failure reads as "not yet" rather than as an error: a record
-     * that was added a minute ago genuinely is not there yet, and saying so is
-     * the honest answer while it propagates.
+     * Each expected record, with whether it RESOLVES right now. The reading
+     * itself is DnsRecords', shared with the platform's own domain so the two
+     * flows cannot disagree about what "live" means.
      *
      * @param  list<array{host: string, type: string, value: string, valid: bool}>  $records
      * @return list<array{host: string, type: string, value: string, valid: bool, resolved: bool}>
      */
     public function resolveRecords(array $records): array
     {
-        $out = [];
-
-        foreach ($records as $record) {
-            $out[] = $record + ['resolved' => $this->cnameResolves($record['host'], $record['value'])];
-        }
-
-        return $out;
-    }
-
-    /** Does this host publish this CNAME target? Never throws; unknown = false. */
-    private function cnameResolves(string $host, string $expected): bool
-    {
-        if (! function_exists('dns_get_record')) {
-            return false;
-        }
-
-        try {
-            $answers = @dns_get_record($host, DNS_CNAME);
-        } catch (\Throwable) {
-            return false;
-        }
-
-        if (! is_array($answers)) {
-            return false;
-        }
-
-        $expected = mb_strtolower(rtrim($expected, '.'));
-
-        foreach ($answers as $answer) {
-            $target = mb_strtolower(rtrim((string) ($answer['target'] ?? ''), '.'));
-            if ($target !== '' && $target === $expected) {
-                return true;
-            }
-        }
-
-        return false;
+        return DnsRecords::resolve($records);
     }
 
     /**

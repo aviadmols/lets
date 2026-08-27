@@ -2,8 +2,8 @@
 
 namespace App\Mail\Support;
 
-use App\Domain\Mail\SendGrid\SendGridClient;
 use App\Models\MerchantMailSettings;
+use App\Models\PlatformMailSettings;
 use App\Models\Shop;
 use App\Models\ShopSenderDomain;
 
@@ -79,7 +79,9 @@ final class MailTransport
         }
 
         // 2. The platform's SendGrid account.
-        if (! SendGridClient::configured()) {
+        $platform = PlatformMailSettings::current();
+
+        if (! $platform->isConnected()) {
             return null;
         }
 
@@ -89,12 +91,12 @@ final class MailTransport
                 'host' => (string) config('services.sendgrid.smtp_host'),
                 'port' => (int) config('services.sendgrid.smtp_port', 587),
                 'username' => (string) config('services.sendgrid.smtp_username', self::SENDGRID_USERNAME),
-                'password' => (string) config('services.sendgrid.api_key'),
+                'password' => (string) $platform->apiKey(),
                 'scheme' => 'smtp',
                 'timeout' => null,
                 'local_domain' => null,
             ],
-            'from' => self::sendGridFrom($shop, $settings),
+            'from' => self::sendGridFrom($shop, $settings, $platform),
         ];
     }
 
@@ -108,8 +110,11 @@ final class MailTransport
      *
      * @return array{address: string, name: string}|null
      */
-    private static function sendGridFrom(Shop $shop, ?MerchantMailSettings $settings): ?array
-    {
+    private static function sendGridFrom(
+        Shop $shop,
+        ?MerchantMailSettings $settings,
+        PlatformMailSettings $platform,
+    ): ?array {
         $name = (string) ($settings?->from_name ?: $shop->name);
         $domain = ShopSenderDomain::forShop((int) $shop->getKey());
 
@@ -120,10 +125,10 @@ final class MailTransport
             ];
         }
 
-        $platform = trim((string) config('services.sendgrid.from_address'));
+        $fallback = $platform->fromAddress();
 
-        return $platform !== ''
-            ? ['address' => $platform, 'name' => (string) (config('services.sendgrid.from_name') ?: $name)]
+        return $fallback !== null
+            ? ['address' => $fallback, 'name' => (string) ($platform->fromName() ?: $name)]
             : null;
     }
 
