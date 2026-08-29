@@ -26,6 +26,13 @@ final class BlockTextSanitizer
     /** Tags a text block may carry. Everything else is unwrapped to its text. */
     public const ALLOWED_TAGS = ['b', 'strong', 'i', 'em', 'u', 'a', 'br', 'p', 'ul', 'ol', 'li', 'span'];
 
+    /**
+     * Elements whose TEXT is code, not words — dropped whole, subtree included.
+     * Unwrapping a <script> would keep its source as visible "text", which is
+     * not a merchant's paragraph by any reading.
+     */
+    public const DROPPED_TAGS = ['script', 'style', 'iframe', 'object', 'embed', 'textarea', 'title', 'noscript'];
+
     /** Where a link may point. */
     private const HREF_PATTERN = '#^(https?://|mailto:)#i';
 
@@ -84,6 +91,10 @@ final class BlockTextSanitizer
         }
 
         $tag = strtolower($node->tagName);
+
+        if (in_array($tag, self::DROPPED_TAGS, true)) {
+            return '';
+        }
 
         $inner = '';
         foreach ($node->childNodes as $child) {

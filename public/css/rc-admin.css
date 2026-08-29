@@ -1824,6 +1824,166 @@ html:has(meta[name="lets-embedded"]) .fi-user-menu {
     max-inline-size: 68ch;
 }
 
+/* newsletter-studio.css — the block editor + canvas (Campaigns → Studio).
+   TOKENS: --rc-card --rc-bg --rc-border --rc-border-strong --rc-radius-control
+           --rc-ink --rc-ink-muted --rc-blue --rc-blue-bg --rc-space-1..3
+   Reuses .rc-live__tabs/.rc-live__stage/.rc-live__frame from campaign-composer.
+   ZERO inline CSS; the email inside the sandboxed srcdoc is the exception. */
+
+/* The screen: work panel beside the canvas. RTL-first — the panel reads first. */
+.rc-studio {
+    display: grid;
+    grid-template-columns: 340px minmax(0, 1fr);
+    gap: var(--rc-space-3);
+    align-items: start;
+}
+
+@media (max-width: 900px) {
+    .rc-studio {
+        grid-template-columns: 1fr;
+    }
+}
+
+.rc-studio__panel {
+    min-width: 0;
+}
+
+/* --- The block list --- */
+.rc-studio__blocks {
+    display: flex;
+    flex-direction: column;
+    gap: var(--rc-space-1);
+}
+
+.rc-studio__block {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--rc-space-2);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    background: var(--rc-card);
+    padding: 4px var(--rc-space-2);
+}
+
+.rc-studio__block.is-selected {
+    border-color: var(--rc-blue);
+    background: var(--rc-blue-bg);
+}
+
+.rc-studio__block-label {
+    flex: 1;
+    text-align: start;
+    font-size: 13px;
+    color: var(--rc-ink);
+    background: none;
+    border: 0;
+    padding: 6px 0;
+    cursor: pointer;
+}
+
+.rc-studio__block-verbs {
+    display: flex;
+    gap: 2px;
+}
+
+.rc-studio__verb {
+    font-size: 13px;
+    line-height: 1;
+    color: var(--rc-ink-muted);
+    background: none;
+    border: 0;
+    border-radius: var(--rc-radius-control);
+    padding: 4px 6px;
+    cursor: pointer;
+}
+
+.rc-studio__verb:hover:not(:disabled) {
+    color: var(--rc-ink);
+    background: var(--rc-bg);
+}
+
+.rc-studio__verb:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+
+.rc-studio__verb--danger:hover {
+    color: #dc2626;
+}
+
+/* --- The palette --- */
+.rc-studio__palette {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--rc-space-1);
+    margin-block-start: var(--rc-space-2);
+}
+
+.rc-studio__add {
+    font-size: 12px;
+    color: var(--rc-ink-muted);
+    background: var(--rc-bg);
+    border: 1px dashed var(--rc-border-strong);
+    border-radius: var(--rc-radius-control);
+    padding: 4px var(--rc-space-2);
+    cursor: pointer;
+}
+
+.rc-studio__add:hover {
+    color: var(--rc-ink);
+    border-color: var(--rc-blue);
+}
+
+/* --- Folds (settings, versions) --- */
+.rc-studio__fold {
+    width: 100%;
+    text-align: start;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--rc-ink);
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+}
+
+/* --- Settings colors grid --- */
+.rc-studio__colors {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--rc-space-1) var(--rc-space-2);
+}
+
+.rc-studio__color {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--rc-space-2);
+    font-size: 12px;
+    color: var(--rc-ink-muted);
+}
+
+/* --- Canvas --- */
+.rc-studio__frame {
+    block-size: 720px;
+}
+
+.rc-studio__version-line {
+    margin-inline-start: auto;
+    font-size: 12px;
+}
+
+.rc-studio__warning {
+    font-size: 12px;
+}
+
+.rc-studio__textarea {
+    font-family: ui-monospace, "SFMono-Regular", "Menlo", "Consolas", monospace;
+    font-size: 12px;
+    direction: ltr;
+}
+
 /* observability.css — Observability dashboard (docs/ux/10 §observability, ARCHITECTURE.md §6.6)
    TOKENS: --rc-card --rc-border --rc-radius-card --rc-radius-control --rc-shadow-card
            --rc-space-* --rc-type-label --rc-type-body-strong --rc-ink --rc-ink-muted

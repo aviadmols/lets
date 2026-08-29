@@ -77,8 +77,10 @@ return [
         'editor_option' => [
             'visual' => 'Visual',
             'html' => 'HTML',
+            'studio' => 'Studio (blocks + AI)',
         ],
-        'editor_help' => 'The visual editor is simpler; the HTML view gives you full control. Switching keeps your content, but the visual editor may simplify hand-written markup.',
+        'editor_help' => 'The visual editor is simpler; the HTML view gives full control; the studio builds the email from blocks with an AI assistant. The choice is made once, at creation.',
+        'studio_pointer' => 'This email is edited in the studio — its body is built there from blocks and updates automatically. Open it with the "Open in studio" button above.',
         'body' => 'Body',
         'body_visual' => 'Body',
         'placeholders' => 'Placeholders',

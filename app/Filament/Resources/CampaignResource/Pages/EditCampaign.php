@@ -7,6 +7,7 @@ use App\Domain\Campaigns\Email\CampaignPreview;
 use App\Domain\Campaigns\Email\EmailCampaignAudience;
 use App\Domain\Campaigns\Email\EmailCampaignSender;
 use App\Domain\Campaigns\Email\Models\EmailCampaign;
+use App\Filament\Pages\NewsletterStudio;
 use App\Filament\Resources\CampaignResource;
 use App\Mail\CampaignTestMail;
 use App\Mail\Support\CampaignMailer;
@@ -71,7 +72,15 @@ class EditCampaign extends EditRecord
     protected function mutateFormDataBeforeSave(array $data): array
     {
         $data = CampaignResource::normalizeAudience($data);
-        $data['body_html'] = CampaignBodyNormalizer::clean($data['body_html'] ?? '');
+
+        // A STUDIO campaign's body is the compiled artifact of its document —
+        // this form never carries the field, and normalising the absent value
+        // to '' would WIPE the compile on every unrelated save.
+        if ($this->record->isStudio()) {
+            unset($data['body_html']);
+        } else {
+            $data['body_html'] = CampaignBodyNormalizer::clean($data['body_html'] ?? '');
+        }
 
         return $data;
     }
@@ -90,7 +99,11 @@ class EditCampaign extends EditRecord
             return;
         }
 
-        $body = CampaignBodyNormalizer::clean($data['body_html'] ?? '');
+        // A studio body is not on this form; the compiled column is checked
+        // instead — its footer block guarantees the token by construction.
+        $body = $this->record->isStudio()
+            ? (string) $this->record->body_html
+            : CampaignBodyNormalizer::clean($data['body_html'] ?? '');
 
         if (! str_contains($body, EmailCampaign::TOKEN_UNSUBSCRIBE)) {
             Notification::make()
@@ -117,6 +130,13 @@ class EditCampaign extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
+            // The block editor, for the campaigns whose body lives there.
+            Action::make('openStudio')
+                ->label(__('studio.action.open_studio'))
+                ->icon('heroicon-o-sparkles')
+                ->visible(fn (): bool => $this->record->isStudio() && $this->record->isEditable())
+                ->url(fn (): string => NewsletterStudio::getUrl(['campaign' => $this->record->getKey()])),
+
             $this->previewAction(),
             $this->previewAudienceAction(),
             $this->sendTestAction(),

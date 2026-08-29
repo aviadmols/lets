@@ -21,8 +21,8 @@ final class BlockTextSanitizerTest extends TestCase
         $this->assertStringNotContainsString('<script', $out);
         $this->assertStringNotContainsString('onclick', $out);
         $this->assertStringContainsString('<b>עולם</b>', $out);
-        // The script's TEXT is also gone... actually unwrapped: assert no alert marker leaks as executable
-        $this->assertStringNotContainsString('</script>', $out);
+        // The script's SOURCE goes with it — code is not a merchant's paragraph.
+        $this->assertStringNotContainsString('alert(1)', $out);
     }
 
     public function test_a_javascript_href_dies_here_not_in_a_mail_client(): void

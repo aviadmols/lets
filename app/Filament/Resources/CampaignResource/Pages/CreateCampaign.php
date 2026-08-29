@@ -3,6 +3,9 @@
 namespace App\Filament\Resources\CampaignResource\Pages;
 
 use App\Domain\Campaigns\Email\CampaignBodyNormalizer;
+use App\Domain\Campaigns\Email\Models\EmailCampaign;
+use App\Domain\Campaigns\Studio\DocumentService;
+use App\Filament\Pages\NewsletterStudio;
 use App\Filament\Resources\CampaignResource;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
@@ -36,6 +39,16 @@ class CreateCampaign extends CreateRecord
         return $data;
     }
 
+    /** A studio campaign is born WITH its document — the starter, version 1. */
+    protected function afterCreate(): void
+    {
+        $record = $this->getRecord();
+
+        if ($record instanceof EmailCampaign && $record->isStudio()) {
+            app(DocumentService::class)->initFor($record, auth()->id());
+        }
+    }
+
     protected function getCreatedNotification(): ?Notification
     {
         return Notification::make()
@@ -45,8 +58,16 @@ class CreateCampaign extends CreateRecord
 
     protected function getRedirectUrl(): string
     {
+        $record = $this->getRecord();
+
+        // A studio campaign goes straight to its editor — the merchant chose
+        // to design in blocks, so blocks are the next screen.
+        if ($record instanceof EmailCampaign && $record->isStudio()) {
+            return NewsletterStudio::getUrl(['campaign' => $record->getKey()]);
+        }
+
         // Straight to Edit: sending, scheduling and the previews all live there,
         // and a merchant who just wrote a campaign is about to use them.
-        return $this->getResource()::getUrl('edit', ['record' => $this->getRecord()]);
+        return $this->getResource()::getUrl('edit', ['record' => $record]);
     }
 }

@@ -30,14 +30,22 @@ enum BillingPlan: string
     // === CONSTANTS — limit dimensions (the gate-matrix keys) ===
     // Counter gates: an int cap, or null = UNLIMITED. PlanGate::within() reads these.
     public const LIMIT_MAX_SUBSCRIPTIONS = 'max_subscriptions';
+
     public const LIMIT_MAX_UPSELL_FLOWS = 'max_upsell_flows';
 
     // Boolean feature gates: true = allowed. PlanGate::allows() reads these.
     public const FEATURE_POST_PURCHASE = 'post_purchase_enabled';
+
     public const FEATURE_RECURRING = 'recurring_enabled';
+
     public const FEATURE_INSTALLMENTS = 'installments_enabled';
+
     public const FEATURE_CUSTOM_EMAIL_BRANDING = 'custom_email_branding';
+
     public const FEATURE_PRIORITY_QUEUE = 'priority_queue';
+
+    /** The AI newsletter studio (block editor + chat). */
+    public const FEATURE_AI_NEWSLETTER = 'ai_newsletter_enabled';
 
     /** Every counter dimension (null = unlimited in a plan's limits row). */
     public const COUNTER_KEYS = [
@@ -52,6 +60,7 @@ enum BillingPlan: string
         self::FEATURE_INSTALLMENTS,
         self::FEATURE_CUSTOM_EMAIL_BRANDING,
         self::FEATURE_PRIORITY_QUEUE,
+        self::FEATURE_AI_NEWSLETTER,
     ];
 
     /** Sentinel: a counter limit of null means "no cap". */
@@ -145,6 +154,7 @@ enum BillingPlan: string
                 self::FEATURE_INSTALLMENTS => true,
                 self::FEATURE_CUSTOM_EMAIL_BRANDING => true,
                 self::FEATURE_PRIORITY_QUEUE => true,
+                self::FEATURE_AI_NEWSLETTER => true,
             ],
 
             // TODO(paid-tiers): one row per tier — the ONLY numbers to set. Example:

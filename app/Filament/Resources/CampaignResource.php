@@ -289,29 +289,45 @@ class CampaignResource extends Resource
                             ->helperText(__(self::LANG.'.field.editor_help'))
                             ->options(self::options(EmailCampaign::EDITORS, 'field.editor_option'))
                             ->default(EmailCampaign::EDITOR_VISUAL)
+                            // Studio and freeform are different SOURCES OF TRUTH
+                            // (a block document vs a hand-written body); flipping
+                            // an existing campaign between them would orphan one.
+                            // The choice is made once, at creation.
+                            ->disabled(fn (string $operation): bool => $operation === 'edit')
                             ->inline()
                             ->live(),
 
+                        // A studio campaign's body lives in the studio; these
+                        // fields belong to the two freeform modes only.
+                        Placeholder::make('studio_pointer')
+                            ->hiddenLabel()
+                            ->content(__(self::LANG.'.field.studio_pointer'))
+                            ->visible(fn (Get $get): bool => $get('editor_mode') === EmailCampaign::EDITOR_STUDIO),
+
                         Placeholder::make('placeholders')
                             ->label(__(self::LANG.'.field.placeholders'))
-                            ->content(new HtmlString(self::placeholderChips())),
+                            ->content(new HtmlString(self::placeholderChips()))
+                            ->visible(fn (Get $get): bool => $get('editor_mode') !== EmailCampaign::EDITOR_STUDIO),
 
                         RichEditor::make('body_html')
                             ->label(__(self::LANG.'.field.body_visual'))
                             ->default(fn (): string => DefaultEmailTemplates::campaignStarter())
-                            ->required()
-                            ->visible(fn (Get $get): bool => $get('editor_mode') !== EmailCampaign::EDITOR_HTML)
+                            ->required(fn (Get $get): bool => $get('editor_mode') !== EmailCampaign::EDITOR_STUDIO)
+                            ->visible(fn (Get $get): bool => $get('editor_mode') === EmailCampaign::EDITOR_VISUAL)
                             ->live(onBlur: true),
 
                         HtmlCodeEditor::make('body_html')
                             ->label(__(self::LANG.'.field.body'))
                             ->default(fn (): string => DefaultEmailTemplates::campaignStarter())
-                            ->required()
+                            ->required(fn (Get $get): bool => $get('editor_mode') !== EmailCampaign::EDITOR_STUDIO)
                             ->visible(fn (Get $get): bool => $get('editor_mode') === EmailCampaign::EDITOR_HTML),
                     ]),
 
                     CampaignLivePreview::make('live_preview')
-                        ->label(__(self::LANG.'.preview.heading')),
+                        ->label(__(self::LANG.'.preview.heading'))
+                        // The studio has its own canvas; entangling a field the
+                        // form does not carry would show a blank white frame.
+                        ->visible(fn (Get $get): bool => $get('editor_mode') !== EmailCampaign::EDITOR_STUDIO),
                 ]),
             ])
             ->columns(1);
