@@ -77,12 +77,20 @@ class EmailCampaign extends Model
 
     public const MAX_AUDIENCE_TIERS = 50;
 
-    /** The two ways the merchant may write the body. */
+    /** The ways the merchant may write the body. */
     public const EDITOR_VISUAL = 'visual';
 
     public const EDITOR_HTML = 'html';
 
-    public const EDITORS = [self::EDITOR_VISUAL, self::EDITOR_HTML];
+    /**
+     * The studio: the body is a structured block DOCUMENT (`document` column)
+     * and `body_html` is its compiled artifact, rewritten by DocumentService on
+     * every save — never hand-edited. `document` stays NULL for the other two
+     * editors, and every studio code path steps aside for null.
+     */
+    public const EDITOR_STUDIO = 'studio';
+
+    public const EDITORS = [self::EDITOR_VISUAL, self::EDITOR_HTML, self::EDITOR_STUDIO];
 
     /**
      * The tokens a merchant may write into the subject and body. Substituted by
@@ -110,6 +118,8 @@ class EmailCampaign extends Model
     {
         return [
             'audience' => 'array',
+            'document' => 'array',
+            'document_version' => 'integer',
             'is_marketing' => 'boolean',
             'login_link_ttl_hours' => 'integer',
             'scheduled_at' => 'datetime',
@@ -176,6 +186,12 @@ class EmailCampaign extends Model
         $value = $this->attributes['editor_mode'] ?? null;
 
         return is_string($value) && in_array($value, self::EDITORS, true) ? $value : self::EDITOR_VISUAL;
+    }
+
+    /** Is this a STUDIO campaign — a block document behind a compiled body? */
+    public function isStudio(): bool
+    {
+        return $this->editorMode() === self::EDITOR_STUDIO;
     }
 
     /**
