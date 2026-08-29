@@ -4,6 +4,9 @@ namespace App\Filament\Pages;
 
 use App\Domain\Billing\BillingPlan;
 use App\Domain\Billing\PlanGate;
+use App\Domain\Brand\Jobs\CaptureBrandJob;
+use App\Domain\Brand\Models\ShopBrandProfile;
+use App\Domain\Brand\SafeSiteFetcher;
 use App\Domain\Campaigns\Email\CampaignMailVars;
 use App\Domain\Campaigns\Email\Models\EmailCampaign;
 use App\Domain\Campaigns\Studio\Blocks\BlockRegistry;
@@ -93,6 +96,14 @@ class NewsletterStudio extends Page
     /** '' = no run in flight; the poll is gated on it. */
     public string $activeRunId = '';
 
+    // --- Brand ---
+    public bool $showBrand = false;
+
+    public string $brandUrl = '';
+
+    /** True while a capture job is out; gates the brand poll. */
+    public bool $brandCapturing = false;
+
     public function getTitle(): string|Htmlable
     {
         return __('studio.title');
@@ -132,6 +143,11 @@ class NewsletterStudio extends Page
         app(DocumentService::class)->initFor($row, auth()->id());
 
         $this->refreshFromCampaign($row->refresh());
+
+        // A capture left running in another tab resumes its poll here.
+        $profile = $this->brandProfile();
+        $this->brandUrl = (string) ($profile?->source_url ?? '');
+        $this->brandCapturing = $profile?->status() === ShopBrandProfile::STATUS_PENDING;
     }
 
     // === Reads the blade renders from ===
@@ -551,6 +567,113 @@ class NewsletterStudio extends Page
             ->find($messageId);
 
         $message?->markDiscarded();
+    }
+
+    // === Brand capture ===
+
+    /** The shop's one brand row — the global scope keeps it this shop's. */
+    public function brandProfile(): ?ShopBrandProfile
+    {
+        return ShopBrandProfile::query()->first();
+    }
+
+    /**
+     * Start (or restart) a capture: refuse a bad URL BEFORE queueing — the
+     * fetcher's own walls, spoken here as a form error, not a failed job.
+     */
+    public function captureBrand(): void
+    {
+        if (! $this->aiAvailable()) {
+            return;
+        }
+
+        $url = trim($this->brandUrl);
+        if ($url !== '' && preg_match('#^https?://#i', $url) !== 1) {
+            $url = 'https://'.$url;
+        }
+
+        $refusal = app(SafeSiteFetcher::class)->refusalFor($url);
+        if ($refusal !== null) {
+            Notification::make()->danger()->title(__('studio.brand.refused.'.$refusal))->send();
+
+            return;
+        }
+
+        $shop = Tenant::current();
+        if (! $shop instanceof Shop) {
+            return;
+        }
+
+        // One brand per shop: a re-capture RESETS the row back to pending.
+        // Approval is lost on purpose — it belonged to the previous site.
+        $profile = ShopBrandProfile::query()->firstOrNew(['shop_id' => (int) $shop->getKey()]);
+        $profile->shop_id = (int) $shop->getKey();
+        $profile->forceFill([
+            'source_url' => mb_substr($url, 0, 500),
+            'status' => ShopBrandProfile::STATUS_PENDING,
+            'dna' => null,
+            'pages' => null,
+            'failure_reason' => null,
+            'approved_at' => null,
+        ])->save();
+
+        CaptureBrandJob::dispatch((int) $shop->getKey(), (int) $profile->getKey());
+
+        $this->brandUrl = $url;
+        $this->brandCapturing = true;
+    }
+
+    /** The wire:poll target — stops itself when the capture settles. */
+    public function pollBrand(): void
+    {
+        if (! $this->brandCapturing) {
+            return;
+        }
+
+        $profile = $this->brandProfile();
+
+        if ($profile === null || $profile->status() !== ShopBrandProfile::STATUS_PENDING) {
+            $this->brandCapturing = false;
+        }
+    }
+
+    /**
+     * The human click that makes a DNA real — and, in the same gesture, paints
+     * the OPEN document with it (through the normal guarded mutation, so the
+     * stale wall and the version history both apply).
+     */
+    public function approveBrand(): void
+    {
+        $profile = $this->brandProfile();
+
+        if ($profile === null || $profile->status() !== ShopBrandProfile::STATUS_READY) {
+            return;
+        }
+
+        $profile->forceFill([
+            'status' => ShopBrandProfile::STATUS_APPROVED,
+            'approved_at' => now(),
+        ])->save();
+
+        $globals = $profile->dnaGlobals();
+        if ($globals !== []) {
+            $this->mutate(fn (NewsletterDocument $document): NewsletterDocument => $document
+                ->withGlobals($globals + $document->globals()));
+        }
+
+        Notification::make()->success()->title(__('studio.brand.approved'))->send();
+    }
+
+    /** "Not my colors" — the row stays, unapproved, editable by re-capture. */
+    public function discardBrand(): void
+    {
+        $profile = $this->brandProfile();
+
+        if ($profile === null || $profile->status() !== ShopBrandProfile::STATUS_READY) {
+            return;
+        }
+
+        $profile->forceFill(['status' => ShopBrandProfile::STATUS_FAILED, 'failure_reason' => 'discarded'])->save();
     }
 
     /**

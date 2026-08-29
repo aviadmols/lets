@@ -194,6 +194,41 @@ return [
         ],
     ],
 
+    'brand' => [
+        'heading' => 'Brand from your website',
+        'url' => 'Your store\'s website address',
+        'capture' => 'Scan the site',
+        'recapture' => 'Scan again',
+        'capturing' => 'Scanning the site and learning the brand… this takes up to a minute.',
+        'approve' => 'Approve brand',
+        'discard' => 'Not our brand',
+        'approved' => 'The brand was approved and applied to this email.',
+        'active' => 'Brand active — new emails will open in these colors.',
+        'failed' => 'The scan did not succeed: :reason',
+
+        'refused' => [
+            'invalid_url' => 'That is not a valid website address.',
+            'blocked_host' => 'This address cannot be scanned.',
+            'unreachable' => 'The site did not respond — check the address.',
+            'too_many_redirects' => 'The site redirects too many times.',
+        ],
+
+        'reason' => [
+            'invalid_url' => 'invalid address',
+            'blocked_host' => 'blocked address',
+            'unreachable' => 'the site did not respond',
+            'too_many_redirects' => 'too many redirects',
+            'no_key' => 'AI is not configured',
+            'disabled' => 'AI is switched off',
+            'over_budget' => 'the daily AI budget ran out',
+            'http_error' => 'something went wrong',
+            'timeout' => 'the answer took too long',
+            'refused' => 'the service is busy',
+            'bad_tool_output' => 'the analysis returned no usable result',
+            'discarded' => 'discarded by you',
+        ],
+    ],
+
     'warning' => [
         'unknown_token' => 'Unknown variable: {:detail} — it will not be substituted on send.',
         'image_without_alt' => 'An image without alt text.',

@@ -5,6 +5,7 @@ namespace App\Domain\Campaigns\Studio;
 use App\Domain\Ai\AiGateway;
 use App\Domain\Ai\AiRequest;
 use App\Domain\Ai\AiResult;
+use App\Domain\Brand\Models\ShopBrandProfile;
 use App\Domain\Campaigns\Email\Models\EmailCampaign;
 use App\Domain\Campaigns\Studio\Blocks\BlockRegistry;
 use App\Domain\Campaigns\Studio\Models\AiChatMessage;
@@ -121,6 +122,16 @@ final class StudioChat
             'block_types' => BlockRegistry::types(),
             'document' => $document->toArray(),
         ];
+
+        // An APPROVED brand rides along — already re-guarded values only, so
+        // the draft speaks the shop's colors and tone without being told.
+        $brand = ShopBrandProfile::forShop((int) $campaign->shop_id);
+        if ($brand !== null && $brand->isApproved()) {
+            $context['brand'] = array_filter([
+                'globals' => $brand->dnaGlobals(),
+                'tone' => $brand->tone(),
+            ]);
+        }
 
         $turns = [[
             'role' => 'user',

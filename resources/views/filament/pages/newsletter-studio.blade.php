@@ -235,6 +235,68 @@
                 @endif
             </div>
 
+            {{-- Brand DNA: capture the shop's site → review → approve. --}}
+            <div class="rc-section" @if ($brandCapturing) wire:poll.2s="pollBrand" @endif>
+                <button type="button" class="rc-studio__fold" wire:click="$toggle('showBrand')">
+                    {{ __('studio.brand.heading') }}
+                </button>
+
+                @if ($showBrand)
+                    @php $brand = $this->brandProfile(); @endphp
+                    <div class="rc-stack rc-stack--tight">
+                        @if (! $this->aiAvailable())
+                            <p class="rc-muted">{{ __('studio.chat.unavailable') }}</p>
+                        @elseif ($brandCapturing)
+                            <p class="rc-muted">{{ __('studio.brand.capturing') }}</p>
+                        @else
+                            <label class="rc-field__label">{{ __('studio.brand.url') }}</label>
+                            <input type="text" class="rc-input" dir="ltr" wire:model="brandUrl"
+                                   placeholder="https://www.example.co.il">
+                            <button type="button" class="rc-cta rc-cta--secondary rc-cta--sm" wire:click="captureBrand">
+                                {{ $brand !== null ? __('studio.brand.recapture') : __('studio.brand.capture') }}
+                            </button>
+
+                            @if ($brand !== null && $brand->status() === \App\Domain\Brand\Models\ShopBrandProfile::STATUS_FAILED)
+                                <p class="rc-muted rc-studio__warning">
+                                    {{ __('studio.brand.failed', ['reason' => __('studio.brand.reason.'.($brand->failure_reason ?? 'http_error'))]) }}
+                                </p>
+                            @endif
+
+                            @if ($brand !== null && in_array($brand->status(), [\App\Domain\Brand\Models\ShopBrandProfile::STATUS_READY, \App\Domain\Brand\Models\ShopBrandProfile::STATUS_APPROVED], true))
+                                @php $dnaGlobals = $brand->dnaGlobals(); @endphp
+                                <div class="rc-studio__colors">
+                                    @foreach ($dnaGlobals as $dnaKey => $dnaValue)
+                                        @if (str_ends_with($dnaKey, '_color') || str_ends_with($dnaKey, 'background'))
+                                            <label class="rc-studio__color">
+                                                <span>{{ __('studio.settings.'.$dnaKey) }}</span>
+                                                <input type="color" value="{{ $dnaValue }}" disabled>
+                                            </label>
+                                        @endif
+                                    @endforeach
+                                </div>
+
+                                @if ($brand->tone() !== '')
+                                    <p class="rc-muted">{{ $brand->tone() }}</p>
+                                @endif
+
+                                @if ($brand->status() === \App\Domain\Brand\Models\ShopBrandProfile::STATUS_READY)
+                                    <div class="rc-row">
+                                        <button type="button" class="rc-cta rc-cta--primary rc-cta--sm" wire:click="approveBrand">
+                                            {{ __('studio.brand.approve') }}
+                                        </button>
+                                        <button type="button" class="rc-link" wire:click="discardBrand">
+                                            {{ __('studio.brand.discard') }}
+                                        </button>
+                                    </div>
+                                @else
+                                    <p class="rc-muted">{{ __('studio.brand.active') }}</p>
+                                @endif
+                            @endif
+                        @endif
+                    </div>
+                @endif
+            </div>
+
             {{-- The honest list: what a careful sender would still fix. --}}
             @if ($warnings !== [])
                 <div class="rc-section">

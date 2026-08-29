@@ -2,6 +2,7 @@
 
 namespace App\Domain\Campaigns\Studio;
 
+use App\Domain\Brand\Models\ShopBrandProfile;
 use App\Domain\Campaigns\Email\Models\EmailCampaign;
 use App\Domain\Campaigns\Studio\Blocks\BlockRegistry;
 use App\Domain\Campaigns\Studio\Models\EmailCampaignDocumentVersion;
@@ -50,7 +51,7 @@ final class DocumentService
             return $existing;
         }
 
-        $starter = $this->starterDocument();
+        $starter = $this->starterDocument((int) $campaign->shop_id);
         $this->save($campaign, $starter, EmailCampaignDocumentVersion::CAUSE_INIT, $userId);
 
         return $starter;
@@ -162,10 +163,15 @@ final class DocumentService
     /**
      * The document a fresh studio campaign opens on: a heading, a paragraph,
      * a button, a footer — enough shape to edit into, never a blank stare.
+     * An APPROVED brand profile seeds the globals — the merchant's own colors
+     * from the first second, already re-guarded by dnaGlobals().
      */
-    private function starterDocument(): NewsletterDocument
+    private function starterDocument(int $shopId): NewsletterDocument
     {
         $registry = BlockRegistry::all();
+
+        $brand = ShopBrandProfile::forShop($shopId);
+        $brandGlobals = $brand !== null && $brand->isApproved() ? $brand->dnaGlobals() : [];
 
         $block = static function (string $type, array $content = []) use ($registry): array {
             $definition = $registry[$type];
@@ -179,7 +185,7 @@ final class DocumentService
         };
 
         return NewsletterDocument::fromArray([
-            'globals' => NewsletterDocument::DEFAULT_GLOBALS,
+            'globals' => $brandGlobals + NewsletterDocument::DEFAULT_GLOBALS,
             'blocks' => [
                 $block('heading', ['text' => (string) __('studio.starter.heading')]),
                 $block('text', ['html' => '<p>'.e(__('studio.starter.text')).'</p>']),
