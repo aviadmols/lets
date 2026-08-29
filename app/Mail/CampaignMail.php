@@ -62,6 +62,7 @@ final class CampaignMail extends Mailable
         public readonly string $unsubscribeUrl,
         public readonly string $shopperLocale,
         public readonly bool $isMarketing,
+        public readonly string $textTemplate = '',
     ) {}
 
     public function envelope(): Envelope
@@ -91,9 +92,13 @@ final class CampaignMail extends Mailable
     {
         return $this->inLocale(fn (): Content => new Content(
             view: 'emails.user-template-wrapper',
+            // A studio campaign compiles a plain-text twin; legacy campaigns
+            // have none and stay HTML-only exactly as before.
+            text: trim($this->textTemplate) !== '' ? 'emails.user-template-text' : null,
             with: [
                 // strtr-substituted, then handed to a wrapper that ONLY echoes it.
                 'renderedHtml' => TemplateRenderer::render($this->bodyTemplate, $this->vars),
+                'renderedText' => TemplateRenderer::render($this->textTemplate, $this->vars),
                 'businessName' => $this->resolveBusinessName($this->shop),
             ],
         ));

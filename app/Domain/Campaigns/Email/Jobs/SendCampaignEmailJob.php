@@ -146,6 +146,7 @@ final class SendCampaignEmailJob implements ShouldBeUnique, ShouldQueue
                 unsubscribeUrl: $unsubscribeUrl,
                 shopperLocale: $this->localeFor($shop),
                 isMarketing: $campaign->isMarketing(),
+                textTemplate: (string) ($campaign->body_text ?? ''),
             );
 
             CampaignMailer::for($shop)->to((string) $recipient->email)->send($mail);

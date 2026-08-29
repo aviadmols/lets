@@ -5,6 +5,7 @@ namespace App\Domain\Campaigns\Studio;
 use App\Domain\Ai\AiGateway;
 use App\Domain\Ai\AiRequest;
 use App\Domain\Ai\AiResult;
+use App\Domain\Ai\Models\AiPrompt;
 use App\Domain\Brand\Models\ShopBrandProfile;
 use App\Domain\Campaigns\Email\Models\EmailCampaign;
 use App\Domain\Campaigns\Studio\Blocks\BlockRegistry;
@@ -99,6 +100,13 @@ final class StudioChat
 
     private function stageFor(AiChatMessage $message, NewsletterDocument $document): string
     {
+        // A quick action stamped its stage on the row — the button IS the
+        // intent, so the router honors it before its own rules. Only known
+        // stamps count; anything else falls through to the document rules.
+        if ($message->stage_hint === AiPrompt::STAGE_SUBJECT_WRITER) {
+            return AiPrompt::STAGE_SUBJECT_WRITER;
+        }
+
         if (count($document->blocks()) <= self::DRAFT_THRESHOLD) {
             return 'draft_generator';
         }

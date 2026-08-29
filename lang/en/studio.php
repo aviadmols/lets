@@ -145,6 +145,8 @@ return [
         'placeholder' => 'Describe what to build or change — e.g. "write a newsletter about this month\'s sale"',
         'placeholder_block' => 'The request applies to the selected block — e.g. "make this shorter"',
         'send' => 'Send',
+        'subject_action' => 'Suggest a subject line',
+        'subject_ask' => 'Suggest a compelling subject line for this email, based on its content.',
         'working' => 'Working…',
         'thinking' => 'Thinking…',
         'busy' => 'A request is already running — wait for it to finish.',

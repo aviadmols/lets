@@ -114,6 +114,22 @@ Composer: `<php84> C:\Users\user\.config\herd\bin\composer.phar`
   (`plans_only` vs `all_orders`, the WooCommerce "invoice every site order"
   switch) and a per-context document-type map.
 - `app/Domain/Upsell/` — flows, triggers, offers, branches, events.
+- `app/Domain/Campaigns/Studio/` + `app/Domain/Ai/` + `app/Domain/Brand/` — the
+  AI Newsletter Studio. A campaign in `editor_mode='studio'` has a JSON block
+  document as its ONE source of truth; every save compiles it into `body_html`
+  (+ `body_text`) through `DocumentService` — the send pipeline never changed.
+  The model NEVER returns raw HTML: it answers through a forced tool as patch
+  ops from the `PatchOp::OPS` whitelist (no send/schedule/delete verb — pinned
+  by test), dry-run applied, diffed, and only a human approval writes. AI calls
+  go only through `AiGateway` (platform kill switch → key → daily token budget
+  → provider; usage recorded win or lose); prompts/models are platform-editable
+  (`ai_prompts` → `PlatformAiSettings` overrides → `config/ai.php` defaults).
+  Brand capture fetches the merchant's site through `SafeSiteFetcher` — the
+  platform's ONE merchant-steered outbound request; its SSRF walls (resolved
+  addresses judged, every redirect re-walled, metadata/localhost/private/CGNAT
+  refused) are pinned by test and must never come down. Scraped content reaches
+  the model only as delimited UNTRUSTED data, and every model answer is
+  re-guarded into studio vocabulary before it may touch a row.
 - `app/Domain/Campaigns/Email/` — merchant email campaigns. The audience bag is
   the account-offer shape widened to every customer LETS knows (subscribers on
   both rails, deposit/instalment buyers, club members), deduped to one email per

@@ -103,6 +103,11 @@
                             @disabled($activeRunId !== '')>
                         {{ $activeRunId !== '' ? __('studio.chat.working') : __('studio.chat.send') }}
                     </button>
+                    <button type="button" class="rc-link"
+                            wire:click="suggestSubject"
+                            @disabled($activeRunId !== '')>
+                        {{ __('studio.chat.subject_action') }}
+                    </button>
                 </div>
             @endif
         </div>

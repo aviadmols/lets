@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Domain\Ai\Models\AiPrompt;
 use App\Domain\Billing\BillingPlan;
 use App\Domain\Billing\PlanGate;
 use App\Domain\Brand\Jobs\CaptureBrandJob;
@@ -433,7 +434,18 @@ class NewsletterStudio extends Page
 
     public function sendChat(): void
     {
-        $text = mb_substr(trim($this->chatInput), 0, 4000);
+        $this->startRun($this->chatInput, null);
+    }
+
+    /** The quick action: same pipeline, the stage stamped instead of guessed. */
+    public function suggestSubject(): void
+    {
+        $this->startRun((string) __('studio.chat.subject_ask'), AiPrompt::STAGE_SUBJECT_WRITER);
+    }
+
+    private function startRun(string $input, ?string $stageHint): void
+    {
+        $text = mb_substr(trim($input), 0, 4000);
         if ($text === '' || ! $this->aiAvailable()) {
             return;
         }
@@ -476,6 +488,7 @@ class NewsletterStudio extends Page
             'status' => AiChatMessage::STATUS_PENDING,
             'run_id' => $runId,
             'selected_block_id' => $this->selectedBlockId !== '' ? $this->selectedBlockId : null,
+            'stage_hint' => $stageHint,
             'created_by_user_id' => auth()->id(),
         ])->save();
 
