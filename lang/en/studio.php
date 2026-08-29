@@ -138,6 +138,62 @@ return [
         'init' => 'Created',
     ],
 
+    // --- The chat ---
+    'chat' => [
+        'heading' => 'AI assistant',
+        'unavailable' => 'The chat is unavailable right now. The block editor works as usual.',
+        'placeholder' => 'Describe what to build or change — e.g. "write a newsletter about this month\'s sale"',
+        'placeholder_block' => 'The request applies to the selected block — e.g. "make this shorter"',
+        'send' => 'Send',
+        'working' => 'Working…',
+        'thinking' => 'Thinking…',
+        'busy' => 'A request is already running — wait for it to finish.',
+        'approve' => 'Apply changes',
+        'discard' => 'Discard',
+        'applied' => 'Changes applied.',
+        'stale' => 'The document changed since this proposal — ask again.',
+        'rejected_op' => 'Not applied (:op): :reason',
+
+        'op' => [
+            'add_block' => 'Add a :block block',
+            'update_block_content' => 'Update content in the :block block',
+            'update_block_style' => 'Update styling in the :block block',
+            'move_block' => 'Move the :block block',
+            'duplicate_block' => 'Duplicate the :block block',
+            'remove_block' => 'Remove the :block block',
+            'set_global_style' => 'Update the global styling',
+            'set_preheader' => 'Update the preview line',
+            'set_subject' => 'Update the subject line',
+        ],
+
+        'reject' => [
+            'unknown_op' => 'unknown operation',
+            'unknown_type' => 'unknown block type',
+            'missing_target' => 'no block named',
+            'bad_payload' => 'invalid content',
+            'target_gone' => 'the block no longer exists',
+            'too_many_blocks' => 'too many blocks',
+            'last_footer' => 'the last footer of a marketing email cannot be removed',
+        ],
+
+        'state' => [
+            'applied' => 'Applied',
+            'discarded' => 'Discarded',
+            'stale' => 'Went stale — the document changed meanwhile',
+        ],
+
+        'failed' => [
+            'no_key' => 'AI is not configured yet.',
+            'disabled' => 'AI is switched off right now.',
+            'over_budget' => 'Today\'s AI quota is done — try again tomorrow.',
+            'http_error' => 'Something went wrong. Try again.',
+            'timeout' => 'The answer took too long. Try again.',
+            'refused' => 'The service is busy right now. Try again in a moment.',
+            'bad_tool_output' => 'I could not turn that into changes — try phrasing it differently.',
+            'campaign_gone' => 'This campaign can no longer be edited.',
+        ],
+    ],
+
     'warning' => [
         'unknown_token' => 'Unknown variable: {:detail} — it will not be substituted on send.',
         'image_without_alt' => 'An image without alt text.',

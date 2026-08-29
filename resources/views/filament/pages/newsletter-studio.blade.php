@@ -24,7 +24,88 @@
 @endphp
 
 <x-filament-panels::page>
-    <div class="rc-studio">
+    <div class="rc-studio rc-studio--chat">
+
+        {{-- ================= Chat panel ================= --}}
+        <div class="rc-studio__chat rc-section"
+             @if ($activeRunId !== '') wire:poll.1s="pollChat" @endif>
+            <div class="rc-section__title">{{ __('studio.chat.heading') }}</div>
+
+            @if (! $this->aiAvailable())
+                <p class="rc-muted">{{ __('studio.chat.unavailable') }}</p>
+            @else
+                <div class="rc-studio__messages">
+                    @foreach ($this->chatMessages() as $message)
+                        @if ($message->role === \App\Domain\Campaigns\Studio\Models\AiChatMessage::ROLE_USER)
+                            <div class="rc-studio__msg rc-studio__msg--user" wire:key="msg-{{ $message->getKey() }}">
+                                {{ $message->content }}
+                            </div>
+                        @else
+                            <div class="rc-studio__msg rc-studio__msg--ai" wire:key="msg-{{ $message->getKey() }}">
+                                @switch($message->status())
+                                    @case(\App\Domain\Campaigns\Studio\Models\AiChatMessage::STATUS_PENDING)
+                                    @case(\App\Domain\Campaigns\Studio\Models\AiChatMessage::STATUS_RUNNING)
+                                        <span class="rc-muted">{{ __('studio.chat.thinking') }}</span>
+                                        @break
+
+                                    @case(\App\Domain\Campaigns\Studio\Models\AiChatMessage::STATUS_FAILED)
+                                        @if (trim((string) $message->content) !== '')
+                                            <p>{{ $message->content }}</p>
+                                        @endif
+                                        <p class="rc-muted">
+                                            {{ __('studio.chat.failed.'.($message->failure_reason ?? 'http_error')) }}
+                                        </p>
+                                        @break
+
+                                    @default
+                                        {{-- proposed / applied / discarded / stale --}}
+                                        @if (trim((string) $message->content) !== '')
+                                            <p>{{ $message->content }}</p>
+                                        @endif
+
+                                        <div class="rc-studio__ops">
+                                            @foreach ($this->opLines($message) as $opLine)
+                                                <p @class(['rc-studio__op', 'rc-studio__op--rejected' => $opLine['rejected']])>
+                                                    {{ $opLine['line'] }}
+                                                </p>
+                                            @endforeach
+                                        </div>
+
+                                        @if ($message->status() === \App\Domain\Campaigns\Studio\Models\AiChatMessage::STATUS_PROPOSED)
+                                            <div class="rc-row">
+                                                <button type="button" class="rc-cta rc-cta--primary rc-cta--sm"
+                                                        wire:click="approvePatch({{ $message->getKey() }})">
+                                                    {{ __('studio.chat.approve') }}
+                                                </button>
+                                                <button type="button" class="rc-link"
+                                                        wire:click="discardPatch({{ $message->getKey() }})">
+                                                    {{ __('studio.chat.discard') }}
+                                                </button>
+                                            </div>
+                                        @else
+                                            <span class="rc-muted rc-studio__msg-state">
+                                                {{ __('studio.chat.state.'.$message->status()) }}
+                                            </span>
+                                        @endif
+                                @endswitch
+                            </div>
+                        @endif
+                    @endforeach
+                </div>
+
+                <div class="rc-studio__composer">
+                    <textarea class="rc-input" rows="3"
+                              placeholder="{{ $selectedBlockId !== '' ? __('studio.chat.placeholder_block') : __('studio.chat.placeholder') }}"
+                              wire:model="chatInput"
+                              @disabled($activeRunId !== '')></textarea>
+                    <button type="button" class="rc-cta rc-cta--primary rc-cta--sm"
+                            wire:click="sendChat"
+                            @disabled($activeRunId !== '')>
+                        {{ $activeRunId !== '' ? __('studio.chat.working') : __('studio.chat.send') }}
+                    </button>
+                </div>
+            @endif
+        </div>
 
         {{-- ================= Work panel ================= --}}
         <div class="rc-studio__panel rc-stack rc-stack--tight">

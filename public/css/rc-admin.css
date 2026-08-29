@@ -1838,10 +1838,90 @@ html:has(meta[name="lets-embedded"]) .fi-user-menu {
     align-items: start;
 }
 
+/* With the chat alive: chat | panel | canvas (reading order in RTL). */
+.rc-studio--chat {
+    grid-template-columns: 300px 320px minmax(0, 1fr);
+}
+
+@media (max-width: 1200px) {
+    .rc-studio--chat {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
 @media (max-width: 900px) {
-    .rc-studio {
+    .rc-studio,
+    .rc-studio--chat {
         grid-template-columns: 1fr;
     }
+}
+
+/* --- The chat --- */
+.rc-studio__chat {
+    display: flex;
+    flex-direction: column;
+    gap: var(--rc-space-2);
+    max-block-size: 860px;
+}
+
+.rc-studio__messages {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--rc-space-2);
+    min-block-size: 120px;
+}
+
+.rc-studio__msg {
+    border-radius: var(--rc-radius-control);
+    padding: var(--rc-space-2);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.rc-studio__msg--user {
+    background: var(--rc-blue-bg);
+    color: var(--rc-ink);
+    align-self: flex-start;
+    max-inline-size: 92%;
+}
+
+.rc-studio__msg--ai {
+    background: var(--rc-bg);
+    border: 1px solid var(--rc-border);
+    color: var(--rc-ink);
+}
+
+.rc-studio__msg--ai p {
+    margin: 0 0 6px;
+}
+
+.rc-studio__ops {
+    border-inline-start: 2px solid var(--rc-border-strong);
+    padding-inline-start: var(--rc-space-2);
+    margin-block: 6px;
+}
+
+.rc-studio__op {
+    font-size: 12px;
+    color: var(--rc-ink-muted);
+    margin: 0 0 4px;
+}
+
+.rc-studio__op--rejected {
+    text-decoration: line-through;
+    opacity: 0.7;
+}
+
+.rc-studio__msg-state {
+    font-size: 11px;
+}
+
+.rc-studio__composer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--rc-space-1);
 }
 
 .rc-studio__panel {

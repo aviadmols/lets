@@ -8,18 +8,24 @@ use App\Domain\Campaigns\Email\CampaignMailVars;
 use App\Domain\Campaigns\Email\Models\EmailCampaign;
 use App\Domain\Campaigns\Studio\Blocks\BlockRegistry;
 use App\Domain\Campaigns\Studio\DocumentService;
+use App\Domain\Campaigns\Studio\Jobs\RunStudioChatJob;
+use App\Domain\Campaigns\Studio\Models\AiChatMessage;
 use App\Domain\Campaigns\Studio\Models\EmailCampaignDocumentVersion;
 use App\Domain\Campaigns\Studio\NewsletterDocument;
+use App\Domain\Campaigns\Studio\Ops\PatchApplier;
+use App\Domain\Campaigns\Studio\Ops\PatchOp;
 use App\Domain\Campaigns\Studio\Render\EmailRenderer;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Filament\Resources\CampaignResource;
 use App\Mail\Support\TemplateRenderer;
+use App\Models\PlatformAiSettings;
 use App\Models\Shop;
 use App\Support\Tenant;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 
 /**
  * The newsletter studio — a block document edited as blocks, previewed as the
@@ -80,6 +86,12 @@ class NewsletterStudio extends Page
     public bool $showSettings = false;
 
     public bool $showVersions = false;
+
+    // --- Chat ---
+    public string $chatInput = '';
+
+    /** '' = no run in flight; the poll is gated on it. */
+    public string $activeRunId = '';
 
     public function getTitle(): string|Htmlable
     {
@@ -381,6 +393,211 @@ class NewsletterStudio extends Page
             $this->refreshFromCampaign($row->refresh());
             Notification::make()->success()->title(__('studio.restored'))->send();
         }
+    }
+
+    // === Chat ===
+
+    /** Is the AI half of the screen alive at all? The editor never depends on it. */
+    public function aiAvailable(): bool
+    {
+        $settings = PlatformAiSettings::current();
+
+        return $settings->isEnabled() && $settings->isConnected();
+    }
+
+    /** @return Collection<int, AiChatMessage> oldest first, for the panel */
+    public function chatMessages(): Collection
+    {
+        return AiChatMessage::query()
+            ->where('email_campaign_id', $this->campaignId)
+            ->orderBy('id')
+            ->limit(60)
+            ->get();
+    }
+
+    public function sendChat(): void
+    {
+        $text = mb_substr(trim($this->chatInput), 0, 4000);
+        if ($text === '' || ! $this->aiAvailable()) {
+            return;
+        }
+
+        $row = $this->editableCampaign();
+        if ($row === null) {
+            return;
+        }
+
+        // ONE run in flight per campaign — a second ask mid-run would race the
+        // first over the same document.
+        $open = AiChatMessage::query()
+            ->where('email_campaign_id', $row->getKey())
+            ->whereIn('status', AiChatMessage::OPEN_STATUSES)
+            ->exists();
+
+        if ($open) {
+            Notification::make()->warning()->title(__('studio.chat.busy'))->send();
+
+            return;
+        }
+
+        $user = new AiChatMessage;
+        $user->forceFill([
+            'shop_id' => (int) $row->shop_id,
+            'email_campaign_id' => (int) $row->getKey(),
+            'role' => AiChatMessage::ROLE_USER,
+            'status' => AiChatMessage::STATUS_SENT,
+            'content' => $text,
+            'created_by_user_id' => auth()->id(),
+        ])->save();
+
+        $runId = (string) Str::ulid();
+
+        $assistant = new AiChatMessage;
+        $assistant->forceFill([
+            'shop_id' => (int) $row->shop_id,
+            'email_campaign_id' => (int) $row->getKey(),
+            'role' => AiChatMessage::ROLE_ASSISTANT,
+            'status' => AiChatMessage::STATUS_PENDING,
+            'run_id' => $runId,
+            'selected_block_id' => $this->selectedBlockId !== '' ? $this->selectedBlockId : null,
+            'created_by_user_id' => auth()->id(),
+        ])->save();
+
+        RunStudioChatJob::dispatch((int) $row->shop_id, (int) $row->getKey(), (int) $assistant->getKey());
+
+        $this->chatInput = '';
+        $this->activeRunId = $runId;
+    }
+
+    /** The wire:poll target — stops itself the moment the run settles. */
+    public function pollChat(): void
+    {
+        if ($this->activeRunId === '') {
+            return;
+        }
+
+        $row = AiChatMessage::query()->where('run_id', $this->activeRunId)->first();
+
+        if ($row === null || ! in_array($row->status(), AiChatMessage::OPEN_STATUSES, true)) {
+            $this->activeRunId = '';
+        }
+    }
+
+    /** Approve one proposal: the dry-run result becomes the document — or stale. */
+    public function approvePatch(int $messageId): void
+    {
+        $row = $this->editableCampaign();
+        if ($row === null) {
+            return;
+        }
+
+        $message = AiChatMessage::query()
+            ->where('email_campaign_id', $row->getKey())
+            ->find($messageId);
+
+        if ($message === null || $message->status() !== AiChatMessage::STATUS_PROPOSED) {
+            return;
+        }
+
+        // THE STALE WALL: ops computed against yesterday's document are never
+        // merged over newer work — re-ask is the resolution.
+        if ((int) $message->base_version !== (int) $row->document_version) {
+            $message->markStale();
+            Notification::make()->warning()->title(__('studio.chat.stale'))->send();
+
+            return;
+        }
+
+        $service = app(DocumentService::class);
+        $document = $service->documentFor($row) ?? NewsletterDocument::empty();
+
+        $ops = [];
+        foreach ((array) $message->ops as $raw) {
+            if (is_array($raw) && ! isset($raw['rejected'])) {
+                $ops[] = PatchOp::fromArray($raw);
+            }
+        }
+
+        $outcome = (new PatchApplier)->apply($document, $ops, (bool) $row->is_marketing);
+
+        $result = $service->save(
+            $row,
+            $outcome['document'],
+            EmailCampaignDocumentVersion::CAUSE_AI_PATCH,
+            auth()->id(),
+            (int) $message->getKey(),
+        );
+
+        if (! $result['ok']) {
+            Notification::make()->danger()->title(__('studio.refused.'.$result['reason']))->send();
+
+            return;
+        }
+
+        // A subject op lands on the COLUMN, in the same approval.
+        if ($outcome['subject'] !== null) {
+            $row->forceFill(['subject' => $outcome['subject']])->save();
+        }
+
+        $message->markApplied($result['version']);
+        $this->refreshFromCampaign($row->refresh());
+        Notification::make()->success()->title(__('studio.chat.applied'))->send();
+    }
+
+    public function discardPatch(int $messageId): void
+    {
+        $message = AiChatMessage::query()
+            ->where('email_campaign_id', $this->campaignId)
+            ->find($messageId);
+
+        $message?->markDiscarded();
+    }
+
+    /**
+     * The proposal's per-op Hebrew lines, built server-side from the stored ops.
+     *
+     * @return list<array{line: string, rejected: bool}>
+     */
+    public function opLines(AiChatMessage $message): array
+    {
+        $document = $this->document();
+        $lines = [];
+
+        foreach ((array) $message->ops as $raw) {
+            if (! is_array($raw)) {
+                continue;
+            }
+
+            if (isset($raw['rejected'])) {
+                $lines[] = [
+                    'line' => __('studio.chat.rejected_op', [
+                        'op' => (string) ($raw['op'] ?? '?'),
+                        'reason' => __('studio.chat.reject.'.$raw['rejected']),
+                    ]),
+                    'rejected' => true,
+                ];
+
+                continue;
+            }
+
+            $op = PatchOp::fromArray($raw);
+
+            $blockLabel = '';
+            if ($op->targetId !== null) {
+                $block = $document->findBlock($op->targetId);
+                $blockLabel = $block !== null ? (string) __('studio.block.'.$block['type']) : '';
+            } elseif ($op->blockType !== null) {
+                $blockLabel = (string) __('studio.block.'.$op->blockType);
+            }
+
+            $lines[] = [
+                'line' => trim((string) __('studio.chat.op.'.$op->op, ['block' => $blockLabel])
+                    .($op->reason !== '' ? ' — '.$op->reason : '')),
+                'rejected' => false,
+            ];
+        }
+
+        return $lines;
     }
 
     // === Internals ===
