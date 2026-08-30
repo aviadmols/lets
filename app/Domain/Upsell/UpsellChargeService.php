@@ -93,7 +93,15 @@ final class UpsellChargeService
             'currency' => (string) config('payplus.currency', 'ILS'),
         ]);
 
-        return DB::transaction(function () use ($shop, $shopId, $req, $offer, $key): UpsellChargeResult {
+        // PHASE 1 — decide, and commit the pending ledger row.
+        //
+        // The gateway call used to sit inside this transaction, which quietly
+        // voided the guarantee the pending row exists for: a worker killed
+        // between the charge and the commit rolled the row back, so a charge
+        // that really happened left NOTHING to reconcile. The row is committed
+        // first, the money moves outside every transaction, and the outcome is
+        // recorded in a second short one.
+        $prepared = DB::transaction(function () use ($shopId, $req, $offer, $key): UpsellChargeResult|array {
             // Idempotent short-circuit FIRST: a succeeded ledger row for this key
             // means the customer already accepted — never charge twice. The next
             // branch offer is still returned so a double-click lands on the same
@@ -172,21 +180,35 @@ final class UpsellChargeService
                 ],
             );
 
-            // Zero-priced offers (100% discount) never hit PayPlus — settle the
-            // ledger as succeeded and still create the child order.
-            $result = $amount <= 0
-                ? GatewayResult::fromResponse(['results' => ['status' => 'success'], 'data' => ['transaction' => ['uid' => 'free-'.$key]]])
-                : PayPlusGatewayFactory::for($shop)->chargeWithReference(
-                    $method,
-                    $amount,
-                    $key,
-                    ['currency' => $currency, 'charge_context' => PaymentLedger::CONTEXT_UPSELL],
-                );
-
-            return $result->success
-                ? $this->onSuccess($shop, $req, $offer, $ledger, $result, $amount, $currency)
-                : $this->onFailure($shopId, $req, $offer, $ledger, $result, $key);
+            return ['ledger' => $ledger, 'method' => $method, 'amount' => $amount, 'currency' => $currency];
         });
+
+        // A settled answer (already charged / no card / no consent) — done.
+        if ($prepared instanceof UpsellChargeResult) {
+            return $prepared;
+        }
+
+        ['ledger' => $ledger, 'method' => $method, 'amount' => $amount, 'currency' => $currency] = $prepared;
+
+        // PHASE 2 — the money. Outside every transaction, so a death here leaves
+        // the committed `pending` row behind: a reconcilable trace, which is the
+        // whole reason that row is written before the call.
+        //
+        // Zero-priced offers (100% discount) never hit PayPlus — settle the
+        // ledger as succeeded and still create the child order.
+        $result = $amount <= 0
+            ? GatewayResult::fromResponse(['results' => ['status' => 'success'], 'data' => ['transaction' => ['uid' => 'free-'.$key]]])
+            : PayPlusGatewayFactory::for($shop)->chargeWithReference(
+                $method,
+                $amount,
+                $key,
+                ['currency' => $currency, 'charge_context' => PaymentLedger::CONTEXT_UPSELL],
+            );
+
+        // PHASE 3 — record what happened, in its own short transaction.
+        return DB::transaction(fn (): UpsellChargeResult => $result->success
+            ? $this->onSuccess($shop, $req, $offer, $ledger, $result, $amount, $currency)
+            : $this->onFailure($shopId, $req, $offer, $ledger, $result, $key));
     }
 
     public function decline(int $shopId, AcceptUpsellRequest $req): UpsellChargeResult

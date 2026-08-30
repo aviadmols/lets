@@ -21,13 +21,20 @@ class PaymentLedger extends Model
     protected $table = 'payment_ledger';
 
     public const CONTEXT_DEPOSIT = 'deposit';
+
     public const CONTEXT_INSTALLMENT = 'installment';
+
     public const CONTEXT_RECURRING = 'recurring';
+
     public const CONTEXT_UPSELL = 'upsell';
+
     public const CONTEXT_RETRY = 'retry';
+
     public const CONTEXT_MANUAL = 'manual';
+
     /** A plain WooCommerce storefront checkout paid on the PayPlus page. */
     public const CONTEXT_GATEWAY = 'gateway';
+
     /**
      * A one-time product bought from an offer inside the customer's own account
      * area, on the card their subscription already saved.
@@ -41,10 +48,15 @@ class PaymentLedger extends Model
     public const CONTEXT_ACCOUNT_OFFER = 'account_offer';
 
     public const STATUS_PENDING = 'pending';
+
     public const STATUS_SUCCEEDED = 'succeeded';
+
     public const STATUS_FAILED = 'failed';
+
     public const STATUS_REFUNDED = 'refunded';
+
     public const STATUS_CANCELLED = 'cancelled';
+
     public const STATUS_RETRY_SCHEDULED = 'retry_scheduled';
 
     /**
@@ -59,6 +71,7 @@ class PaymentLedger extends Model
     {
         return [
             'amount' => 'decimal:2',
+            'refunded_amount' => 'decimal:2',
             'raw_response_masked' => 'array',
         ];
     }

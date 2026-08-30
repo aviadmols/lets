@@ -26,6 +26,7 @@ final class PlanGateTest extends TestCase
 
     // === CONSTANTS ===
     private const DOMAIN_A = 'a.myshopify.com';
+
     private const DOMAIN_B = 'b.myshopify.com';
 
     protected function tearDown(): void

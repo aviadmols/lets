@@ -51,7 +51,16 @@ final class Ledger
      * (shop_id, idempotency_key) unique index: if a row already exists for the
      * key it is returned as-is (a retry re-uses the same row through its lifecycle).
      *
-     * @param array<string, mixed> $attributes additional columns
+     * A row found in `failed` is REOPENED to `retry_scheduled` first. The state
+     * machine has no failed → succeeded edge — deliberately, because a failure
+     * is a fact and the row must say how it came to be tried again. Callers that
+     * re-attempt a declined charge (a shopper pressing Buy a second time) were
+     * therefore charging the card and then throwing on the way to recording it,
+     * which rolled the whole thing back: money out, no order, no document, no
+     * trace. Reopening here means one debt keeps one row through as many
+     * attempts as it takes, and no caller can meet that edge by accident.
+     *
+     * @param  array<string, mixed>  $attributes  additional columns
      */
     public static function open(
         int $shopId,
@@ -63,6 +72,10 @@ final class Ledger
     ): PaymentLedger {
         $existing = self::find($shopId, $idempotencyKey);
         if ($existing !== null) {
+            if (LedgerStatus::from((string) $existing->status) === LedgerStatus::FAILED) {
+                self::transition($existing, LedgerStatus::RETRY_SCHEDULED);
+            }
+
             return $existing;
         }
 
@@ -86,7 +99,7 @@ final class Ledger
     /**
      * Guarded ledger transition. Rejects moves outside the canonical machine.
      *
-     * @param array<string, mixed> $patch extra columns to set on the same write
+     * @param  array<string, mixed>  $patch  extra columns to set on the same write
      */
     public static function transition(PaymentLedger $row, LedgerStatus $to, array $patch = []): PaymentLedger
     {

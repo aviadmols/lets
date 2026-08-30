@@ -2,6 +2,7 @@
 
 namespace App\Domain\Lifecycle;
 
+use App\Domain\Billing\IdempotencyKey;
 use App\Domain\Billing\Ledger;
 use App\Domain\Invoicing\DocumentContext;
 use App\Domain\Invoicing\Jobs\IssueDocumentJob;
@@ -35,6 +36,10 @@ use Illuminate\Support\Facades\Log;
  */
 final class RefundService
 {
+    // === CONSTANTS ===
+    /** Rounding slack when deciding "has the whole sale gone back?". */
+    private const EPSILON = 0.005;
+
     /**
      * @return array{ok: bool, message?: string}
      */
@@ -54,30 +59,63 @@ final class RefundService
         }
 
         $shop = Shop::query()->findOrFail((int) $ledger->shop_id);
-        $refundAmount = $amount !== null ? round($amount, 2) : round((float) $ledger->amount, 2);
 
-        return DB::transaction(function () use ($ledger, $shop, $uid, $refundAmount): array {
+        $alreadyRefunded = round((float) ($ledger->refunded_amount ?? 0), 2);
+        $charged = round((float) $ledger->amount, 2);
+        $remaining = round($charged - $alreadyRefunded, 2);
+
+        $refundAmount = $amount !== null ? round($amount, 2) : $remaining;
+
+        if ($refundAmount <= 0) {
+            return ['ok' => false, 'message' => 'nothing_to_refund'];
+        }
+        if ($refundAmount > $remaining) {
+            // Never hand back more than came in — the sum of the credit notes
+            // must equal the sale, or the books stop balancing.
+            return ['ok' => false, 'message' => 'exceeds_remaining'];
+        }
+
+        // MONEY OUT NEEDS A KEY. The gateway only sends an Idempotency-Key header
+        // when the caller supplies one, and refunds supplied none: a worker that
+        // died after PayPlus refunded but before the row was written left the
+        // admin looking at a "failed" refund, and the second click was a second
+        // real refund with nothing to collapse it against.
+        $refundKey = IdempotencyKey::refund(
+            (int) $ledger->shop_id,
+            (int) $ledger->getKey(),
+            $alreadyRefunded,
+            $refundAmount,
+        );
+
+        // THE CALL IS OUTSIDE EVERY TRANSACTION — it moves real money, and a
+        // rollback cannot un-move it. The lock below re-reads the row and
+        // re-checks the arithmetic before anything is written.
+        $result = PayPlusGatewayFactory::for($shop)->refund($uid, $refundAmount, [
+            'currency' => $ledger->currency ?: config('payplus.currency'),
+            'idempotency_key' => $refundKey,
+        ]);
+
+        if (! $result->success) {
+            return ['ok' => false, 'message' => $result->errorMessage ?: 'refund_failed'];
+        }
+
+        return DB::transaction(function () use ($ledger, $uid, $refundAmount, $charged, $result): array {
             // Re-read under a lock so concurrent refunds serialise (no double-refund).
             $row = PaymentLedger::query()->lockForUpdate()->findOrFail($ledger->getKey());
-            if ((string) $row->status === LedgerStatus::REFUNDED->value) {
-                return ['ok' => true, 'message' => 'already_refunded'];
-            }
-            if ((string) $row->status !== LedgerStatus::SUCCEEDED->value) {
-                return ['ok' => false, 'message' => 'not_refundable'];
-            }
 
-            $result = PayPlusGatewayFactory::for($shop)->refund($uid, $refundAmount, [
-                'currency' => $row->currency ?: config('payplus.currency'),
-            ]);
-            if (! $result->success) {
-                return ['ok' => false, 'message' => $result->errorMessage ?: 'refund_failed'];
+            $refundedTotal = round((float) ($row->refunded_amount ?? 0) + $refundAmount, 2);
+            $row->forceFill(['refunded_amount' => $refundedTotal])->save();
+
+            // A PARTIAL refund leaves the row `succeeded`: the sale still stands
+            // for the part that was not given back, and the next partial refund
+            // must be allowed rather than met with "already refunded". Only when
+            // the whole sale has gone back does the row become `refunded`.
+            $fullyRefunded = $refundedTotal >= round($charged - self::EPSILON, 2);
+
+            if ($fullyRefunded) {
+                Ledger::transition($row, LedgerStatus::REFUNDED);
+                $this->refundPaymentSlot($row, $result->transactionUid);
             }
-
-            // The money is back; record the truth. Keep the original charge response —
-            // the refund details live in the Timeline event below.
-            Ledger::transition($row, LedgerStatus::REFUNDED);
-
-            $this->refundPaymentSlot($row, $result->transactionUid);
 
             Timeline::record(
                 kind: Timeline::KIND_REFUNDED,

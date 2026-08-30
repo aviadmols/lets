@@ -175,6 +175,11 @@ final class ChargeOrchestrator
                 currency: (string) ($plan->currency ?? config('payplus.currency', 'ILS')),
                 attributes: [
                     'plan_id' => $plan->getKey(),
+                    // The SLOT this row is the money for. A refund walks back
+                    // through it to mark the slice refunded and to give the plan
+                    // its money back; without it a refunded plan still reports
+                    // itself fully paid.
+                    'payment_id' => $payment->getKey(),
                     'payment_method_id' => $plan->payment_method_id,
                     'customer_id' => $plan->customer_id,
                     'shopify_customer_id' => $plan->shopify_customer_id,

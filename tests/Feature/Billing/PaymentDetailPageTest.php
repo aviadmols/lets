@@ -10,6 +10,7 @@ use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\LedgerStatus;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Tests\TestCase;
 
 /**
@@ -44,7 +45,7 @@ final class PaymentDetailPageTest extends TestCase
         // this screen showed a bare email or a raw id where a person belongs.
         $this->assertSame('Meir Sella', $row->customerLabel());
 
-        $page = new ViewPayment();
+        $page = new ViewPayment;
         $page->mount((int) $row->getKey());
         $this->assertSame('2816', (string) $page->record->shopify_order_id);
     }
@@ -63,7 +64,7 @@ final class PaymentDetailPageTest extends TestCase
             ]]],
         ]);
 
-        $page = new ViewPayment();
+        $page = new ViewPayment;
         $page->mount((int) $row->getKey());
         $facts = $page->transactionFacts();
 
@@ -82,8 +83,8 @@ final class PaymentDetailPageTest extends TestCase
 
         Tenant::set($mine);
 
-        $this->expectException(\Symfony\Component\HttpKernel\Exception\NotFoundHttpException::class);
-        (new ViewPayment())->mount((int) $foreign->getKey());
+        $this->expectException(NotFoundHttpException::class);
+        (new ViewPayment)->mount((int) $foreign->getKey());
     }
 
     // === Fixtures ===

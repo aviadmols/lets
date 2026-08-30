@@ -65,6 +65,17 @@ final class IdempotencyKey
      * gateway). PayPlus already charged; this key only keeps the RECORD single
      * under the push + pull double-confirmation.
      */
+    /**
+     * Money going BACK. Keyed by the ledger row plus how much had already
+     * been returned before this attempt, so a repeat of the SAME refund
+     * collapses at the gateway while a genuine second partial refund — a
+     * different starting point — is its own request.
+     */
+    public static function refund(int $shopId, int $ledgerId, float $alreadyRefunded, float $amount): string
+    {
+        return sprintf('refund:%d:%d:%s:%s', $shopId, $ledgerId, number_format($alreadyRefunded, 2, '.', ''), number_format($amount, 2, '.', ''));
+    }
+
     public static function gateway(int $shopId, string $orderId): string
     {
         return "gateway:{$shopId}:{$orderId}";
