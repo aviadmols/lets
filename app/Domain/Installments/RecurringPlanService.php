@@ -3,6 +3,7 @@
 namespace App\Domain\Installments;
 
 use App\Models\InstallmentPlan;
+use App\Models\ProductSubscriptionPlan;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
@@ -169,7 +170,7 @@ final class RecurringPlanService
      * @param  array{
      *     product_gid: string, variant_gid: string, item_title?: string,
      *     amount: float, frequency: BillingFrequency, interval_count?: int, currency: string,
-     *     template?: \App\Models\ProductSubscriptionPlan, regular_amount?: float,
+     *     template?: ProductSubscriptionPlan, regular_amount?: float,
      *     customer_email?: ?string, customer_name?: ?string, customer_phone?: ?string,
      *     customer_id?: ?int, shopify_customer_id?: ?string, external_customer_id?: ?string,
      *     payment_method_id?: ?int, first_charge_at?: mixed, meta?: array<string, mixed>,
@@ -231,7 +232,7 @@ final class RecurringPlanService
     private function buildPlanRow(Shop $shop, array $context, float $amount, BillingFrequency $frequency, int $intervalCount, string $currency): InstallmentPlan
     {
         $template = $context['template'] ?? null;
-        $template = $template instanceof \App\Models\ProductSubscriptionPlan ? $template : null;
+        $template = $template instanceof ProductSubscriptionPlan ? $template : null;
         $regular = round((float) ($context['regular_amount'] ?? 0), 2);
 
         return DB::transaction(function () use ($shop, $context, $amount, $frequency, $intervalCount, $currency, $template, $regular): InstallmentPlan {
@@ -286,10 +287,26 @@ final class RecurringPlanService
                 ], (array) ($context['meta'] ?? [])),
             ]);
 
+            // A plan is normally BORN awaiting its first payment — a checkout has
+            // not been paid yet, and the payment is what promotes it to active.
+            //
+            // A SCHEDULED SWITCH is the exception: the subscriber is already
+            // paying, on a card we already hold, and this row only continues that
+            // subscription under a new price from the next renewal. There is no
+            // first payment to wait for — the promotion hook lives in the charge
+            // path, so a row born "awaiting" here would sit mislabelled for a
+            // whole cycle, and every gate that asks "does this person have a
+            // subscription?" would answer no while they plainly do.
+            $bornActive = (bool) ($context['born_active'] ?? false);
+
             $plan->forceFill([
                 'shop_id' => (int) $shop->getKey(),
                 'status' => PlanStatus::AWAITING_FIRST_PAYMENT->value,
             ])->save();
+
+            if ($bornActive) {
+                $plan->transitionTo(PlanStatus::ACTIVE, ['action' => 'switch_scheduled']);
+            }
 
             return $plan;
         });

@@ -262,7 +262,11 @@ final class AccountOfferAcceptServiceTest extends TestCase
             $this->assertSame(0, $this->payplusCalls, 'Nothing is charged today.');
 
             $new = $outcome->plan->fresh();
-            $this->assertSame(PlanStatus::AWAITING_FIRST_PAYMENT, $new->status);
+            // ACTIVE from birth: this row CONTINUES a subscription that is already
+            // being paid, on a card we already hold. Nothing is charged today, so
+            // no payment would ever arrive to promote it — "awaiting first payment"
+            // would stand for a whole cycle over a live subscriber.
+            $this->assertSame(PlanStatus::ACTIVE, $new->status);
             $this->assertSame($renewal->toDateString(), $new->next_charge_at->toDateString());
 
             // The old subscription ends NOW — no proration, no double billing, and
@@ -276,6 +280,25 @@ final class AccountOfferAcceptServiceTest extends TestCase
 
             $this->assertSame(1, $this->payplusCalls);
             $this->assertSame(PlanStatus::ACTIVE, $new->fresh()->status);
+        });
+    }
+
+    public function test_a_scheduled_switch_still_counts_as_having_a_subscription_before_it_bills(): void
+    {
+        $this->inShop(function (): void {
+            [$offer, $source, $visitor] = $this->scenario([
+                'replace_timing' => AccountOfferTarget::TIMING_PERIOD_END,
+            ]);
+
+            $outcome = $this->service()->accept($visitor, $source, (string) $offer->getKey(), '', 49.0);
+
+            // The gate that decides "does this person already subscribe?" reads
+            // live statuses only. A switched subscriber must never fall through it
+            // and be sold a second subscription during the cycle they already paid.
+            $this->assertContains(
+                $outcome->plan->fresh()->status,
+                [PlanStatus::ACTIVE, PlanStatus::PAUSED, PlanStatus::FAILED],
+            );
         });
     }
 

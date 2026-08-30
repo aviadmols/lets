@@ -306,6 +306,13 @@ final class AccountOfferAcceptService
             'external_customer_id' => $source->external_customer_id,
             'payment_method_id' => $source->payment_method_id,
             'first_charge_at' => $firstChargeAt,
+            // A switch that takes effect at the period end continues a LIVE
+            // subscription: nothing is charged today, so no payment will arrive
+            // to promote this row, and it must not spend the cycle labelled
+            // "awaiting first payment" — the shopper would read as having no
+            // subscription and could buy a second one beside this one.
+            // An IMMEDIATE switch charges now and the charge path promotes it.
+            'born_active' => ! $immediate,
             'meta' => [
                 InstallmentPlan::META_ACCOUNT_OFFER => [
                     'offer_id' => (string) $offer->getKey(),

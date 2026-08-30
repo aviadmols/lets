@@ -214,7 +214,10 @@ final class ReplaceProrationTest extends TestCase
             $this->assertSame([], $this->chargedAmounts, 'nothing moved today');
 
             $new = $outcome->plan->fresh();
-            $this->assertSame(PlanStatus::AWAITING_FIRST_PAYMENT, $new->status);
+            // Live from birth — the subscriber never stopped paying; only the
+            // price changes, and only at the renewal. (See the same law in
+            // AccountOfferAcceptServiceTest.)
+            $this->assertSame(PlanStatus::ACTIVE, $new->status);
             $this->assertSame('2026-09-11', $new->next_charge_at->toDateString());
             $this->assertSame(PlanStatus::CANCELLED, $source->fresh()->status, 'the switch itself completed');
         });
