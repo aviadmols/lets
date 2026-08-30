@@ -78,7 +78,7 @@ final class MailTransport
             ];
         }
 
-        // 2. The platform's SendGrid account.
+        // 2. The platform's own sending account — whichever provider it is.
         $platform = PlatformMailSettings::current();
 
         if (! $platform->isConnected()) {
@@ -86,22 +86,61 @@ final class MailTransport
         }
 
         return [
-            'config' => [
-                'transport' => self::TRANSPORT,
-                'host' => (string) config('services.sendgrid.smtp_host'),
-                'port' => (int) config('services.sendgrid.smtp_port', 587),
-                'username' => (string) config('services.sendgrid.smtp_username', self::SENDGRID_USERNAME),
-                'password' => (string) $platform->apiKey(),
-                'scheme' => 'smtp',
-                'timeout' => null,
-                'local_domain' => null,
-            ],
+            'config' => $platform->usesSes()
+                ? self::sesRelay($platform)
+                : self::sendGridRelay($platform),
+            // The From rule does not change with the provider: a shop's own
+            // verified domain when it has one, the platform address otherwise.
+            // Both providers refuse a From on a domain they never authenticated.
             'from' => self::sendGridFrom($shop, $settings, $platform),
         ];
     }
 
     /**
-     * The From a SendGrid send carries: the shop's verified domain when it has
+     * SendGrid's relay: the literal username "apikey", the key as the password.
+     *
+     * @return array<string, mixed>
+     */
+    private static function sendGridRelay(PlatformMailSettings $platform): array
+    {
+        return [
+            'transport' => self::TRANSPORT,
+            'host' => (string) config('services.sendgrid.smtp_host'),
+            'port' => (int) config('services.sendgrid.smtp_port', 587),
+            'username' => (string) config('services.sendgrid.smtp_username', self::SENDGRID_USERNAME),
+            'password' => (string) $platform->apiKey(),
+            'scheme' => 'smtp',
+            'timeout' => null,
+            'local_domain' => null,
+        ];
+    }
+
+    /**
+     * SES's relay, in the region the identities live in.
+     *
+     * The credentials here are the SMTP pair, NOT the API pair: AWS issues them
+     * separately and they are revoked separately. Sending with the access key
+     * fails with an authentication error that names neither of them, which is
+     * why the two are stored — and read — as different things.
+     *
+     * @return array<string, mixed>
+     */
+    private static function sesRelay(PlatformMailSettings $platform): array
+    {
+        return [
+            'transport' => self::TRANSPORT,
+            'host' => 'email-smtp.'.$platform->sesRegion().'.amazonaws.com',
+            'port' => (int) config('services.ses.smtp_port', 587),
+            'username' => (string) $platform->sesSmtpUsername(),
+            'password' => (string) $platform->sesSmtpPassword(),
+            'scheme' => 'smtp',
+            'timeout' => null,
+            'local_domain' => null,
+        ];
+    }
+
+    /**
+     * The From a platform send carries: the shop's verified domain when it has
      * one, else the platform address.
      *
      * The local part follows the merchant's own from_address when they set one

@@ -2,7 +2,7 @@
 
 namespace App\Domain\Mail;
 
-use App\Domain\Mail\SendGrid\SendGridClient;
+use App\Domain\Mail\Contracts\SenderDomainProvider;
 use App\Models\PlatformMailSettings;
 
 /**
@@ -27,7 +27,23 @@ use App\Models\PlatformMailSettings;
  */
 final class PlatformSenderDomain
 {
-    public function __construct(private readonly SendGridClient $client = new SendGridClient) {}
+    public function __construct(private readonly ?SenderDomainProvider $client = null) {}
+
+    /**
+     * The provider the platform chose, resolved once and reused.
+     *
+     * An injected client wins — that is how a test hands in a fake without
+     * the factory knowing anything about tests.
+     */
+    private function provider(): SenderDomainProvider
+    {
+        // MEMOISED, and that is load-bearing: the client records WHY its last
+        // call failed, so asking the factory a second time would hand back a
+        // fresh object with no memory of the refusal we are about to explain.
+        return $this->resolved ??= $this->client ?? SenderDomainProviderFactory::current();
+    }
+
+    private ?SenderDomainProvider $resolved = null;
 
     /**
      * Ask the provider to authenticate the platform's domain.
@@ -51,7 +67,7 @@ final class PlatformSenderDomain
             return $this->ok();
         }
 
-        $created = $this->client->authenticateDomain($domain, $settings->subdomain());
+        $created = $this->provider()->authenticateDomain($domain, $settings->subdomain());
         if ($created === null) {
             return $this->fail(SenderDomains::REASON_PROVIDER_UNREACHABLE);
         }
@@ -59,7 +75,7 @@ final class PlatformSenderDomain
         // The old id is released only AFTER the new one exists — a refused
         // request must not leave the platform with neither.
         if ($settings->provider_domain_id !== null) {
-            $this->client->removeDomain((int) $settings->provider_domain_id);
+            $this->provider()->removeDomain((string) $settings->provider_domain_id);
         }
 
         $settings->forceFill([
@@ -94,7 +110,7 @@ final class PlatformSenderDomain
         }
 
         $resolved = DnsRecords::resolve($settings->dnsRecords());
-        $verdict = $this->client->validateDomain((int) $settings->provider_domain_id);
+        $verdict = $this->provider()->validateDomain((string) $settings->provider_domain_id);
 
         if ($verdict === null) {
             $settings->forceFill(['last_checked_at' => now()])->save();

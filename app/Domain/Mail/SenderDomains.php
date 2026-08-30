@@ -2,7 +2,7 @@
 
 namespace App\Domain\Mail;
 
-use App\Domain\Mail\SendGrid\SendGridClient;
+use App\Domain\Mail\Contracts\SenderDomainProvider;
 use App\Models\Shop;
 use App\Models\ShopSenderDomain;
 use App\Support\Tenant;
@@ -46,7 +46,23 @@ final class SenderDomains
     /** A hostname, without a scheme, a path, or a leading label of our own. */
     private const DOMAIN_PATTERN = '/^(?=.{1,253}$)(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/';
 
-    public function __construct(private readonly SendGridClient $client = new SendGridClient) {}
+    public function __construct(private readonly ?SenderDomainProvider $client = null) {}
+
+    /**
+     * The provider the platform chose, resolved once and reused.
+     *
+     * An injected client wins — that is how a test hands in a fake without
+     * the factory knowing anything about tests.
+     */
+    private function provider(): SenderDomainProvider
+    {
+        // MEMOISED, and that is load-bearing: the client records WHY its last
+        // call failed, so asking the factory a second time would hand back a
+        // fresh object with no memory of the refusal we are about to explain.
+        return $this->resolved ??= $this->client ?? SenderDomainProviderFactory::current();
+    }
+
+    private ?SenderDomainProvider $resolved = null;
 
     /**
      * Ask the provider to authenticate a domain for this shop, and store the
@@ -61,7 +77,7 @@ final class SenderDomains
      */
     public function request(Shop $shop, string $domain): array
     {
-        if (! SendGridClient::configured()) {
+        if (! SenderDomainProviderFactory::configured()) {
             return $this->fail(self::REASON_NOT_CONFIGURED);
         }
 
@@ -78,7 +94,7 @@ final class SenderDomains
             return $this->ok();
         }
 
-        $created = $this->client->authenticateDomain($domain);
+        $created = $this->provider()->authenticateDomain($domain);
         if ($created === null) {
             return $this->fail($this->providerFailureReason());
         }
@@ -86,7 +102,7 @@ final class SenderDomains
         // The old one goes only AFTER the new one exists — a provider that
         // refuses the new domain must not leave the shop with neither.
         if ($existing !== null && $existing->provider_domain_id !== null) {
-            $this->client->removeDomain((int) $existing->provider_domain_id);
+            $this->provider()->removeDomain((string) $existing->provider_domain_id);
         }
 
         $row = $existing ?? new ShopSenderDomain;
@@ -118,7 +134,7 @@ final class SenderDomains
             return $this->fail(self::REASON_RECORDS_MISSING) + ['records' => []];
         }
 
-        if (! SendGridClient::configured()) {
+        if (! SenderDomainProviderFactory::configured()) {
             return $this->fail(self::REASON_NOT_CONFIGURED) + ['records' => $row->dnsRecords()];
         }
 
@@ -127,7 +143,7 @@ final class SenderDomains
         $resolved = $this->resolveRecords($row->dnsRecords());
         $allResolve = $resolved !== [] && ! in_array(false, array_column($resolved, 'resolved'), true);
 
-        $verdict = $this->client->validateDomain((int) $row->provider_domain_id);
+        $verdict = $this->provider()->validateDomain((string) $row->provider_domain_id);
 
         if ($verdict === null) {
             $row->forceFill([
@@ -179,8 +195,8 @@ final class SenderDomains
             return $this->ok();
         }
 
-        if ($row->provider_domain_id !== null && SendGridClient::configured()) {
-            $this->client->removeDomain((int) $row->provider_domain_id);
+        if ($row->provider_domain_id !== null && SenderDomainProviderFactory::configured()) {
+            $this->provider()->removeDomain((string) $row->provider_domain_id);
         }
 
         Tenant::run($shop, static fn () => $row->delete());
@@ -246,7 +262,7 @@ final class SenderDomains
      */
     private function providerFailureReason(): string
     {
-        return $this->client->lastCallWasUnauthorized()
+        return $this->provider()->lastCallWasUnauthorized()
             ? self::REASON_PROVIDER_UNAUTHORIZED
             : self::REASON_PROVIDER_UNREACHABLE;
     }
@@ -254,7 +270,7 @@ final class SenderDomains
     /** The provider's own words about the last failure, when it gave any. */
     public function providerMessage(): string
     {
-        return trim((string) ($this->client->lastError()['message'] ?? ''));
+        return trim((string) ($this->provider()->lastError()['message'] ?? ''));
     }
 
     /** @return array{ok: false, reason: string} */

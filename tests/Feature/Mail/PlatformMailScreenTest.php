@@ -174,7 +174,9 @@ final class PlatformMailScreenTest extends TestCase
 
         $settings = PlatformMailSettings::current()->fresh();
         $this->assertSame('lets.co.il', $settings->domain);
-        $this->assertSame(501, $settings->provider_domain_id);
+        // A provider handle is text: SendGrid issues a number, SES names the
+        // domain itself, and one column has to hold both.
+        $this->assertSame('501', $settings->provider_domain_id);
         $this->assertSame('mail.lets.co.il', $settings->sendingDomain());
         $this->assertCount(1, $settings->dnsRecords());
     }

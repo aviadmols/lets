@@ -61,6 +61,25 @@ return [
         'subdomain' => env('SENDGRID_SUBDOMAIN', 'mail'),
     ],
 
+    /*
+    | Amazon SES — the second sending provider. Every value here is a FALLBACK:
+    | what the owner saved on Platform → Email delivery wins, exactly as it does
+    | for SendGrid, so a fresh environment can still come up from variables
+    | alone.
+    |
+    | The two credential pairs are NOT interchangeable. The access key signs the
+    | domain-identity API calls; the SMTP pair is generated separately in the
+    | SES console and is the only one that can actually send.
+    */
+    'ses' => [
+        'region' => env('SES_REGION', env('AWS_DEFAULT_REGION')),
+        'key' => env('SES_ACCESS_KEY_ID', env('AWS_ACCESS_KEY_ID')),
+        'secret' => env('SES_SECRET_ACCESS_KEY', env('AWS_SECRET_ACCESS_KEY')),
+        'smtp_username' => env('SES_SMTP_USERNAME'),
+        'smtp_password' => env('SES_SMTP_PASSWORD'),
+        'smtp_port' => (int) env('SES_SMTP_PORT', 587),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

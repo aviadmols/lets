@@ -2,6 +2,7 @@
 
 namespace App\Domain\Mail\SendGrid;
 
+use App\Domain\Mail\Contracts\SenderDomainProvider;
 use App\Models\PlatformMailSettings;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
@@ -26,7 +27,7 @@ use Illuminate\Support\Facades\Log;
  * logs; a settings screen that 500s because a third party is slow is worse than
  * one that says "we could not reach the provider, try again".
  */
-final class SendGridClient
+final class SendGridClient implements SenderDomainProvider
 {
     // === CONSTANTS ===
     /** Seconds before we stop waiting on the provider. A settings screen is waiting. */
@@ -108,7 +109,7 @@ final class SendGridClient
         }
 
         return [
-            'id' => (int) $body['id'],
+            'id' => (string) $body['id'],
             'records' => self::flattenRecords($body['dns'] ?? []),
             'subdomain' => (string) ($body['subdomain'] ?? $subdomain),
         ];
@@ -123,9 +124,9 @@ final class SendGridClient
      *
      * @return array{valid: bool, records: list<array<string, mixed>>}|null
      */
-    public function validateDomain(int $domainId): ?array
+    public function validateDomain(string $domainId): ?array
     {
-        $body = $this->post('/whitelabel/domains/'.$domainId.'/validate', []);
+        $body = $this->post('/whitelabel/domains/'.rawurlencode($domainId).'/validate', []);
 
         if ($body === null) {
             return null;
@@ -140,16 +141,16 @@ final class SendGridClient
     }
 
     /** The domain as SendGrid holds it now — used to re-read records we lost. */
-    public function fetchDomain(int $domainId): ?array
+    public function fetchDomain(string $domainId): ?array
     {
-        $body = $this->get('/whitelabel/domains/'.$domainId);
+        $body = $this->get('/whitelabel/domains/'.rawurlencode($domainId));
 
         if ($body === null) {
             return null;
         }
 
         return [
-            'id' => (int) ($body['id'] ?? $domainId),
+            'id' => (string) ($body['id'] ?? $domainId),
             'valid' => (bool) ($body['valid'] ?? false),
             'records' => self::flattenRecords($body['dns'] ?? []),
             'subdomain' => (string) ($body['subdomain'] ?? ''),
@@ -157,10 +158,10 @@ final class SendGridClient
     }
 
     /** Give the domain back. A shop that left keeps nothing on our account. */
-    public function removeDomain(int $domainId): bool
+    public function removeDomain(string $domainId): bool
     {
         try {
-            return $this->request()->delete($this->url('/whitelabel/domains/'.$domainId))->successful();
+            return $this->request()->delete($this->url('/whitelabel/domains/'.rawurlencode($domainId)))->successful();
         } catch (\Throwable $e) {
             $this->noteFailure('delete', null, $e->getMessage());
 

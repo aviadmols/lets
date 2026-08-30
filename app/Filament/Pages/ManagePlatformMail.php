@@ -10,12 +10,14 @@ use App\Models\Shop;
 use App\Support\Ui\PanelAccess;
 use Filament\Actions\Action as HeaderAction;
 use Filament\Forms\Components\Placeholder;
+use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\ViewField;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
+use Filament\Forms\Get;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
@@ -60,7 +62,13 @@ class ManagePlatformMail extends Page implements HasForms
     public const DOMAIN_VIEW = 'filament.pages.partials.platform-domain';
 
     /** A saved key is never re-shown; blank on save means "keep what is stored". */
-    public const SECRET_FIELDS = ['sendgrid_api_key'];
+    public const SECRET_FIELDS = [
+        'sendgrid_api_key',
+        'ses_access_key_id',
+        'ses_secret_access_key',
+        'ses_smtp_username',
+        'ses_smtp_password',
+    ];
 
     /** @var array<string, mixed> the form state (statePath: data). */
     public array $data = [];
@@ -108,7 +116,13 @@ class ManagePlatformMail extends Page implements HasForms
         $settings = PlatformMailSettings::current();
 
         $this->form->fill([
+            'provider' => $settings->provider(),
+            'ses_region' => $settings->sesRegion(),
             'sendgrid_api_key' => null, // never re-shown
+            'ses_access_key_id' => null,
+            'ses_secret_access_key' => null,
+            'ses_smtp_username' => null,
+            'ses_smtp_password' => null,
             'from_address' => $settings->from_address,
             'from_name' => $settings->from_name,
             'subdomain' => $settings->subdomainOverride(),
@@ -157,6 +171,19 @@ class ManagePlatformMail extends Page implements HasForms
                     ->label(__('platform_mail.account.state'))
                     ->content(fn (): string => $this->connectionLine()),
 
+                Radio::make('provider')
+                    ->label(__('platform_mail.account.provider'))
+                    ->options([
+                        PlatformMailSettings::PROVIDER_SENDGRID => __('platform_mail.account.provider_sendgrid'),
+                        PlatformMailSettings::PROVIDER_SES => __('platform_mail.account.provider_ses'),
+                    ])
+                    ->descriptions([
+                        PlatformMailSettings::PROVIDER_SENDGRID => __('platform_mail.account.provider_sendgrid_help'),
+                        PlatformMailSettings::PROVIDER_SES => __('platform_mail.account.provider_ses_help'),
+                    ])
+                    ->live()
+                    ->columnSpanFull(),
+
                 TextInput::make('sendgrid_api_key')
                     ->label(__('platform_mail.account.key'))
                     ->helperText(fn (): string => $this->keyHint())
@@ -164,7 +191,59 @@ class ManagePlatformMail extends Page implements HasForms
                     ->revealable()
                     ->autocomplete('new-password')
                     ->extraInputAttributes(['dir' => 'ltr'])
-                    ->maxLength(255),
+                    ->maxLength(255)
+                    ->visible(fn (Get $get): bool => $get('provider') !== PlatformMailSettings::PROVIDER_SES),
+
+                // === Amazon SES ===
+                // Two credentials, because AWS issues two. The API pair signs
+                // the domain calls; the SMTP pair sends the mail. Sending with
+                // the API pair fails with a message that names neither, so the
+                // screen keeps them visibly apart.
+                TextInput::make('ses_region')
+                    ->label(__('platform_mail.account.ses_region'))
+                    ->helperText(__('platform_mail.account.ses_region_help'))
+                    ->placeholder('eu-central-1')
+                    ->extraInputAttributes(['dir' => 'ltr'])
+                    ->maxLength(32)
+                    ->visible(fn (Get $get): bool => $get('provider') === PlatformMailSettings::PROVIDER_SES),
+
+                TextInput::make('ses_access_key_id')
+                    ->label(__('platform_mail.account.ses_key_id'))
+                    ->helperText(__('platform_mail.account.ses_api_help'))
+                    ->password()
+                    ->revealable()
+                    ->autocomplete('new-password')
+                    ->extraInputAttributes(['dir' => 'ltr'])
+                    ->maxLength(255)
+                    ->visible(fn (Get $get): bool => $get('provider') === PlatformMailSettings::PROVIDER_SES),
+
+                TextInput::make('ses_secret_access_key')
+                    ->label(__('platform_mail.account.ses_secret'))
+                    ->password()
+                    ->revealable()
+                    ->autocomplete('new-password')
+                    ->extraInputAttributes(['dir' => 'ltr'])
+                    ->maxLength(255)
+                    ->visible(fn (Get $get): bool => $get('provider') === PlatformMailSettings::PROVIDER_SES),
+
+                TextInput::make('ses_smtp_username')
+                    ->label(__('platform_mail.account.ses_smtp_username'))
+                    ->helperText(__('platform_mail.account.ses_smtp_help'))
+                    ->password()
+                    ->revealable()
+                    ->autocomplete('new-password')
+                    ->extraInputAttributes(['dir' => 'ltr'])
+                    ->maxLength(255)
+                    ->visible(fn (Get $get): bool => $get('provider') === PlatformMailSettings::PROVIDER_SES),
+
+                TextInput::make('ses_smtp_password')
+                    ->label(__('platform_mail.account.ses_smtp_password'))
+                    ->password()
+                    ->revealable()
+                    ->autocomplete('new-password')
+                    ->extraInputAttributes(['dir' => 'ltr'])
+                    ->maxLength(255)
+                    ->visible(fn (Get $get): bool => $get('provider') === PlatformMailSettings::PROVIDER_SES),
 
                 TextInput::make('from_address')
                     ->label(__('platform_mail.account.from_address'))
@@ -216,10 +295,18 @@ class ManagePlatformMail extends Page implements HasForms
         // A blank key keeps what is stored: the field is never re-shown, so an
         // owner saving an unrelated change must not blank the credential the
         // whole platform sends with.
-        $key = trim((string) ($input['sendgrid_api_key'] ?? ''));
-        if ($key !== '') {
-            $settings->sendgrid_api_key = $key;
+        foreach (self::SECRET_FIELDS as $field) {
+            $value = trim((string) ($input[$field] ?? ''));
+            if ($value !== '') {
+                $settings->{$field} = $value;
+            }
         }
+
+        $provider = (string) ($input['provider'] ?? PlatformMailSettings::PROVIDER_SENDGRID);
+        $settings->provider = in_array($provider, PlatformMailSettings::PROVIDERS, true)
+            ? $provider
+            : PlatformMailSettings::PROVIDER_SENDGRID;
+        $settings->ses_region = $this->blankToNull($input['ses_region'] ?? null);
 
         $settings->from_address = $this->blankToNull($input['from_address'] ?? null);
         $settings->from_name = $this->blankToNull($input['from_name'] ?? null);

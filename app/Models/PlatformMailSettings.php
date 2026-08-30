@@ -38,14 +38,26 @@ class PlatformMailSettings extends Model
     /** The label under a merchant's domain when the owner has not chosen one. */
     public const DEFAULT_SUBDOMAIN = 'mail';
 
+    /** Which account the platform's mail leaves through. */
+    public const PROVIDER_SENDGRID = 'sendgrid';
+
+    public const PROVIDER_SES = 'ses';
+
+    public const PROVIDERS = [self::PROVIDER_SENDGRID, self::PROVIDER_SES];
+
     protected $guarded = ['id'];
 
     protected function casts(): array
     {
         return [
             'sendgrid_api_key' => 'encrypted',
+            'ses_access_key_id' => 'encrypted',
+            'ses_secret_access_key' => 'encrypted',
+            'ses_smtp_username' => 'encrypted',
+            'ses_smtp_password' => 'encrypted',
             'records' => 'array',
-            'provider_domain_id' => 'integer',
+            // A provider handle is not always a number: SES names the domain.
+            'provider_domain_id' => 'string',
             'last_checked_at' => 'datetime',
             'verified_at' => 'datetime',
         ];
@@ -99,8 +111,66 @@ class PlatformMailSettings extends Model
         );
     }
 
+    /** sendgrid | ses — read raw; the column shadows nothing but is defaulted. */
+    public function provider(): string
+    {
+        $value = trim((string) ($this->attributes['provider'] ?? ''));
+
+        return in_array($value, self::PROVIDERS, true) ? $value : self::PROVIDER_SENDGRID;
+    }
+
+    public function usesSes(): bool
+    {
+        return $this->provider() === self::PROVIDER_SES;
+    }
+
+    public function sesRegion(): ?string
+    {
+        return self::firstFilled($this->ses_region, config('services.ses.region'));
+    }
+
+    public function sesAccessKeyId(): ?string
+    {
+        return self::firstFilled($this->ses_access_key_id, config('services.ses.key'));
+    }
+
+    public function sesSecretAccessKey(): ?string
+    {
+        return self::firstFilled($this->ses_secret_access_key, config('services.ses.secret'));
+    }
+
+    /**
+     * The SMTP pair, which on SES is NOT the API pair.
+     *
+     * AWS generates SMTP credentials separately and they can be revoked on
+     * their own; treating one as the other is the most common way an SES setup
+     * fails with a message that explains nothing.
+     */
+    public function sesSmtpUsername(): ?string
+    {
+        return self::firstFilled($this->ses_smtp_username, config('services.ses.smtp_username'));
+    }
+
+    public function sesSmtpPassword(): ?string
+    {
+        return self::firstFilled($this->ses_smtp_password, config('services.ses.smtp_password'));
+    }
+
+    /**
+     * Can the platform send at all?
+     *
+     * Per provider, because "connected" means a different credential for each:
+     * SendGrid needs its one key; SES needs a region and an SMTP pair to send,
+     * whatever else is configured for the domain paperwork.
+     */
     public function isConnected(): bool
     {
+        if ($this->usesSes()) {
+            return $this->sesRegion() !== null
+                && $this->sesSmtpUsername() !== null
+                && $this->sesSmtpPassword() !== null;
+        }
+
         return $this->apiKey() !== null;
     }
 
