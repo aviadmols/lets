@@ -19,7 +19,6 @@ use Filament\Forms\Form;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
-use Illuminate\Mail\Mailables\Address;
 use Illuminate\Support\Facades\Mail;
 use Throwable;
 
@@ -263,7 +262,12 @@ class ManagePlatformMail extends Page implements HasForms
             $mailer = $shop instanceof Shop ? CampaignMailer::for($shop) : Mail::mailer();
 
             $mailer->send([], [], function ($message) use ($recipient): void {
-                $message->to(new Address($recipient))
+                // A PLAIN STRING. Illuminate\Mail\Message::to() builds the
+                // Symfony Address itself, so handing it a Mailables\Address
+                // makes it call `new Address($anAddressObject)` and die on the
+                // type — which is a crash at send time, not at build time, so
+                // only a real send catches it.
+                $message->to($recipient)
                     ->subject(__('platform_mail.test.subject'))
                     ->html(e(__('platform_mail.test.body')));
             });

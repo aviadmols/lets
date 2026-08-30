@@ -205,6 +205,53 @@ final class PlatformMailScreenTest extends TestCase
 
     // === Fixtures ===
 
+    // === The test send actually sends ===
+
+    /**
+     * The proof button has to survive a REAL send.
+     *
+     * It was handing Message::to() a Mailables\Address object, which that
+     * method does not take — it builds the Symfony address itself from a
+     * string. Nothing caught it, because Mail::fake() records the call without
+     * ever running the closure that composes the message: the crash lived
+     * exactly in the code a faked mailer skips. So this test sends through the
+     * ARRAY transport, where the message really is composed.
+     */
+    public function test_the_test_send_composes_a_real_message(): void
+    {
+        Config::set('mail.default', 'array');
+        $this->shop('platform-mail-send.example.com');
+        $this->actingAs($this->platformAdmin());
+
+        Livewire::test(ManagePlatformMail::class)
+            ->callAction('sendTest', ['recipient' => 'owner@example.com']);
+
+        $sent = app('mailer')->getSymfonyTransport()->messages();
+
+        $this->assertCount(1, $sent, 'A message was actually composed and handed to the transport.');
+        $this->assertStringContainsString(
+            'owner@example.com',
+            $sent[0]->getOriginalMessage()->getTo()[0]->getAddress(),
+        );
+    }
+
+    public function test_a_malformed_address_is_refused_by_the_form_before_any_send(): void
+    {
+        Config::set('mail.default', 'array');
+        $this->shop('platform-mail-fail.example.com');
+        $this->actingAs($this->platformAdmin());
+
+        Livewire::test(ManagePlatformMail::class)
+            ->callAction('sendTest', ['recipient' => 'not-an-address'])
+            ->assertHasActionErrors(['recipient']);
+
+        $this->assertCount(
+            0,
+            app('mailer')->getSymfonyTransport()->messages(),
+            'Nothing was handed to the transport.',
+        );
+    }
+
     private function shop(string $domain): Shop
     {
         return Shop::create([
