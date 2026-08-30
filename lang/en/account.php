@@ -189,6 +189,7 @@ return [
     'status' => [
         'draft' => 'Draft',
         'awaiting_first_payment' => 'Awaiting first payment',
+        'awaiting_payment' => 'Awaiting payment',
         'active' => 'Active',
         'paused' => 'Paused',
         'failed' => 'Payment failed',

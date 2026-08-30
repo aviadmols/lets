@@ -63,8 +63,17 @@ use Illuminate\Support\Facades\Mail;
 final class ChargeOrchestrator
 {
     // === CONSTANTS ===
-    /** Max charge attempts before a terminal `failed`. Mirrors retry_backoff_hours length. */
-    private const MAX_ATTEMPTS_FALLBACK = 3;
+    /** Daily charge attempts before the cycle is given up on. @see config/payplus.php */
+    private const MAX_ATTEMPTS_FALLBACK = 10;
+
+    /**
+     * A safety stop on rolling a stale schedule forward.
+     *
+     * A plan whose date is years behind (a bad import, a long-dormant row) must
+     * land on a future date without spinning: past this many cycles we take the
+     * date we have reached and move on.
+     */
+    private const MAX_CYCLE_ROLL_FORWARD = 240;
 
     /**
      * The Shopify order strategy is OPTIONAL + nullable so the billing engine
@@ -257,8 +266,19 @@ final class ChargeOrchestrator
             if ($plan->status === PlanStatus::AWAITING_FIRST_PAYMENT) {
                 $plan->transitionTo(PlanStatus::ACTIVE, ['action' => 'first_payment_succeeded']);
             }
+
+            // The debt is paid — dunning is over and the subscription is plainly
+            // healthy again. Recorded, so "when did they come back?" is answerable.
+            if ($plan->status === PlanStatus::AWAITING_PAYMENT) {
+                $plan->transitionTo(PlanStatus::ACTIVE, ['action' => 'payment_recovered']);
+            }
         } else {
-            // Installments, not final — schedule the next slot + update parent.
+            // Installments, not final — the slice landed, so dunning is over.
+            if ($plan->status === PlanStatus::AWAITING_PAYMENT) {
+                $plan->transitionTo(PlanStatus::ACTIVE, ['action' => 'payment_recovered']);
+            }
+
+            // Schedule the next slot + update parent.
             $plan->next_charge_at = $this->advanceNextChargeAt($plan);
             $plan->save();
         }
@@ -350,14 +370,26 @@ final class ChargeOrchestrator
         $payment->failure_code = $result->errorCode;
         $payment->failure_message = $result->errorMessage;
 
-        $backoff = (array) config('payplus.retry_backoff_hours', [4, 24, 72]);
-        $maxAttempts = count($backoff) ?: self::MAX_ATTEMPTS_FALLBACK;
+        // The merchant's own policy when they have one — the screen that offers
+        // these two numbers used to change nothing at all. Platform config is
+        // the floor under a shop that has never opened that screen.
+        $settings = MerchantBillingSettings::query()->where('shop_id', $plan->shop_id)->first();
+
+        $maxAttempts = $settings?->maxChargeAttempts()
+            ?? max(1, (int) config('payplus.retry_daily_attempts', self::MAX_ATTEMPTS_FALLBACK));
+        $intervalHours = $settings?->retryIntervalHours()
+            ?? max(1, (int) config('payplus.retry_interval_hours', 24));
         $willRetry = $payment->attempt_count < $maxAttempts;
 
+        // The subscriber owes us this cycle, and we are still asking. That is a
+        // live subscription with an unpaid cycle — not a dead one — so it is
+        // said out loud in the plan's own status, from the FIRST failure and for
+        // as long as the debt stands.
+        $this->enterDunning($plan);
+
         if ($willRetry) {
-            // attempt_count is 1-based after increment; index the NEXT backoff.
-            $hours = $backoff[min($payment->attempt_count, $maxAttempts) - 1] ?? end($backoff);
-            $payment->next_retry_at = now()->addHours((int) $hours);
+            // One attempt a day, on the SAME slot and the same idempotency key.
+            $payment->next_retry_at = now()->addHours($intervalHours);
             $payment->save();
             $payment->transitionTo(PaymentStatus::RETRY_SCHEDULED);
 
@@ -367,10 +399,11 @@ final class ChargeOrchestrator
                 'raw_response_masked' => ResponseMasker::mask($result->raw),
             ]);
             Ledger::transition($ledger, LedgerStatus::RETRY_SCHEDULED);
-
-            // Plan goes failed only after retries are scheduled? Keep plan active
-            // while retries pending; flip to failed only on terminal exhaustion.
         } else {
+            // The days ran out. We stop asking for THIS cycle — and we do not
+            // collect it later either: the slot is closed, and the plan is
+            // pointed at its next ordinary renewal, in the future. The plan
+            // stays in dunning so the merchant can see who owes what.
             $payment->next_retry_at = null;
             $payment->save();
             $payment->transitionTo(PaymentStatus::FAILED);
@@ -381,9 +414,7 @@ final class ChargeOrchestrator
                 'raw_response_masked' => ResponseMasker::mask($result->raw),
             ]);
 
-            if (! in_array($plan->status, [PlanStatus::FAILED, PlanStatus::CANCELLED, PlanStatus::COMPLETED], true)) {
-                $this->ensureActiveThen($plan, PlanStatus::FAILED);
-            }
+            $this->skipToNextCycle($plan);
         }
 
         Timeline::record(
@@ -645,9 +676,15 @@ final class ChargeOrchestrator
             return $succeeded + 1;
         }
 
-        $existing = $plan->payments()->count();
+        // Installments: the next UNPAID slot — counted the same way as the
+        // recurring branch, and for the same reason. Counting every row instead
+        // would hand each retry of a failed slot a NEW sequence, and therefore a
+        // new idempotency key: the gateway could no longer collapse two attempts
+        // at one debt, and the attempt counter would restart forever so the
+        // dunning window would never close.
+        $succeeded = $plan->payments()->where('status', PaymentStatus::SUCCEEDED->value)->count();
 
-        return max(1, $existing + 1);
+        return $succeeded + 1;
     }
 
     private function amountFor(InstallmentPlan $plan, PaymentType $type, int $sequence): float
@@ -759,15 +796,97 @@ final class ChargeOrchestrator
     {
         $base = $plan->next_charge_at ? CarbonImmutable::parse($plan->next_charge_at) : CarbonImmutable::now();
 
+        return $this->oneCycleAfter($plan, $base);
+    }
+
+    /** One cadence step after $from — the plan's own frequency, or monthly. */
+    private function oneCycleAfter(InstallmentPlan $plan, CarbonImmutable $from): CarbonImmutable
+    {
         if ($plan->billing_frequency !== null) {
             return CarbonImmutable::parse(
-                $plan->billing_frequency->addTo($base, (int) ($plan->interval_count ?: 1))
+                $plan->billing_frequency->addTo($from, (int) ($plan->interval_count ?: 1))
             );
         }
 
         // No cadence configured (pure installments without a fixed schedule):
         // default to monthly so the scheduler keeps moving.
-        return $base->addMonthNoOverflow();
+        return $from->addMonthNoOverflow();
+    }
+
+    /**
+     * Say, in the plan's own status, that a cycle is unpaid and we are on it.
+     *
+     * A plan already cancelled/completed is left alone — a charge that lands
+     * late on a closed subscription must not reopen it.
+     */
+    private function enterDunning(InstallmentPlan $plan): void
+    {
+        $current = $plan->status instanceof PlanStatus
+            ? $plan->status
+            : PlanStatus::from((string) $plan->status);
+
+        if (in_array($current, [PlanStatus::AWAITING_PAYMENT, PlanStatus::CANCELLED, PlanStatus::COMPLETED], true)) {
+            return;
+        }
+
+        // draft/awaiting_first_payment have to pass through active to be legal.
+        if (in_array($current, [PlanStatus::DRAFT, PlanStatus::AWAITING_FIRST_PAYMENT], true)) {
+            $plan->transitionTo(PlanStatus::AWAITING_PAYMENT, ['action' => 'charge_failed']);
+
+            return;
+        }
+
+        if ($current === PlanStatus::FAILED || $current === PlanStatus::PAUSED) {
+            $plan->transitionTo(PlanStatus::ACTIVE, ['action' => 'dunning_resumed']);
+        }
+
+        $plan->transitionTo(PlanStatus::AWAITING_PAYMENT, ['action' => 'charge_failed']);
+    }
+
+    /**
+     * The dunning window closed without the money arriving: give up on THIS
+     * cycle and wait for the next ordinary one.
+     *
+     * The new date is rolled forward whole cycles until it is in the FUTURE.
+     * Adding a single interval to a date already weeks past would leave the
+     * plan still due, and the scheduler — which runs every five minutes —
+     * would bill every missed cycle in a matter of minutes. A subscriber owes
+     * the cycle they are in, never the ones they were never asked for.
+     */
+    private function skipToNextCycle(InstallmentPlan $plan): void
+    {
+        if ($plan->plan_kind !== PlanKind::RECURRING) {
+            // An installments plan owes a FIXED total; a skipped attempt is not a
+            // forgiven slice. It waits for the merchant (or a card update), so
+            // the schedule stops here rather than inventing a new date.
+            $plan->next_charge_at = null;
+            $plan->save();
+
+            return;
+        }
+
+        $skipped = 0;
+        $next = $this->advanceNextChargeAt($plan);
+        $now = CarbonImmutable::now();
+
+        while ($next->lessThanOrEqualTo($now) && $skipped < self::MAX_CYCLE_ROLL_FORWARD) {
+            $next = $this->oneCycleAfter($plan, $next);
+            $skipped++;
+        }
+
+        $plan->next_charge_at = $next;
+        $plan->save();
+
+        Timeline::record(
+            kind: Timeline::KIND_CHARGE_FAILED,
+            details: [
+                'action' => 'cycle_skipped',
+                'skipped_cycles' => $skipped + 1,
+                'next_charge_at' => $next->toIso8601String(),
+            ],
+            planId: $plan->getKey(),
+            shopId: $plan->shop_id,
+        );
     }
 
     /** Bring a plan to ACTIVE first if needed, then transition to the target. */
@@ -779,8 +898,8 @@ final class ChargeOrchestrator
             return;
         }
 
-        // draft/awaiting_first_payment must reach active before completed/failed.
-        if (in_array($current, [PlanStatus::DRAFT, PlanStatus::AWAITING_FIRST_PAYMENT], true)) {
+        // draft/awaiting_first_payment/awaiting_payment must reach active first.
+        if (in_array($current, [PlanStatus::DRAFT, PlanStatus::AWAITING_FIRST_PAYMENT, PlanStatus::AWAITING_PAYMENT], true)) {
             if ($current === PlanStatus::DRAFT) {
                 $plan->transitionTo(PlanStatus::AWAITING_FIRST_PAYMENT);
             }

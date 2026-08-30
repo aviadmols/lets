@@ -3,6 +3,7 @@
 namespace App\Modules\PayPlusShopifyInstallments\Console\Commands;
 
 use App\Models\InstallmentPlan;
+use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentType;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
@@ -50,9 +51,19 @@ final class DispatchDuePlansCommand extends Command
 
         // AUDITED cross-tenant scan; each dispatched job re-binds its own tenant.
         InstallmentPlan::acrossAllTenants()
-            ->whereIn('status', [PlanStatus::ACTIVE->value, PlanStatus::AWAITING_FIRST_PAYMENT->value])
+            ->whereIn('status', PlanStatus::chargeable())
             ->whereNotNull('next_charge_at')
             ->where('next_charge_at', '<=', $dueBefore)
+            // A slot waiting out its daily retry is NOT due yet. Without this the
+            // plan is still "due" (a failure does not move next_charge_at), so it
+            // would be re-dispatched on every five-minute run — the backoff would
+            // be written and never honoured, and one debt would be asked for
+            // hundreds of times a day instead of once.
+            ->whereDoesntHave('payments', function ($q): void {
+                $q->where('status', PaymentStatus::RETRY_SCHEDULED->value)
+                    ->whereNotNull('next_retry_at')
+                    ->where('next_retry_at', '>', now());
+            })
             ->orderBy('id')
             ->chunkById($chunk, function ($plans) use (&$dispatched, &$held, $paused): void {
                 foreach ($plans as $plan) {

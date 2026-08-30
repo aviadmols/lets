@@ -37,10 +37,12 @@ class MerchantBillingSettings extends Model
     // === CONSTANTS — table + spec defaults (plan §4.7) ===
     protected $table = 'merchant_billing_settings';
 
-    /** Retry policy. */
+    /** Retry policy: one attempt a day, ten days, then the cycle is skipped. */
     public const DEFAULT_RETRY_BACKOFF_HOURS = [4, 24, 72];
 
-    public const DEFAULT_MAX_CHARGE_ATTEMPTS = 3;
+    public const DEFAULT_RETRY_INTERVAL_HOURS = 24;
+
+    public const DEFAULT_MAX_CHARGE_ATTEMPTS = 10;
 
     public const DEFAULT_FAILED_PAYMENT_GRACE_DAYS = 3;
 
@@ -118,6 +120,7 @@ class MerchantBillingSettings extends Model
         return [
             'retry_backoff_hours' => 'array',
             'max_charge_attempts' => 'integer',
+            'retry_interval_hours' => 'integer',
             'failed_payment_grace_days' => 'integer',
             'min_deposit_percent' => 'integer',
             'min_deposit_amount' => 'decimal:2',
@@ -148,6 +151,7 @@ class MerchantBillingSettings extends Model
             [
                 'retry_backoff_hours' => self::DEFAULT_RETRY_BACKOFF_HOURS,
                 'max_charge_attempts' => self::DEFAULT_MAX_CHARGE_ATTEMPTS,
+                'retry_interval_hours' => self::DEFAULT_RETRY_INTERVAL_HOURS,
                 'failed_payment_grace_days' => self::DEFAULT_FAILED_PAYMENT_GRACE_DAYS,
                 'min_deposit_percent' => self::DEFAULT_MIN_DEPOSIT_PERCENT,
                 'min_deposit_amount' => null,
@@ -197,6 +201,12 @@ class MerchantBillingSettings extends Model
     public function maxChargeAttempts(): int
     {
         return max(1, (int) ($this->max_charge_attempts ?: self::DEFAULT_MAX_CHARGE_ATTEMPTS));
+    }
+
+    /** Hours between one failed attempt and the next ask for the same cycle. */
+    public function retryIntervalHours(): int
+    {
+        return max(1, (int) ($this->retry_interval_hours ?: self::DEFAULT_RETRY_INTERVAL_HOURS));
     }
 
     public function failedPaymentGraceDays(): int

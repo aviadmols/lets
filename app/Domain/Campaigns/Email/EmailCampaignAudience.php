@@ -52,6 +52,7 @@ final class EmailCampaignAudience
         PlanStatus::ACTIVE->value => SubscriptionContract::STATUS_ACTIVE,
         PlanStatus::PAUSED->value => SubscriptionContract::STATUS_PAUSED,
         PlanStatus::CANCELLED->value => SubscriptionContract::STATUS_CANCELLED,
+        PlanStatus::AWAITING_PAYMENT->value => SubscriptionContract::STATUS_FAILED,
         PlanStatus::FAILED->value => SubscriptionContract::STATUS_FAILED,
         PlanStatus::COMPLETED->value => SubscriptionContract::STATUS_EXPIRED,
     ];

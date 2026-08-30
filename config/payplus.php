@@ -26,11 +26,24 @@ return [
     'vat_rate' => (float) env('PAYPLUS_VAT_RATE', 0.18),
 
     /*
-    | Failed-charge retry backoff, in HOURS, indexed by attempt number (1-based).
-    | Reference engine: [4h, 24h, 72h]. After the final attempt the ledger row +
-    | payment transition to `failed` (no further retry scheduled).
+    |--------------------------------------------------------------------------
+    | Dunning — what happens when a cycle does not go through
+    |--------------------------------------------------------------------------
+    |
+    | A failed charge is retried ONCE A DAY for `retry_daily_attempts` days, on
+    | the SAME payment slot and therefore under the SAME idempotency key — a
+    | retry is another attempt at one debt, never a second debt.
+    |
+    | When the days run out we STOP asking for that cycle. The cycle is skipped
+    | and the plan is scheduled for its next ordinary renewal, in the future.
+    | It is never collected retroactively: a subscriber who was unreachable for
+    | a fortnight must not wake up to a fortnight of back-charges, which is how
+    | chargebacks are made. The plan waits in `awaiting_payment` throughout —
+    | still a subscriber, still scheduled, visibly unpaid.
     */
-    'retry_backoff_hours' => [4, 24, 72],
+    'retry_daily_attempts' => (int) env('PAYPLUS_RETRY_DAILY_ATTEMPTS', 10),
+
+    'retry_interval_hours' => (int) env('PAYPLUS_RETRY_INTERVAL_HOURS', 24),
 
     // Window (hours) into the future the scheduler treats a plan as "due now".
     'charge_window_hours' => (int) env('PAYPLUS_CHARGE_WINDOW_HOURS', 1),

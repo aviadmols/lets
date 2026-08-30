@@ -40,6 +40,7 @@ return [
     // Plan status labels (mirror PlanStatus values).
     'status_draft' => 'Draft',
     'status_awaiting_first_payment' => 'Awaiting first payment',
+    'status_awaiting_payment' => 'Awaiting payment',
     'status_active' => 'Active',
     'status_paused' => 'Paused',
     'status_failed' => 'Payment failed',

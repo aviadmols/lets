@@ -39,11 +39,14 @@ final class SubscriptionEligibilityController extends WooAccountController
      * lock a shopper out of the shop over a payment they never completed — the
      * exact opposite of what this rule is for.
      */
-    private const LIVE_STATUSES = [
-        PlanStatus::ACTIVE,
-        PlanStatus::PAUSED,
-        PlanStatus::FAILED,
-    ];
+    private static function liveStatuses(): array
+    {
+        // One source of truth (PlanStatus::live()), so a status added to the
+        // lifecycle can never be forgotten here — this list decides whether a
+        // paying subscriber is offered a SECOND subscription beside the one
+        // they already have.
+        return PlanStatus::live();
+    }
 
     public function __invoke(Request $request): JsonResponse
     {
@@ -63,7 +66,7 @@ final class SubscriptionEligibilityController extends WooAccountController
             // anything, and refusing a sale on a guess is the worse error: the
             // checkout hook asks again once the billing email is known.
             $blocked = $visitor->isIdentified() && $visitor->plans()
-                ->whereIn('status', array_map(static fn (PlanStatus $s): string => $s->value, self::LIVE_STATUSES))
+                ->whereIn('status', array_map(static fn (PlanStatus $s): string => $s->value, self::liveStatuses()))
                 ->exists();
 
             return response()->json($this->inShopperLocale(static fn (): array => [

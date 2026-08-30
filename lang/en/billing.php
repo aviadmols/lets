@@ -28,6 +28,7 @@ return [
     'status' => [
         'draft' => 'Draft',
         'awaiting_first_payment' => 'Awaiting first payment',
+        'awaiting_payment' => 'Awaiting payment',
         'active' => 'Active',
         'paused' => 'Paused',
         'completed' => 'Completed',
@@ -135,10 +136,10 @@ return [
         'retries' => [
             'heading' => 'Payments & retries',
             'intro' => 'How a failed charge is retried before a plan is marked failed.',
-            'backoff' => 'Retry backoff (hours)',
-            'backoff_help' => 'Hours to wait before each retry, in order. Add a value per attempt (e.g. 4, 24, 72).',
+            'interval' => 'Wait between attempts (hours)',
+            'interval_help' => 'How long to wait before asking for the same cycle again. Default: 24 hours — one attempt a day.',
             'max_attempts' => 'Maximum charge attempts',
-            'max_attempts_help' => 'How many times a charge is attempted before it gives up.',
+            'max_attempts_help' => 'How many times a cycle is asked for before it is skipped. After that the subscription stays live and awaiting payment, and the next charge is the next ordinary cycle — nothing is collected retroactively.',
             'grace_days' => 'Failed-payment grace (days)',
             'grace_days_help' => 'How long a plan may stay in retry before it is failed.',
         ],

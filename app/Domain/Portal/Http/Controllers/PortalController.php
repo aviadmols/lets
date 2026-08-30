@@ -51,6 +51,7 @@ final class PortalController extends Controller
         PlanStatus::ACTIVE,
         PlanStatus::PAUSED,
         PlanStatus::AWAITING_FIRST_PAYMENT,
+        PlanStatus::AWAITING_PAYMENT,
         PlanStatus::FAILED,
     ];
 

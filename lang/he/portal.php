@@ -39,6 +39,7 @@ return [
     // תוויות סטטוס תוכנית (תואם ערכי PlanStatus).
     'status_draft' => 'טיוטה',
     'status_awaiting_first_payment' => 'ממתין לתשלום ראשון',
+    'status_awaiting_payment' => 'ממתין לתשלום',
     'status_active' => 'פעיל',
     'status_paused' => 'מושהה',
     'status_failed' => 'התשלום נכשל',

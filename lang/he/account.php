@@ -170,6 +170,7 @@ return [
     'status' => [
         'draft' => 'טיוטה',
         'awaiting_first_payment' => 'ממתין לתשלום הראשון',
+        'awaiting_payment' => 'ממתין לתשלום',
         'active' => 'פעיל',
         'paused' => 'מושהה',
         'failed' => 'החיוב נכשל',

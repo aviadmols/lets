@@ -14,7 +14,6 @@ use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Section;
-use Filament\Forms\Components\TagsInput;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -89,7 +88,7 @@ class ManageBillingSettings extends Page implements HasForms
         $this->form->fill([
             'subscription_rail' => $shop instanceof Shop ? $shop->subscriptionRail() : Shop::RAIL_PAYPLUS,
 
-            'retry_backoff_hours' => array_map('strval', $settings->retryBackoffHours()),
+            'retry_interval_hours' => $settings->retryIntervalHours(),
             'max_charge_attempts' => $settings->maxChargeAttempts(),
             'failed_payment_grace_days' => $settings->failedPaymentGraceDays(),
 
@@ -171,17 +170,18 @@ class ManageBillingSettings extends Page implements HasForms
         return Section::make(__('billing.settings.retries.heading'))
             ->description(__('billing.settings.retries.intro'))
             ->schema([
-                TagsInput::make('retry_backoff_hours')
-                    ->label(__('billing.settings.retries.backoff'))
-                    ->helperText(__('billing.settings.retries.backoff_help'))
-                    ->placeholder('4')
-                    ->columnSpanFull(),
                 TextInput::make('max_charge_attempts')
                     ->label(__('billing.settings.retries.max_attempts'))
                     ->helperText(__('billing.settings.retries.max_attempts_help'))
                     ->numeric()
                     ->minValue(1)
-                    ->maxValue(10),
+                    ->maxValue(30),
+                TextInput::make('retry_interval_hours')
+                    ->label(__('billing.settings.retries.interval'))
+                    ->helperText(__('billing.settings.retries.interval_help'))
+                    ->numeric()
+                    ->minValue(1)
+                    ->maxValue(168),
                 TextInput::make('failed_payment_grace_days')
                     ->label(__('billing.settings.retries.grace_days'))
                     ->helperText(__('billing.settings.retries.grace_days_help'))
@@ -377,7 +377,7 @@ class ManageBillingSettings extends Page implements HasForms
 
         $this->saveSubscriptionRail($input['subscription_rail'] ?? null);
 
-        $settings->retry_backoff_hours = $this->normalizeBackoff($input['retry_backoff_hours'] ?? []);
+        $settings->retry_interval_hours = max(1, (int) ($input['retry_interval_hours'] ?? MerchantBillingSettings::DEFAULT_RETRY_INTERVAL_HOURS));
         $settings->max_charge_attempts = max(1, (int) ($input['max_charge_attempts'] ?? MerchantBillingSettings::DEFAULT_MAX_CHARGE_ATTEMPTS));
         $settings->failed_payment_grace_days = max(0, (int) ($input['failed_payment_grace_days'] ?? MerchantBillingSettings::DEFAULT_FAILED_PAYMENT_GRACE_DAYS));
 
