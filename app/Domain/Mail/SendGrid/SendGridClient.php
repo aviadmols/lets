@@ -35,6 +35,34 @@ final class SendGridClient
     /** SendGrid's own subuser-less default; we authenticate under the platform account. */
     private const DEFAULT_SUBDOMAIN = 'mail';
 
+    /** Statuses that mean the KEY was refused, not that the provider was away. */
+    public const UNAUTHORIZED_STATUSES = [401, 403];
+
+    /**
+     * Why the last call came back null.
+     *
+     * Every failure used to flatten into a single "we could not reach the
+     * provider" — which told an owner whose key had simply been refused that
+     * nothing was broken, and sent them waiting for a network that was fine.
+     * The status and the provider's own words are kept so the screen can tell
+     * a refused key from an outage.
+     *
+     * @var array{status: ?int, message: string}|null
+     */
+    private ?array $lastError = null;
+
+    /** @return array{status: ?int, message: string}|null */
+    public function lastError(): ?array
+    {
+        return $this->lastError;
+    }
+
+    /** True when the provider refused the key rather than failing to answer. */
+    public function lastCallWasUnauthorized(): bool
+    {
+        return in_array($this->lastError['status'] ?? null, self::UNAUTHORIZED_STATUSES, true);
+    }
+
     /**
      * Is the platform account configured at all?
      *
@@ -134,7 +162,7 @@ final class SendGridClient
         try {
             return $this->request()->delete($this->url('/whitelabel/domains/'.$domainId))->successful();
         } catch (\Throwable $e) {
-            $this->logFailure('delete', $e->getMessage());
+            $this->noteFailure('delete', null, $e->getMessage());
 
             return false;
         }
@@ -183,13 +211,13 @@ final class SendGridClient
         try {
             $response = $this->request()->post($this->url($path), $payload);
         } catch (\Throwable $e) {
-            $this->logFailure($path, $e->getMessage());
+            $this->noteFailure($path, null, $e->getMessage());
 
             return null;
         }
 
         if (! $response->successful()) {
-            $this->logFailure($path, 'status='.$response->status());
+            $this->noteFailure($path, $response->status(), self::providerMessage($response->json()));
 
             return null;
         }
@@ -205,13 +233,13 @@ final class SendGridClient
         try {
             $response = $this->request()->get($this->url($path));
         } catch (\Throwable $e) {
-            $this->logFailure($path, $e->getMessage());
+            $this->noteFailure($path, null, $e->getMessage());
 
             return null;
         }
 
         if (! $response->successful()) {
-            $this->logFailure($path, 'status='.$response->status());
+            $this->noteFailure($path, $response->status(), self::providerMessage($response->json()));
 
             return null;
         }
@@ -234,8 +262,30 @@ final class SendGridClient
     }
 
     /** The key is never in the message — only the path and the provider's verdict. */
-    private function logFailure(string $path, string $reason): void
+    private function noteFailure(string $path, ?int $status, string $reason): void
     {
-        Log::warning('mail.sendgrid.call_failed', ['path' => $path, 'reason' => $reason]);
+        $this->lastError = ['status' => $status, 'message' => mb_substr($reason, 0, 300)];
+
+        Log::warning('mail.sendgrid.call_failed', [
+            'path' => $path,
+            'status' => $status,
+            'reason' => $reason,
+        ]);
+    }
+
+    /** SendGrid states the real problem in errors[].message; surface it verbatim. */
+    private static function providerMessage(mixed $body): string
+    {
+        $errors = is_array($body) ? ($body['errors'] ?? []) : [];
+
+        $messages = [];
+        foreach ((array) $errors as $error) {
+            $text = trim((string) ($error['message'] ?? ''));
+            if ($text !== '') {
+                $messages[] = $text;
+            }
+        }
+
+        return $messages !== [] ? implode('; ', $messages) : '';
     }
 }

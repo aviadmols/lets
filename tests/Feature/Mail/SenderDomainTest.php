@@ -123,6 +123,37 @@ final class SenderDomainTest extends TestCase
         $this->assertNull(ShopSenderDomain::forShop((int) $shop->getKey()));
     }
 
+    public function test_a_refused_key_is_told_apart_from_an_outage(): void
+    {
+        $shop = $this->shop('sender-refused.example.com');
+
+        // SendGrid ANSWERED. It said no. Reporting that as "we could not reach
+        // the service; nothing is broken" sends the owner to wait for a network
+        // that is fine, when the one thing that would help is fixing the key.
+        Http::fake([self::API.'/*' => Http::response([
+            'errors' => [['message' => 'The provided authorization grant is invalid, expired, or revoked']],
+        ], 401)]);
+
+        $service = app(SenderDomains::class);
+        $result = $service->request($shop, 'example.co.il');
+
+        $this->assertFalse($result['ok']);
+        $this->assertSame(SenderDomains::REASON_PROVIDER_UNAUTHORIZED, $result['reason']);
+        $this->assertStringContainsString('authorization grant', $service->providerMessage());
+        $this->assertNull(ShopSenderDomain::forShop((int) $shop->getKey()));
+    }
+
+    public function test_a_forbidden_key_reads_the_same_way(): void
+    {
+        $shop = $this->shop('sender-forbidden.example.com');
+        Http::fake([self::API.'/*' => Http::response(['errors' => [['message' => 'access forbidden']]], 403)]);
+
+        $this->assertSame(
+            SenderDomains::REASON_PROVIDER_UNAUTHORIZED,
+            app(SenderDomains::class)->request($shop, 'example.co.il')['reason'],
+        );
+    }
+
     // === Checking ===
 
     public function test_a_passing_check_verifies_the_domain(): void

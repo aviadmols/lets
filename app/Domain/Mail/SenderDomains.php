@@ -36,6 +36,9 @@ final class SenderDomains
 
     public const REASON_PROVIDER_UNREACHABLE = 'provider_unreachable';
 
+    /** The provider answered — and refused the key. Not an outage. */
+    public const REASON_PROVIDER_UNAUTHORIZED = 'provider_unauthorized';
+
     public const REASON_RECORDS_MISSING = 'records_missing';
 
     public const REASON_INVALID_DOMAIN = 'invalid_domain';
@@ -77,7 +80,7 @@ final class SenderDomains
 
         $created = $this->client->authenticateDomain($domain);
         if ($created === null) {
-            return $this->fail(self::REASON_PROVIDER_UNREACHABLE);
+            return $this->fail($this->providerFailureReason());
         }
 
         // The old one goes only AFTER the new one exists — a provider that
@@ -129,10 +132,10 @@ final class SenderDomains
         if ($verdict === null) {
             $row->forceFill([
                 'last_checked_at' => now(),
-                'failure_reason' => self::REASON_PROVIDER_UNREACHABLE,
+                'failure_reason' => $this->providerFailureReason(),
             ])->save();
 
-            return $this->fail(self::REASON_PROVIDER_UNREACHABLE) + ['records' => $resolved];
+            return $this->fail($this->providerFailureReason()) + ['records' => $resolved];
         }
 
         // The provider's per-record verdicts replace ours where it gave them —
@@ -231,6 +234,27 @@ final class SenderDomains
     private function ok(): array
     {
         return ['ok' => true, 'reason' => null];
+    }
+
+    /**
+     * Why the provider call came back empty — refused, or unreachable?
+     *
+     * The difference is the whole answer to the owner. A refused key is
+     * something only they can fix, and telling them "nothing is broken, try
+     * again in a moment" sends them to wait for a network that is perfectly
+     * healthy. Everything used to collapse into that one sentence.
+     */
+    private function providerFailureReason(): string
+    {
+        return $this->client->lastCallWasUnauthorized()
+            ? self::REASON_PROVIDER_UNAUTHORIZED
+            : self::REASON_PROVIDER_UNREACHABLE;
+    }
+
+    /** The provider's own words about the last failure, when it gave any. */
+    public function providerMessage(): string
+    {
+        return trim((string) ($this->client->lastError()['message'] ?? ''));
     }
 
     /** @return array{ok: false, reason: string} */

@@ -149,6 +149,7 @@ return [
         'reason' => [
             'not_configured' => 'The platform sending service is not connected yet — talk to us.',
             'provider_unreachable' => 'We could not reach the sending service just now. Try again in a moment; nothing is broken.',
+            'provider_unauthorized' => 'The sending service refused the key. Check that it has Mail Send permission and that the account is cleared to send — publishing DNS records will not help until that is fixed.',
             'records_missing' => 'Some records are not in your DNS yet. The table shows which — DNS changes can take up to 48 hours.',
             'invalid_domain' => 'That does not look like a domain. Type the domain on its own, for example example.co.il.',
         ],
