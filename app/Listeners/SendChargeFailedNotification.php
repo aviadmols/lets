@@ -4,7 +4,7 @@ namespace App\Listeners;
 
 use App\Events\ChargeFailed;
 use App\Mail\ChargeFailedMail;
-use App\Mail\Support\MailSettingsConfigurator;
+use App\Mail\Support\CampaignMailer;
 use App\Models\ActivityEvent;
 use App\Models\InstallmentPlan;
 use App\Models\MerchantMailSettings;
@@ -12,7 +12,6 @@ use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Support\Tenant;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 
 /**
  * Sends the failed-charge notice after a charge attempt fails. Tells the customer
@@ -67,9 +66,12 @@ final class SendChargeFailedNotification
 
             try {
                 $shop = Tenant::current();
-                MailSettingsConfigurator::apply($shop);
 
-                Mail::to($recipient)->send(new ChargeFailedMail(
+                // Per-shop mailer built at RUN time on this worker — see
+                // SendChargeSucceededNotification for why the configurator +
+                // facade pattern leaks the first shop's relay across tenants
+                // on a long-lived Horizon process.
+                CampaignMailer::for($shop)->to($recipient)->send(new ChargeFailedMail(
                     shop: $shop,
                     plan: $plan,
                     payment: $payment,

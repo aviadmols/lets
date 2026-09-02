@@ -41,12 +41,23 @@ use Illuminate\Support\Facades\Mail;
  * The charge pipeline (the spine). Ported + multi-tenant-refactored from the
  * reference engine's ChargeOrchestrator. Earned-in-production shape:
  *
- *   1. lockForUpdate the plan inside a DB transaction (double-charge wall).
- *   2. Ledger pre-check: a succeeded row for the key short-circuits (no PayPlus call).
- *   3. Open a `pending` ledger row BEFORE the gateway call (reconcilable on death).
- *   4. Charge via PayPlusGatewayFactory::for($plan->shop) — per-shop creds, never config().
- *   5. On success: advance plan state INSIDE the txn (before side effects), then docs.
- *   6. On failure: schedule retry by backoff [4h,24h,72h] or fail terminally.
+ *   1. PHASE A, in a short transaction under the plan's row lock: a succeeded
+ *      ledger row for the key short-circuits (no PayPlus call); an unsettled
+ *      `pending` row means a sibling attempt is in flight and this one stands
+ *      down; then the gates (live-charging switch, manual mode, consent) and the
+ *      `pending` ledger row, which COMMITS before anything is charged.
+ *   2. PHASE B, holding nothing: charge via PayPlusGatewayFactory::for($plan->shop)
+ *      — per-shop creds, never config(). A death here leaves the committed
+ *      pending row as the reconcilable trace, which is what it is for.
+ *   3. PHASE C, in a second short transaction: re-lock, then record the outcome
+ *      — ledger, slot, plan state, retry clock. On failure the cycle is asked for
+ *      daily until the merchant's attempt budget runs out, then skipped.
+ *   4. PHASE D, after the commit: the document, the store order, the card label
+ *      and the notifications. Everything that reaches outside this database is
+ *      here, where it cannot unwind a charge that has already happened.
+ *
+ * The gateway call used to sit INSIDE one transaction spanning all of this. See
+ * charge() for what that cost and how the split pays for itself.
  *
  * Source: app/Modules/PayPlusShopifyInstallments/Services/ChargeOrchestrator.php
  *
@@ -76,11 +87,21 @@ final class ChargeOrchestrator
     private const MAX_CYCLE_ROLL_FORWARD = 240;
 
     /**
+     * How long an unsettled `pending` ledger row counts as a charge still in
+     * flight. Comfortably past the gateway's own 30-second timeout, so a slow
+     * PayPlus is never mistaken for a dead worker; short enough that a genuinely
+     * stuck row does not hold the next scheduled attempt for long.
+     *
+     * @see config/payplus.php
+     */
+    private const IN_FLIGHT_MINUTES = 15;
+
+    /**
      * The Shopify order strategy is OPTIONAL + nullable so the billing engine
      * stays decoupled from the Shopify boundary (and unit tests can run the money
      * pipeline without any Shopify wiring). When bound (by the shopify-integration
-     * service provider), onSuccess() materializes Shopify state AFTER the ledger
-     * is succeeded — a Shopify hiccup never rolls back the money truth.
+     * service provider), phase D materializes Shopify state AFTER the ledger is
+     * succeeded AND committed — a Shopify hiccup never rolls back the money truth.
      */
     public function __construct(
         private readonly DocumentPolicy $documentPolicy,
@@ -89,111 +110,76 @@ final class ChargeOrchestrator
     ) {}
 
     /**
+     * The one piece of manual-mode work phase A cannot finish itself: an email
+     * to an SMTP relay, handed across the commit boundary to charge().
+     *
+     * Set and consumed within a single charge() call, and cleared as it is read.
+     *
+     * @var array{plan_id: int, invoice_url: string}|null
+     */
+    private ?array $deferredMail = null;
+
+    /**
      * Charge one plan for a given payment type. Tenant must already be bound by
      * the job middleware; $plan is resolved under that scope.
+     *
+     * FOUR PHASES, and the boundaries between them are the money-safety design:
+     *
+     *   A. decide, and commit the `pending` ledger row       (one short txn)
+     *   B. move the money                                    (NO txn, NO lock)
+     *   C. record what happened                              (one short txn)
+     *   D. side effects — store order, document, mail, events (after everything)
+     *
+     * The gateway call used to sit inside a single transaction that also held
+     * the plan's row lock, which cost two things. A worker killed between the
+     * charge and the commit rolled back the very `pending` row that exists to
+     * survive that, so a charge that really happened left NOTHING to reconcile.
+     * And a PayPlus round trip is a 30-second timeout: a connection and a row
+     * lock were held for its whole length, on the app's hottest table.
+     * UpsellChargeService already carries this shape and the scar that taught it.
+     *
+     * What the split costs, and how it is paid for: with the lock released
+     * across phase B, two triggers can now interleave instead of queueing, so
+     * phase A refuses to start a charge while another is IN FLIGHT for the same
+     * key (an unsettled `pending` row younger than IN_FLIGHT_MINUTES). That
+     * restores exactly the serialisation the lock used to give, without holding
+     * a database transaction open across somebody else's network.
      */
     public function charge(int $planId, PaymentType $type): ChargeOutcome
     {
-        return DB::transaction(function () use ($planId, $type): ChargeOutcome {
-            // Row lock: two simultaneous triggers serialise here. BelongsToShop
-            // scopes the lookup to the bound tenant.
+        // === PHASE A — decide, and commit the pending ledger row ===
+        $prepared = DB::transaction(fn (): ChargeOutcome|array => $this->prepare($planId, $type));
+
+        if ($prepared instanceof ChargeOutcome) {
+            // A settled answer needs no money. Manual mode still owes an email,
+            // and that is a side effect like any other: it runs out here.
+            $this->runDeferredMail($planId);
+
+            return $prepared;
+        }
+
+        /** @var InstallmentPlan $plan */
+        $plan = $prepared['plan'];
+        /** @var PaymentLedger $ledger */
+        $ledger = $prepared['ledger'];
+
+        // === PHASE B — the money. Outside every transaction, holding no lock. ===
+        // A death here leaves the committed `pending` row behind: the reconcilable
+        // trace, which is the whole reason that row is written before the call.
+        $result = PayPlusGatewayFactory::for($plan->shop)->chargeWithReference(
+            $plan->activePaymentMethod(),
+            $prepared['amount'],
+            $prepared['key'],
+            ['currency' => $plan->currency],
+        );
+
+        // === PHASE C — record the outcome, in its own short transaction. ===
+        $settled = DB::transaction(function () use ($planId, $prepared, $result, $type): array {
+            // Re-lock and re-read: phase B released the lock, and everything
+            // written here must be written against what is true NOW.
             $plan = InstallmentPlan::query()->lockForUpdate()->findOrFail($planId);
-            $shopId = (int) $plan->shop_id;
-
-            $key = $this->idempotencyKeyFor($plan, $type);
-
-            // Idempotent short-circuit — a succeeded ledger row means done.
-            if (Ledger::hasSucceeded($shopId, $key)) {
-                return ChargeOutcome::skipped('already_succeeded', $key);
-            }
-
-            // THE LIVE-CHARGING SWITCH. A merchant mid-migration wants their plans
-            // active and readable long before they want a saved card touched, and
-            // this is the one place every charge passes through — scheduler, manual
-            // retry, upsell alike — so it is the only place the answer can be
-            // enforced rather than merely hoped for.
-            //
-            // It fails CLOSED and CHEAP: before the attempt event, before a payment
-            // row, before a ledger row, before the gateway. Nothing is written that
-            // a resumed shop would then have to reconcile. The skip IS recorded on
-            // the plan's timeline, because a subscription that quietly did not bill
-            // is exactly the thing a merchant must be able to discover later.
-            if (! MerchantBillingSettings::current()->chargingIsLive()) {
-                Timeline::record(
-                    kind: Timeline::KIND_CHARGING_PAUSED,
-                    details: ['type' => $type->value, 'key' => $key],
-                    planId: $plan->getKey(),
-                    shopId: $shopId,
-                );
-
-                return ChargeOutcome::skipped('charging_paused', $key);
-            }
-
-            Timeline::record(
-                kind: Timeline::KIND_CHARGE_ATTEMPT_STARTED,
-                details: ['type' => $type->value, 'key' => $key],
-                planId: $plan->getKey(),
-                shopId: $shopId,
-            );
-
-            // Manual-payment plans don't auto-charge a token (TODO: email invoice).
-            if ($plan->requires_manual_payment || $plan->activePaymentMethod() === null) {
-                return $this->handleManualMode($plan, $type, $key);
-            }
-
-            // Money-safety law: NO saved-token charge without a stored consent row
-            // (shop, customer, context-matching-the-plan-kind). Fail CLOSED — no
-            // ledger row, no gateway call — and leave the plan for admin attention.
-            if (! $this->hasConsent($plan)) {
-                Timeline::record(
-                    kind: Timeline::KIND_CONSENT_MISSING,
-                    details: [
-                        'type' => $type->value,
-                        'key' => $key,
-                        'consent_context' => $this->consentContextFor($plan),
-                    ],
-                    planId: $plan->getKey(),
-                    shopId: $shopId,
-                );
-
-                return ChargeOutcome::skipped('no_consent', $key);
-            }
-
-            $payment = $this->findOrCreatePayment($plan, $type);
-            if ($payment->status === PaymentStatus::SUCCEEDED) {
-                return ChargeOutcome::skipped('payment_already_succeeded', $key);
-            }
-
-            $amount = round((float) $payment->amount, 2);
-
-            // Ledger opens PENDING before the side effect.
-            $ledger = Ledger::open(
-                shopId: $shopId,
-                chargeContext: $type->toChargeContext()->value,
-                idempotencyKey: $key,
-                amount: $amount,
-                currency: (string) ($plan->currency ?? config('payplus.currency', 'ILS')),
-                attributes: [
-                    'plan_id' => $plan->getKey(),
-                    // The SLOT this row is the money for. A refund walks back
-                    // through it to mark the slice refunded and to give the plan
-                    // its money back; without it a refunded plan still reports
-                    // itself fully paid.
-                    'payment_id' => $payment->getKey(),
-                    'payment_method_id' => $plan->payment_method_id,
-                    'customer_id' => $plan->customer_id,
-                    'shopify_customer_id' => $plan->shopify_customer_id,
-                    'shopify_order_id' => $plan->shopify_order_id,
-                ],
-            );
-
-            $gateway = PayPlusGatewayFactory::for($plan->shop);
-            $result = $gateway->chargeWithReference(
-                $plan->activePaymentMethod(),
-                $amount,
-                $key,
-                ['currency' => $plan->currency],
-            );
+            $payment = $prepared['payment']->fresh();
+            $ledger = $prepared['ledger']->fresh();
 
             $plan->forceFill(['last_charge_attempt_at' => now()])->save();
 
@@ -201,17 +187,254 @@ final class ChargeOrchestrator
                 ? $this->onSuccess($plan, $payment, $ledger, $result, $type)
                 : $this->onFailure($plan, $payment, $ledger, $result);
         });
+
+        // === PHASE D — side effects, after the money truth is committed. ===
+        $this->runAfterEffects($settled, $result, $type, $ledger);
+
+        return $settled['outcome'];
+    }
+
+    /**
+     * PHASE A. Every gate a charge must pass, and the `pending` ledger row that
+     * commits before the gateway is called.
+     *
+     * Returns a settled ChargeOutcome when there is nothing to charge, or the
+     * bag phase B and C need.
+     *
+     * @return ChargeOutcome|array{plan: InstallmentPlan, payment: InstallmentPayment, ledger: PaymentLedger, key: string, amount: float}
+     */
+    private function prepare(int $planId, PaymentType $type): ChargeOutcome|array
+    {
+        // Row lock: two simultaneous triggers serialise here. BelongsToShop
+        // scopes the lookup to the bound tenant.
+        $plan = InstallmentPlan::query()->lockForUpdate()->findOrFail($planId);
+        $shopId = (int) $plan->shop_id;
+
+        $key = $this->idempotencyKeyFor($plan, $type);
+
+        // Idempotent short-circuit — a succeeded ledger row means done.
+        if (Ledger::hasSucceeded($shopId, $key)) {
+            return ChargeOutcome::skipped('already_succeeded', $key);
+        }
+
+        // A charge for this key is ALREADY MOVING. The row lock no longer spans
+        // the gateway call (see charge()), so this is what keeps a scheduler tick
+        // and a merchant's "charge now" from both reaching PayPlus for one debt.
+        // Judged on the row's own age: only an unsettled row younger than the
+        // window is somebody else mid-flight. An OLDER pending row is a charge
+        // whose outcome nobody ever learned, and that is a different problem with
+        // a different answer — it is not treated as in-flight here.
+        $pending = $this->unsettledRow($shopId, $key);
+
+        if ($pending !== null && $this->isInFlight($pending)) {
+            Timeline::record(
+                kind: Timeline::KIND_CHARGE_IN_FLIGHT,
+                details: ['type' => $type->value, 'key' => $key],
+                planId: $plan->getKey(),
+                shopId: $shopId,
+            );
+
+            return ChargeOutcome::skipped('charge_in_flight', $key);
+        }
+
+        // A `pending` row OLDER than the in-flight window means we asked PayPlus
+        // for money and never learned the answer — a worker killed mid-charge, a
+        // deploy, an OOM. The card may well have been charged.
+        //
+        // We do NOT ask again. This is the same doctrine `issued_documents`
+        // already runs on, for the same reason: an attempt whose outcome is
+        // unknown is never re-posted, because the two mistakes are not equal. A
+        // missing charge is a button a human presses once they have looked; a
+        // DOUBLE charge is somebody's money taken twice, a refund, and a
+        // conversation about it. So the row is marked for a person to resolve and
+        // this cycle stops here — loudly, on the plan's own timeline, not in a
+        // log that rotates.
+        if ($pending !== null) {
+            $this->flagForReconcile($pending, $plan, $type, $key);
+
+            return ChargeOutcome::skipped('needs_reconcile', $key);
+        }
+
+        // THE LIVE-CHARGING SWITCH. A merchant mid-migration wants their plans
+        // active and readable long before they want a saved card touched, and
+        // this is the one place every charge passes through — scheduler, manual
+        // retry, upsell alike — so it is the only place the answer can be
+        // enforced rather than merely hoped for.
+        //
+        // It fails CLOSED and CHEAP: before the attempt event, before a payment
+        // row, before a ledger row, before the gateway. Nothing is written that
+        // a resumed shop would then have to reconcile. The skip IS recorded on
+        // the plan's timeline, because a subscription that quietly did not bill
+        // is exactly the thing a merchant must be able to discover later.
+        if (! MerchantBillingSettings::current()->chargingIsLive()) {
+            Timeline::record(
+                kind: Timeline::KIND_CHARGING_PAUSED,
+                details: ['type' => $type->value, 'key' => $key],
+                planId: $plan->getKey(),
+                shopId: $shopId,
+            );
+
+            return ChargeOutcome::skipped('charging_paused', $key);
+        }
+
+        Timeline::record(
+            kind: Timeline::KIND_CHARGE_ATTEMPT_STARTED,
+            details: ['type' => $type->value, 'key' => $key],
+            planId: $plan->getKey(),
+            shopId: $shopId,
+        );
+
+        // Manual-payment plans don't auto-charge a token (TODO: email invoice).
+        if ($plan->requires_manual_payment || $plan->activePaymentMethod() === null) {
+            return $this->handleManualMode($plan, $type, $key);
+        }
+
+        // Money-safety law: NO saved-token charge without a stored consent row
+        // (shop, customer, context-matching-the-plan-kind). Fail CLOSED — no
+        // ledger row, no gateway call — and leave the plan for admin attention.
+        if (! $this->hasConsent($plan)) {
+            Timeline::record(
+                kind: Timeline::KIND_CONSENT_MISSING,
+                details: [
+                    'type' => $type->value,
+                    'key' => $key,
+                    'consent_context' => $this->consentContextFor($plan),
+                ],
+                planId: $plan->getKey(),
+                shopId: $shopId,
+            );
+
+            return ChargeOutcome::skipped('no_consent', $key);
+        }
+
+        $payment = $this->findOrCreatePayment($plan, $type);
+        if ($payment->status === PaymentStatus::SUCCEEDED) {
+            return ChargeOutcome::skipped('payment_already_succeeded', $key);
+        }
+
+        $amount = round((float) $payment->amount, 2);
+
+        // Ledger opens PENDING before the side effect — and COMMITS before it,
+        // now that the gateway call has left this transaction.
+        $ledger = Ledger::open(
+            shopId: $shopId,
+            chargeContext: $type->toChargeContext()->value,
+            idempotencyKey: $key,
+            amount: $amount,
+            currency: (string) ($plan->currency ?? config('payplus.currency', 'ILS')),
+            attributes: [
+                'plan_id' => $plan->getKey(),
+                // The SLOT this row is the money for. A refund walks back
+                // through it to mark the slice refunded and to give the plan
+                // its money back; without it a refunded plan still reports
+                // itself fully paid.
+                'payment_id' => $payment->getKey(),
+                'payment_method_id' => $plan->payment_method_id,
+                'customer_id' => $plan->customer_id,
+                'shopify_customer_id' => $plan->shopify_customer_id,
+                'shopify_order_id' => $plan->shopify_order_id,
+            ],
+        );
+
+        return [
+            'plan' => $plan,
+            'payment' => $payment,
+            'ledger' => $ledger,
+            'key' => $key,
+            'amount' => $amount,
+        ];
+    }
+
+    /**
+     * The `pending` ledger row for this key, if there is one.
+     *
+     * `pending` means exactly one thing: the gateway was called and the answer
+     * never came back. What that means for THIS attempt depends only on the
+     * row's age — see isInFlight().
+     */
+    private function unsettledRow(int $shopId, string $key): ?PaymentLedger
+    {
+        $row = Ledger::find($shopId, $key);
+
+        return $row !== null && (string) $row->status === LedgerStatus::PENDING->value
+            ? $row
+            : null;
+    }
+
+    /**
+     * Is that row a sibling attempt still running, rather than a stuck one?
+     *
+     * Younger than the window, another trigger is at the gateway right now and
+     * this one must not start beside it. Older, nobody is coming back with the
+     * answer, and re-asking would risk charging the same debt twice.
+     */
+    private function isInFlight(PaymentLedger $row): bool
+    {
+        $minutes = max(1, (int) config('payplus.charge_in_flight_minutes', self::IN_FLIGHT_MINUTES));
+
+        return $row->created_at !== null
+            && $row->created_at->gt(now()->subMinutes($minutes));
+    }
+
+    /**
+     * Mark a stuck charge for a human, once.
+     *
+     * The ledger row is left exactly as it is — `pending` IS the honest status,
+     * and the state machine has no edge out of it that does not claim to know
+     * something we do not. The flag rides in the row's masked-response bag and on
+     * the plan's timeline, which is where a merchant looks.
+     */
+    private function flagForReconcile(PaymentLedger $row, InstallmentPlan $plan, PaymentType $type, string $key): void
+    {
+        $raw = (array) ($row->raw_response_masked ?? []);
+
+        if (($raw['needs_reconcile'] ?? false) !== true) {
+            $row->forceFill([
+                'raw_response_masked' => array_merge($raw, [
+                    'needs_reconcile' => true,
+                    'flagged_at' => now()->toIso8601String(),
+                ]),
+            ])->save();
+
+            Timeline::record(
+                kind: Timeline::KIND_CHARGE_NEEDS_RECONCILE,
+                details: [
+                    'type' => $type->value,
+                    'key' => $key,
+                    'ledger_id' => (int) $row->getKey(),
+                    'opened_at' => $row->created_at?->toIso8601String(),
+                ],
+                planId: $plan->getKey(),
+                shopId: (int) $plan->shop_id,
+            );
+        }
+
+        Log::warning('payplus.charge.needs_reconcile', [
+            'shop_id' => (int) $plan->shop_id,
+            'plan_id' => $plan->getKey(),
+            'ledger_id' => (int) $row->getKey(),
+            'idempotency_key' => $key,
+            'opened_at' => $row->created_at?->toIso8601String(),
+        ]);
     }
 
     // === Success / failure branches ===
 
+    /**
+     * PHASE C (success). The money truth and the plan's state, and NOTHING that
+     * reaches outside this database: the store order, the document and the
+     * notification all belong to phase D, where a failure cannot unwind a
+     * committed charge.
+     *
+     * @return array{outcome: ChargeOutcome, plan: InstallmentPlan, payment: InstallmentPayment, is_final: bool, is_first_payment: bool}
+     */
     private function onSuccess(
         InstallmentPlan $plan,
         InstallmentPayment $payment,
         PaymentLedger $ledger,
         GatewayResult $result,
         PaymentType $type,
-    ): ChargeOutcome {
+    ): array {
         $masked = ResponseMasker::mask($result->raw);
 
         // First-payment detection BEFORE this slot is marked succeeded: a plan with
@@ -232,16 +455,10 @@ final class ChargeOrchestrator
 
         $payment->markSucceeded($result->transactionUid, $result->approvalNumber, $masked);
 
-        // The card just told us what it is. Our stored expiry/brand/last-four are
-        // written once at vaulting and never again — while the token keeps working
-        // through a bank's renewal, which reissues the same card with a new date.
-        // So the label drifts, and a merchant reads "expired" about somebody who
-        // paid this morning. PayPlus describes the card it charged in every
-        // response; this is the one moment that description can be trusted.
-        //
-        // A label, not a credential: it cannot affect this or any future charge,
-        // and a failure to write it must never touch the money that just moved.
-        $this->refreshCardLabel($plan, $result);
+        // The card label is refreshed in phase D (runAfterEffects): PayPlus has
+        // just described the card it charged, which is the one moment that
+        // description can be trusted — but it is bookkeeping standing next to
+        // money, and it belongs on the far side of the commit.
 
         // Advance plan money + state INSIDE the txn, BEFORE any external side effect.
         $plan->total_charged = round((float) $plan->total_charged + (float) $payment->amount, 2);
@@ -288,23 +505,12 @@ final class ChargeOrchestrator
             $plan->save();
         }
 
-        // Documents — ONLY via the policy. The orchestrator never names a type.
-        $this->maybeIssueDocument($plan, $type, $isFinal, $ledger);
-
-        // Materialize Shopify state — AFTER the ledger is succeeded + the plan
-        // advanced. Owned by shopify-integration's ShopifyOrderStrategy; the
-        // orchestrator only knows the interface. Installments-final releases
-        // fulfillment; recurring creates a new fulfillable order; deposit/first
-        // installment update the parent. A Shopify failure is logged, never
-        // unwound (the money already moved and is recorded in the ledger).
-        $this->materializePlatformOrder($plan, $type->toChargeContext(), $isFinal);
-
-        // The one-time next-order override (W25) is now consumed — it priced this cycle (amountFor)
-        // and shaped the WC order (onRecurring). Clear it so the NEXT cycle reverts to normal. Only
-        // on SUCCESS: a failed attempt keeps it, and the retry reuses the already-stamped slot amount.
-        if ($plan->plan_kind === PlanKind::RECURRING && $plan->nextOrderOverride() !== null) {
-            $plan->clearNextOrderOverride();
-        }
+        // The one-time next-order override (W25) is cleared in phase D, AFTER the
+        // store order it also shapes has been written — it prices the cycle
+        // (amountFor) and shapes the order (onRecurring), and it is spent only
+        // once both have happened. Clearing it here would hand the order strategy
+        // a plan that no longer knows about it, and the order would silently come
+        // out at the ordinary price.
 
         Timeline::record(
             kind: Timeline::KIND_CHARGE_SUCCEEDED,
@@ -318,6 +524,77 @@ final class ChargeOrchestrator
             shopId: $plan->shop_id,
         );
 
+        // The document, the store order and the notification are phase D — see
+        // runAfterEffects(). None of them may run while this transaction is open:
+        // each one reaches outside the database, and the money is already true.
+        return [
+            'outcome' => ChargeOutcome::succeeded($ledger->idempotency_key, $result->transactionUid, $isFinal),
+            'plan' => $plan,
+            'payment' => $payment,
+            'is_final' => $isFinal,
+            'is_first_payment' => $isFirstPayment,
+        ];
+    }
+
+    /**
+     * PHASE D. Everything that reaches outside this database, run only once the
+     * money truth is committed — so none of it can unwind a charge that happened.
+     *
+     * @param  array{outcome: ChargeOutcome, plan: InstallmentPlan, payment: InstallmentPayment, is_final?: bool, is_first_payment?: bool, will_retry?: bool}  $settled
+     */
+    private function runAfterEffects(array $settled, GatewayResult $result, PaymentType $type, PaymentLedger $ledger): void
+    {
+        $plan = $settled['plan'];
+        $payment = $settled['payment'];
+
+        if (! $settled['outcome']->isSucceeded()) {
+            // Notification — fired AFTER the ledger row + Timeline are written. The
+            // failed-charge email tells the customer the reason + the next retry date.
+            ChargeFailed::dispatch(
+                (int) $plan->shop_id,
+                $plan,
+                $payment,
+                $result->errorCode,
+                $result->errorMessage,
+                (bool) ($settled['will_retry'] ?? false),
+            );
+
+            return;
+        }
+
+        $isFinal = (bool) ($settled['is_final'] ?? false);
+
+        // The card just told us what it is. Our stored expiry/brand/last-four are
+        // written once at vaulting and never again — while the token keeps working
+        // through a bank's renewal, which reissues the same card with a new date.
+        // A label, not a credential: it cannot affect this or any future charge.
+        $this->refreshCardLabel($plan, $result);
+
+        // Documents — ONLY via the policy. The orchestrator never names a type.
+        $this->maybeIssueDocument($plan, $type, $isFinal, $ledger);
+
+        // Materialize store state — AFTER the ledger is succeeded + the plan
+        // advanced. Owned by each platform's order strategy; the orchestrator only
+        // knows the interface. Installments-final releases fulfillment; recurring
+        // creates a new fulfillable order; deposit/first installment update the
+        // parent. A store failure is logged, never unwound (the money already moved
+        // and is recorded in the ledger).
+        $this->materializePlatformOrder($plan, $type->toChargeContext(), $isFinal);
+
+        // The one-time next-order override (W25) is NOW fully consumed: it priced
+        // the charge and it shaped the order above. Clear it so the next cycle
+        // reverts to normal. Only on SUCCESS — a failed attempt keeps it, and the
+        // retry reuses the already-stamped slot amount.
+        //
+        // Last, deliberately. A worker that dies before this point did not write
+        // the order either, so the cycle needs a human anyway (there is a Timeline
+        // flare for that) and the surviving override is consistent with "phase D
+        // never ran". Clearing it earlier would instead produce a quietly wrong
+        // order at the ordinary price, with nothing at all to notice it by.
+        if ($plan->plan_kind === PlanKind::RECURRING && $plan->nextOrderOverride() !== null) {
+            $plan->clearNextOrderOverride();
+        }
+
         // Notification — fired AFTER the ledger row + Timeline are written (money
         // truth first; an email is never the reason a charge "happened"). The
         // listener is tenant-bound + wraps the send in try/catch so a mail failure
@@ -326,11 +603,9 @@ final class ChargeOrchestrator
             (int) $plan->shop_id,
             $plan,
             $payment,
-            $isFirstPayment,
+            (bool) ($settled['is_first_payment'] ?? false),
             $isFinal,
         );
-
-        return ChargeOutcome::succeeded($ledger->idempotency_key, $result->transactionUid, $isFinal);
     }
 
     /**
@@ -365,12 +640,18 @@ final class ChargeOrchestrator
         }
     }
 
+    /**
+     * PHASE C (failure). The ledger, the slot and the retry clock — and the
+     * notification deferred to phase D, for the same reason as on success.
+     *
+     * @return array{outcome: ChargeOutcome, plan: InstallmentPlan, payment: InstallmentPayment, will_retry: bool}
+     */
     private function onFailure(
         InstallmentPlan $plan,
         InstallmentPayment $payment,
         PaymentLedger $ledger,
         GatewayResult $result,
-    ): ChargeOutcome {
+    ): array {
         $payment->attempt_count = (int) $payment->attempt_count + 1;
         $payment->failure_code = $result->errorCode;
         $payment->failure_message = $result->errorMessage;
@@ -435,18 +716,13 @@ final class ChargeOrchestrator
             shopId: $plan->shop_id,
         );
 
-        // Notification — fired AFTER the ledger row + Timeline are written. The
-        // failed-charge email tells the customer the reason + the next retry date.
-        ChargeFailed::dispatch(
-            (int) $plan->shop_id,
-            $plan,
-            $payment,
-            $result->errorCode,
-            $result->errorMessage,
-            $willRetry,
-        );
-
-        return ChargeOutcome::failed($ledger->idempotency_key, $result->errorCode, $willRetry);
+        // The notification is phase D — see runAfterEffects().
+        return [
+            'outcome' => ChargeOutcome::failed($ledger->idempotency_key, $result->errorCode, $willRetry),
+            'plan' => $plan,
+            'payment' => $payment,
+            'will_retry' => $willRetry,
+        ];
     }
 
     // === Helpers ===
@@ -543,29 +819,6 @@ final class ChargeOrchestrator
         // TODO(phase 3.x): ShopifyDraftOrderService::createManualPaymentInvoice($plan)
         // → unpaid draft → invoice_url; pass it to the mailable below.
         $invoiceUrl = $this->manualInvoiceUrlStub($plan);
-        $recipient = $this->recipientFor($plan);
-
-        // The email is a side effect — wrap it so a mail failure never aborts the
-        // money pipeline (the marker is already set, the clock already advanced).
-        if ($recipient !== '') {
-            try {
-                Mail::to($recipient)->send(
-                    new ManualRecurringPaymentMail(
-                        shop: $plan->shop,
-                        plan: $plan,
-                        portalUrl: $this->portalUrlFor($plan),
-                        invoiceUrl: $invoiceUrl,
-                    ),
-                );
-            } catch (\Throwable $e) {
-                Log::warning('mail.manual_payment.send_failed', [
-                    'shop_id' => $plan->shop_id,
-                    'plan_id' => $plan->getKey(),
-                    'exception' => $e::class,
-                    'message' => $e->getMessage(),
-                ]);
-            }
-        }
 
         Timeline::record(
             kind: 'manual_payment_email_sent',
@@ -574,7 +827,55 @@ final class ChargeOrchestrator
             shopId: $plan->shop_id,
         );
 
+        // The send itself is a side effect reaching an SMTP relay, so it waits
+        // for the commit like every other one — charge() runs it. The marker
+        // above is what makes that safe: it is already written, so the customer
+        // cannot be invoiced twice even if this attempt's mail never leaves.
+        $this->deferredMail = ['plan_id' => (int) $plan->getKey(), 'invoice_url' => $invoiceUrl];
+
         return ChargeOutcome::skipped('manual_mode', $key);
+    }
+
+    /**
+     * Send the manual-mode invoice email queued up by phase A, if there was one.
+     *
+     * Deliberately keyed by plan id and re-read here: the model that produced it
+     * belonged to a transaction that has since committed, and this runs on the
+     * far side of it.
+     */
+    private function runDeferredMail(int $planId): void
+    {
+        $deferred = $this->deferredMail;
+        $this->deferredMail = null;
+
+        if ($deferred === null || $deferred['plan_id'] !== $planId) {
+            return;
+        }
+
+        $plan = InstallmentPlan::query()->find($planId);
+        $recipient = $plan === null ? '' : $this->recipientFor($plan);
+
+        if ($plan === null || $recipient === '') {
+            return;
+        }
+
+        try {
+            Mail::to($recipient)->send(
+                new ManualRecurringPaymentMail(
+                    shop: $plan->shop,
+                    plan: $plan,
+                    portalUrl: $this->portalUrlFor($plan),
+                    invoiceUrl: $deferred['invoice_url'],
+                ),
+            );
+        } catch (\Throwable $e) {
+            Log::warning('mail.manual_payment.send_failed', [
+                'shop_id' => $plan->shop_id,
+                'plan_id' => $plan->getKey(),
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -656,8 +957,9 @@ final class ChargeOrchestrator
         // Intro-window step-up: the FIRST slot priced past the window records the
         // price rise once (Timeline + emit-once meta flag). Stamp time, not success
         // time — the slot amount is frozen here, so this IS when the price changed.
+        // Asked by charge ordinal for the same reason amountFor() is.
         if ($payment->wasRecentlyCreated) {
-            $this->noteIntroWindowStepUp($plan, $sequence);
+            $this->noteIntroWindowStepUp($plan, $this->cycleAmounts->chargeNumberForNext($plan));
         }
 
         // status is guarded (the slot state machine owns it). A brand-new slot is
@@ -670,36 +972,62 @@ final class ChargeOrchestrator
         return $payment;
     }
 
+    /**
+     * WHICH SLOT this attempt belongs to.
+     *
+     * Derived from the count of SUCCEEDED payments, so every attempt at ONE debt
+     * lands on ONE slot under ONE idempotency key: counting every row instead
+     * would hand each retry a new sequence, the gateway could no longer collapse
+     * two attempts at one debt, and the attempt counter would restart forever so
+     * the dunning window would never close.
+     *
+     * But a cycle we GAVE UP ON is not the same debt as the cycle after it, and
+     * the succeeded-count alone cannot tell them apart — nobody paid either, so
+     * both resolve to the same number. Left there, next month reopens last
+     * month's slot: it inherits a spent attempt counter (so the new cycle gets
+     * one ask instead of the merchant's ten, for the rest of the subscription's
+     * life) and last month's frozen price (so a price the merchant has since
+     * changed is never collected).
+     *
+     * So a slot that has been given up on — terminally `failed`, no retry
+     * scheduled — is closed, and the next cycle opens the slot after it. Only
+     * for RECURRING: an installments plan owes a fixed total, its slices are
+     * numbered against that total, and a slice nobody paid is still owed.
+     */
     private function nextSequenceFor(InstallmentPlan $plan, PaymentType $type): int
     {
-        // Recurring: the cycle index advances every charge. Installments: the
-        // next unpaid slot. We derive from the count of existing payments so a
-        // re-run of the same due cycle reuses the same sequence (idempotent).
-        if ($plan->plan_kind === PlanKind::RECURRING) {
-            $succeeded = $plan->payments()->where('status', PaymentStatus::SUCCEEDED->value)->count();
+        $sequence = $plan->payments()->where('status', PaymentStatus::SUCCEEDED->value)->count() + 1;
 
-            return $succeeded + 1;
+        if ($plan->plan_kind !== PlanKind::RECURRING) {
+            return $sequence;
         }
 
-        // Installments: the next UNPAID slot — counted the same way as the
-        // recurring branch, and for the same reason. Counting every row instead
-        // would hand each retry of a failed slot a NEW sequence, and therefore a
-        // new idempotency key: the gateway could no longer collapse two attempts
-        // at one debt, and the attempt counter would restart forever so the
-        // dunning window would never close.
-        $succeeded = $plan->payments()->where('status', PaymentStatus::SUCCEEDED->value)->count();
+        $candidate = $plan->payments()->where('sequence', $sequence)->first();
 
-        return $succeeded + 1;
+        $abandoned = $candidate !== null
+            && $candidate->status === PaymentStatus::FAILED
+            && $candidate->next_retry_at === null;
+
+        if (! $abandoned) {
+            return $sequence;
+        }
+
+        // A fresh debt, after the one we stopped asking for.
+        return (int) $plan->payments()->max('sequence') + 1;
     }
 
     private function amountFor(InstallmentPlan $plan, PaymentType $type, int $sequence): float
     {
         if ($plan->plan_kind === PlanKind::RECURRING) {
             // The shared resolver owns the recurring ladder (override → stepped-up
-            // regular_amount past the intro window → installment_amount). The slot
-            // sequence IS the charge ordinal with checkout counted as #1 (the
-            // checkout occupies the succeeded seq-0 slot), so it feeds straight in.
-            return $this->cycleAmounts->amountForCharge($plan, $sequence);
+            // regular_amount past the intro window → installment_amount), and it is
+            // asked in terms of the CHARGE ORDINAL — which is what the intro window
+            // counts. Ordinarily that equals the slot sequence, checkout counted as
+            // #1 (it occupies the succeeded seq-0 slot). It stops equalling it after
+            // a cycle we gave up on: that cycle closes its slot and the next one
+            // opens a later sequence, but nobody was charged for it, so it must not
+            // burn a discounted cycle the customer never received.
+            return $this->cycleAmounts->amountForCharge($plan, $this->cycleAmounts->chargeNumberForNext($plan));
         }
 
         // Installments: per-slot amount, capped at the remaining balance.
@@ -834,8 +1162,19 @@ final class ChargeOrchestrator
             return;
         }
 
-        // draft/awaiting_first_payment have to pass through active to be legal.
-        if (in_array($current, [PlanStatus::DRAFT, PlanStatus::AWAITING_FIRST_PAYMENT], true)) {
+        // awaiting_first_payment → awaiting_payment is a legal edge; draft is NOT,
+        // and must be walked up one rung first — exactly as ensureActiveThen()
+        // does on the success side. Getting this wrong does not produce a wrong
+        // status: it throws IllegalTransitionException from inside the charge,
+        // after the gateway has already been called.
+        if ($current === PlanStatus::DRAFT) {
+            $plan->transitionTo(PlanStatus::AWAITING_FIRST_PAYMENT, ['action' => 'charge_attempted']);
+            $plan->transitionTo(PlanStatus::AWAITING_PAYMENT, ['action' => 'charge_failed']);
+
+            return;
+        }
+
+        if ($current === PlanStatus::AWAITING_FIRST_PAYMENT) {
             $plan->transitionTo(PlanStatus::AWAITING_PAYMENT, ['action' => 'charge_failed']);
 
             return;

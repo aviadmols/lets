@@ -47,6 +47,16 @@ final class CampaignsEmailServiceProvider extends ServiceProvider
     /** Nightly, off-peak, after the sign-in code prune. */
     private const PRUNE_CRON = '25 3 * * *';
 
+    /**
+     * Overlap-lock lifetimes, MINUTES — never Laravel's 24-hour default. A run
+     * that is KILLED rather than finished never releases its lock, and on the
+     * dispatcher that would mean scheduled campaigns silently not going out for
+     * a day because a container restarted.
+     */
+    private const DISPATCH_LOCK_MINUTES = 10;
+
+    private const PRUNE_LOCK_MINUTES = 60;
+
     public function register(): void
     {
         $this->app->singleton(EmailCampaignAudience::class);
@@ -74,12 +84,12 @@ final class CampaignsEmailServiceProvider extends ServiceProvider
 
             $schedule->command(DispatchScheduledCampaignsCommand::SIGNATURE)
                 ->cron(self::DISPATCH_CRON)
-                ->withoutOverlapping()
+                ->withoutOverlapping(self::DISPATCH_LOCK_MINUTES)
                 ->onOneServer();
 
             $schedule->command('model:prune', ['--model' => [CustomerLoginToken::class]])
                 ->cron(self::PRUNE_CRON)
-                ->withoutOverlapping()
+                ->withoutOverlapping(self::PRUNE_LOCK_MINUTES)
                 ->onOneServer();
         });
     }

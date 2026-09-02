@@ -5,8 +5,9 @@ namespace App\Listeners;
 use App\Events\ChargeSucceeded;
 use App\Mail\ChargeSucceededMail;
 use App\Mail\FirstPaymentWelcomeMail;
-use App\Mail\Support\MailSettingsConfigurator;
+use App\Mail\Support\CampaignMailer;
 use App\Models\ActivityEvent;
+use App\Models\InstallmentPlan;
 use App\Models\MerchantMailSettings;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
@@ -66,13 +67,19 @@ final class SendChargeSucceededNotification
 
             try {
                 $shop = Tenant::current();
-                MailSettingsConfigurator::apply($shop); // per-shop SMTP override (no-op unless enabled)
 
                 $mailable = $event->isFirstPayment
                     ? new FirstPaymentWelcomeMail(shop: $shop, plan: $plan, payment: $event->payment)
                     : new ChargeSucceededMail(shop: $shop, plan: $plan, payment: $event->payment);
 
-                Mail::to($recipient)->send($mailable);
+                // Built per shop at RUN time, never written into shared config.
+                // This listener runs on a Horizon WORKER: the old
+                // MailSettingsConfigurator::apply() + Mail:: facade pattern caches
+                // the first shop's resolved smtp mailer (transport AND From) for
+                // every later job on the same long-lived process — shop B's charge
+                // email leaving through shop A's relay. CampaignMailer is the
+                // queue-time path for exactly this reason.
+                CampaignMailer::for($shop)->to($recipient)->send($mailable);
 
                 $this->markSent($plan, $guardKey);
 
@@ -106,7 +113,7 @@ final class SendChargeSucceededNotification
         return ! empty($meta[$key] ?? null);
     }
 
-    private function markSent(\App\Models\InstallmentPlan $plan, string $key): void
+    private function markSent(InstallmentPlan $plan, string $key): void
     {
         $meta = (array) ($plan->meta ?? []);
         $meta[$key] = now()->toIso8601String();

@@ -5,6 +5,7 @@ namespace App\Filament\Pages;
 use App\Domain\Mail\PlatformSenderDomain;
 use App\Domain\Mail\SenderDomains;
 use App\Mail\Support\CampaignMailer;
+use App\Mail\Support\MailTransport;
 use App\Models\PlatformMailSettings;
 use App\Models\Shop;
 use App\Support\Ui\PanelAccess;
@@ -21,6 +22,7 @@ use Filament\Forms\Get;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Throwable;
 
@@ -343,12 +345,25 @@ class ManagePlatformMail extends Page implements HasForms
      */
     public function sendTest(string $recipient): void
     {
-        try {
-            $shop = Shop::query()->orderBy('id')->first();
+        // Which ladder — and WHOSE — this test will actually exercise, named
+        // before sending so both toasts and both log lines can say it. The
+        // lowest-id shop's ladder is not necessarily the platform account: a
+        // shop with its own SMTP override would make this button prove nothing
+        // about the SES/SendGrid key the owner is configuring, and the green
+        // toast must not hide that.
+        $shop = Shop::query()->orderBy('id')->first();
+        $chosen = $shop instanceof Shop ? MailTransport::for($shop) : null;
+        $relay = $chosen !== null
+            ? (string) ($chosen['config']['host'] ?? config('mail.default'))
+            : (string) config('mail.default');
+        $as = $shop instanceof Shop
+            ? __('platform_mail.test.as_shop', ['name' => (string) $shop->name, 'relay' => $relay])
+            : __('platform_mail.test.as_platform', ['relay' => $relay]);
 
+        try {
             $mailer = $shop instanceof Shop ? CampaignMailer::for($shop) : Mail::mailer();
 
-            $mailer->send([], [], function ($message) use ($recipient): void {
+            $sent = $mailer->send([], [], function ($message) use ($recipient): void {
                 // A PLAIN STRING. Illuminate\Mail\Message::to() builds the
                 // Symfony Address itself, so handing it a Mailables\Address
                 // makes it call `new Address($anAddressObject)` and die on the
@@ -359,14 +374,28 @@ class ManagePlatformMail extends Page implements HasForms
                     ->html(e(__('platform_mail.test.body')));
             });
 
+            Log::info('platform_mail.test.sent', [
+                'shop_id' => $shop?->getKey(),
+                'relay' => $relay,
+                'message_id' => $sent?->getMessageId(),
+            ]);
+
             Notification::make()
                 ->success()
                 ->title(__('platform_mail.test.sent', ['email' => $recipient]))
+                ->body($as)
                 ->send();
         } catch (Throwable $e) {
             // The provider's own words: "the From is not a verified sender" is
             // the whole diagnosis, and hiding it behind "sending failed" would
-            // send the owner hunting through logs they may not have.
+            // send the owner hunting through logs they may not have. It is ALSO
+            // logged: the owner's screen disappears; the trace must not.
+            Log::error('platform_mail.test.failed', [
+                'shop_id' => $shop?->getKey(),
+                'relay' => $relay,
+                'error' => $e->getMessage(),
+            ]);
+
             Notification::make()
                 ->danger()
                 ->title(__('platform_mail.test.failed'))

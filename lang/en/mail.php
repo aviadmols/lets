@@ -75,6 +75,7 @@ return [
         'template' => 'Template to test',
         'recipient' => 'Send to',
         'sent' => 'Test email sent to :email.',
+        'sent_via' => 'Handed to :relay for delivery. If it does not arrive, check the spam folder first.',
         'failed' => 'Could not send the test email (:reason).',
     ],
 

@@ -5,6 +5,7 @@ namespace App\Domain\Campaigns\Email\Models;
 use App\Models\Concerns\BelongsToShop;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * One person's enrolment in one email campaign — the idempotency wall.
@@ -79,6 +80,30 @@ class EmailCampaignRecipient extends Model
     public function campaign(): BelongsTo
     {
         return $this->belongsTo(EmailCampaign::class, 'email_campaign_id');
+    }
+
+    /**
+     * The passwordless account link written into THIS person's email, if the
+     * campaign's body asked for one (a credential nobody will click is never
+     * minted, so most rows have none).
+     */
+    public function loginToken(): HasOne
+    {
+        return $this->hasOne(CustomerLoginToken::class, 'recipient_id');
+    }
+
+    /**
+     * Did this person actually open their account from the email?
+     *
+     * NULL means the question does not apply — no link was written to them, so
+     * "did not click" would be a lie. `consumed_at` is the first click and the
+     * anchor of the reuse window, which makes it exactly "they arrived".
+     */
+    public function clickedAccountLink(): ?bool
+    {
+        $token = $this->loginToken;
+
+        return $token === null ? null : $token->consumed_at !== null;
     }
 
     /** A human label for the list: the name, else the address. */

@@ -16,6 +16,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -25,16 +26,17 @@ use Throwable;
  * TenantContext middleware binds the shop in handle() and ALWAYS clears it after,
  * and shop_id is carried EXPLICITLY — never inferred from global state.
  *
- * WHY QUEUED: ChargeOrchestrator::charge() runs inside a DB transaction, so no
- * HTTP may happen there. Dispatching (afterCommit) keeps a slow or dead invoicing
- * provider from holding a database lock, slowing a charge, or — worst of all —
- * rolling back money that already moved.
+ * WHY QUEUED: an invoicing provider is somebody else's HTTP endpoint, and the
+ * money path must never wait on one. The charge pipeline now calls this from its
+ * own post-commit phase, and the refund and activation paths still call it from
+ * inside their transactions — queueAfterCommit() below serves both, and holds
+ * the one subtlety that makes it safe.
  *
  * Queue-level retries are SAFE because DocumentIssuer keys every document to the
  * money event: a retry reuses the same issued_documents row and can never mint a
  * second document.
  */
-final class IssueDocumentJob implements ShouldQueue, ShouldBeUnique
+final class IssueDocumentJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable;
     use InteractsWithQueue;
@@ -42,8 +44,17 @@ final class IssueDocumentJob implements ShouldQueue, ShouldBeUnique
     use SerializesModels;
 
     // === CONSTANTS ===
-    /** ShouldBeUnique lock TTL (seconds) — released when the job completes. */
-    public int $uniqueFor = 600;
+    /**
+     * ShouldBeUnique lock TTL (seconds) — released when the job completes.
+     *
+     * Must outlast the whole RETRY chain, not one attempt: with tries() = 3 and
+     * a [60, 600] backoff a job can legitimately still be waiting 11 minutes in,
+     * and a lock that expired underneath it would let a second dispatch enqueue
+     * the same document beside the one still running. The unique index on
+     * (shop_id, idempotency_key) is the real wall; this is the layer that stops
+     * the two from racing for it at all.
+     */
+    public int $uniqueFor = 1800;
 
     /**
      * @param  int  $shopId  the tenant, carried explicitly
@@ -73,13 +84,25 @@ final class IssueDocumentJob implements ShouldQueue, ShouldBeUnique
      * Every money-path hook calls THIS rather than dispatch() directly, for two
      * reasons that are easy to get wrong separately:
      *
-     *   - afterCommit(): the callers run inside DB::transaction, so the job must not
+     *   - AFTER THE COMMIT: several callers (PlanActivationService, RefundService,
+     *     UpsellChargeService) run inside DB::transaction, and the job must not
      *     become visible to a worker before the money it describes is committed —
      *     otherwise the worker reads a ledger row that does not exist yet.
-     *   - try/catch: an afterCommit callback throws AFTER the money is committed, so
-     *     an unreachable queue would surface as a failed charge to the caller even
-     *     though the charge succeeded. A missing document is recoverable; a charge
-     *     falsely reported as failed is not.
+     *   - THE CATCH MUST WRAP THE PUSH ITSELF. This used to be written as
+     *     `dispatch(...)->afterCommit()` inside a try/catch, which does not do
+     *     what it reads like: with a transaction open, `afterCommit()` only
+     *     REGISTERS the push, and the push happens later from the transaction
+     *     manager's commit callbacks — outside this try. Laravel runs those
+     *     callbacks with no error handling of its own (executeCallbacks() in
+     *     DatabaseTransactionsManager), so an unreachable queue threw straight
+     *     out of the caller's DB::transaction, and a charge that had succeeded
+     *     and committed was reported to the merchant as failed. A missing
+     *     document is a button-click; a charge falsely reported as failed is
+     *     someone charging the customer a second time by hand.
+     *
+     *     DB::afterCommit() takes the callback, so the try/catch travels WITH the
+     *     work to wherever it actually runs — and with no transaction open it
+     *     simply runs now.
      *
      * @param  array<string, mixed>|null  $order
      */
@@ -92,15 +115,29 @@ final class IssueDocumentJob implements ShouldQueue, ShouldBeUnique
         ?float $amount = null,
         ?string $itemTitle = null,
     ): void {
+        $push = static function () use ($shopId, $context, $ledgerId, $order, $linkedDocumentId, $amount, $itemTitle): void {
+            try {
+                self::dispatch($shopId, $context, $ledgerId, $order, $linkedDocumentId, $amount, $itemTitle);
+            } catch (Throwable $e) {
+                Log::warning('invoicing.dispatch_failed', [
+                    'shop_id' => $shopId,
+                    'context' => $context,
+                    'ledger_id' => $ledgerId,
+                    'exception' => $e::class,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+        };
+
         try {
-            self::dispatch($shopId, $context, $ledgerId, $order, $linkedDocumentId, $amount, $itemTitle)->afterCommit();
+            DB::afterCommit($push);
         } catch (Throwable $e) {
-            Log::warning('invoicing.dispatch_failed', [
+            // Registering the callback itself failed — vanishingly unlikely, and
+            // still not a reason to fail a charge that has already happened.
+            Log::warning('invoicing.dispatch_registration_failed', [
                 'shop_id' => $shopId,
                 'context' => $context,
-                'ledger_id' => $ledgerId,
                 'exception' => $e::class,
-                'message' => $e->getMessage(),
             ]);
         }
     }

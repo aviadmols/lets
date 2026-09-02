@@ -7,6 +7,7 @@ use App\Domain\Mail\SendGrid\SendGridClient;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Filament\Forms\Components\HtmlCodeEditor;
 use App\Mail\Support\MailSettingsConfigurator;
+use App\Mail\Support\MailTransport;
 use App\Models\MerchantMailSettings;
 use App\Models\Shop;
 use App\Models\ShopSenderDomain;
@@ -33,6 +34,7 @@ use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Contracts\View\View;
 use Illuminate\Mail\Mailables\Address;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\HtmlString;
 use Throwable;
@@ -617,6 +619,15 @@ class ManageMailSettings extends Page implements HasForms
         $settings = MerchantMailSettings::current();
         $preview = EmailPreviewRenderer::preview($template, $this->liveSettingsFor($template, $settings));
 
+        // Name the relay BEFORE sending, so both toasts can say where the mail
+        // went. A green toast that does not name its transport is how "sent"
+        // and "written to a logfile" become indistinguishable — and how a
+        // support thread starts with no facts at all.
+        $chosen = MailTransport::for($shop);
+        $relay = $chosen !== null
+            ? (string) ($chosen['config']['host'] ?? config('mail.default'))
+            : (string) config('mail.default');
+
         try {
             MailSettingsConfigurator::apply($shop); // per-shop SMTP (no-op when off)
 
@@ -624,18 +635,42 @@ class ManageMailSettings extends Page implements HasForms
                 ? new Address($settings->from_address, $settings->from_name ?: $shop->name)
                 : null;
 
-            Mail::html($preview['html'], function ($message) use ($recipient, $preview, $from): void {
+            $sent = Mail::html($preview['html'], function ($message) use ($recipient, $preview, $from): void {
                 $message->to($recipient)->subject($preview['subject']);
                 if ($from !== null) {
                     $message->from($from->address, $from->name);
                 }
             });
 
-            Notification::make()->title(__('mail.test.sent', ['email' => $recipient]))->success()->send();
+            Log::info('mail.test.sent', [
+                'shop_id' => (int) $shop->getKey(),
+                'template' => $template,
+                'relay' => $relay,
+                'message_id' => $sent?->getMessageId(),
+            ]);
+
+            Notification::make()
+                ->title(__('mail.test.sent', ['email' => $recipient]))
+                ->body(__('mail.test.sent_via', ['relay' => $relay]))
+                ->success()
+                ->send();
         } catch (Throwable $e) {
+            // The SMTP reply IS the diagnosis ("535 auth failed", "554 address
+            // not verified") — the class name alone hides it from the one person
+            // looking at the screen. And it goes to the log too: a merchant
+            // reporting "nothing arrives" must leave a server-side trace.
+            Log::error('mail.test.failed', [
+                'shop_id' => (int) $shop->getKey(),
+                'template' => $template,
+                'relay' => $relay,
+                'error' => $e->getMessage(),
+            ]);
+
             Notification::make()
                 ->title(__('mail.test.failed', ['reason' => class_basename($e)]))
+                ->body(mb_substr($e->getMessage(), 0, 300))
                 ->danger()
+                ->persistent()
                 ->send();
         }
     }

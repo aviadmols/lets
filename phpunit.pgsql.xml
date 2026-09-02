@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  THE MONEY SUITE, ON THE DATABASE PRODUCTION ACTUALLY USES.
+
+  The main suite runs on SQLite, which is fast and hermetic and hides one whole
+  family of bug: on Postgres a statement that ERRORS inside a transaction aborts
+  the entire transaction, and every statement after it fails with "current
+  transaction is aborted". SQLite does not do that, so a try/catch around a
+  failed insert looks like it works in the suite and quietly takes the ledger
+  write next to it down in production. AuditWriteSavepointTest pins the
+  mechanism that prevents it on any driver; this config is how the SYMPTOM gets
+  exercised for real.
+
+  Postgres also disagrees with SQLite about comparing a bigint to text (it
+  aborts rather than not matching), about NULL inside an OR branch, and about
+  functional indexes — all of which this codebase has already been bitten by and
+  commented about.
+
+  RUN IT:
+      createdb lets_test
+      DB_HOST=127.0.0.1 DB_DATABASE=lets_test DB_USERNAME=postgres DB_PASSWORD=postgres \
+        vendor/bin/phpunit -c phpunit.pgsql.xml
+
+  In CI, point the same variables at a postgres service container. This is a
+  SECOND leg, not a replacement: the SQLite suite stays the fast default.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+>
+    <testsuites>
+        <!-- The money and the mail: where a driver difference is expensive. -->
+        <testsuite name="Money">
+            <directory>tests/Feature/Billing</directory>
+            <directory>tests/Feature/Invoicing</directory>
+            <directory>tests/Feature/Lifecycle</directory>
+            <directory>tests/Feature/Upsell</directory>
+            <file>tests/Feature/ChargeIdempotencyTest.php</file>
+            <file>tests/Feature/ConsentGateTest.php</file>
+            <file>tests/Feature/DunningPolicyTest.php</file>
+            <file>tests/Feature/GuardedTransitionTest.php</file>
+            <file>tests/Feature/PaymentSlotRetryTest.php</file>
+            <file>tests/Feature/TenantIsolationTest.php</file>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>app</directory>
+        </include>
+    </source>
+    <php>
+        <ini name="memory_limit" value="512M"/>
+        <env name="APP_ENV" value="testing"/>
+        <env name="APP_MAINTENANCE_DRIVER" value="file"/>
+        <env name="BCRYPT_ROUNDS" value="4"/>
+        <env name="CACHE_STORE" value="array"/>
+
+        <!-- The point of this file. Host/database/credentials come from the
+             environment so the same config serves a laptop and a CI service. -->
+        <env name="DB_CONNECTION" value="pgsql"/>
+
+        <!-- SAFETY, and it is not theoretical: a `url` in the connection config
+             overrides the driver, which is how a `--database=sqlite` once dropped
+             a live Railway Postgres. Laravel's env() maps the string "null" to
+             null; an empty string would still be parsed as a URL. -->
+        <env name="DB_URL" value="null"/>
+        <env name="DATABASE_URL" value="null"/>
+
+        <env name="TENANT_CREDENTIALS_KEY" value="base64:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="/>
+        <env name="MAIL_MAILER" value="array"/>
+        <env name="PULSE_ENABLED" value="false"/>
+        <env name="QUEUE_CONNECTION" value="sync"/>
+        <env name="SESSION_DRIVER" value="array"/>
+        <env name="TELESCOPE_ENABLED" value="false"/>
+        <env name="SHOPIFY_API_KEY" value=""/>
+        <env name="SHOPIFY_API_SECRET" value=""/>
+        <env name="SHOPIFY_WEBHOOK_SECRET" value=""/>
+        <env name="SHOPIFY_CUSTOM_API_KEY" value=""/>
+        <env name="SHOPIFY_CUSTOM_API_SECRET" value=""/>
+    </php>
+</phpunit>

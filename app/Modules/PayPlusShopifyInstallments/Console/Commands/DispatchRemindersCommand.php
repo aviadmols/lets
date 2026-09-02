@@ -2,17 +2,15 @@
 
 namespace App\Modules\PayPlusShopifyInstallments\Console\Commands;
 
-use App\Mail\RecurringPaymentReminderMail;
-use App\Mail\Support\MailSettingsConfigurator;
 use App\Models\InstallmentPlan;
 use App\Models\MerchantMailSettings;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
-use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
+use App\Modules\PayPlusShopifyInstallments\Jobs\SendReminderEmailJob;
 use App\Support\Tenant;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Upcoming-charge reminder fan-out, across ALL tenants. For each shop that has
@@ -34,6 +32,9 @@ final class DispatchRemindersCommand extends Command
 
     /** Heartbeat key for liveness monitoring (mirrors the due-dispatch command). */
     private const HEARTBEAT_KEY = 'pps_installments:dispatch_reminders:last_run_at';
+
+    /** Shops looked up once per run, not once per plan. @var array<int, Shop> */
+    private array $shops = [];
 
     public function handle(): int
     {
@@ -67,7 +68,7 @@ final class DispatchRemindersCommand extends Command
                 }
             });
 
-        \Illuminate\Support\Facades\Cache::forever(self::HEARTBEAT_KEY, $now->toIso8601String());
+        Cache::forever(self::HEARTBEAT_KEY, $now->toIso8601String());
 
         $this->info("Sent {$sent} reminder email(s).");
 
@@ -75,18 +76,18 @@ final class DispatchRemindersCommand extends Command
     }
 
     /**
-     * Send one plan's reminder if its shop has reminders on, the plan is inside
-     * THIS shop's offset window, and it has not already been reminded this cycle.
-     * Returns true when an email was actually sent.
+     * Queue one plan's reminder if its shop has reminders on and the plan is
+     * inside THIS shop's offset window. Returns true when a job was dispatched —
+     * the send itself, and the per-cycle guard, belong to SendReminderEmailJob.
      */
-    private function remindPlan(InstallmentPlan $plan, \Illuminate\Support\Carbon $now): bool
+    private function remindPlan(InstallmentPlan $plan, Carbon $now): bool
     {
-        $shop = Shop::query()->whereKey($plan->shop_id)->first();
+        $shop = $this->shop((int) $plan->shop_id);
         if ($shop === null) {
             return false;
         }
 
-        return (bool) Tenant::run($shop, function () use ($plan, $shop, $now): bool {
+        return (bool) Tenant::run($shop, function () use ($plan, $now): bool {
             $settings = MerchantMailSettings::current();
 
             if (! $settings->reminder_enabled) {
@@ -94,57 +95,36 @@ final class DispatchRemindersCommand extends Command
             }
 
             // Filter against THIS shop's exact offset (the scan used the widest).
-            $offset = (int) $settings->reminder_offset_hours;
-            $shopWindowEnd = $now->copy()->addHours($offset);
+            $shopWindowEnd = $now->copy()->addHours((int) $settings->reminder_offset_hours);
             if ($plan->next_charge_at === null || $plan->next_charge_at->gt($shopWindowEnd)) {
                 return false;
             }
 
-            // Idempotent per cycle: guard on the cycle date so each cycle gets at
-            // most one reminder even across overlapping scheduler runs.
+            // A cheap pre-filter only. The guard is CLAIMED in the job, where the
+            // message actually leaves — a cycle marked reminded by a job that
+            // never ran would be a reminder nobody receives and nobody retries.
             $cycle = $plan->next_charge_at->format('Y-m-d');
-            $guardKey = 'reminder_email_sent_at:'.$cycle;
-            if (! empty(($plan->meta ?? [])[$guardKey] ?? null)) {
+            if (! empty(($plan->meta ?? [])[SendReminderEmailJob::GUARD_PREFIX.$cycle] ?? null)) {
                 return false;
             }
 
-            $recipient = (string) ($plan->customer_email ?? '');
-            if ($recipient === '') {
+            if ((string) ($plan->customer_email ?? '') === '') {
                 return false;
             }
 
-            try {
-                MailSettingsConfigurator::apply($shop);
+            SendReminderEmailJob::dispatch((int) $plan->shop_id, (int) $plan->getKey(), $cycle);
 
-                Mail::to($recipient)->send(new RecurringPaymentReminderMail(
-                    shop: $shop,
-                    plan: $plan,
-                    portalUrl: $settings->portal_store_page_url ?: null,
-                ));
-
-                $meta = (array) ($plan->meta ?? []);
-                $meta[$guardKey] = $now->toIso8601String();
-                $plan->meta = $meta;
-                $plan->save();
-
-                Timeline::record(
-                    kind: 'reminder_email_sent',
-                    details: ['cycle' => $cycle, 'offset_hours' => $offset],
-                    planId: $plan->getKey(),
-                    shopId: $plan->shop_id,
-                );
-
-                return true;
-            } catch (\Throwable $e) {
-                Log::warning('mail.reminder.send_failed', [
-                    'shop_id' => $plan->shop_id,
-                    'plan_id' => $plan->getKey(),
-                    'exception' => $e::class,
-                    'message' => $e->getMessage(),
-                ]);
-
-                return false;
-            }
+            return true;
         });
+    }
+
+    /** One Shop row per shop per run, not one per plan. */
+    private function shop(int $shopId): ?Shop
+    {
+        if (! array_key_exists($shopId, $this->shops)) {
+            $this->shops[$shopId] = Shop::query()->whereKey($shopId)->first();
+        }
+
+        return $this->shops[$shopId];
     }
 }

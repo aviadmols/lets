@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\SubscriptionResource\Pages;
 
 use App\Domain\Billing\CycleAmountResolver;
+use App\Domain\Billing\StuckChargeResolver;
 use App\Domain\Lifecycle\ChargeNowService;
 use App\Domain\Lifecycle\SubscriptionEditService;
 use App\Domain\Lifecycle\SubscriptionLifecycleService;
@@ -27,10 +28,12 @@ use App\Support\Ui\EventPresenter;
 use App\Support\Ui\Money;
 use Filament\Actions;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Get;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
@@ -192,6 +195,38 @@ class ViewSubscription extends Page
                     'amount' => Money::format((float) $this->record->installment_amount, $this->record->currency ?: Money::DEFAULT_CURRENCY),
                 ]))
                 ->action(fn () => $this->chargeNow()),
+
+            // A charge whose outcome nobody learned. The pipeline refuses to ask
+            // again — it cannot know whether the card was charged — so it waits
+            // here for somebody who has looked at the PayPlus dashboard. Hidden
+            // entirely unless there is one, because it is not a normal state.
+            Actions\Action::make('resolveStuckCharge')
+                ->label(__('subscriptions.action.reconcile.label'))
+                ->icon('heroicon-m-exclamation-triangle')
+                ->color('warning')
+                ->visible(fn (): bool => $this->stuckCharge() !== null)
+                ->modalHeading(__('subscriptions.action.reconcile.heading'))
+                ->modalDescription(fn (): string => __('subscriptions.action.reconcile.body', [
+                    'amount' => Money::format(
+                        (float) ($this->stuckCharge()?->amount ?? 0),
+                        $this->record->currency ?: Money::DEFAULT_CURRENCY,
+                    ),
+                    'when' => $this->stuckCharge()?->created_at?->format('d M Y H:i') ?? '—',
+                ]))
+                ->form([
+                    Radio::make('outcome')
+                        ->label(__('subscriptions.action.reconcile.question'))
+                        ->options([
+                            StuckChargeResolver::OUTCOME_DID_NOT => __('subscriptions.action.reconcile.did_not'),
+                            StuckChargeResolver::OUTCOME_TOOK => __('subscriptions.action.reconcile.took'),
+                        ])
+                        ->required(),
+                    TextInput::make('transaction_uid')
+                        ->label(__('subscriptions.action.reconcile.uid'))
+                        ->helperText(__('subscriptions.action.reconcile.uid_help'))
+                        ->visible(fn (Get $get): bool => $get('outcome') === StuckChargeResolver::OUTCOME_TOOK),
+                ])
+                ->action(fn (array $data) => $this->resolveStuckCharge($data)),
 
             // Edit the NEXT charge: its date + its one-time order contents (products / qty / price).
             // Applies to the next cycle only (a meta override the next charge consumes + clears).
@@ -717,11 +752,62 @@ class ViewSubscription extends Page
         }
     }
 
-    /** Charge-now is offered only for a chargeable plan with a saved token. */
+    /**
+     * Charge-now is offered for any plan the SCHEDULER would bill, with a saved
+     * token — which includes a subscriber in dunning.
+     *
+     * awaiting_payment used to be excluded, and it was the one status where a
+     * merchant most wants the button: the customer has just told them the card is
+     * fixed, and the alternative was waiting up to a day for the next automatic
+     * attempt. The orchestrator is idempotent on the cycle's key, so pressing it
+     * beside a scheduled attempt collapses to one charge rather than two.
+     */
     private function canChargeNow(): bool
     {
-        return in_array($this->record->status, [PlanStatus::ACTIVE, PlanStatus::AWAITING_FIRST_PAYMENT], true)
+        $status = $this->record->status instanceof PlanStatus
+            ? $this->record->status
+            : PlanStatus::tryFrom((string) $this->record->status);
+
+        return $status !== null
+            && in_array($status->value, PlanStatus::chargeable(), true)
             && $this->record->activePaymentMethod() !== null;
+    }
+
+    /** The one stuck charge on this plan waiting for a person, if there is one. */
+    private function stuckCharge(): ?PaymentLedger
+    {
+        return StuckChargeResolver::unresolved((int) $this->record->shop_id)
+            ->first(fn (PaymentLedger $row): bool => (int) $row->plan_id === (int) $this->record->getKey());
+    }
+
+    /**
+     * Record what the merchant found in PayPlus for a charge we lost track of.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    protected function resolveStuckCharge(array $data): void
+    {
+        $row = $this->stuckCharge();
+
+        if ($row === null) {
+            return;
+        }
+
+        $resolved = app(StuckChargeResolver::class)->resolve(
+            $row,
+            (string) ($data['outcome'] ?? ''),
+            auth()->user()?->email,
+            ($data['transaction_uid'] ?? null) ?: null,
+        );
+
+        $this->record->refresh();
+
+        Notification::make()
+            ->title(__($resolved
+                ? 'subscriptions.action.reconcile.done'
+                : 'subscriptions.action.reconcile.failed'))
+            ->{$resolved ? 'success' : 'danger'}()
+            ->send();
     }
 
     /** Out-of-schedule charge via ChargeNowService (the orchestrator) + a result notice. */

@@ -5,6 +5,7 @@ namespace App\Modules\PayPlusShopifyInstallments\Support;
 use App\Models\ActivityEvent;
 use App\Support\PlatformContext;
 use App\Support\Tenant;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -42,6 +43,24 @@ final class Timeline
 
     /** The shop's live-charging switch is off — the due charge was skipped, not failed. */
     public const KIND_CHARGING_PAUSED = 'charging_paused';
+
+    /**
+     * Another attempt at this exact debt was already at the gateway, so this one
+     * stood down. Two triggers meeting on one cycle is ordinary (a scheduler tick
+     * beside a merchant's "charge now"); what would not be ordinary is both of
+     * them reaching PayPlus.
+     */
+    public const KIND_CHARGE_IN_FLIGHT = 'charge_in_flight';
+
+    /**
+     * We asked PayPlus for money and never learned the answer — a worker killed
+     * mid-charge. The card may have been charged. We do NOT ask again: this
+     * cycle waits for a person to look, exactly as an unresolved document does.
+     */
+    public const KIND_CHARGE_NEEDS_RECONCILE = 'charge_needs_reconcile';
+
+    /** A person looked the charge up in PayPlus and said which way it went. */
+    public const KIND_CHARGE_RECONCILED = 'charge_reconciled';
 
     /** An accounting document was issued by the invoicing provider (Green Invoice). */
     public const KIND_DOCUMENT_ISSUED = 'document_issued';
@@ -203,7 +222,7 @@ final class Timeline
         ?int $shopId = null,
     ): void {
         try {
-            ActivityEvent::query()->create([
+            $write = fn () => ActivityEvent::query()->create([
                 'shop_id' => $shopId ?? Tenant::id(),
                 'plan_id' => $planId,
                 'payment_id' => $paymentId,
@@ -212,6 +231,23 @@ final class Timeline
                 'details' => $details,
                 'created_at' => now(),
             ]);
+
+            // A SAVEPOINT when somebody else's transaction is open — because the
+            // catch below is otherwise a lie on Postgres, which is what this app
+            // runs on. There, a statement that errors inside a transaction aborts
+            // the WHOLE transaction: every statement after it fails with "current
+            // transaction is aborted", so swallowing the exception saves nothing
+            // and the ledger write standing next to this one dies with it. A
+            // nested transaction rolls back to the savepoint instead and leaves
+            // the caller's transaction healthy, which is what the promise "an
+            // audit failure must never break the charge" actually requires.
+            //
+            // The suite runs on SQLite, where the abort does not happen and a
+            // test of the symptom would pass green forever — so the savepoint
+            // itself is what AuditWriteSavepointTest pins.
+            DB::transactionLevel() > 0
+                ? DB::transaction($write)
+                : $write();
         } catch (Throwable $e) {
             // Audit failure must not break the charge — log and move on.
             Log::warning('timeline.record_failed', [

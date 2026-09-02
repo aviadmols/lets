@@ -231,7 +231,11 @@ final class UpsellChargeService
         ]);
 
         // A declined offer never charges. Route to the decline branch (if any).
-        $next = $this->resolver->resolveOffer($req->flow, $this->nextOfferId($req->offer, 'on_decline_next_offer_id'));
+        $next = $this->resolver->resolveOffer(
+            $req->flow,
+            $this->nextOfferId($req->offer, 'on_decline_next_offer_id'),
+            $req->offer,
+        );
 
         return UpsellChargeResult::already($key, $next); // "already" == terminal, no charge
     }
@@ -564,6 +568,7 @@ final class UpsellChargeService
         return $this->resolver->resolveOffer(
             $req->flow,
             $this->nextOfferId($req->offer, 'on_accept_next_offer_id'),
+            $req->offer,
         );
     }
 

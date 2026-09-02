@@ -8,6 +8,7 @@ use App\Modules\PayPlusShopifyInstallments\Support\ResponseMasker;
 use App\Support\Tenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -53,7 +54,7 @@ class UpsellOfferEvent extends Model
      * (never store raw card/token data). Swallows its own exceptions so analytics
      * never blocks a charge.
      *
-     * @param array<string, mixed> $attributes
+     * @param  array<string, mixed>  $attributes
      */
     public static function record(array $attributes): void
     {
@@ -70,7 +71,15 @@ class UpsellOfferEvent extends Model
                 $attributes['event_type'] = $attributes['event_type']->value;
             }
 
-            static::query()->create($attributes);
+            // A SAVEPOINT when a caller's transaction is open. Same reason as
+            // Timeline::record(): on Postgres a failed INSERT aborts the whole
+            // transaction, so catching the exception would not stop this
+            // analytics row from taking the charge beside it down with it.
+            $write = fn () => static::query()->create($attributes);
+
+            DB::transactionLevel() > 0
+                ? DB::transaction($write)
+                : $write();
         } catch (Throwable $e) {
             Log::warning('upsell.offer_event.record_failed', [
                 'event_type' => is_object($attributes['event_type'] ?? null)

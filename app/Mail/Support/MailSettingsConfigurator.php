@@ -4,6 +4,7 @@ namespace App\Mail\Support;
 
 use App\Models\Shop;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Mail;
 
 /**
  * Applies a SENDING shop's chosen relay into the live mail config for the
@@ -40,9 +41,14 @@ final class MailSettingsConfigurator
         Config::set('mail.mailers.smtp.username', $config['username']);
         Config::set('mail.mailers.smtp.password', $config['password']);
 
-        if (isset($config['scheme'])) {
-            Config::set('mail.mailers.smtp.scheme', $config['scheme']);
-        }
+        // Unconditionally — a scheme left over from a previous apply() in the
+        // same process must not leak onto a shop that chose no encryption.
+        Config::set('mail.mailers.smtp.scheme', $config['scheme'] ?? null);
+
+        // A stray MAIL_URL would silently OUTRANK everything above: Laravel's
+        // smtp transport prefers the DSN when `url` is set, and the merchant's
+        // relay would be ignored with no error anywhere.
+        Config::set('mail.mailers.smtp.url', null);
 
         if ($chosen['from'] !== null) {
             Config::set('mail.from.address', $chosen['from']['address']);
@@ -51,5 +57,11 @@ final class MailSettingsConfigurator
 
         // Force the SMTP mailer for this send (the platform default may be `log`).
         Config::set('mail.default', 'smtp');
+
+        // Laravel caches resolved mailers BY NAME: if anything in this process
+        // already resolved `smtp`, every Config::set above is a silent no-op and
+        // the send leaves through whatever transport (and From) was cached.
+        // Purging makes the next resolve read the config just written.
+        Mail::purge('smtp');
     }
 }

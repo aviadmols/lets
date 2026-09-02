@@ -153,6 +153,9 @@ return [
         'revoke_links' => 'Revoke the sign-in links',
         'revoke_confirm' => 'Revoke every sign-in link in this campaign?',
         'revoke_body' => 'Every link in this email stops working at once, including for people who have not opened it yet. Use this if the campaign reached the wrong list.',
+        'duplicate' => 'Duplicate',
+        'duplicate_confirm' => 'Start a new draft from this campaign?',
+        'duplicate_body' => 'The subject, the content and the audience are copied into a new draft. Nothing is sent, and this campaign is not changed — its recipients, results and sign-in links stay with it.',
     ],
 
     'stat' => [
@@ -178,6 +181,19 @@ return [
         'person' => 'Person',
         'rail' => 'From',
         'reason' => 'Reason',
+        'account_link' => 'Account link',
+    ],
+
+    /*
+    | Did this person open their account from the email? Three answers: somebody
+    | the campaign never wrote a link to has not failed to click it.
+    */
+    'account_link' => [
+        'clicked' => 'Opened',
+        'not_clicked' => 'Not opened',
+        'none' => 'No link sent',
+        'any' => 'Any',
+        'first_of' => ':when · :count visits',
     ],
 
     'form' => [
@@ -193,6 +209,10 @@ return [
         'cancelled' => 'Campaign cancelled.',
         'retried' => ':count emails were queued again.',
         'links_revoked' => ':count sign-in links were revoked.',
+        'send_started' => 'Sending has started.',
+        'send_started_body' => 'The audience is being built in the background. The counts on this page fill in as it goes.',
+        'duplicated' => 'Copied to “:name”.',
+        'duplicate_failed' => 'The campaign could not be copied.',
     ],
 
     'preview' => [
@@ -243,6 +263,15 @@ return [
         'done_title' => 'Unsubscribed',
         'done_heading' => 'Done',
         'done_lead' => 'You will not receive marketing emails from :shop again.',
+    ],
+
+    /*
+    | Appended to a copied campaign's name. Numbered ("(copy) 2") when a copy by
+    | that name already exists — two rows with one name, where one is sent and
+    | one is a draft, is how the wrong one gets sent.
+    */
+    'duplicate' => [
+        'suffix' => '(copy)',
     ],
 
 ];

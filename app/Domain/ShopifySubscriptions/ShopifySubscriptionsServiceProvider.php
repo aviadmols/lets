@@ -28,6 +28,10 @@ final class ShopifySubscriptionsServiceProvider extends ServiceProvider
      */
     private const DISPATCH_DUE_CRON = '5 * * * *';
 
+    /** Overlap-lock lifetime, MINUTES. Never the 24-hour default: a killed
+     *  run must cost one skipped tick, not a day of silence. */
+    private const DISPATCH_DUE_LOCK_MINUTES = 55;
+
     public function boot(): void
     {
         if ($this->app->runningInConsole()) {
@@ -47,7 +51,7 @@ final class ShopifySubscriptionsServiceProvider extends ServiceProvider
 
             $schedule->command('shopify-subscriptions:dispatch-due')
                 ->cron(self::DISPATCH_DUE_CRON)
-                ->withoutOverlapping()
+                ->withoutOverlapping(self::DISPATCH_DUE_LOCK_MINUTES)
                 ->onOneServer();
         });
     }

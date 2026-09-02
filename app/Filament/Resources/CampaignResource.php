@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Domain\Campaigns\Email\CampaignDuplicator;
 use App\Domain\Campaigns\Email\EmailCampaignAudience;
 use App\Domain\Campaigns\Email\Models\EmailCampaign;
 use App\Filament\Concerns\ShopScopedScreen;
@@ -28,6 +29,7 @@ use Filament\Forms\Components\ToggleButtons;
 use Filament\Forms\Components\Wizard;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -447,6 +449,28 @@ class CampaignResource extends Resource
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
+
+                // Available in every status, unlike Edit: a sent campaign is the
+                // likeliest thing to want again, and the one that can no longer be
+                // changed in place. The copy is always a draft — see
+                // CampaignDuplicator for what does and does not come across.
+                Tables\Actions\Action::make('duplicate')
+                    ->label(__(self::LANG.'.action.duplicate'))
+                    ->icon('heroicon-o-document-duplicate')
+                    ->requiresConfirmation()
+                    ->modalHeading(__(self::LANG.'.action.duplicate_confirm'))
+                    ->modalDescription(__(self::LANG.'.action.duplicate_body'))
+                    ->action(function (EmailCampaign $record) {
+                        $copy = app(CampaignDuplicator::class)->duplicate($record, auth()->id());
+
+                        Notification::make()
+                            ->success()
+                            ->title(__(self::LANG.'.form.duplicated', ['name' => (string) $copy->name]))
+                            ->send();
+
+                        return redirect(self::getUrl('edit', ['record' => $copy->getKey()]));
+                    }),
+
                 // Only a campaign that never left can be deleted: the recipients
                 // of one that did are the record of who was written to.
                 Tables\Actions\DeleteAction::make()

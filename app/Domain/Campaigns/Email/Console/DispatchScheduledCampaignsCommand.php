@@ -33,6 +33,18 @@ final class DispatchScheduledCampaignsCommand extends Command
 
     private const CHUNK = 50;
 
+    /**
+     * How long a campaign may sit past its time on a shop that cannot send,
+     * before we stop looking at it.
+     *
+     * A campaign whose shop is no longer live is skipped — correctly — but it
+     * stays `scheduled`, so this scan reconsiders it EVERY MINUTE, for as long
+     * as the row exists. That is a permanent no-op the merchant cannot see and
+     * cannot clear. After the grace period it is cancelled with a reason, which
+     * is both an honest answer and an end to the loop.
+     */
+    private const STALE_AFTER_HOURS = 24;
+
     protected $signature = self::SIGNATURE;
 
     protected $description = 'Send the email campaigns whose scheduled time has arrived.';
@@ -52,6 +64,10 @@ final class DispatchScheduledCampaignsCommand extends Command
                     $shop = Shop::query()->find((int) $campaign->shop_id);
 
                     if (! $shop instanceof Shop || ! $shop->isLive()) {
+                        if ($shop instanceof Shop) {
+                            $this->giveUpIfStale($shop, $campaign);
+                        }
+
                         continue;
                     }
 
@@ -84,5 +100,39 @@ final class DispatchScheduledCampaignsCommand extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Stop reconsidering a campaign whose shop has been unable to send it for
+     * long enough that it is not going to.
+     *
+     * Cancelled, not deleted: the merchant asked for this to go out, and a row
+     * that quietly vanished would answer nothing. Cancelled says what happened
+     * and the campaign can be duplicated into a fresh draft.
+     */
+    private function giveUpIfStale(Shop $shop, EmailCampaign $campaign): void
+    {
+        $due = $campaign->scheduled_at;
+
+        if ($due === null || $due->gt(now()->subHours(self::STALE_AFTER_HOURS))) {
+            return;
+        }
+
+        // Bound, because markCancelled() writes through the tenant scope — the
+        // row above came from the cross-tenant scan and would otherwise fail
+        // closed and silently, leaving exactly the loop this is here to end.
+        $cancelled = Tenant::run($shop, fn (): bool => (bool) EmailCampaign::query()
+            ->whereKey($campaign->getKey())
+            ->first()
+            ?->markCancelled());
+
+        if ($cancelled) {
+            Log::warning('campaigns.email.schedule_abandoned', [
+                'shop_id' => (int) $campaign->shop_id,
+                'campaign_id' => (int) $campaign->getKey(),
+                'scheduled_at' => $due->toIso8601String(),
+                'reason' => 'shop_not_live',
+            ]);
+        }
     }
 }

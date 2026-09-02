@@ -24,6 +24,10 @@ final class LoyaltyServiceProvider extends ServiceProvider
      */
     private const BIRTHDAY_CRON = '0 6 * * *';
 
+    /** Overlap-lock lifetime, MINUTES. Never the 24-hour default: a killed
+     *  run must cost one skipped tick, not a day of silence. */
+    private const BIRTHDAY_LOCK_MINUTES = 60;
+
     public function boot(): void
     {
         if ($this->app->runningInConsole()) {
@@ -36,7 +40,7 @@ final class LoyaltyServiceProvider extends ServiceProvider
 
             $schedule->command('loyalty:grant-birthday-points')
                 ->cron(self::BIRTHDAY_CRON)
-                ->withoutOverlapping()
+                ->withoutOverlapping(self::BIRTHDAY_LOCK_MINUTES)
                 ->onOneServer();
         });
     }

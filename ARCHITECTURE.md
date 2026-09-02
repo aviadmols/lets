@@ -75,6 +75,36 @@ the Phase 2-3 gate.
 Never send a second PayPlus charge if a `succeeded` ledger event exists for the
 same key.
 
+## The charge phases (LOCKED — pinned by MoneyPathConventionsTest)
+
+**No network call ever runs inside a database transaction.** A gateway or store
+round trip is somebody else's 30-second timeout; a transaction held across it
+keeps a connection and the plan's row lock hostage, and a death mid-call rolls
+back the very rows written to survive it. Every charge path is therefore built
+in phases (ChargeOrchestrator::charge(), UpsellChargeService — same shape):
+
+1. **Decide + commit intent** (short txn, row lock): gates, then the `pending`
+   ledger row — committed BEFORE any money moves.
+2. **Move the money** (no txn, no lock). A death here leaves the pending row as
+   the reconcilable trace.
+3. **Record the outcome** (short txn, re-lock).
+4. **Side effects** (after the commit): documents, store orders, mail, events.
+   None of them can unwind a charge that happened.
+
+Two corollaries, both learned the hard way:
+
+- With the lock released across phase 2, a second trigger for the same key is
+  held off by the **in-flight guard** (an unsettled `pending` row younger than
+  `payplus.charge_in_flight_minutes`). An OLDER pending row is a charge whose
+  outcome nobody learned — it is **never silently re-sent**; it is flagged
+  `needs_reconcile` and a human resolves it (StuckChargeResolver), exactly the
+  `issued_documents` doctrine applied to charges.
+- Audit writes that swallow their own exceptions (Timeline, funnel events) run
+  inside a **SAVEPOINT** when a caller's transaction is open: on Postgres a
+  failed statement otherwise aborts the whole transaction, and the catch saves
+  nothing. The SQLite suite cannot reproduce this — `phpunit.pgsql.xml` is the
+  leg that can.
+
 ## Env contract (high level — see `.env.example`)
 
 - App: `APP_KEY`, `APP_URL`, `APP_ENV`, `APP_DEBUG`.

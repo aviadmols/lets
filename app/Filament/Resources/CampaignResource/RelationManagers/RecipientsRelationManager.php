@@ -28,6 +28,14 @@ class RecipientsRelationManager extends RelationManager
     /** The lang file this screen reads — the resource's own. */
     public const LANG = CampaignResource::LANG;
 
+    /** The three answers to "did they open their account from this email?". */
+    public const LINK_CLICKED = 'clicked';
+
+    public const LINK_NOT_CLICKED = 'not_clicked';
+
+    /** No link was written to this person — the question does not apply. */
+    public const LINK_NONE = 'none';
+
     public static function getTitle(Model $ownerRecord, string $pageClass): string
     {
         return __(self::LANG.'.stat.recipients');
@@ -74,6 +82,41 @@ class RecipientsRelationManager extends RelationManager
                         : __(self::LANG.'.reason.'.$state))
                     ->placeholder('—'),
 
+                // Did they come in? THREE answers, not two: a person the campaign
+                // never wrote a link to has not "failed to click" it, and showing
+                // them as a miss would quietly understate every campaign whose body
+                // has no {account_login_url} at all.
+                Tables\Columns\TextColumn::make('loginToken.consumed_at')
+                    ->label(__(self::LANG.'.table.account_link'))
+                    ->badge()
+                    ->state(fn (EmailCampaignRecipient $record): string => match ($record->clickedAccountLink()) {
+                        true => self::LINK_CLICKED,
+                        false => self::LINK_NOT_CLICKED,
+                        default => self::LINK_NONE,
+                    })
+                    ->formatStateUsing(fn (string $state): string => __(self::LANG.'.account_link.'.$state))
+                    ->color(fn (string $state): string => match ($state) {
+                        self::LINK_CLICKED => 'success',
+                        self::LINK_NOT_CLICKED => 'warning',
+                        default => 'gray',
+                    })
+                    // When they arrived, and whether they came back — the reuse
+                    // window means one link can serve a phone now and a laptop later.
+                    ->description(function (EmailCampaignRecipient $record): ?string {
+                        $token = $record->loginToken;
+
+                        if ($token?->consumed_at === null) {
+                            return null;
+                        }
+
+                        $when = $token->consumed_at->format('d M Y H:i');
+                        $uses = (int) ($token->use_count ?? 0);
+
+                        return $uses > 1
+                            ? __(self::LANG.'.account_link.first_of', ['when' => $when, 'count' => $uses])
+                            : $when;
+                    }),
+
                 Tables\Columns\TextColumn::make('sent_at')
                     ->label(__(self::LANG.'.table.sent_at'))
                     ->dateTime('d M Y H:i')
@@ -85,7 +128,21 @@ class RecipientsRelationManager extends RelationManager
                     ->options(fn (): array => collect(EmailCampaignRecipient::STATUSES)
                         ->mapWithKeys(fn (string $s): array => [$s => __(self::LANG.'.recipient_status.'.$s)])
                         ->all()),
+
+                Tables\Filters\TernaryFilter::make('clicked_account_link')
+                    ->label(__(self::LANG.'.table.account_link'))
+                    ->placeholder(__(self::LANG.'.account_link.any'))
+                    ->trueLabel(__(self::LANG.'.account_link.clicked'))
+                    ->falseLabel(__(self::LANG.'.account_link.not_clicked'))
+                    ->queries(
+                        true: fn ($query) => $query->whereHas('loginToken', fn ($q) => $q->whereNotNull('consumed_at')),
+                        false: fn ($query) => $query->whereHas('loginToken', fn ($q) => $q->whereNull('consumed_at')),
+                        blank: fn ($query) => $query,
+                    ),
             ])
+            // The column reads the token per row; eager-load it so a page of 100
+            // recipients is one extra query rather than a hundred.
+            ->modifyQueryUsing(fn ($query) => $query->with('loginToken'))
             ->defaultSort('id')
             ->paginated([25, 50, 100]);
     }

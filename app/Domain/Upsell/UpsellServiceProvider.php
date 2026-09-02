@@ -27,6 +27,10 @@ final class UpsellServiceProvider extends ServiceProvider
      */
     private const RELEASE_CRON = '* * * * *';
 
+    /** Overlap-lock lifetime, MINUTES. Never the 24-hour default: a killed
+     *  run must cost one skipped tick, not a day of silence. */
+    private const RELEASE_LOCK_MINUTES = 5;
+
     public function register(): void
     {
         $this->app->singleton(UpsellResolver::class);
@@ -57,7 +61,7 @@ final class UpsellServiceProvider extends ServiceProvider
             // pass must not have a second one racing it across the same rows.
             $schedule->command('upsell:release-holds')
                 ->cron(self::RELEASE_CRON)
-                ->withoutOverlapping()
+                ->withoutOverlapping(self::RELEASE_LOCK_MINUTES)
                 ->onOneServer();
         });
     }

@@ -177,6 +177,24 @@ return [
             'failed_retry' => 'Charge failed — a retry is scheduled.',
             'skipped' => 'Nothing to charge right now (already paid or awaiting consent).',
         ],
+
+        /*
+        | A charge we asked for and never got an answer to. We will not ask again
+        | on our own — the card may already have been charged — so this is where
+        | a person who has looked at PayPlus tells us which way it went.
+        */
+        'reconcile' => [
+            'label' => 'Unfinished charge',
+            'heading' => 'We lost track of one charge',
+            'body' => 'We asked PayPlus for :amount on :when and never got an answer — the worker stopped mid-charge. The card may or may not have been charged, so nothing further has been attempted on this cycle. Open this customer in PayPlus, then tell us what you find.',
+            'question' => 'What does PayPlus show?',
+            'did_not' => 'No such charge — the money never moved',
+            'took' => 'The charge is there — the money moved',
+            'uid' => 'Transaction ID (optional)',
+            'uid_help' => 'From the PayPlus transaction, if you have it. It is stored with the payment for later reference.',
+            'done' => 'Recorded. The subscription can move again.',
+            'failed' => 'That charge is no longer waiting to be resolved.',
+        ],
         'frequency' => [
             'label' => 'Change frequency',
             'heading' => 'How often does this bill?',

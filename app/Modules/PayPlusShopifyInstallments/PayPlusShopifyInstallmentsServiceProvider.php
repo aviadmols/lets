@@ -31,6 +31,23 @@ final class PayPlusShopifyInstallmentsServiceProvider extends ServiceProvider
     /** How often the upcoming-charge reminder scan runs (hourly is ample). */
     private const DISPATCH_REMINDERS_CRON = '0 * * * *'; // top of every hour
 
+    /**
+     * Overlap-lock lifetimes, in MINUTES, and never left to the default.
+     *
+     * withoutOverlapping() takes the lock before the run and releases it after —
+     * but a process that is KILLED rather than finished (a Railway redeploy, an
+     * OOM, a spot reclaim) never reaches the release, and the lock then stands
+     * until it expires. Laravel's default expiry is 24 HOURS, which on this
+     * command means every shop's charges stop for a day, silently, because a
+     * container restarted at the wrong moment.
+     *
+     * So each one is set to comfortably longer than the run it guards and far
+     * shorter than the damage: a killed run costs one skipped tick, not a day.
+     */
+    private const DISPATCH_DUE_LOCK_MINUTES = 10;
+
+    private const DISPATCH_REMINDERS_LOCK_MINUTES = 55;
+
     public function register(): void
     {
         // The orchestrator depends on the contract; resolve the default policy.
@@ -56,14 +73,14 @@ final class PayPlusShopifyInstallmentsServiceProvider extends ServiceProvider
 
             $schedule->command('payplus:dispatch-due')
                 ->cron(self::DISPATCH_DUE_CRON)
-                ->withoutOverlapping()
+                ->withoutOverlapping(self::DISPATCH_DUE_LOCK_MINUTES)
                 ->onOneServer();
 
             // Upcoming-charge reminders. withoutOverlapping + the per-cycle meta
             // guard make a re-run a no-op, so an overlapping tick never double-sends.
             $schedule->command('payplus:dispatch-reminders')
                 ->cron(self::DISPATCH_REMINDERS_CRON)
-                ->withoutOverlapping()
+                ->withoutOverlapping(self::DISPATCH_REMINDERS_LOCK_MINUTES)
                 ->onOneServer();
         });
     }

@@ -63,6 +63,8 @@ return [
         'action' => 'Send a test email',
         'field' => 'Which address should it go to?',
         'subject' => 'Delivery test — LETS',
+        'as_shop' => 'Sent as shop “:name” through :relay — the same ladder its real mail uses.',
+        'as_platform' => 'No shops yet — sent through the platform mailer (:relay).',
         'body' => 'If you received this, platform email delivery is working.',
         'sent' => 'Sent to :email.',
         'failed' => 'The send failed. What the mail provider said:',

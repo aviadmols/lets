@@ -29,6 +29,10 @@ final class AccountServiceProvider extends ServiceProvider
      */
     private const PRUNE_CRON = '20 3 * * *';
 
+    /** Overlap-lock lifetime, MINUTES. Never the 24-hour default: a killed
+     *  run must cost one skipped tick, not a day of silence. */
+    private const PRUNE_LOCK_MINUTES = 60;
+
     public function boot(): void
     {
         $this->app->booted(function (Application $app): void {
@@ -37,7 +41,7 @@ final class AccountServiceProvider extends ServiceProvider
 
             $schedule->command('model:prune', ['--model' => [CustomerLoginCode::class]])
                 ->cron(self::PRUNE_CRON)
-                ->withoutOverlapping()
+                ->withoutOverlapping(self::PRUNE_LOCK_MINUTES)
                 ->onOneServer();
         });
     }

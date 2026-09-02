@@ -68,6 +68,12 @@ final class EmailCampaignAudience
     public const RAIL_MANUAL = 'manual';
 
     /**
+     * How many rows a capped SAMPLE reads per row it means to show, on the one
+     * rail whose filters run in PHP rather than SQL. @see fromContracts()
+     */
+    private const SAMPLE_OVERFETCH = 5;
+
+    /**
      * Everyone the bag reaches, one row per PERSON.
      *
      * @param  array<string, mixed>  $audience  raw or cleaned bag (cleaned again here)
@@ -76,7 +82,7 @@ final class EmailCampaignAudience
      *     customer_ref: ?string, rail: string, already_enrolled: bool, unsubscribed: bool
      * }>
      */
-    public function recipients(array $audience, ?EmailCampaign $campaign = null): Collection
+    public function recipients(array $audience, ?EmailCampaign $campaign = null, ?int $perSource = null): Collection
     {
         $bag = EmailCampaign::cleanAudience($audience);
 
@@ -98,16 +104,16 @@ final class EmailCampaignAudience
 
         if (in_array(EmailCampaign::SOURCE_SUBSCRIBERS, $sources, true)) {
             $rows = $rows
-                ->concat($this->fromPlans($bag, PlanKind::RECURRING))
-                ->concat($this->fromContracts($bag));
+                ->concat($this->fromPlans($bag, PlanKind::RECURRING, $perSource))
+                ->concat($this->fromContracts($bag, $perSource));
         }
 
         if (in_array(EmailCampaign::SOURCE_PURCHASERS, $sources, true)) {
-            $rows = $rows->concat($this->fromPlans($bag, PlanKind::INSTALLMENTS));
+            $rows = $rows->concat($this->fromPlans($bag, PlanKind::INSTALLMENTS, $perSource));
         }
 
         if (in_array(EmailCampaign::SOURCE_LOYALTY_MEMBERS, $sources, true)) {
-            $rows = $rows->concat($this->fromLoyalty($bag));
+            $rows = $rows->concat($this->fromLoyalty($bag, $perSource));
         }
 
         $rows = $this->dedupeByEmail($rows);
@@ -128,10 +134,24 @@ final class EmailCampaignAudience
             ->count();
     }
 
-    /** The first N rows, for the merchant's "who would get this" preview. */
+    /**
+     * The first N rows, for the merchant's "who would get this" preview.
+     *
+     * The limit is pushed INTO each source query rather than applied to the
+     * finished list. Building the whole audience — every subscriber, contract
+     * and club member a shop has — to then show ten of them made opening a modal
+     * cost the same as sending the campaign, and on the shops this app is built
+     * for that is thousands of hydrated rows for a glance.
+     *
+     * A sample is honestly a sample: taking N per source and deduping can return
+     * fewer than N, and the two people it shows are the two it would write to
+     * first. The exact number lives in count(), which the screen shows beside it.
+     */
     public function sample(array $audience, ?EmailCampaign $campaign = null, int $limit = 100): Collection
     {
-        return $this->recipients($audience, $campaign)->take(max(1, $limit))->values();
+        $limit = max(1, $limit);
+
+        return $this->recipients($audience, $campaign, $limit)->take($limit)->values();
     }
 
     // === Sources ===
@@ -255,7 +275,7 @@ final class EmailCampaignAudience
      * @param  array{statuses: list<string>, frequencies: list<string>, product_ids: list<string>}  $bag
      * @return Collection<int, array<string, mixed>>
      */
-    private function fromPlans(array $bag, PlanKind $kind): Collection
+    private function fromPlans(array $bag, PlanKind $kind, ?int $limit = null): Collection
     {
         $query = InstallmentPlan::query()
             ->where('plan_kind', $kind->value)
@@ -272,7 +292,9 @@ final class EmailCampaignAudience
         }
 
         return $query
+            ->select(['id', 'customer_email', 'customer_name', 'shopify_customer_id', 'customer_id'])
             ->orderBy('id')
+            ->when($limit !== null, fn (Builder $q) => $q->limit($limit))
             ->get()
             ->map(fn (InstallmentPlan $plan): ?array => $this->row(
                 EmailCampaignRecipient::SOURCE_PLAN,
@@ -293,7 +315,7 @@ final class EmailCampaignAudience
      * @param  array{statuses: list<string>, frequencies: list<string>, product_ids: list<string>}  $bag
      * @return Collection<int, array<string, mixed>>
      */
-    private function fromContracts(array $bag): Collection
+    private function fromContracts(array $bag, ?int $limit = null): Collection
     {
         $statuses = [];
         foreach ($bag['statuses'] as $status) {
@@ -312,7 +334,15 @@ final class EmailCampaignAudience
             ->whereIn('status', $statuses)
             ->whereNotNull('customer_email')
             ->where('customer_email', '<>', '')
+            ->select(['id', 'customer_email', 'customer_name', 'shopify_customer_gid', 'lines', 'interval', 'interval_count'])
             ->orderBy('id')
+            // Cadence and product are filtered in PHP on this rail (a mirrored
+            // JSON column every database queries differently), so a preview's cap
+            // has to be taken BEFORE the filters and therefore over-fetched — cut
+            // to exactly $limit here and a sample could come back empty while
+            // plenty of contracts matched. This bounds the read without pretending
+            // the filter happened in SQL.
+            ->when($limit !== null, fn (Builder $q) => $q->limit($limit * self::SAMPLE_OVERFETCH))
             ->get()
             ->filter(fn (SubscriptionContract $c): bool => $this->contractCadenceMatches($c, $bag['frequencies']))
             ->filter(fn (SubscriptionContract $c): bool => $this->contractSells($c, $bag['product_ids']))
@@ -334,13 +364,15 @@ final class EmailCampaignAudience
      * @param  array{loyalty_tier_ids: list<int>}  $bag
      * @return Collection<int, array<string, mixed>>
      */
-    private function fromLoyalty(array $bag): Collection
+    private function fromLoyalty(array $bag, ?int $limit = null): Collection
     {
         return LoyaltyAccount::query()
             ->whereNotNull('customer_email')
             ->where('customer_email', '<>', '')
             ->when($bag['loyalty_tier_ids'] !== [], fn (Builder $q) => $q->whereIn('tier_id', $bag['loyalty_tier_ids']))
+            ->select(['id', 'customer_email', 'customer_name', 'customer_ref'])
             ->orderBy('id')
+            ->when($limit !== null, fn (Builder $q) => $q->limit($limit))
             ->get()
             ->map(fn (LoyaltyAccount $a): ?array => $this->row(
                 EmailCampaignRecipient::SOURCE_LOYALTY,

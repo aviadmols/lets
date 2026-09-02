@@ -3,9 +3,11 @@
 namespace App\Filament\Resources\CampaignResource\Pages;
 
 use App\Domain\Campaigns\Email\CampaignBodyNormalizer;
+use App\Domain\Campaigns\Email\CampaignDuplicator;
 use App\Domain\Campaigns\Email\CampaignPreview;
 use App\Domain\Campaigns\Email\EmailCampaignAudience;
 use App\Domain\Campaigns\Email\EmailCampaignSender;
+use App\Domain\Campaigns\Email\Jobs\StartCampaignJob;
 use App\Domain\Campaigns\Email\Models\EmailCampaign;
 use App\Filament\Pages\NewsletterStudio;
 use App\Filament\Resources\CampaignResource;
@@ -139,6 +141,7 @@ class EditCampaign extends EditRecord
 
             $this->previewAction(),
             $this->previewAudienceAction(),
+            $this->duplicateAction(),
             $this->sendTestAction(),
             $this->sendNowAction(),
             $this->scheduleAction(),
@@ -147,6 +150,22 @@ class EditCampaign extends EditRecord
             $this->revokeLinksAction(),
             DeleteAction::make()->visible(fn (): bool => $this->record->isEditable()),
         ];
+    }
+
+    /**
+     * Start a new draft from this campaign. Offered in EVERY status — a campaign
+     * already sent is the most likely thing a merchant wants to send again, and
+     * it is the one they can no longer edit in place.
+     */
+    private function duplicateAction(): Action
+    {
+        return Action::make('duplicate')
+            ->label(__(CampaignResource::LANG.'.action.duplicate'))
+            ->icon('heroicon-o-document-duplicate')
+            ->requiresConfirmation()
+            ->modalHeading(__(CampaignResource::LANG.'.action.duplicate_confirm'))
+            ->modalDescription(__(CampaignResource::LANG.'.action.duplicate_body'))
+            ->action(fn () => $this->duplicate());
     }
 
     private function previewAction(): Action
@@ -259,6 +278,16 @@ class EditCampaign extends EditRecord
 
     // === Actions ===
 
+    /**
+     * Hand the campaign to a worker and come straight back.
+     *
+     * Resolving an audience across three rails and enrolling every person in it
+     * is not request work on a shop with thousands of subscribers: it would run
+     * for minutes and then time out mid-enrolment, leaving the campaign claimed
+     * as `sending` with part of its list and the merchant looking at a browser
+     * error. StartCampaignJob does it on the queue; the counts on this page fill
+     * in as it goes.
+     */
     public function sendNow(): void
     {
         $shop = Tenant::current();
@@ -266,23 +295,22 @@ class EditCampaign extends EditRecord
             return;
         }
 
-        $result = app(EmailCampaignSender::class)->send($shop, $this->record);
-
-        if ($result['dispatched'] === 0 && $result['enrolled'] === 0) {
+        if (! $this->record->isEditable()) {
             Notification::make()
                 ->warning()
-                ->title(__(CampaignResource::LANG.'.form.nothing_to_send'))
+                ->title(__(CampaignResource::LANG.'.form.cannot_send'))
                 ->send();
-        } else {
-            Notification::make()
-                ->success()
-                ->title(__(CampaignResource::LANG.'.form.sent_summary', [
-                    'count' => $result['dispatched'],
-                    'suppressed' => $result['suppressed'],
-                    'already' => $result['already'],
-                ]))
-                ->send();
+
+            return;
         }
+
+        StartCampaignJob::dispatch((int) $shop->getKey(), (int) $this->record->getKey());
+
+        Notification::make()
+            ->success()
+            ->title(__(CampaignResource::LANG.'.form.send_started'))
+            ->body(__(CampaignResource::LANG.'.form.send_started_body'))
+            ->send();
 
         $this->refreshFormData(['status']);
     }
@@ -313,6 +341,31 @@ class EditCampaign extends EditRecord
         }
 
         $this->refreshFormData(['status']);
+    }
+
+    /** Copy this campaign into a fresh draft and open it. */
+    public function duplicate(): void
+    {
+        try {
+            $copy = app(CampaignDuplicator::class)->duplicate($this->record, auth()->id());
+        } catch (Throwable $e) {
+            Notification::make()
+                ->danger()
+                ->title(__(CampaignResource::LANG.'.form.duplicate_failed'))
+                ->body($e->getMessage())
+                ->send();
+
+            return;
+        }
+
+        Notification::make()
+            ->success()
+            ->title(__(CampaignResource::LANG.'.form.duplicated', ['name' => (string) $copy->name]))
+            ->send();
+
+        // Land the merchant IN the new draft — a copy they have to go and find is
+        // a copy they will edit the original instead of.
+        $this->redirect(CampaignResource::getUrl('edit', ['record' => $copy->getKey()]));
     }
 
     public function retryFailed(): void

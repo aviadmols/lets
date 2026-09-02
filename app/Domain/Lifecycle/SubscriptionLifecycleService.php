@@ -3,12 +3,11 @@
 namespace App\Domain\Lifecycle;
 
 use App\Mail\PlanCancelledMail;
-use App\Mail\Support\MailSettingsConfigurator;
+use App\Mail\Support\CampaignMailer;
 use App\Models\InstallmentPlan;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 
 /**
  * Subscription lifecycle (the non-money-moving operations): PAUSE, RESUME, CANCEL.
@@ -101,8 +100,11 @@ final class SubscriptionLifecycleService
         }
 
         try {
-            MailSettingsConfigurator::apply($plan->shop); // per-shop SMTP (no-op when off)
-            Mail::to($to)->send(new PlanCancelledMail(
+            // Per-shop mailer built at RUN time — cancel() is called from queued
+            // jobs and admin requests alike, and on a Horizon worker the old
+            // configurator + facade pattern cached the first shop's relay for
+            // every later shop's mail on the same process.
+            CampaignMailer::for($plan->shop)->to($to)->send(new PlanCancelledMail(
                 shop: $plan->shop,
                 plan: $plan,
                 cancellationReason: $reason,

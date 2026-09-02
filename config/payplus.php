@@ -48,6 +48,17 @@ return [
     // Window (hours) into the future the scheduler treats a plan as "due now".
     'charge_window_hours' => (int) env('PAYPLUS_CHARGE_WINDOW_HOURS', 1),
 
+    /*
+    | How long an unsettled `pending` ledger row counts as a charge still IN
+    | FLIGHT, so a second trigger for the same debt stands down instead of
+    | reaching PayPlus beside it. The charge pipeline releases the plan's row
+    | lock across the gateway call (it must — the call is a 30-second network
+    | round trip), and this is what replaces the serialisation that lock used
+    | to give. Comfortably longer than `timeout` above, so a merely slow
+    | PayPlus is never mistaken for a dead worker.
+    */
+    'charge_in_flight_minutes' => (int) env('PAYPLUS_CHARGE_IN_FLIGHT_MINUTES', 15),
+
     // Completion threshold: installments plan is "fully paid" when remaining <= this.
     'completion_epsilon' => 0.005,
 

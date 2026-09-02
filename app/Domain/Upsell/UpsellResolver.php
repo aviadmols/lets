@@ -72,13 +72,45 @@ final class UpsellResolver
      * Resolve the NEXT offer after an accept/decline branch, by id, scoped to the
      * flow. Returns null when the branch ends the flow or the pointer is invalid.
      */
-    public function resolveOffer(UpsellFlow $flow, ?int $offerId): ?UpsellFlowOffer
+    public function resolveOffer(UpsellFlow $flow, ?int $offerId, ?UpsellFlowOffer $from = null): ?UpsellFlowOffer
     {
         if ($offerId === null) {
             return null;
         }
 
-        return $flow->offers()->whereKey($offerId)->first();
+        $next = $flow->offers()->whereKey($offerId)->first();
+
+        if ($next === null || $from === null) {
+            return $next;
+        }
+
+        // A FLOW ONLY EVER MOVES FORWARD.
+        //
+        // The branch pointers are plain nullable columns with no constraint of
+        // their own, so "offer A's decline leads to offer B, and B's leads back
+        // to A" is a row two writes away — from an import, a future API, or a
+        // hand-edited database. Nothing would loop server-side (each step is one
+        // client-driven lookup), and the money is safe either way because each
+        // offer's idempotency key collapses a second accept. What the shopper
+        // would get is a carousel with no exit, on the thank-you page, after they
+        // have already paid.
+        //
+        // Position is the flow's own order, so refusing a pointer that does not
+        // advance makes a cycle unrepresentable rather than merely unlikely — and
+        // it is enforced HERE, at the one seam every branch is read through,
+        // rather than trusted to whichever screen wrote the row.
+        if ((int) $next->position <= (int) $from->position) {
+            Log::warning('upsell.branch.not_forward', [
+                'shop_id' => (int) $flow->shop_id,
+                'flow_id' => (int) $flow->getKey(),
+                'from_offer_id' => (int) $from->getKey(),
+                'to_offer_id' => (int) $next->getKey(),
+            ]);
+
+            return null; // the branch ends here instead of doubling back
+        }
+
+        return $next;
     }
 
     // === Matching ===
