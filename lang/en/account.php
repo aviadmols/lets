@@ -31,7 +31,7 @@ return [
         'loyalty_heading' => 'Rewards',
         'orders_heading' => 'Order history',
         'gifts_heading' => 'Gifts from us',
-        'gifts_empty' => 'No gifts have been sent to you yet.',
+        'gifts_empty' => 'No products have been sent to you yet.',
         'gifts_tab' => 'Gifts',
         'gift_sent_on' => 'Sent on',
         'documents_heading' => 'Invoices & receipts',

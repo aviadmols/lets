@@ -1,6 +1,19 @@
 /* =========================================================================
-   LETS — GOV address autocomplete dropdown. Minimal on purpose: the fields
-   are the theme's; only the suggestion list is ours.
+   LETS — the city/street picker's dropdown, and the address block inside the
+   account-details tab.
+
+   Minimal on purpose: the fields are the THEME's — this file styles only the
+   list that hangs beneath them and the fieldset that holds them. Logical
+   properties throughout, so the same rules serve an RTL storefront.
+
+   TOKENS (the only values this file invents):
+     surface       #ffffff      list background
+     border        #d1d5db      list edge
+     ink           #101828      list text
+     ink-quiet     #667085      the alias + the notes
+     hover         #f3f4f6      the row under the pointer or the arrow keys
+     warn-line     #f59e0b      an unconfirmed field's border
+     warn-ink      #b45309      the "choose from the list" nudge
    ========================================================================= */
 
 .lets-address__host {
@@ -21,16 +34,20 @@
     overflow: hidden;
     max-height: 280px;
     overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 .lets-address__item {
-    display: block;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
     width: 100%;
     padding: 9px 14px;
     border: 0;
     background: transparent;
     text-align: start;
     font: inherit;
+    line-height: 1.35;
     color: #101828;
     cursor: pointer;
 }
@@ -40,7 +57,25 @@
     background: #f3f4f6;
 }
 
-/* The "choose from the list" nudge on an unconfirmed city. */
+/* The registry's Latin spelling, so "tel aviv" finds the Hebrew name. */
+
+.lets-address__alias {
+    font-size: 0.8em;
+    color: #667085;
+    white-space: nowrap;
+}
+
+/* "Loading…", "no matches", "keep typing" — a row that is not a choice. */
+
+.lets-address__note {
+    padding: 9px 14px;
+    font-size: 0.9em;
+    line-height: 1.35;
+    color: #667085;
+    cursor: default;
+}
+
+/* The "choose from the list" nudge on an unconfirmed field. */
 
 .lets-address__input--unconfirmed {
     border-color: #f59e0b !important;
@@ -50,4 +85,28 @@
     margin: 4px 0 0;
     font-size: 0.85em;
     color: #b45309;
+}
+
+/* -------------------------------------------------------------------------
+   The address block inside My Account → account details. It is one fieldset
+   in the theme's own form, so it borrows the theme's fields and adds only the
+   rule that separates it from the details above it.
+   ---------------------------------------------------------------------- */
+
+.lets-profile-address {
+    margin: 24px 0 0;
+    padding: 20px 0 0;
+    border: 0;
+    border-top: 1px solid #d1d5db;
+}
+
+.lets-profile-address > legend {
+    padding: 0;
+    font-weight: 600;
+}
+
+.lets-profile-address__note {
+    margin: 0 0 12px;
+    font-size: 0.9em;
+    color: #667085;
 }

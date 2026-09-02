@@ -22,7 +22,7 @@ return [
         'loyalty_heading' => 'מועדון הלקוחות',
         'orders_heading' => 'היסטוריית הזמנות',
         'gifts_heading' => 'מתנות שקיבלתם מאיתנו',
-        'gifts_empty' => 'עוד לא נשלחו אליך מתנות.',
+        'gifts_empty' => 'עוד לא נשלחו אליך מוצרים.',
         'gifts_tab' => 'מתנות',
         'gift_sent_on' => 'נשלח בתאריך',
         'documents_heading' => 'חשבוניות וקבלות',

@@ -62,6 +62,9 @@ add_action('admin_post_lets_payplus_save_page_settings', function () {
     // Local: the GOV address autocomplete at checkout (class-lets-address-autocomplete).
     update_option(LETS_ADDRESS_OPT, empty($_POST['lets_address_autocomplete']) ? '0' : '1');
 
+    // Local: the address inside My Account → account details (class-lets-account-address).
+    update_option(LETS_PROFILE_ADDRESS_OPT, empty($_POST['lets_address_in_profile']) ? '0' : '1');
+
     $body = array(
         'language_code'             => isset($_POST['language_code']) ? sanitize_text_field(wp_unslash($_POST['language_code'])) : 'he',
         'charge_default'            => isset($_POST['charge_default']) ? sanitize_text_field(wp_unslash($_POST['charge_default'])) : '',
@@ -334,7 +337,49 @@ function lets_payplus_render_page_settings()
                         <?php esc_html_e('Suggest city and street names at checkout from the Israeli government address registry', 'lets-payplus'); ?>
                     </label>
                     <p class="description">
-                        <?php esc_html_e('The registry holds cities and streets only — the shopper still types the house number. If the registry is unreachable, the fields simply behave as plain text.', 'lets-payplus'); ?>
+                        <?php esc_html_e('The registry holds cities and streets only — the shopper still types the house number. The full lists are downloaded once and cached here for three months, so the dropdown filters instantly as the shopper types. If the registry is unreachable, the fields simply behave as plain text.', 'lets-payplus'); ?>
+                    </p>
+
+                    <?php
+                    // The lists refresh themselves every three months. This is for the
+                    // merchant who knows a street moved and does not want to wait —
+                    // and it is the one place that says what is actually cached.
+                    $addr = lets_payplus_address_status();
+                    ?>
+                    <p>
+                        <a class="button button-secondary" href="<?php echo esc_url(lets_payplus_address_refresh_url()); ?>">
+                            <?php esc_html_e('Update the address lists now', 'lets-payplus'); ?>
+                        </a>
+                    </p>
+                    <p class="description">
+                        <?php
+                        if ($addr['cities'] > 0) {
+                            printf(
+                                /* translators: 1: locality count, 2: street-list count, 3: date and time */
+                                esc_html__('%1$s localities and %2$s street lists are stored on this site. Last downloaded %3$s.', 'lets-payplus'),
+                                esc_html(number_format_i18n($addr['cities'])),
+                                esc_html(number_format_i18n($addr['streets'])),
+                                esc_html($addr['synced'] > 0
+                                    ? wp_date(get_option('date_format') . ' ' . get_option('time_format'), $addr['synced'])
+                                    : '—')
+                            );
+                        } else {
+                            esc_html_e('Nothing is stored yet — the lists download themselves the first time a shopper opens an address form, or now, with the button above.', 'lets-payplus');
+                        }
+                        ?>
+                    </p>
+                </td>
+            </tr>
+
+            <tr>
+                <th scope="row"><?php esc_html_e('Address in account details', 'lets-payplus'); ?></th>
+                <td>
+                    <label>
+                        <input type="checkbox" name="lets_address_in_profile" value="1" <?php checked(lets_payplus_profile_address_enabled()); ?>>
+                        <?php esc_html_e('Edit the address on My Account → account details, and leave the addresses tab for a separate shipping address', 'lets-payplus'); ?>
+                    </label>
+                    <p class="description">
+                        <?php esc_html_e('One form instead of a tab, a landing page and two links. When the store has no separate shipping address at all, the addresses tab is removed.', 'lets-payplus'); ?>
                     </p>
                 </td>
             </tr>

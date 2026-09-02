@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.44.0
+Stable tag: 0.45.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,26 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.45.0 =
+* City and street are real dropdowns now. The government lists are DOWNLOADED
+  once — every locality, and every street of a city the first time somebody
+  picks that city — and cached for three months, so the list opens on focus and
+  narrows as you type, by prefix. The registry's own search matches whole words
+  only, which is why "הרצ" used to find nothing and the street field seemed
+  broken; nothing is asked of it per keystroke any more.
+* The fields only accept a name that is on the list. Type something else and it
+  is put back with a line saying to choose from the list — unless we hold no
+  list for that field (registry unreachable, a city it does not know), where it
+  stays plain text. An outage still cannot block a checkout.
+* "Update the address lists now" on Settings → LETS re-downloads every locality
+  from the registry on the spot, and reloads the street lists the store already
+  had, so a street that moved does not wait three months. The same row now says
+  how much is stored on the site and when it was last downloaded.
+* The address moves into My Account → account details, saved by the same button
+  as the name and the email. The addresses tab is left with the separate
+  shipping address alone, and disappears entirely in a store that has none.
+  Switch it off under Settings → LETS → "Address in account details".
 
 = 0.44.0 =
 * The account TABS are now their own setting (LETS dashboard → Customer area →
