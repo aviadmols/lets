@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.45.0
+Stable tag: 0.46.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,15 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.46.0 =
+* Settings → LETS → "Password fields": hide WooCommerce's "Password change"
+  block on My Account → account details. On a store whose shoppers sign in with
+  a one-time code almost nobody has a password, and three password fields at
+  the bottom of their details can only confuse. Nothing is locked — the
+  password is untouched, the sign-in screen still carries WooCommerce's own
+  password form and its lost-password link, and the WordPress profile screen
+  still changes it. Off by default.
 
 = 0.45.0 =
 * City and street are real dropdowns now. The government lists are DOWNLOADED

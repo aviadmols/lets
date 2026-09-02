@@ -65,6 +65,9 @@ add_action('admin_post_lets_payplus_save_page_settings', function () {
     // Local: the address inside My Account → account details (class-lets-account-address).
     update_option(LETS_PROFILE_ADDRESS_OPT, empty($_POST['lets_address_in_profile']) ? '0' : '1');
 
+    // Local: hide WooCommerce's password-change block there (class-lets-account-password).
+    update_option(LETS_PASSWORD_HIDE_OPT, empty($_POST['lets_hide_password_fields']) ? '0' : '1');
+
     $body = array(
         'language_code'             => isset($_POST['language_code']) ? sanitize_text_field(wp_unslash($_POST['language_code'])) : 'he',
         'charge_default'            => isset($_POST['charge_default']) ? sanitize_text_field(wp_unslash($_POST['charge_default'])) : '',
@@ -380,6 +383,19 @@ function lets_payplus_render_page_settings()
                     </label>
                     <p class="description">
                         <?php esc_html_e('One form instead of a tab, a landing page and two links. When the store has no separate shipping address at all, the addresses tab is removed.', 'lets-payplus'); ?>
+                    </p>
+                </td>
+            </tr>
+
+            <tr>
+                <th scope="row"><?php esc_html_e('Password fields', 'lets-payplus'); ?></th>
+                <td>
+                    <label>
+                        <input type="checkbox" name="lets_hide_password_fields" value="1" <?php checked(lets_payplus_password_hidden()); ?>>
+                        <?php esc_html_e('Hide the “Password change” block on My Account → account details', 'lets-payplus'); ?>
+                    </label>
+                    <p class="description">
+                        <?php esc_html_e('On a store whose shoppers sign in with a one-time code, almost nobody has a password — and three password fields can only confuse. Nothing is locked: the password itself is untouched, the sign-in screen still carries WooCommerce’s password form and its lost-password link, and WordPress’s own profile screen still changes it.', 'lets-payplus'); ?>
                     </p>
                 </td>
             </tr>
