@@ -97,6 +97,11 @@ return [
         'filter' => 'זיכויים שדורשים טיפול',
     ],
 
+    'store' => [
+        // ההערה שהסוחר קורא בתוך האדמין של החנות שלו.
+        'woo_note' => 'זיכוי LETS: :amount :currency. סיבה: :reason',
+    ],
+
     'failure' => [
         'nothing_to_refund' => 'לא נותר מה לזכות בהזמנה הזו.',
         'money_failed' => 'חברת הסליקה דחתה את הזיכוי.',
@@ -108,6 +113,7 @@ return [
         'already_refunded' => 'כבר זוכה.',
         'refund_failed' => 'הסליקה דחתה את הזיכוי הזה.',
         'store_exception' => 'החנות לא ענתה.',
+        'protected_data_pending' => 'שופיפיי סירבה: האפליקציה עדיין לא מאושרת לנתוני הלקוח שההזמנה הזו דורשת.',
     ],
 
     'notify_result' => [

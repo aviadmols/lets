@@ -2,6 +2,7 @@
 
 namespace App\Services\WooCommerce;
 
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 
@@ -253,6 +254,47 @@ final class WooCommerceClient
     }
 
     /**
+     * POST /wp-json/wc/v3/orders/{id}/refunds → the created refund array.
+     *
+     * WooCommerce owns three things here that we deliberately do not do
+     * ourselves: it writes the refund record the merchant sees on the order, it
+     * puts the stock back when `restock_items` is set, and it flips the order to
+     * `refunded` once the refunds total the order.
+     *
+     * `api_refund` is the flag that decides WHOSE money moves. FALSE means "we
+     * already moved it, just record it" — which is the truth for every order this
+     * app charged on the PayPlus page. TRUE asks WooCommerce to ask the order's
+     * own gateway, which is right for a PayPal order and catastrophic for a
+     * PayPlus one: the shopper would be refunded twice.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public function createRefund(string $orderId, array $payload): array
+    {
+        $response = $this->post('orders/'.rawurlencode($orderId).'/refunds', $payload);
+        $response->throw();
+
+        return (array) $response->json();
+    }
+
+    /**
+     * GET /wp-json/wc/v3/orders/{id}/refunds → the refunds already on this order.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function fetchRefunds(string $orderId): array
+    {
+        $response = $this->get('orders/'.rawurlencode($orderId).'/refunds', ['per_page' => 100]);
+
+        if ($response->status() === 404) {
+            return [];
+        }
+
+        return array_values((array) $response->json());
+    }
+
+    /**
      * POST /wp-json/wc/v3/coupons → the created coupon array.
      *
      * WooCommerce has no store-credit primitive, so a loyalty redemption becomes
@@ -337,7 +379,7 @@ final class WooCommerceClient
         return $this->client()->put($this->url($path), $payload);
     }
 
-    private function client(): \Illuminate\Http\Client\PendingRequest
+    private function client(): PendingRequest
     {
         return Http::withBasicAuth($this->consumerKey, $this->consumerSecret)
             ->timeout($this->timeout)

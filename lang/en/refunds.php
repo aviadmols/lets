@@ -98,6 +98,11 @@ return [
         'filter' => 'Refunds needing attention',
     ],
 
+    'store' => [
+        // The note the merchant reads inside their own store admin.
+        'woo_note' => 'LETS refund: :amount :currency. Reason: :reason',
+    ],
+
     'failure' => [
         'nothing_to_refund' => 'There is nothing left to refund on this order.',
         'money_failed' => 'The payment gateway refused the refund.',
@@ -109,6 +114,9 @@ return [
         'already_refunded' => 'Already refunded.',
         'refund_failed' => 'The gateway refused this refund.',
         'store_exception' => 'The store did not answer.',
+        // A scope the merchant has not been approved for — an action they can
+        // take in their Partner Dashboard, not a fault they can only report.
+        'protected_data_pending' => 'Shopify refused: this app is not yet approved for the customer data this order needs.',
     ],
 
     'notify_result' => [
