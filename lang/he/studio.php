@@ -35,6 +35,7 @@ return [
     'variable' => [
         'customer_name' => 'שם הלקוח',
         'customer_email' => 'המייל של הלקוח',
+        'customer_address' => 'הכתובת של הלקוח',
         'business_name' => 'שם העסק',
         'account_login_url' => 'קישור כניסה לאזור האישי',
         'unsubscribe_url' => 'קישור הסרה מרשימת התפוצה',

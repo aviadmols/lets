@@ -414,23 +414,6 @@ class ViewSubscription extends Page
      */
     public function contactDetails(): array
     {
-        $address = $this->record->contactAddress();
-
-        // street + building read as one token ("אליהו הנביא 18"); apartment gets
-        // its own translated label so the line reads as an address, not a CSV row.
-        $streetLine = trim(($address['street'] ?? '').' '.($address['building_number'] ?? ''));
-        $apartment = isset($address['apartment_number'])
-            ? __('subscriptions.detail.contact.apartment_short', ['number' => $address['apartment_number']])
-            : null;
-
-        $line = implode(', ', array_filter([
-            $streetLine !== '' ? $streetLine : null,
-            $apartment,
-            $address['city'] ?? null,
-            $address['zip_code'] ?? null,
-            $address['country'] ?? null,
-        ]));
-
         $trimmed = fn (?string $v): ?string => trim((string) $v) !== '' ? trim((string) $v) : null;
 
         return [
@@ -438,7 +421,9 @@ class ViewSubscription extends Page
             'email' => $trimmed($this->record->customer_email),
             'phone' => $trimmed($this->record->customer_phone),
             'national_id' => $this->record->nationalId(),
-            'address' => $line !== '' ? $line : null,
+            // The model owns the one-line rendering, so this card and the
+            // {customer_address} a campaign substitutes cannot disagree.
+            'address' => $this->record->contactAddressLine(),
         ];
     }
 

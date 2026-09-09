@@ -96,7 +96,10 @@ class EmailCampaign extends Model
      * The tokens a merchant may write into the subject and body. Substituted by
      * TemplateRenderer (strtr) — the same wall every mail template stands behind.
      */
-    public const PLACEHOLDERS = ['customer_name', 'customer_email', 'business_name', 'account_login_url', 'unsubscribe_url'];
+    public const PLACEHOLDERS = [
+        'customer_name', 'customer_email', 'customer_address',
+        'business_name', 'account_login_url', 'unsubscribe_url',
+    ];
 
     public const TOKEN_LOGIN = '{account_login_url}';
 

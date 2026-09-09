@@ -163,6 +163,7 @@ return [
 
     'sample' => [
         'customer_name' => 'דנה כהן',
+        'customer_address' => 'הרצל 12, דירה 4, תל אביב, 6329302',
         'business_name' => 'החנות שלי',
         'product_title' => 'מנוי חודשי',
         'failure_reason' => 'הכרטיס נדחה (אין כיסוי)',

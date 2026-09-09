@@ -309,6 +309,9 @@ class CampaignResource extends Resource
                         Placeholder::make('placeholders')
                             ->label(__(self::LANG.'.field.placeholders'))
                             ->content(new HtmlString(self::placeholderChips()))
+                            // A token that can come out blank has to say so
+                            // where the merchant writes the sentence around it.
+                            ->helperText(__(self::LANG.'.field.placeholders_help'))
                             ->visible(fn (Get $get): bool => $get('editor_mode') !== EmailCampaign::EDITOR_STUDIO),
 
                         RichEditor::make('body_html')

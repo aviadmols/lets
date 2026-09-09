@@ -166,6 +166,7 @@ return [
 
     'sample' => [
         'customer_name' => 'Dana Cohen',
+        'customer_address' => '12 Herzl St, Apt. 4, Tel Aviv, 6329302',
         'business_name' => 'My Store',
         'product_title' => 'Monthly subscription',
         'failure_reason' => 'Card declined (insufficient funds)',

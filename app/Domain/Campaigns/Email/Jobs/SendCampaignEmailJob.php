@@ -138,13 +138,19 @@ final class SendCampaignEmailJob implements ShouldBeUnique, ShouldQueue
                 $loginUrl = $minted['url'];
             }
 
+            $locale = $this->localeFor($shop);
+
             $mail = new CampaignMail(
                 shop: $shop,
                 subjectTemplate: (string) $campaign->subject,
                 bodyTemplate: (string) $campaign->body_html,
-                vars: CampaignMailVars::for($shop, $recipient, $loginUrl, $unsubscribeUrl),
+                // The BAG is built in the shopper's language as well, not just
+                // the render around it: it carries translated copy of its own —
+                // the name fallback, the apartment word inside an address — and
+                // a worker's locale is whatever shop it happened to serve last.
+                vars: $this->inLocale($locale, fn (): array => CampaignMailVars::for($shop, $recipient, $loginUrl, $unsubscribeUrl)),
                 unsubscribeUrl: $unsubscribeUrl,
-                shopperLocale: $this->localeFor($shop),
+                shopperLocale: $locale,
                 isMarketing: $campaign->isMarketing(),
                 textTemplate: (string) ($campaign->body_text ?? ''),
             );
@@ -194,5 +200,19 @@ final class SendCampaignEmailJob implements ShouldBeUnique, ShouldQueue
         $settings = MerchantMailSettings::acrossAllTenants()->where('shop_id', $shop->getKey())->first();
 
         return $settings?->emailLocale() ?? app()->getLocale();
+    }
+
+    /** Run one callback with the customer's language bound. */
+    private function inLocale(string $locale, callable $callback): mixed
+    {
+        $previous = app()->getLocale();
+
+        try {
+            app()->setLocale($locale);
+
+            return $callback();
+        } finally {
+            app()->setLocale($previous);
+        }
     }
 }

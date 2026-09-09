@@ -84,6 +84,7 @@ return [
         'body' => 'Body',
         'body_visual' => 'Body',
         'placeholders' => 'Placeholders',
+        'placeholders_help' => '{customer_address} is filled in from the address on file for that person — from the import, or from what you typed on their subscription. Anyone we hold no address for gets an empty space, so write a line that still reads well without it.',
         'scheduled_at' => 'Send at',
         'scheduled_at_help' => 'Leave empty to send it yourself with the button above.',
         'login_ttl' => 'The sign-in link stays valid for',

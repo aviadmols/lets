@@ -38,6 +38,10 @@ final class CampaignMailVars
             // friendly generic one — the same choice the plan mails make.
             'customer_name' => $name !== '' ? $name : (string) __('campaigns.mail.friend'),
             'customer_email' => (string) $recipient->email,
+            // One line, from what this shop already knows about the person — no
+            // store call per recipient, and EMPTY rather than a guess when we
+            // hold no address at all. @see RecipientAddress
+            'customer_address' => app(RecipientAddress::class)->for($recipient),
             'business_name' => BusinessName::for($shop),
             'account_login_url' => $loginUrl,
             'unsubscribe_url' => $unsubscribeUrl,
@@ -55,6 +59,7 @@ final class CampaignMailVars
         return [
             'customer_name' => (string) __('mail.sample.customer_name'),
             'customer_email' => self::SAMPLE_EMAIL,
+            'customer_address' => (string) __('mail.sample.customer_address'),
             'business_name' => BusinessName::for($shop),
             'account_login_url' => app(CampaignLoginLinks::class)->sampleUrl(),
             'unsubscribe_url' => app(CampaignUnsubscribeLinks::class)->sampleUrl(),

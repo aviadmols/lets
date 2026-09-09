@@ -110,6 +110,12 @@ class InstallmentPlan extends Model
         'street', 'building_number', 'apartment_number', 'city', 'zip_code', 'country',
     ];
 
+    /** What joins those fields into one readable line. @see contactAddressLine() */
+    public const ADDRESS_LINE_SEPARATOR = ', ';
+
+    /** The apartment's own label, so a line reads as an address and not a CSV row. */
+    public const ADDRESS_APARTMENT_KEY = 'subscriptions.detail.contact.apartment_short';
+
     /**
      * Hardened mass-assignment: shop_id (auto-stamped by BelongsToShop) and
      * status (the state machine is the ONLY legal mutation path) are guarded so a
@@ -409,6 +415,41 @@ class InstallmentPlan extends Model
         }
 
         return $out;
+    }
+
+    /**
+     * The same address as ONE readable line — "אליהו הנביא 18, דירה 4, חיפה".
+     *
+     * THE one rendering of it. The admin's contact card and the
+     * `{customer_address}` a campaign email substitutes both read through here,
+     * so a merchant never sees an address written one way on their screen and
+     * another way in the mail they just sent.
+     *
+     * Null when the plan holds no address at all — an empty line is not an
+     * address, and each caller decides what belongs in its place.
+     */
+    public function contactAddressLine(): ?string
+    {
+        $address = $this->contactAddress();
+        if ($address === []) {
+            return null;
+        }
+
+        // Street and building read as one token ("אליהו הנביא 18"); the
+        // apartment gets its own translated label.
+        $street = trim(($address['street'] ?? '').' '.($address['building_number'] ?? ''));
+
+        $line = implode(self::ADDRESS_LINE_SEPARATOR, array_filter([
+            $street !== '' ? $street : null,
+            isset($address['apartment_number'])
+                ? (string) __(self::ADDRESS_APARTMENT_KEY, ['number' => $address['apartment_number']])
+                : null,
+            $address['city'] ?? null,
+            $address['zip_code'] ?? null,
+            $address['country'] ?? null,
+        ]));
+
+        return $line !== '' ? $line : null;
     }
 
     /**

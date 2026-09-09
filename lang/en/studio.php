@@ -35,6 +35,7 @@ return [
     'variable' => [
         'customer_name' => "Customer's name",
         'customer_email' => "Customer's email",
+        'customer_address' => "Customer's address",
         'business_name' => 'Business name',
         'account_login_url' => 'Sign-in link to the personal area',
         'unsubscribe_url' => 'Unsubscribe link',
