@@ -8,6 +8,8 @@ use App\Models\PaymentLedger;
 use App\Models\Shop;
 use App\Support\Tenant;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * "Whose money is this, and who can give it back?"
@@ -32,6 +34,12 @@ final class RefundTargetResolver
     /** A charge with no transaction uid cannot be reversed at the gateway. */
     private const REQUIRES_UID = true;
 
+    /** Who moves the money when this app never charged the order. */
+    private const DELEGATED_RAIL_FOR = [
+        Shop::PLATFORM_SHOPIFY => RefundRequest::RAIL_SHOPIFY_NATIVE,
+        Shop::PLATFORM_WOOCOMMERCE => RefundRequest::RAIL_WOO_GATEWAY,
+    ];
+
     public function __construct(private readonly OrderRefundService $orders) {}
 
     public function for(Shop $shop, RefundRequest $request): RefundTarget
@@ -41,11 +49,10 @@ final class RefundTargetResolver
         $charges = $this->chargesFor($shop, $request);
 
         if ($charges->isEmpty()) {
-            // No charge of OURS. Either nothing was ever paid, or the money went
-            // through the store's own rail. R4 answers the second case; until
-            // then the honest answer is "we cannot move this money", and the
-            // drawer says so rather than pretending.
-            return RefundTarget::nothing($fallbackCurrency);
+            // No charge of OURS: either nothing was ever paid, or the money went
+            // through the STORE's own rail — a Shopify-Payments contract's cycle
+            // order, a WooCommerce order paid with PayPal. Ask the store.
+            return $this->fromStore($shop, $request, $fallbackCurrency);
         }
 
         $refundable = 0.0;
@@ -58,6 +65,54 @@ final class RefundTargetResolver
             charges: $charges,
             refundable: $refundable,
             currency: (string) ($charges->first()->currency ?: $fallbackCurrency),
+        );
+    }
+
+    /**
+     * The rail for an order this app never charged.
+     *
+     * The STORE is asked how much of it is still refundable, because the ledger
+     * knows nothing about it and a number we invented would be a number the
+     * merchant is invited to authorise. A store that cannot answer — no
+     * connection, no such order, a platform refusal — yields "nothing", and the
+     * drawer says so instead of offering a refund that would be refused.
+     *
+     * A CANCELLATION of an unpaid order legitimately lands here with zero
+     * refundable, and the orchestrator lets that through: cancelling an order
+     * nobody paid for is a real thing to want.
+     */
+    private function fromStore(Shop $shop, RefundRequest $request, string $fallbackCurrency): RefundTarget
+    {
+        $orderId = trim((string) ($request->external_order_id ?? ''));
+        $refunder = StoreRefunderFactory::for($shop);
+
+        if ($orderId === '' || $refunder === null) {
+            return RefundTarget::nothing($fallbackCurrency);
+        }
+
+        try {
+            $refundable = $refunder->refundableTotal($shop, $orderId);
+        } catch (Throwable $e) {
+            Log::warning('refunds.target.store_total_failed', [
+                'shop_id' => $shop->getKey(),
+                'order_id' => $orderId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return RefundTarget::nothing($fallbackCurrency);
+        }
+
+        if ($refundable === null || round($refundable, 2) <= 0) {
+            return RefundTarget::nothing($fallbackCurrency);
+        }
+
+        return new RefundTarget(
+            rail: self::DELEGATED_RAIL_FOR[(string) $shop->platform] ?? RefundRequest::RAIL_NONE,
+            // No charges of ours: the store IS the charge, and the orchestrator
+            // reads the rail rather than the collection to know that.
+            charges: collect(),
+            refundable: round($refundable, 2),
+            currency: $fallbackCurrency,
         );
     }
 

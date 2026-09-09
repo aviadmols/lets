@@ -28,8 +28,11 @@ final class WooUpsellChildOrderService
 {
     // === CONSTANTS ===
     public const META_PARENT_ORDER_ID = 'lets_parent_order_id';
+
     public const META_ORDER_ROLE = 'lets_order_role';
+
     public const META_UPSELL_OFFER_ID = 'lets_upsell_offer_id';
+
     public const ROLE_UPSELL_CHILD = 'upsell_child';
 
     private const STATUS_COMPLETED = 'completed';

@@ -37,9 +37,9 @@ final class ShopInstaller
      * install side-effects. Idempotent: a second call for the same domain reuses the
      * existing row + user and re-runs the (idempotent) sync jobs.
      *
-     * @param  string        $shopDomain  a validated *.myshopify.com domain (caller-proven)
-     * @param  ShopifyToken  $token       the freshly minted offline grant (stored encrypted)
-     * @param  string        $appKey      which Partner app minted the token ('public'|'custom')
+     * @param  string  $shopDomain  a validated *.myshopify.com domain (caller-proven)
+     * @param  ShopifyToken  $token  the freshly minted offline grant (stored encrypted)
+     * @param  string  $appKey  which Partner app minted the token ('public'|'custom')
      */
     public function installFromToken(
         string $shopDomain,

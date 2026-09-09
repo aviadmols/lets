@@ -6,12 +6,12 @@ use App\Models\Shop;
 use App\Models\SubscriptionContract;
 use App\Services\Shopify\ShopifyApps;
 use App\Services\Shopify\ShopifyClientFactory;
+use App\Services\Shopify\ShopifyToken;
 use App\Services\Shopify\ShopInstaller;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
-use App\Services\Shopify\ShopifyToken;
 
 /**
  * ONE deployment, TWO Partner apps (the public App-Store app + the custom
@@ -32,10 +32,15 @@ final class MultiAppIdentityTest extends TestCase
 
     // === CONSTANTS ===
     private const PUBLIC_KEY = 'public_api_key';
+
     private const PUBLIC_SECRET = 'public_api_secret';
+
     private const CUSTOM_KEY = 'custom_api_key';
+
     private const CUSTOM_SECRET = 'custom_api_secret';
+
     private const SHOP = 'multi-app.myshopify.com';
+
     private const WEBHOOK_ENDPOINT = '/shopify/webhooks';
 
     protected function setUp(): void
@@ -168,7 +173,7 @@ final class MultiAppIdentityTest extends TestCase
 
     private function makeContract(Shop $shop, int $ownerCustomerId): SubscriptionContract
     {
-        $contract = new SubscriptionContract();
+        $contract = new SubscriptionContract;
         $contract->forceFill([
             'shop_id' => (int) $shop->getKey(),
             'shopify_gid' => 'gid://shopify/SubscriptionContract/7001',
@@ -185,7 +190,7 @@ final class MultiAppIdentityTest extends TestCase
 
     private function fakePauseSuccess(SubscriptionContract $contract): void
     {
-        $recorder = new RecordingShopifyClient();
+        $recorder = new RecordingShopifyClient;
         $recorder->graphqlResponses = [
             ['data' => ['subscriptionContractPause' => [
                 'contract' => [

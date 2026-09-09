@@ -25,6 +25,7 @@ final class ShopifyTokenRefresher
     // === CONSTANTS ===
     /** OAuth 2.0 refresh grant — the same token endpoint as every other grant. */
     private const GRANT_TYPE = 'refresh_token';
+
     /** HTTP timeout for the refresh call (seconds). */
     private const TIMEOUT_SECONDS = 30;
 

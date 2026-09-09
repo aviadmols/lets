@@ -33,6 +33,7 @@ final class TokenRefreshTest extends TestCase
 
     // === CONSTANTS ===
     private const DOMAIN = 'token-refresh.myshopify.com';
+
     private const TOKEN_URL = 'https://token-refresh.myshopify.com/admin/oauth/access_token';
 
     protected function setUp(): void

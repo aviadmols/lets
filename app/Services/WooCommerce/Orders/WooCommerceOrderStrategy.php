@@ -43,19 +43,27 @@ final class WooCommerceOrderStrategy implements PlatformOrderStrategy
     // === CONSTANTS ===
     /** WC order meta linking an order to its LETS plan (read by WooCommercePaidOrderPlanResolver). */
     public const META_PLAN_PUBLIC_ID = 'lets_plan_public_id';
+
     public const META_ORDER_ROLE = 'lets_order_role';
+
     public const META_PAID_AMOUNT = 'lets_paid_amount';
+
     public const META_REMAINING_BALANCE = 'lets_remaining_balance';
+
     public const META_NEXT_CHARGE_AT = 'lets_next_charge_at';
+
     public const META_INSTALLMENT_STATUS = 'lets_installment_status';
+
     public const META_MAIN_ORDER_ID = 'lets_main_order_id';
 
     /** Order roles (mirror the Shopify pps_order_role note attribute). */
     private const ROLE_MAIN = 'main_order';
+
     private const ROLE_RECURRING = 'recurring_order';
 
     /** WC order statuses. */
     private const STATUS_PROCESSING = 'processing';
+
     private const STATUS_COMPLETED = 'completed';
 
     /** Plan meta key holding the per-cycle recurring WC order ids (idempotency; read by DocumentIssuer to link a cycle receipt to its order). */

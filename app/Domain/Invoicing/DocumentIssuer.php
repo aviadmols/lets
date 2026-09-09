@@ -261,6 +261,142 @@ final class DocumentIssuer
     }
 
     /**
+     * The credit note for a sale THIS APP NEVER CHARGED.
+     *
+     * A Shopify-Payments contract's cycle order and a WooCommerce order paid with
+     * PayPal both moved money on somebody else's rail, so neither has a ledger
+     * row — and `issueForLedger()`, which keys every credit note to a money
+     * movement of ours, has nothing to key on. The ORDER is the money event here,
+     * exactly as it is for the `all_orders` sale itself.
+     *
+     * The key carries the amount AND what had already gone back, for the same
+     * reason the ledger path's does: two ₪50 credits against one order are two
+     * declarations, and on the amount alone the second resolves to the first.
+     *
+     * It refuses to invent a sale it cannot find. A credit note must name the
+     * document it credits (Green Invoice rejects a 330 that does not), and this
+     * path has no plan and no ledger row to fall back on — so with no document
+     * for the order, nothing is issued and the caller reports that honestly
+     * rather than filing a dangling credit.
+     *
+     * @param  string|null  $reason  the merchant's own words, onto the remarks
+     */
+    public function issueCreditForOrder(
+        int $shopId,
+        string $orderId,
+        float $amount,
+        DocumentContext $context,
+        float $alreadyRefunded = 0.0,
+        ?int $refundRequestId = null,
+        ?string $reason = null,
+    ): ?IssuedDocument {
+        try {
+            $shop = $this->shop($shopId);
+            $orderId = trim($orderId);
+
+            if ($shop === null || $orderId === '' || ! $context->isCredit() || round($amount, 2) <= 0) {
+                return null;
+            }
+
+            $key = self::keyForOrderCredit($shopId, $orderId, $amount, $alreadyRefunded);
+
+            $existing = $this->findIssued($shopId, $key);
+            if ($existing !== null) {
+                return $existing;
+            }
+
+            $decision = $this->decide($shop, $context, $amount, null);
+            if (! $decision->shouldIssueNow) {
+                return null;
+            }
+
+            $linked = $this->documentIdForOrder($shopId, $orderId);
+            if ($linked === null) {
+                Log::info('invoicing.order_credit.no_sale_document', [
+                    'shop_id' => $shopId,
+                    'order_id' => $orderId,
+                ]);
+
+                return null;
+            }
+
+            $sale = $this->saleDocumentForOrder($shopId, $orderId);
+            $settings = MerchantInvoicingSettings::forShop($shopId);
+
+            $request = new IssueDocumentRequest(
+                shop: $shop,
+                context: $context,
+                // The customer the SALE was issued to — the credit note must be
+                // addressed to the same person, and the sale's own payload is the
+                // only record of who that was on this path.
+                customer: $this->customerFromSale($sale),
+                lines: [DocumentLine::single(
+                    (string) __('invoicing.line.'.$context->value, ['reference' => $orderId]),
+                    round($amount, 2),
+                )],
+                amount: round($amount, 2),
+                currency: $this->currencyFromSale($sale),
+                isPaid: true,
+                linkedDocumentId: $linked,
+                remarks: $this->creditRemarks($orderId, $reason),
+                sendEmail: $settings->sendsEmailToCustomer(),
+            );
+
+            return $this->issue($shop, $context, $key, $request, array_filter([
+                'external_order_id' => $orderId,
+                'refund_request_id' => $refundRequestId,
+            ], static fn ($v): bool => $v !== null));
+        } catch (Throwable $e) {
+            return $this->recordBuildFailure($shopId, $context, $e);
+        }
+    }
+
+    /** The issued SALE document for one order, whose customer the credit copies. */
+    private function saleDocumentForOrder(int $shopId, string $orderId): ?IssuedDocument
+    {
+        return IssuedDocument::acrossAllTenants()
+            ->where('shop_id', $shopId)
+            ->where('external_order_id', $orderId)
+            ->where('status', IssuedDocument::STATUS_ISSUED)
+            ->whereNot('context', DocumentContext::REFUND->value)
+            ->whereNot('context', DocumentContext::CANCELLATION->value)
+            ->latest('id')
+            ->first();
+    }
+
+    /**
+     * Who the sale was issued to. Read from the sale's own reported payload,
+     * because on this path there is no plan and no ledger row that knows.
+     */
+    private function customerFromSale(?IssuedDocument $sale): DocumentCustomer
+    {
+        $order = (array) ($sale?->source_payload ?? []);
+        $customer = (array) ($order['customer'] ?? []);
+
+        return new DocumentCustomer(
+            name: (string) ($customer['name'] ?? '') ?: (string) __('common.none'),
+            email: $this->blankToNull((string) ($customer['email'] ?? '')),
+            phone: $this->blankToNull((string) ($customer['phone'] ?? '')),
+            taxId: $this->blankToNull((string) ($customer['tax_id'] ?? '')),
+        );
+    }
+
+    private function currencyFromSale(?IssuedDocument $sale): string
+    {
+        $currency = trim((string) ($sale?->currency ?? ''));
+
+        return $currency !== '' ? $currency : (string) config('payplus.currency', 'ILS');
+    }
+
+    private function creditRemarks(string $orderId, ?string $reason): string
+    {
+        $reason = trim((string) ($reason ?? ''));
+
+        return trim((string) __('invoicing.remarks.order_credit', ['reference' => $orderId])
+            .($reason !== '' ? ' — '.$reason : ''));
+    }
+
+    /**
      * Does a LETS plan own this store order? Then the plan pipeline declares its
      * income and the `all_orders` scope must keep its hands off it.
      *
@@ -350,6 +486,18 @@ final class DocumentIssuer
      * This is what makes a WooCommerce order flapping processing → completed issue
      * exactly one document.
      */
+    /**
+     * A credit note against an ORDER rather than a ledger row — the rails this
+     * app never charged. Same two-part shape as keyForRefund(): the amount plus
+     * what had already gone back, so two equal slices are two documents.
+     */
+    public static function keyForOrderCredit(int $shopId, string $orderId, float $amount, float $alreadyRefunded = 0.0): string
+    {
+        return IssuedDocument::KEY_PREFIX.'ordercredit:'.$shopId.':'.$orderId
+            .':'.number_format(round($alreadyRefunded, 2), 2, '.', '')
+            .':'.number_format(round($amount, 2), 2, '.', '');
+    }
+
     public static function keyForPlatformOrder(int $shopId, string $orderId): string
     {
         return IssuedDocument::KEY_PREFIX.'order:'.$shopId.':'.$orderId;

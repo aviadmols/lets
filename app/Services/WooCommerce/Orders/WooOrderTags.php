@@ -29,9 +29,13 @@ final class WooOrderTags
 
     /** Kind tags, mirroring the Shopify vocabulary. */
     public const KIND_INSTALLMENTS = 'installments';
+
     public const KIND_RECURRING = 'recurring';
+
     public const KIND_UPSELL = 'upsell';
+
     public const KIND_GIFT = 'gift';
+
     /** A subscription order priced below the regular catalog price (coupon / intro window / kept first payment). */
     public const KIND_DISCOUNT = 'discount';
 

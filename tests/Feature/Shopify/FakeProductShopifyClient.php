@@ -79,6 +79,11 @@ final class FakeProductShopifyClient implements ShopifyAdminApi
         ];
     }
 
+    public function fetchOrderTransactions(string $orderId): array
+    {
+        return [];
+    }
+
     public function fetchOrderWithMetafields(string $orderId): array
     {
         return [];

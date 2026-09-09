@@ -28,6 +28,4 @@ use App\Services\Orders\PlatformOrderStrategy;
  * shared across platforms); this marker interface keeps the Shopify DI binding +
  * the existing Shopify type-hints stable.
  */
-interface ShopifyOrderStrategy extends PlatformOrderStrategy
-{
-}
+interface ShopifyOrderStrategy extends PlatformOrderStrategy {}

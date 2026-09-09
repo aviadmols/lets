@@ -29,6 +29,7 @@ final class ShopifyAccountEndpointTest extends TestCase
 
     // === CONSTANTS ===
     private const SECRET = 'shpss_test_secret';
+
     private const API_KEY = 'test_api_key';
 
     private const BOOTSTRAP = '/subscriptions/api/account';

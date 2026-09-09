@@ -4,10 +4,11 @@ namespace Tests\Feature\Shopify;
 
 use App\Models\Shop;
 use App\Models\WebhookEvent;
+use App\Services\Shopify\ShopifyToken;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
-use App\Services\Shopify\ShopifyToken;
 
 /**
  * The webhook transport contract (shopify-integration.md §4):
@@ -23,6 +24,7 @@ final class ShopifyWebhookTest extends TestCase
 
     // === CONSTANTS ===
     private const SECRET = 'test_platform_webhook_secret';
+
     private const ENDPOINT = '/shopify/webhooks';
 
     protected function setUp(): void
@@ -147,7 +149,7 @@ final class ShopifyWebhookTest extends TestCase
 
         // Capture the tenant that is bound while the order-paid handler runs.
         $boundShopId = null;
-        \Illuminate\Support\Facades\Event::listen('shopify.order.paid', function (array $data) use (&$boundShopId): void {
+        Event::listen('shopify.order.paid', function (array $data) use (&$boundShopId): void {
             // The handler runs with the tenant bound; both the event payload AND
             // the live Tenant must point at Shop A.
             $boundShopId = [

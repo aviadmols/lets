@@ -4,11 +4,11 @@ namespace Tests\Feature\Shopify;
 
 use App\Http\Middleware\SessionTokenAuth;
 use App\Models\Shop;
+use App\Services\Shopify\ShopifyToken;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
-use App\Services\Shopify\ShopifyToken;
 
 /**
  * Embedded-admin session-token auth (§6): a valid App Bridge JWT (HS256 w/ the app
@@ -22,7 +22,9 @@ final class SessionTokenAuthTest extends TestCase
 
     // === CONSTANTS ===
     private const API_KEY = 'embedded_api_key';
+
     private const API_SECRET = 'embedded_api_secret';
+
     private const SHOP = 'delta.myshopify.com';
 
     protected function setUp(): void

@@ -25,8 +25,11 @@ final class ShopifyRateLimiter
 {
     // === CONSTANTS ===
     private const REST_PER_SECOND = 2;           // standard plan leaky-bucket refill
+
     private const MAX_SLEEP_SECONDS = 5.0;       // never block a worker longer than this
+
     private const COST_CACHE_TTL = 60;           // seconds to remember a store's budget
+
     private const COST_CACHE_PREFIX = 'shopify:gql_cost:';
 
     public function __construct(private readonly bool $sleepEnabled = true) {}

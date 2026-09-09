@@ -155,6 +155,16 @@ trait MakesRefundScenarios
                 return true;
             }
 
+            /**
+             * Null: this fake stands in for a store on OUR rail, where the
+             * refundable ceiling comes from the ledger and the store is never
+             * asked. A delegated-rail test scripts the real refunder instead.
+             */
+            public function refundableTotal(Shop $shop, string $orderId): ?float
+            {
+                return null;
+            }
+
             public function refund(Shop $shop, RefundRequest $request): StoreRefundResult
             {
                 return $this->answer('refund', $request);

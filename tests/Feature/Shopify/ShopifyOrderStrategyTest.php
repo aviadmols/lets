@@ -10,10 +10,10 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Services\Shopify\Orders\DefaultShopifyOrderStrategy;
 use App\Services\Shopify\ShopifyAdminApi;
 use App\Services\Shopify\ShopifyClientFactory;
+use App\Services\Shopify\ShopifyToken;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
-use App\Services\Shopify\ShopifyToken;
 
 /**
  * The Shopify order strategy (§5). Uses a recording fake Admin client (no HTTP) to
@@ -41,7 +41,7 @@ final class ShopifyOrderStrategyTest extends TestCase
 
         $plan = $this->makePlan($shop, PlanKind::INSTALLMENTS, totalAmount: 300);
 
-        Tenant::run($shop, fn () => (new DefaultShopifyOrderStrategy())->materialize($plan, ChargeContext::DEPOSIT));
+        Tenant::run($shop, fn () => (new DefaultShopifyOrderStrategy)->materialize($plan, ChargeContext::DEPOSIT));
 
         // Exactly one order created; it carries NO transactions block.
         $this->assertCount(1, $fake->createdOrders);
@@ -71,7 +71,7 @@ final class ShopifyOrderStrategyTest extends TestCase
             'shopify_order_gid' => 'gid://shopify/Order/900',
         ])->save();
 
-        Tenant::run($shop, fn () => (new DefaultShopifyOrderStrategy())->materialize($plan, ChargeContext::INSTALLMENT, isFinal: true));
+        Tenant::run($shop, fn () => (new DefaultShopifyOrderStrategy)->materialize($plan, ChargeContext::INSTALLMENT, isFinal: true));
 
         $this->assertTrue($fake->markedPaid, 'orderMarkAsPaid must run at completion.');
         $this->assertTrue($fake->fulfillmentCreated, 'createFulfillment must run at completion.');
@@ -84,7 +84,7 @@ final class ShopifyOrderStrategyTest extends TestCase
 
         $plan = $this->makePlan($shop, PlanKind::RECURRING, installmentAmount: 49.90);
 
-        Tenant::run($shop, fn () => (new DefaultShopifyOrderStrategy())->materialize($plan, ChargeContext::RECURRING));
+        Tenant::run($shop, fn () => (new DefaultShopifyOrderStrategy)->materialize($plan, ChargeContext::RECURRING));
 
         $this->assertCount(1, $fake->createdOrders);
         $order = $fake->createdOrders[0];
@@ -128,7 +128,7 @@ final class ShopifyOrderStrategyTest extends TestCase
 
     private function fakeClientFor(Shop $shop): RecordingShopifyClient
     {
-        $fake = new RecordingShopifyClient();
+        $fake = new RecordingShopifyClient;
         ShopifyClientFactory::fake(fn (Shop $s): ShopifyAdminApi => $fake);
 
         return $fake;

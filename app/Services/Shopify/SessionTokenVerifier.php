@@ -25,10 +25,11 @@ final class SessionTokenVerifier
 {
     // === CONSTANTS ===
     private const ALG = 'HS256';
+
     private const LEEWAY_SECONDS = 5;
 
     /**
-     * @return array<string, mixed>|null  validated claims, or null on failure
+     * @return array<string, mixed>|null validated claims, or null on failure
      */
     public function verify(string $jwt, string $secret, string $apiKey): ?array
     {

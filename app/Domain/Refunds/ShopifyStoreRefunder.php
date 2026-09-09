@@ -50,6 +50,15 @@ final class ShopifyStoreRefunder implements StoreRefunder
      */
     private const CONFIG_TX_GATEWAY = 'shopify.order_tx_gateway';
 
+    /** Shopify's transaction vocabulary. */
+    private const KIND_SALE = 'sale';
+
+    private const KIND_CAPTURE = 'capture';
+
+    private const KIND_REFUND = 'refund';
+
+    private const STATUS_SUCCESS = 'success';
+
     /** Shopify's restock vocabulary. RETURN puts it back on the shelf. */
     private const RESTOCK_RETURN = 'RETURN';
 
@@ -63,6 +72,44 @@ final class ShopifyStoreRefunder implements StoreRefunder
         return $shop->platform === Shop::PLATFORM_SHOPIFY
             && $shop->hasShopifyConnection()
             && $shop->isLive();
+    }
+
+    /**
+     * What Shopify could still give back on this order: the sale transactions it
+     * actually captured, minus the refunds already against them.
+     *
+     * Asked only for orders this app never charged — a Shopify-Payments
+     * contract's cycle order. Read from the TRANSACTIONS rather than the order's
+     * total, because the total is what was ordered and the transactions are what
+     * was paid, and a refund can only ever return the second.
+     */
+    public function refundableTotal(Shop $shop, string $orderId): ?float
+    {
+        $orderId = trim($orderId);
+        if ($orderId === '' || ! $this->supports($shop)) {
+            return null;
+        }
+
+        $captured = 0.0;
+        $refunded = 0.0;
+
+        foreach (ShopifyClientFactory::for($shop)->fetchOrderTransactions($orderId) as $transaction) {
+            if (! is_array($transaction) || ! $this->isSettled($transaction)) {
+                continue;
+            }
+
+            $amount = round((float) ($transaction['amount'] ?? 0), 2);
+
+            match (strtolower((string) ($transaction['kind'] ?? ''))) {
+                self::KIND_SALE, self::KIND_CAPTURE => $captured = round($captured + $amount, 2),
+                self::KIND_REFUND => $refunded = round($refunded + $amount, 2),
+                default => null,
+            };
+        }
+
+        $remaining = round($captured - $refunded, 2);
+
+        return $remaining > 0 ? $remaining : null;
     }
 
     public function refund(Shop $shop, RefundRequest $request): StoreRefundResult
@@ -101,6 +148,8 @@ final class ShopifyStoreRefunder implements StoreRefunder
         }
 
         try {
+            // Same call on both rails — it RECORDS on ours and MOVES on the
+            // delegated one — so the cancel below never has to refund anything.
             $reference = $request->refundedTotal() > 0
                 ? $this->createRefund($shop, $request, $orderId)
                 : null;
@@ -171,13 +220,7 @@ final class ShopifyStoreRefunder implements StoreRefunder
             'note' => $this->reasonText($request),
             'notify' => (bool) $request->notify,
             'refundLineItems' => $this->refundLineItems($shop, $request, $orderId),
-            'transactions' => [[
-                'orderId' => $orderGid,
-                // Manual: PayPlus already moved this money. See the class doc.
-                'gateway' => (string) config(self::CONFIG_TX_GATEWAY, 'manual'),
-                'kind' => 'REFUND',
-                'amount' => number_format($amount, 2, '.', ''),
-            ]],
+            'transactions' => [$this->refundTransaction($shop, $request, $orderId, $orderGid, $amount)],
         ], static fn ($v): bool => $v !== null && $v !== []);
 
         $body = $client->graphql(<<<'GQL'
@@ -192,6 +235,105 @@ final class ShopifyStoreRefunder implements StoreRefunder
         $this->assertNoUserErrors($body, 'data.refundCreate.userErrors');
 
         return (string) (data_get($body, 'data.refundCreate.refund.id') ?? '') ?: null;
+    }
+
+    /**
+     * The refund transaction — the single most consequential object in this file.
+     *
+     * On OUR rail it names the MANUAL gateway and no parent: PayPlus already
+     * moved the money, and this only makes the order read `refunded`. Naming the
+     * real sale transaction here would make Shopify send the money a second time.
+     *
+     * On the DELEGATED rail the opposite is true. This app never charged the
+     * order, so nothing has been returned yet, and the refund has to name the
+     * parent sale — that is what tells Shopify which gateway to ask and is the
+     * only way the shopper is actually made whole. With no parent found, we fall
+     * back to recording rather than guessing: a recorded refund a merchant can
+     * see and correct beats a silent one that moved nothing.
+     *
+     * @return array<string, mixed>
+     */
+    private function refundTransaction(
+        Shop $shop,
+        RefundRequest $request,
+        string $orderId,
+        string $orderGid,
+        float $amount,
+    ): array {
+        $transaction = [
+            'orderId' => $orderGid,
+            'gateway' => (string) config(self::CONFIG_TX_GATEWAY, 'manual'),
+            'kind' => 'REFUND',
+            'amount' => number_format($amount, 2, '.', ''),
+        ];
+
+        if (! $request->isDelegated()) {
+            return $transaction;
+        }
+
+        $parent = $this->parentSaleFor($shop, $orderId);
+
+        if ($parent === null) {
+            Log::warning('refunds.shopify.no_parent_transaction', [
+                'shop_id' => $shop->getKey(),
+                'order_id' => $orderId,
+            ]);
+
+            return $transaction;
+        }
+
+        return [
+            'orderId' => $orderGid,
+            // The gateway the SALE used — Shopify refuses a refund filed under a
+            // gateway that never touched the order.
+            'gateway' => $parent['gateway'],
+            'kind' => 'REFUND',
+            'amount' => number_format($amount, 2, '.', ''),
+            'parentId' => $parent['gid'],
+        ];
+    }
+
+    /**
+     * The settled sale/capture this refund should hang off: the largest one, so a
+     * partial refund is never refused for exceeding a small parent.
+     *
+     * @return array{gid: string, gateway: string}|null
+     */
+    private function parentSaleFor(Shop $shop, string $orderId): ?array
+    {
+        $best = null;
+
+        foreach (ShopifyClientFactory::for($shop)->fetchOrderTransactions($orderId) as $transaction) {
+            if (! is_array($transaction) || ! $this->isSettled($transaction)) {
+                continue;
+            }
+
+            $kind = strtolower((string) ($transaction['kind'] ?? ''));
+            if (! in_array($kind, [self::KIND_SALE, self::KIND_CAPTURE], true)) {
+                continue;
+            }
+
+            $amount = round((float) ($transaction['amount'] ?? 0), 2);
+            $id = trim((string) ($transaction['admin_graphql_api_id'] ?? ($transaction['id'] ?? '')));
+
+            if ($id === '' || ($best !== null && $amount <= $best['amount'])) {
+                continue;
+            }
+
+            $best = [
+                'gid' => str_starts_with($id, 'gid://') ? $id : 'gid://shopify/OrderTransaction/'.$id,
+                'gateway' => (string) ($transaction['gateway'] ?? ''),
+                'amount' => $amount,
+            ];
+        }
+
+        return $best === null ? null : ['gid' => $best['gid'], 'gateway' => $best['gateway']];
+    }
+
+    /** Only money that actually moved counts — a pending or failed attempt did not. */
+    private function isSettled(array $transaction): bool
+    {
+        return strtolower((string) ($transaction['status'] ?? '')) === self::STATUS_SUCCESS;
     }
 
     /**

@@ -36,9 +36,18 @@ final readonly class RefundTarget
         return new self(RefundRequest::RAIL_NONE, collect(), 0.0, $currency);
     }
 
+    /**
+     * Is there nothing to do at all?
+     *
+     * NOT "are there no charges": a DELEGATED rail has no charges of ours by
+     * definition — the store holds the money — and reading an empty collection
+     * as "nothing to refund" would silently refuse every Shopify-Payments and
+     * PayPal order. What makes a target empty is having nothing left to give
+     * back, whoever would give it.
+     */
     public function isEmpty(): bool
     {
-        return $this->charges->isEmpty();
+        return $this->charges->isEmpty() && round($this->refundable, 2) <= 0;
     }
 
     /** How much is still refundable on one charge. */

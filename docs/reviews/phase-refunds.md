@@ -164,3 +164,52 @@ because they are three different things to go and fix.
 - The §3.7 accounting question (a credit note cannot link to a RECEIPT, which is
   all a mid-stream plan has) is unanswered and needs the merchant's accountant.
 - The Shopify `write_inventory` question above.
+
+---
+
+## 2026-09-09 — R4 (the money rails this app never charged)
+
+**Scope.** `RefundTargetResolver::fromStore()`, `RefundRequest::DELEGATED_RAILS`,
+`StoreRefunder::refundableTotal()`, both refunders' delegated paths,
+`DocumentIssuer::issueCreditForOrder()`, `ShopifyAdminClient::fetchOrderTransactions()`.
+
+**The legs invert, and the state machine caught it.** On a delegated rail the
+store call is not a record of a refund that already happened — it IS the refund.
+The first cut moved the request to `money_done` before that call, and a store
+failure then tried `money_done → failed`, which the machine (rightly) refuses:
+money that has moved cannot un-move. The request stayed stuck reading "money
+returned" for a refund that never happened. The delegated money leg now STAYS
+`pending` and the store leg walks it through `money_done → store_done` on
+success, or straight to `failed` on refusal — one hop per thing that actually
+happened, in the order it happened.
+
+**Both flags pinned, in both directions.** `api_refund: true` and a
+`parentId`-bearing Shopify transaction ONLY on the delegated rail; `false` and a
+manual, parent-less transaction on ours. A test asserts each, including that a
+PayPlus-charged Shopify order still gets the parent-less form — that assertion is
+what stands between a merchant and refunding the same shopper twice.
+
+**Ceilings come from the store, never invented.** WooCommerce: order total minus
+its recorded refunds. Shopify: settled sale/capture transactions minus settled
+refund transactions — the transactions, not the order total, because the total is
+what was ordered and a refund can only return what was paid. A failed attempt
+does not count. A store that cannot answer yields "nothing", and the drawer says
+so rather than offering a number that would be refused.
+
+**Credit notes.** `issueCreditForOrder()` keys on `(order, alreadyRefunded,
+amount)` — the same two-part shape as the ledger path, for the same reason. It
+REFUSES to issue when no sale document exists for the order: Green Invoice
+rejects a credit note with no linked document, and a dangling declaration is
+worse than a missing one. The refund still completes and says so.
+
+**A test-harness lesson worth keeping.** `Http::fake` patterns match the query
+string, so `orders/*/refunds` matched the POST but not the `?per_page=100` GET —
+"already refunded" silently read as zero and a ceiling test passed for the wrong
+reason. Trailing `*` on any stub whose real call carries a query.
+
+**Tests.** `DelegatedRailTest` 8 · `tests/Feature/Refunds/` 51 · full suite 1848 green.
+
+**Still unverified live** (unchanged from the plan's §8): whether a merchant's
+Woo gateway actually implements `process_refund` (when it does not, WooCommerce
+records the refund without moving money and the drawer will report success —
+§8.5), and the Shopify `write_inventory` question.

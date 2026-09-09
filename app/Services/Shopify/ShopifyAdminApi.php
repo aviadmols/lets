@@ -46,6 +46,13 @@ interface ShopifyAdminApi
 
     public function fetchOrderWithMetafields(string $orderId): array;
 
+    /**
+     * The order's own transactions — what moved, and under which gateway.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function fetchOrderTransactions(string $orderId): array;
+
     /** @return array<int, array<string, mixed>> */
     public function fetchOrderFulfillmentOrders(string $orderId): array;
 
@@ -67,7 +74,7 @@ interface ShopifyAdminApi
      * pageInfo). The SOURCE owns GID→DTO mapping; the client stays thin — it only
      * runs the cost-aware query and hands back the decoded connection.
      *
-     * @return array<string, mixed>  the `products` connection ({nodes, pageInfo}) or []
+     * @return array<string, mixed> the `products` connection ({nodes, pageInfo}) or []
      */
     public function fetchProductsPage(?string $cursor = null, int $first = 50): array;
 

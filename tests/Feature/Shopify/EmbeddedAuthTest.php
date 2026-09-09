@@ -7,6 +7,7 @@ use App\Jobs\Products\ImportShopProductsJob;
 use App\Jobs\Shopify\RegisterShopifyWebhooksJob;
 use App\Models\Shop;
 use App\Models\User;
+use App\Services\Shopify\ShopifyToken;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Session\Middleware\StartSession;
@@ -14,7 +15,6 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
-use App\Services\Shopify\ShopifyToken;
 
 /**
  * Embedded-admin auth + MANAGED INSTALL (the keystone seam). On the first embedded
@@ -37,10 +37,15 @@ final class EmbeddedAuthTest extends TestCase
 
     // === CONSTANTS ===
     private const API_KEY = 'embedded_api_key';
+
     private const API_SECRET = 'embedded_api_secret';
+
     private const SHOP = 'gamma.myshopify.com';
+
     private const OTHER_SHOP = 'omega.myshopify.com';
+
     private const EXCHANGED_TOKEN = 'shpat_exchanged_offline_token';
+
     private const EXCHANGED_SCOPES = 'read_orders,read_products';
 
     protected function setUp(): void

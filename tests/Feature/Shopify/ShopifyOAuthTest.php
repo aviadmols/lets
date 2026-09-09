@@ -25,7 +25,9 @@ final class ShopifyOAuthTest extends TestCase
 
     // === CONSTANTS ===
     private const API_KEY = 'test_api_key';
+
     private const API_SECRET = 'test_api_secret';
+
     private const SHOP = 'gamma.myshopify.com';
 
     protected function setUp(): void

@@ -24,6 +24,7 @@ final class WooPluginNotifier
 {
     // === CONSTANTS ===
     private const PATH = '/wp-json/lets-payplus/v1/notify';
+
     private const TIMEOUT_SECONDS = 8;
 
     /** Tell the plugin a gateway payment FAILED, so it can log it + email the admin. */
@@ -65,7 +66,7 @@ final class WooPluginNotifier
      * Sign + POST the event to the plugin. No-op (logged) when the store isn't reachable or
      * has no webhook secret — never throws.
      *
-     * @param array<string, mixed> $event
+     * @param  array<string, mixed>  $event
      */
     private function send(Shop $shop, array $event): void
     {

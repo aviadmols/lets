@@ -26,6 +26,7 @@ final class ShopifyApps
     // === CONSTANTS ===
     /** The public App-Store app — the default identity, and the legacy config. */
     public const PUBLIC = 'public';
+
     /** The custom (single-store install links, no review) stage-1 app. */
     public const CUSTOM = 'custom';
 

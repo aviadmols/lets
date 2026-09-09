@@ -117,8 +117,8 @@ final class WooDepositTokenResolver implements DepositTokenResolver
 
     /**
      * @param  array<string, mixed>  $orderPayload  the WC deposit-callback activation
-     *                                               payload (raw PayPlus body under
-     *                                               `payplus`, or a raw PayPlus body)
+     *                                              payload (raw PayPlus body under
+     *                                              `payplus`, or a raw PayPlus body)
      * @return array{
      *     payplus_card_token_uid?: ?string,
      *     payplus_customer_uid?: ?string,

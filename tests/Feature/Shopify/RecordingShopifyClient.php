@@ -119,6 +119,19 @@ final class RecordingShopifyClient implements ShopifyAdminApi
         ];
     }
 
+    /**
+     * Scripted by a test that needs an order paid on Shopify's own rail —
+     * empty by default, which is what a PayPlus-charged order looks like.
+     *
+     * @var array<int, array<string, mixed>>
+     */
+    public array $orderTransactions = [];
+
+    public function fetchOrderTransactions(string $orderId): array
+    {
+        return $this->orderTransactions;
+    }
+
     public function fetchOrderWithMetafields(string $orderId): array
     {
         return ['id' => $orderId, 'tags' => 'installments-hold, installment_plan_active', 'metafields' => []];

@@ -29,20 +29,23 @@ final class ShopifyTokenExchange
     // === CONSTANTS ===
     /** OAuth 2.0 Token Exchange grant type (RFC 8693). */
     private const GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:token-exchange';
+
     /** The subject token is a Shopify session token (an id_token / OIDC JWT). */
     private const SUBJECT_TOKEN_TYPE = 'urn:ietf:params:oauth:token-type:id_token';
+
     /** We want a long-lived OFFLINE access token (background work, no user present). */
     private const REQUESTED_TOKEN_TYPE = 'urn:shopify:params:oauth:token-type:offline-access-token';
+
     /** HTTP timeout for the exchange call (seconds). */
     private const TIMEOUT_SECONDS = 30;
 
     /**
      * Exchange a verified session token for an offline access token.
      *
-     * @param  string  $shopDomain    a validated *.myshopify.com domain (from verified claims)
+     * @param  string  $shopDomain  a validated *.myshopify.com domain (from verified claims)
      * @param  string  $sessionToken  the verified App Bridge session token (subject)
-     * @param  string  $appKey        the Partner app whose session token this is (its `aud`)
-     * @return ShopifyToken|null  null on any failure (fail closed)
+     * @param  string  $appKey  the Partner app whose session token this is (its `aud`)
+     * @return ShopifyToken|null null on any failure (fail closed)
      */
     public function exchange(string $shopDomain, string $sessionToken, string $appKey = ShopifyApps::PUBLIC): ?ShopifyToken
     {

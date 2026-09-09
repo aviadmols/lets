@@ -24,5 +24,8 @@ return [
     'remarks' => [
         'plan' => 'Plan :reference',
         'order' => 'Order :reference',
+        // A credit against an order this app never charged (Shopify Payments,
+        // a Woo order paid on another gateway) — the order IS the money event.
+        'order_credit' => 'Credit for order :reference',
     ],
 ];

@@ -25,11 +25,12 @@ final class WooConnectionTester
 {
     // === CONSTANTS ===
     private const PLUGIN_STATUS_PATH = '/wp-json/lets-payplus/v1/status';
+
     private const PLUGIN_PROBE_TIMEOUT = 12;
 
     /**
      * @return array{ok: bool, level: string, lines: array<int, string>}
-     *         level ∈ success|warning|danger; lines are pre-translated detail bullets.
+     *                                                                   level ∈ success|warning|danger; lines are pre-translated detail bullets.
      */
     public function test(Shop $shop): array
     {

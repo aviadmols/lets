@@ -44,10 +44,12 @@ final class WooCommerceDepositInvoiceService implements PlatformInvoiceService
      * not a code change. @see config/woocommerce.php
      */
     private const CONFIG_CHARGE_METHOD = 'woocommerce.charge_method';
+
     private const CHARGE_METHOD_DEFAULT = 1;
 
     /** generateLink response keys (confirmed against the reference PayPlusInstallmentGateway:55-56). */
     private const RESP_PAGE_LINK = 'data.payment_page_link';
+
     private const RESP_PAGE_REQUEST_UID = 'data.page_request_uid';
 
     public function createDepositInvoice(InstallmentPlan $plan, array $lineItem): array

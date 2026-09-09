@@ -27,7 +27,9 @@ final class ShopifyDraftOrderService
     // === CONSTANTS ===
     /** Note/custom attribute keys that link the deposit draft+order back to the plan. */
     private const ATTR_PLAN_PUBLIC_ID = 'pps_plan_public_id';
+
     private const ATTR_ORDER_ROLE = 'pps_order_role';
+
     private const ROLE_DEPOSIT = 'installments_deposit';
 
     public function __construct(private readonly ShopifyAdminApi $client) {}

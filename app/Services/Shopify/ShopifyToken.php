@@ -28,6 +28,7 @@ final readonly class ShopifyToken
      * that the Admin API then rejects on first use.
      */
     public const EXPIRING_PARAM = 'expiring';
+
     public const EXPIRING_VALUE = '1';
 
     public function __construct(

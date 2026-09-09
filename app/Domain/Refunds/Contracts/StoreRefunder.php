@@ -33,8 +33,24 @@ interface StoreRefunder
     public function supports(Shop $shop): bool;
 
     /**
+     * How much of this order the STORE could still give back, or null when it
+     * cannot say (no such order, no connection, the platform refused).
+     *
+     * Asked only for orders this app never charged — a Shopify-Payments
+     * contract's cycle order, a WooCommerce order paid with PayPal. For those the
+     * ledger knows nothing, so the store's own total minus what it has already
+     * refunded is the only honest ceiling, and the drawer must not offer a number
+     * it invented.
+     */
+    public function refundableTotal(Shop $shop, string $orderId): ?float;
+
+    /**
      * Record the refund on the order and restock what the merchant chose.
      * The order goes on standing — this is money back, not a cancellation.
+     *
+     * On a DELEGATED rail this call is also what MOVES the money: the store is
+     * asked to refund through the order's own gateway, because this app never
+     * charged it and has no transaction of its own to reverse.
      */
     public function refund(Shop $shop, RefundRequest $request): StoreRefundResult;
 

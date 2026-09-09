@@ -35,8 +35,11 @@ final class ShopifyAdminClient implements ShopifyAdminApi
 {
     // === CONSTANTS ===
     private const REST_429 = 429;
+
     private const NOT_FOUND = 404;
+
     private const BACKOFF_BASE_MS = 250;
+
     /** Variants fetched inline per product. 100 is Shopify's connection max. */
     private const VARIANTS_PER_PRODUCT = 100;
 
@@ -147,6 +150,30 @@ final class ShopifyAdminClient implements ShopifyAdminApi
         $this->throwOnError($response, 'shopify.create_order_transaction_failed');
 
         return (array) $response->json('transaction', []);
+    }
+
+    /**
+     * GET /orders/{id}/transactions.json — the money that actually moved on this
+     * order, and under which gateway.
+     *
+     * Needed to refund an order this app never charged: Shopify will only move
+     * money for a REFUND transaction that names its parent sale, and the parent
+     * is the only place that says which gateway to ask.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function fetchOrderTransactions(string $orderId): array
+    {
+        $response = $this->request('GET', '/orders/'.$orderId.'/transactions.json');
+
+        if (! $response->successful()) {
+            if ($response->status() === self::NOT_FOUND) {
+                return [];
+            }
+            $this->throwOnError($response, 'shopify.fetch_order_transactions_failed');
+        }
+
+        return (array) $response->json('transactions', []);
     }
 
     public function fetchOrderWithMetafields(string $orderId): array
@@ -302,6 +329,7 @@ final class ShopifyAdminClient implements ShopifyAdminApi
 
             if ($response->status() === self::REST_429) {
                 $this->rateLimiter->backoff($this->shopId, $this->retryAfter($response), $attempt);
+
                 continue;
             }
 
@@ -318,6 +346,7 @@ final class ShopifyAdminClient implements ShopifyAdminApi
             $errors = (array) ($body['errors'] ?? []);
             if ($this->isThrottled($errors) && $attempt < $maxRetries) {
                 $this->rateLimiter->backoff($this->shopId, null, $attempt);
+
                 continue;
             }
             if ($errors !== []) {
@@ -547,6 +576,7 @@ final class ShopifyAdminClient implements ShopifyAdminApi
 
             if ($response->status() === self::REST_429 && $attempt < $maxRetries) {
                 $this->rateLimiter->backoff($this->shopId, $this->retryAfter($response), $attempt);
+
                 continue;
             }
 

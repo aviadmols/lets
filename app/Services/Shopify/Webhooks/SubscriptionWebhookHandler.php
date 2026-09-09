@@ -27,7 +27,9 @@ final class SubscriptionWebhookHandler implements WebhookHandler
 {
     // === CONSTANTS ===
     private const TOPIC_SUCCESS = 'subscription_billing_attempts/success';
+
     private const TOPIC_FAILURE = 'subscription_billing_attempts/failure';
+
     private const TOPIC_CHALLENGED = 'subscription_billing_attempts/challenged';
 
     public function __construct(

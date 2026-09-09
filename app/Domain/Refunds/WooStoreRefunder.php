@@ -53,6 +53,42 @@ final class WooStoreRefunder implements StoreRefunder
             && $shop->isLive();
     }
 
+    /**
+     * What WooCommerce could still give back on this order: its total, minus the
+     * refunds it has already recorded.
+     *
+     * Asked only for orders this app never charged. WooCommerce stores refunds as
+     * NEGATIVE amounts on its refund objects, so the sum is added back rather
+     * than subtracted — reading the sign the other way would offer a merchant a
+     * ceiling twice the order's value.
+     */
+    public function refundableTotal(Shop $shop, string $orderId): ?float
+    {
+        $orderId = trim($orderId);
+        if ($orderId === '' || ! $this->supports($shop)) {
+            return null;
+        }
+
+        $client = WooClientFactory::for($shop);
+
+        $order = $client->fetchOrder($orderId);
+        if ($order === null) {
+            return null;
+        }
+
+        $total = round((float) ($order['total'] ?? 0), 2);
+        if ($total <= 0) {
+            return null;
+        }
+
+        $refunded = 0.0;
+        foreach ($client->fetchRefunds($orderId) as $refund) {
+            $refunded = round($refunded + abs((float) (is_array($refund) ? ($refund['amount'] ?? 0) : 0)), 2);
+        }
+
+        return max(0.0, round($total - $refunded, 2));
+    }
+
     public function refund(Shop $shop, RefundRequest $request): StoreRefundResult
     {
         return $this->apply($shop, $request, cancel: false);
@@ -115,9 +151,12 @@ final class WooStoreRefunder implements StoreRefunder
             $refund = $client->createRefund($orderId, array_filter([
                 'amount' => number_format($amount, 2, '.', ''),
                 'reason' => $this->reason($request),
-                // WHOSE money. False for everything this app charged — PayPlus
-                // has already sent it back.
-                'api_refund' => $request->money_rail === RefundRequest::RAIL_WOO_GATEWAY,
+                // WHOSE MONEY. False for everything this app charged: PayPlus has
+                // already sent it back and this call only records that. True
+                // ONLY on the delegated rail, where WooCommerce is being asked to
+                // move the money through the order's own gateway because we
+                // never charged it and have nothing of our own to reverse.
+                'api_refund' => $request->isDelegated(),
                 'restock_items' => (bool) $request->restock,
             ], static fn ($v): bool => $v !== null));
         }
@@ -162,7 +201,7 @@ final class WooStoreRefunder implements StoreRefunder
             details: array_filter([
                 'cancelled' => $cancel ?: null,
                 'restocked' => $request->restock ?: null,
-                'api_refund' => $request->money_rail === RefundRequest::RAIL_WOO_GATEWAY ?: null,
+                'api_refund' => $request->isDelegated() ?: null,
             ], static fn ($v): bool => $v !== null),
         );
     }

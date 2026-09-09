@@ -109,6 +109,16 @@ class RefundRequest extends Model
         self::RAIL_EXTERNAL, self::RAIL_NONE,
     ];
 
+    /**
+     * The rails where the STORE moves the money, not us.
+     *
+     * On these the legs invert: the store call is not a record of a refund that
+     * already happened, it IS the refund. So a store failure here means NOTHING
+     * moved — `failed`, freely retryable — rather than the `needs_attention` a
+     * PayPlus rail's store failure earns.
+     */
+    public const DELEGATED_RAILS = [self::RAIL_SHOPIFY_NATIVE, self::RAIL_WOO_GATEWAY];
+
     /** Failure codes the UI translates (`refunds.failure.*`). */
     public const FAIL_NOTHING_TO_REFUND = 'nothing_to_refund';
 
@@ -150,6 +160,12 @@ class RefundRequest extends Model
         return $this->mode === self::MODE_CANCEL_ORDER;
     }
 
+    /** Is the money this request moves the STORE's to move? @see DELEGATED_RAILS */
+    public function isDelegated(): bool
+    {
+        return in_array((string) $this->money_rail, self::DELEGATED_RAILS, true);
+    }
+
     /** Was an AMOUNT asked for, rather than "everything that is left"? */
     public function isPartial(): bool
     {
@@ -176,9 +192,21 @@ class RefundRequest extends Model
         return in_array((string) $this->status, [self::STATUS_COMPLETED, self::STATUS_FAILED], true);
     }
 
-    /** How much actually went back, as the money leg recorded it. */
+    /**
+     * How much actually went back.
+     *
+     * On our own rail that is the sum of the charges the gateway accepted. On a
+     * DELEGATED rail there are no charges of ours — the figure is what the store
+     * was asked to move, and it is recorded there rather than derived, so the
+     * store leg and the credit note both read one number.
+     */
     public function refundedTotal(): float
     {
+        $delegated = $this->money_result['delegated_amount'] ?? null;
+        if ($delegated !== null) {
+            return round((float) $delegated, 2);
+        }
+
         $total = 0.0;
         foreach ((array) ($this->money_result['charges'] ?? []) as $charge) {
             if (($charge['ok'] ?? false) === true) {

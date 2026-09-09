@@ -14,6 +14,7 @@ use App\Modules\PayPlusShopifyInstallments\Support\ResponseMasker;
 use App\Services\WooCommerce\WooClientFactory;
 use App\Support\Tenant;
 use Illuminate\Support\Facades\Log;
+
 // WooCommercePaidOrderPlanResolver is in this same namespace (App\Services\WooCommerce\Orders).
 
 /**
@@ -47,7 +48,7 @@ final class WooGatewayFinalizer
      * @param  array<string, mixed>  $payplusBody  the PayPlus body carrying the token + card
      *                                             meta — the raw callback body, or the IPN/
      *                                             transaction body from a verify-on-return pull.
-     * @return bool  true when the order is (now, or already) marked paid
+     * @return bool true when the order is (now, or already) marked paid
      */
     public function finalizePaid(Shop $shop, string $orderId, array $payplusBody): bool
     {
@@ -137,7 +138,7 @@ final class WooGatewayFinalizer
      * (searches every known PayPlus token path; logs observed keys on a miss).
      *
      * @param  array<string, mixed>  $payplusBody
-     * @param  array<string, mixed>  $order        the WC order returned by the paid update
+     * @param  array<string, mixed>  $order  the WC order returned by the paid update
      */
     private function vaultToken(Shop $shop, array $payplusBody, array $order): void
     {
@@ -241,7 +242,7 @@ final class WooGatewayFinalizer
      * platform_order pipeline) has ledger_id = null, so a ledger-driven refund's
      * credit note will not auto-link to it — acceptable v1.
      *
-     * @param  array<string, mixed>  $order        the paid WC order (REST shape)
+     * @param  array<string, mixed>  $order  the paid WC order (REST shape)
      * @param  array<string, mixed>  $payplusBody
      */
     private function recordLedgerRow(Shop $shop, string $orderId, array $order, array $payplusBody): void
@@ -368,7 +369,7 @@ final class WooGatewayFinalizer
      * next_charge_at, and flips awaiting_first_payment → active. It's idempotent (no-ops unless the
      * plan is awaiting), so push + verify-on-return + a replay activate exactly once.
      *
-     * @param  array<string, mixed>  $order        the paid WC order (with meta_data)
+     * @param  array<string, mixed>  $order  the paid WC order (with meta_data)
      * @param  array<string, mixed>  $payplusBody  the PayPlus token/transaction body
      */
     private function activateSubscriptionPlans(Shop $shop, string $orderId, array $order, array $payplusBody): void

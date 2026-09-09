@@ -26,7 +26,9 @@ final class PrivacyWebhookHandler implements WebhookHandler
 {
     // === CONSTANTS ===
     public const TOPIC_CUSTOMERS_REDACT = 'customers/redact';
+
     public const TOPIC_SHOP_REDACT = 'shop/redact';
+
     public const TOPIC_CUSTOMERS_DATA_REQUEST = 'customers/data_request';
 
     public function handle(WebhookEvent $event): void

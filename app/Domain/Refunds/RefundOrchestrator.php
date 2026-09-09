@@ -4,6 +4,7 @@ namespace App\Domain\Refunds;
 
 use App\Domain\Billing\IdempotencyKey;
 use App\Domain\Invoicing\DocumentContext;
+use App\Domain\Invoicing\DocumentIssuer;
 use App\Domain\Lifecycle\OrderRefundService;
 use App\Domain\Lifecycle\RefundService;
 use App\Domain\Refunds\Models\RefundRequest;
@@ -230,6 +231,47 @@ final class RefundOrchestrator
             return $request;
         }
 
+        // A rail the STORE moves. Nothing to do here: the store leg is the
+        // refund, and it runs next. The amount is settled NOW, from the ceiling
+        // the store itself gave us, so the store call and the credit note read
+        // one number rather than each computing their own.
+        if (in_array($target->rail, RefundRequest::DELEGATED_RAILS, true)) {
+            $amount = $request->isPartial()
+                ? round((float) $request->amount, 2)
+                : $target->refundable;
+
+            if ($amount <= 0 || $amount > round($target->refundable + self::EPSILON, 2)) {
+                $request->moveTo(RefundRequest::STATUS_FAILED, [
+                    'money_rail' => $target->rail,
+                    'failure_code' => RefundRequest::FAIL_NOTHING_TO_REFUND,
+                    'money_result' => ['refundable' => $target->refundable],
+                ]);
+
+                return $request;
+            }
+
+            // STAYS `pending`. The store call is what moves this money, and
+            // `money_done → failed` is deliberately not a legal edge — money that
+            // has moved cannot un-move. Claiming it here would leave a refund
+            // that never happened stuck reading "money returned".
+            $request->moveTo(RefundRequest::STATUS_PENDING, [
+                'money_rail' => $target->rail,
+                'money_result' => [
+                    'delegated_amount' => $amount,
+                    'refundable' => $target->refundable,
+                    // Carried so the credit note's key can tell a second ₪50
+                    // slice from the first — the store's own total already
+                    // nets out what it refunded before.
+                    'already_refunded' => $this->alreadyRefunded($shop, null, $request->external_order_id),
+                    'context' => ($request->isCancellation()
+                        ? DocumentContext::CANCELLATION
+                        : DocumentContext::REFUND)->value,
+                ],
+            ]);
+
+            return $request;
+        }
+
         $allocation = $this->allocate($target, $request);
 
         if ($allocation === null) {
@@ -405,7 +447,19 @@ final class RefundOrchestrator
         }
 
         if ($result->ok) {
+            // On a delegated rail the money moved during THAT call, so the
+            // request passes through money_done on its way out — one hop per
+            // thing that actually happened, in the order it happened.
+            if ($request->isDelegated()) {
+                $request->moveTo(RefundRequest::STATUS_MONEY_DONE);
+            }
+
             $request->moveTo(RefundRequest::STATUS_STORE_DONE, ['store_result' => $result->toArray()]);
+
+            // The paperwork for a rail we did not charge. On our own rail each
+            // reversed charge already queued its own credit note; here there is
+            // no charge of ours to key one to, so the ORDER is the money event.
+            $this->creditForOrder($shop, $request);
 
             Timeline::record(
                 kind: Timeline::KIND_STORE_REFUND_SYNCED,
@@ -418,6 +472,22 @@ final class RefundOrchestrator
                 planId: $request->plan_id !== null ? (int) $request->plan_id : null,
                 shopId: (int) $shop->getKey(),
             );
+
+            return $request;
+        }
+
+        // On a DELEGATED rail the store call WAS the refund, so its failure means
+        // nothing moved: an ordinary refusal the merchant can retry freely, not a
+        // task about money already gone.
+        if ($request->isDelegated()) {
+            $request->moveTo(RefundRequest::STATUS_FAILED, [
+                'store_result' => $result->toArray(),
+                'failure_code' => RefundRequest::FAIL_MONEY,
+                'money_result' => array_merge(
+                    (array) ($request->money_result ?? []),
+                    ['delegated_amount' => 0],
+                ),
+            ]);
 
             return $request;
         }
@@ -468,6 +538,50 @@ final class RefundOrchestrator
             (array) ($request->doc_result ?? []),
             ['plans' => $outcome],
         ));
+    }
+
+    /**
+     * Queue the credit note for a DELEGATED refund.
+     *
+     * Wrapped: an invoicing problem must never turn a refund the store has
+     * already made into a failure the merchant is invited to retry. The worst
+     * honest outcome here is a missing document, which is a button-click.
+     */
+    private function creditForOrder(Shop $shop, RefundRequest $request): void
+    {
+        if (! $request->isDelegated()) {
+            return;
+        }
+
+        $amount = $request->refundedTotal();
+        $orderId = trim((string) ($request->external_order_id ?? ''));
+
+        if ($amount <= 0 || $orderId === '') {
+            return;
+        }
+
+        try {
+            $document = app(DocumentIssuer::class)->issueCreditForOrder(
+                shopId: (int) $shop->getKey(),
+                orderId: $orderId,
+                amount: $amount,
+                context: $request->isCancellation() ? DocumentContext::CANCELLATION : DocumentContext::REFUND,
+                alreadyRefunded: round((float) ($request->money_result['already_refunded'] ?? 0), 2),
+                refundRequestId: (int) $request->getKey(),
+                reason: $request->reason,
+            );
+
+            $request->recordLeg('doc_result', array_merge(
+                (array) ($request->doc_result ?? []),
+                ['order_credit' => $document?->getKey()],
+            ));
+        } catch (Throwable $e) {
+            Log::warning('refunds.order_credit_failed', [
+                'shop_id' => $shop->getKey(),
+                'request_id' => $request->getKey(),
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     // === Internals ===

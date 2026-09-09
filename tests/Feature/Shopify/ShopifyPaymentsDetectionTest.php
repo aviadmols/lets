@@ -99,7 +99,7 @@ final class ShopifyPaymentsDetectionTest extends TestCase
     {
         $shop = $this->shop();
 
-        $recorder = new RecordingShopifyClient();
+        $recorder = new RecordingShopifyClient;
         $recorder->graphqlThrows = new \RuntimeException('403 access denied');
         ShopifyClientFactory::fake(fn (): RecordingShopifyClient => $recorder);
 
@@ -165,7 +165,7 @@ final class ShopifyPaymentsDetectionTest extends TestCase
     /** @param array<string, mixed>|null $account */
     private function fakeAccount(?array $account, bool $partnerDevelopment = false): void
     {
-        $recorder = new RecordingShopifyClient();
+        $recorder = new RecordingShopifyClient;
         $recorder->graphqlResponses = [['data' => [
             'shopifyPaymentsAccount' => $account,
             'shop' => ['plan' => ['partnerDevelopment' => $partnerDevelopment]],

@@ -22,6 +22,7 @@ return [
     // הערות חופשיות שמודפסות על המסמך, כדי שיתאים חזרה ל-LETS.
     'remarks' => [
         'plan' => 'תוכנית :reference',
+        'order_credit' => 'זיכוי להזמנה :reference',
         'order' => 'הזמנה :reference',
     ],
 ];
