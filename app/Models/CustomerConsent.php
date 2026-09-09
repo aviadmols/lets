@@ -15,7 +15,9 @@ class CustomerConsent extends Model
 
     // === CONSTANTS ===
     public const CONTEXT_INSTALLMENTS = 'installments';
+
     public const CONTEXT_RECURRING = 'recurring';
+
     public const CONTEXT_UPSELL = 'upsell';
 
     protected $guarded = [];

@@ -30,6 +30,7 @@ final class CheckoutPricingCapture
     // === CONSTANTS ===
     /** Skip-reasons written to the log + Timeline detail. */
     public const SKIP_AMBIGUOUS_LINES = 'ambiguous_lines';
+
     public const SKIP_NO_AMOUNT = 'no_amount';
 
     /** Run both captures. Recurring plans only — installments keep their quote. */

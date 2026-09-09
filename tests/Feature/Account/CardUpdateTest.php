@@ -174,8 +174,13 @@ final class CardUpdateTest extends TestCase
             $this->assertSame(CardUpdateService::MORE_INFO_PREFIX.$plan->public_id, $payload['more_info']);
             $this->assertSame((float) config('payplus.card_update_amount'), $payload['amount']);
             $this->assertSame((int) config('payplus.card_update_charge_method'), $payload['charge_method']);
-            $this->assertStringContainsString('/woocommerce/cardupdate/callback/'.$shop->wc_shop_token, $payload['refURL_callback']);
-            $this->assertStringContainsString('/woocommerce/cardupdate/return/'.$shop->wc_shop_token, $payload['refURL_success']);
+            // The rail is PAYPLUS's, not WooCommerce's: a Shopify shop charging
+            // through the same gateway needs the same endpoints, and the routes
+            // moved to say so. The Woo paths stay mounted as aliases — the
+            // callback tests below still post to them, because PayPlus can be
+            // holding a page URL minted before the move.
+            $this->assertStringContainsString('/payplus/cardupdate/callback/'.$shop->callbackToken(), $payload['refURL_callback']);
+            $this->assertStringContainsString('/payplus/cardupdate/return/'.$shop->callbackToken(), $payload['refURL_success']);
         });
     }
 

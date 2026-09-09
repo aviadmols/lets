@@ -23,12 +23,19 @@ class LoyaltyTier extends Model
 
     /** Icon keys the customer page knows how to draw (inline SVG, no assets). */
     public const ICON_SPARK = 'spark';
+
     public const ICON_GLOW = 'glow';
+
     public const ICON_SHINE = 'shine';
+
     public const ICON_STAR = 'star';
+
     public const ICON_CROWN = 'crown';
+
     public const ICON_GEM = 'gem';
+
     public const ICON_HEART = 'heart';
+
     public const ICONS = [
         self::ICON_SPARK, self::ICON_GLOW, self::ICON_SHINE,
         self::ICON_STAR, self::ICON_CROWN, self::ICON_GEM, self::ICON_HEART,
@@ -36,13 +43,16 @@ class LoyaltyTier extends Model
 
     /** A multiplier outside these bounds is a typo, not a policy. */
     public const MIN_MULTIPLIER = 0.0;
+
     public const MAX_MULTIPLIER = 10.0;
 
     /** Perk lines: enough for a readable table, not a manifesto. */
     public const MAX_PERKS = 12;
+
     public const MAX_PERK_LENGTH = 80;
 
     public const DEFAULT_COLOR = '#7746ec';
+
     private const HEX_PATTERN = '/^#[0-9a-fA-F]{6}$/';
 
     protected $guarded = ['id', 'shop_id'];

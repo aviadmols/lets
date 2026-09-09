@@ -36,8 +36,11 @@ class IssuedDocument extends Model
     protected $table = 'issued_documents';
 
     public const STATUS_PENDING = 'pending';
+
     public const STATUS_ISSUED = 'issued';
+
     public const STATUS_FAILED = 'failed';
+
     /**
      * An attempt was made but its outcome is UNKNOWN — the worker died between the
      * provider call and our write, or the provider accepted without returning an id.

@@ -20,6 +20,13 @@ return [
         'plan_cancelled' => 'Your plan has been cancelled — {business_name}',
         'login_code' => 'Your sign-in code: {code}',
         'order_updated' => 'Your order was updated — {business_name}',
+        'card_update' => 'Please update your payment card — {business_name}',
+    ],
+
+    'card_update' => [
+        'lead' => 'To keep your subscription to <strong>{product_title}</strong> running, we need a current payment card.',
+        'cta' => 'Update my card',
+        'expiry_note' => 'This link works until {expires_at}. After that, ask us for a new one.',
     ],
 
     'greeting' => 'Hi {customer_name},',

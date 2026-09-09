@@ -25,32 +25,47 @@ class MerchantLoyaltySettings extends Model
 
     /** Rounding applied to a computed points award. */
     public const ROUNDING_FLOOR = 'floor';
+
     public const ROUNDING_NEAREST = 'nearest';
+
     public const ROUNDINGS = [self::ROUNDING_FLOOR, self::ROUNDING_NEAREST];
 
     public const THEME_LIGHT = 'light';
+
     public const THEME_DARK = 'dark';
+
     public const THEME_MODES = [self::THEME_LIGHT, self::THEME_DARK];
 
     public const RADIUS_SHARP = 'sharp';
+
     public const RADIUS_SOFT = 'soft';
+
     public const RADIUS_PILL = 'pill';
+
     public const CORNER_RADII = [self::RADIUS_SHARP, self::RADIUS_SOFT, self::RADIUS_PILL];
 
     public const LOCALE_HE = 'he';
+
     public const LOCALE_EN = 'en';
+
     public const PAGE_LOCALES = [self::LOCALE_HE, self::LOCALE_EN];
 
     /** Social actions we know how to label + icon; `custom` carries its own label. */
     public const SOCIAL_FACEBOOK = 'facebook_like';
+
     public const SOCIAL_INSTAGRAM = 'instagram_follow';
+
     public const SOCIAL_TIKTOK = 'tiktok_follow';
+
     public const SOCIAL_CUSTOM = 'custom';
+
     public const SOCIAL_KEYS = [self::SOCIAL_FACEBOOK, self::SOCIAL_INSTAGRAM, self::SOCIAL_TIKTOK, self::SOCIAL_CUSTOM];
 
     /** What the FRIEND gets for arriving through a member's referral link. */
     public const REFERRAL_PERCENT = 'percent';
+
     public const REFERRAL_FIXED = 'fixed';
+
     public const REFERRAL_DISCOUNT_TYPES = [self::REFERRAL_PERCENT, self::REFERRAL_FIXED];
 
     /** A referral discount past this is almost certainly a typo, not an offer. */
@@ -64,12 +79,17 @@ class MerchantLoyaltySettings extends Model
 
     /** Bounds. A merchant typo must not mint a million points or a free store. */
     public const MAX_POINTS_PER_CURRENCY = 1000;
+
     public const MAX_BONUS_POINTS = 100000;
+
     public const MAX_SOCIAL_ACTIONS = 8;
+
     public const MIN_REDEEM_RATE_POINTS = 1;
 
     public const DEFAULT_ACCENT = '#7746ec';
+
     public const DEFAULT_ACCENT_TEXT = '#ffffff';
+
     private const HEX_PATTERN = '/^#[0-9a-fA-F]{6}$/';
 
     protected $guarded = ['id', 'shop_id'];

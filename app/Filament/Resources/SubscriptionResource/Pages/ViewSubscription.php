@@ -4,6 +4,10 @@ namespace App\Filament\Resources\SubscriptionResource\Pages;
 
 use App\Domain\Billing\CycleAmountResolver;
 use App\Domain\Billing\StuckChargeResolver;
+use App\Domain\Installments\CardUpdateLinks;
+use App\Domain\Installments\CardUpdateLinkSender;
+use App\Domain\Installments\CardUpdateService;
+use App\Domain\Installments\Models\CardUpdateLink;
 use App\Domain\Lifecycle\ChargeNowService;
 use App\Domain\Lifecycle\SubscriptionEditService;
 use App\Domain\Lifecycle\SubscriptionLifecycleService;
@@ -38,6 +42,7 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Locked;
 
@@ -60,6 +65,9 @@ class ViewSubscription extends Page
 
     /** Cap the timeline/ledger feed length on the detail page. */
     public const FEED_LIMIT = 50;
+
+    /** Cap the card-update link history. A plan rarely needs more than a few. */
+    public const CARD_LINK_FEED_LIMIT = 5;
 
     /**
      * The largest interval a cadence may carry. Twelve of anything is a year of
@@ -183,6 +191,8 @@ class ViewSubscription extends Page
                         ->maxLength(500),
                 ])
                 ->action(fn (array $data) => $this->applyLifecycle('cancel', $data['reason'] ?? null)),
+
+            $this->sendCardUpdateLinkAction(),
 
             Actions\Action::make('chargeNow')
                 ->label(__('subscriptions.action.charge_now.label'))
@@ -369,6 +379,170 @@ class ViewSubscription extends Page
      * trigger renders BESIDE the Timeline heading (rc.accordion's `action` prop)
      * — the button lives where the note lands, not in the page chrome.
      */
+    /**
+     * Put a card-update link in front of this customer.
+     *
+     * The link is OURS and lasts days; the PayPlus page it leads to is minted at
+     * the moment the customer clicks. Emailing the PayPlus page directly — the
+     * obvious shape — sends a page that has already expired by the time anyone
+     * opens the mail.
+     *
+     * The URL is revealed ONCE, in the success notification, because the row
+     * keeps only a hash: there is no second chance to show it, and saying so is
+     * better than a merchant discovering it later.
+     */
+    public function sendCardUpdateLinkAction(): Actions\Action
+    {
+        return Actions\Action::make('sendCardUpdateLink')
+            ->label(__('card_update.action.send'))
+            ->icon('heroicon-m-credit-card')
+            ->color('gray')
+            ->visible(fn (): bool => $this->cardUpdateAvailable())
+            ->modalHeading(__('card_update.heading'))
+            ->modalDescription(__('card_update.intro'))
+            ->form([
+                Radio::make('channel')
+                    ->label(__('card_update.field.channel'))
+                    ->options(collect(CardUpdateLink::CHANNELS)
+                        ->mapWithKeys(fn (string $c): array => [$c => __('card_update.field.channel_option.'.$c)])
+                        ->all())
+                    ->descriptions($this->cardUpdateChannelHints())
+                    ->default(CardUpdateLink::CHANNEL_COPY)
+                    ->required(),
+
+                Select::make('ttl_days')
+                    ->label(__('card_update.field.ttl'))
+                    ->helperText(__('card_update.field.ttl_help'))
+                    ->options(collect(CardUpdateLink::TTL_OPTIONS_DAYS)
+                        ->mapWithKeys(fn (int $d): array => [$d => __('card_update.field.ttl_option.'.$d)])
+                        ->all())
+                    ->default(CardUpdateLink::DEFAULT_TTL_DAYS)
+                    ->required(),
+            ])
+            ->action(fn (array $data) => $this->sendCardUpdateLink($data));
+    }
+
+    /** Kill every link on this plan that could still be clicked. */
+    public function revokeCardUpdateLinksAction(): Actions\Action
+    {
+        return Actions\Action::make('revokeCardUpdateLinks')
+            ->label(__('card_update.action.revoke'))
+            ->icon('heroicon-m-no-symbol')
+            ->color('danger')
+            ->link()
+            ->requiresConfirmation()
+            ->action(function (): void {
+                $revoked = app(CardUpdateLinks::class)->revokeOpen($this->record);
+
+                Notification::make()
+                    ->title($revoked > 0
+                        ? __('card_update.notify.revoked', ['count' => $revoked])
+                        : __('card_update.notify.nothing_revoked'))
+                    ->success()
+                    ->send();
+            });
+    }
+
+    /** Can this plan take a link at all? (PayPlus connected, plan not finished.) */
+    public function cardUpdateAvailable(): bool
+    {
+        $shop = Tenant::current();
+
+        return $shop instanceof Shop && CardUpdateService::availableFor($shop, $this->record);
+    }
+
+    /**
+     * Every card-update link on this plan, newest first — the status line.
+     *
+     * @return Collection<int, CardUpdateLink>
+     */
+    public function cardUpdateLinks(): Collection
+    {
+        return CardUpdateLink::query()
+            ->where('plan_id', $this->record->getKey())
+            ->latest('id')
+            ->limit(self::CARD_LINK_FEED_LIMIT)
+            ->get();
+    }
+
+    /**
+     * The per-channel hint, naming the actual address or number — a merchant
+     * about to text somebody deserves to see which number before they press it.
+     *
+     * @return array<string, string>
+     */
+    private function cardUpdateChannelHints(): array
+    {
+        return [
+            CardUpdateLink::CHANNEL_COPY => __('card_update.field.channel_help.copy'),
+            CardUpdateLink::CHANNEL_EMAIL => __('card_update.field.channel_help.email', [
+                'email' => trim((string) ($this->record->customer_email ?? '')) ?: __('common.none'),
+            ]),
+            CardUpdateLink::CHANNEL_SMS => __('card_update.field.channel_help.sms', [
+                'phone' => trim((string) ($this->record->customer_phone ?? '')) ?: __('common.none'),
+            ]),
+        ];
+    }
+
+    /**
+     * Mint and send, then say exactly what happened.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function sendCardUpdateLink(array $data): void
+    {
+        $shop = Tenant::current();
+        if (! $shop instanceof Shop) {
+            return;
+        }
+
+        $channel = (string) ($data['channel'] ?? CardUpdateLink::CHANNEL_COPY);
+
+        $result = app(CardUpdateLinkSender::class)->send(
+            shop: $shop,
+            plan: $this->record,
+            channel: $channel,
+            ttlDays: (int) ($data['ttl_days'] ?? CardUpdateLink::DEFAULT_TTL_DAYS),
+        );
+
+        // A refusal before anything was minted: no email on file, SMS not set
+        // up, the plan is finished. Each is a different thing to go and fix.
+        if (! isset($result['url'])) {
+            Notification::make()
+                ->title(__('card_update.error.'.($result['reason'] ?? CardUpdateLinkSender::ERR_SEND_FAILED)))
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        // The URL is shown ONCE — the row keeps only its hash.
+        $body = __('card_update.status.link_label').': '.$result['url']
+            ."\n".__('card_update.status.copy_hint');
+
+        if (! ($result['ok'] ?? false)) {
+            Notification::make()
+                ->title(__('card_update.error.send_failed'))
+                ->body($body)
+                ->warning()
+                ->persistent()
+                ->send();
+
+            return;
+        }
+
+        Notification::make()
+            ->title(match ($channel) {
+                CardUpdateLink::CHANNEL_EMAIL => __('card_update.notify.emailed', ['to' => (string) ($result['sent_to'] ?? '')]),
+                CardUpdateLink::CHANNEL_SMS => __('card_update.notify.texted', ['to' => (string) ($result['sent_to'] ?? '')]),
+                default => __('card_update.notify.created'),
+            })
+            ->body($body)
+            ->success()
+            ->persistent()
+            ->send();
+    }
+
     public function addNoteAction(): Actions\Action
     {
         return Actions\Action::make('addNote')

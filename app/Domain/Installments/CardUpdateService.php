@@ -2,6 +2,7 @@
 
 namespace App\Domain\Installments;
 
+use App\Domain\Installments\Models\CardUpdateLink;
 use App\Models\ActivityEvent;
 use App\Models\InstallmentPaymentMethod;
 use App\Models\InstallmentPlan;
@@ -66,8 +67,11 @@ final class CardUpdateService
     /** Can this plan offer the button at all? (Shop side of the answer.) */
     public static function availableFor(Shop $shop, InstallmentPlan $plan): bool
     {
+        // callbackToken(), not wc_shop_token: the rail is PayPlus's, not
+        // WooCommerce's, and a Shopify shop charging through PayPlus needs it
+        // just as much. The old column is the fallback inside that method.
         return $shop->hasPayplusConnection()
-            && trim((string) ($shop->wc_shop_token ?? '')) !== ''
+            && $shop->callbackToken() !== null
             && ! in_array($plan->status, self::TERMINAL, true);
     }
 
@@ -76,7 +80,7 @@ final class CardUpdateService
      * Moves no money by intent (see the class doc) and changes no state — the
      * link is the whole outcome, and an unclicked link expires on PayPlus's side.
      */
-    public function mintPage(Shop $shop, InstallmentPlan $plan): ?string
+    public function mintPage(Shop $shop, InstallmentPlan $plan, ?CardUpdateLink $link = null): ?string
     {
         if (! self::availableFor($shop, $plan)) {
             return null;
@@ -91,7 +95,10 @@ final class CardUpdateService
                 'charge_method' => (int) config(self::CONFIG_CHARGE_METHOD, 0),
                 // The whole point of the page.
                 'create_token' => true,
-                'more_info' => self::MORE_INFO_PREFIX.$plan->public_id,
+                // The link id rides along so the callback can stamp the RIGHT
+                // link complete — a merchant who sent two reminders has two open
+                // links, and "the newest one" would be a guess.
+                'more_info' => self::moreInfoFor($plan, $link),
                 'customer' => array_filter([
                     'customer_name' => trim((string) ($plan->customer_name ?? '')) ?: null,
                     'email' => trim((string) ($plan->customer_email ?? '')) ?: null,
@@ -100,8 +107,8 @@ final class CardUpdateService
                 'refURL_success' => $this->returnUrl($shop, 'success'),
                 'refURL_failure' => $this->returnUrl($shop, 'failure'),
                 'refURL_cancel' => $this->returnUrl($shop, 'cancel'),
-                'refURL_callback' => route('woocommerce.cardupdate.callback', [
-                    'wc_shop_token' => (string) $shop->wc_shop_token,
+                'refURL_callback' => route('payplus.cardupdate.callback', [
+                    'callback_token' => (string) $shop->callbackToken(),
                 ]),
                 'send_failure_callback' => true,
             ]);
@@ -138,8 +145,12 @@ final class CardUpdateService
      *
      * @param  array<string, mixed>  $payload  the raw PayPlus body
      */
-    public function applyCallback(Shop $shop, string $planPublicId, array $payload): ?InstallmentPaymentMethod
-    {
+    public function applyCallback(
+        Shop $shop,
+        string $planPublicId,
+        array $payload,
+        ?int $linkId = null,
+    ): ?InstallmentPaymentMethod {
         $plan = InstallmentPlan::query()->where('public_id', $planPublicId)->first();
         if ($plan === null) {
             return null;
@@ -175,6 +186,10 @@ final class CardUpdateService
 
         $repointed = $this->repoint($plan, $method, $previousMethodId);
 
+        // The merchant's status line says "card updated" because the card WAS
+        // updated — not because somebody opened a page.
+        $this->completeLink($plan, $linkId);
+
         Timeline::record(
             kind: Timeline::KIND_CARD_UPDATED,
             details: array_filter([
@@ -190,7 +205,54 @@ final class CardUpdateService
         return $method;
     }
 
+    /**
+     * The correlation marker: `cardupd:{public_id}` as it always was, plus the
+     * link id when the page was minted from one.
+     *
+     * The plan id stays FIRST and the prefix unchanged, so a callback for a page
+     * minted before this existed still parses — PayPlus can be holding a page
+     * URL from days ago.
+     */
+    public static function moreInfoFor(InstallmentPlan $plan, ?CardUpdateLink $link = null): string
+    {
+        $marker = self::MORE_INFO_PREFIX.$plan->public_id;
+
+        return $link !== null ? $marker.':'.$link->getKey() : $marker;
+    }
+
+    /**
+     * Split an echoed marker back into its parts.
+     *
+     * @return array{public_id: string, link_id: ?int}
+     */
+    public static function parseMoreInfo(string $moreInfo): array
+    {
+        $rest = substr($moreInfo, strlen(self::MORE_INFO_PREFIX));
+        $parts = explode(':', $rest, 2);
+
+        $linkId = isset($parts[1]) && ctype_digit(trim($parts[1])) ? (int) trim($parts[1]) : null;
+
+        return ['public_id' => (string) ($parts[0] ?? ''), 'link_id' => $linkId];
+    }
+
     // === Internals ===
+
+    /**
+     * Stamp the link that produced this update. Scoped to the PLAN as well as
+     * the id, so a marker naming somebody else's link cannot close it.
+     */
+    private function completeLink(InstallmentPlan $plan, ?int $linkId): void
+    {
+        if ($linkId === null) {
+            return;
+        }
+
+        CardUpdateLink::query()
+            ->whereKey($linkId)
+            ->where('plan_id', $plan->getKey())
+            ->first()
+            ?->markCompleted();
+    }
 
     /**
      * A replayed callback (or a shopper vaulting the same card twice) reuses the
@@ -256,8 +318,8 @@ final class CardUpdateService
 
     private function returnUrl(Shop $shop, string $status): string
     {
-        return route('woocommerce.cardupdate.return', [
-            'wc_shop_token' => (string) $shop->wc_shop_token,
+        return route('payplus.cardupdate.return', [
+            'callback_token' => (string) $shop->callbackToken(),
             'status' => $status,
             // The landing must speak the language the ACCOUNT spoke — decided
             // at mint time, when the tenant is bound, and carried in the URL so

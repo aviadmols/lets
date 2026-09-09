@@ -25,15 +25,17 @@ final class WooCardUpdateReturnController
     /** The card-update flow's own copy namespace (lang/{en,he}/storefront.php). */
     public const KEY_PREFIX = 'storefront.card_update.return_';
 
-    public function __invoke(Request $request, string $wc_shop_token): View
+    public function __invoke(Request $request, string $callback_token): View
     {
         $state = (string) $request->query('status', 'success');
         if (! in_array($state, self::STATES, true)) {
             $state = 'success';
         }
 
+        // EITHER column — see the callback controller.
         $shop = Shop::query()
-            ->where('wc_shop_token', $wc_shop_token)
+            ->where('callback_token', $callback_token)
+            ->orWhere('wc_shop_token', $callback_token)
             ->first();
 
         // The page speaks the account's language: the mint stamped it into the

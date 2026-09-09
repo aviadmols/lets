@@ -15,6 +15,8 @@ return [
         'charge_failed' => 'התשלום נכשל',
         'plan_cancelled' => 'התוכנית בוטלה',
         'login_code' => 'קוד כניסה',
+        'order_updated' => 'ההזמנה עודכנה',
+        'card_update' => 'בקשה לעדכון כרטיס',
     ],
 
     'field' => [

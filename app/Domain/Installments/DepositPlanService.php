@@ -32,9 +32,13 @@ final class DepositPlanService
     // === CONSTANTS ===
     /** meta keys that link the plan to its deposit draft + invoice. */
     public const META_DRAFT_GID = 'deposit_draft_gid';
+
     public const META_DRAFT_ID = 'deposit_draft_id';
+
     public const META_INVOICE_URL = 'deposit_invoice_url';
+
     public const META_DEPOSIT_AMOUNT = 'deposit_amount';
+
     public const META_QUOTE = 'deposit_quote';
 
     /**

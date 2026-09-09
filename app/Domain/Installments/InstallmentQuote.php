@@ -2,8 +2,10 @@
 
 namespace App\Domain\Installments;
 
+use App\Models\MerchantBillingSettings;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 
 /**
  * The deposit + installments schedule, computed ENTIRELY server-side from a
@@ -24,17 +26,23 @@ final class InstallmentQuote
     // === CONSTANTS ===
     /** Down-payment percentage bounds (a deposit must be a real, non-trivial slice). */
     public const MIN_DEPOSIT_PERCENT = 5;
+
     public const MAX_DEPOSIT_PERCENT = 90;
+
     public const DEFAULT_DEPOSIT_PERCENT = 25;
 
     /** Installments-count bounds (the slices AFTER the deposit). */
     public const MIN_INSTALLMENTS = 1;
+
     public const MAX_INSTALLMENTS = 36;
+
     public const DEFAULT_INSTALLMENTS = 3;
 
     /** Day-of-month the recurring slices charge on (1..28 — 28 is safe every month). */
     public const MIN_PAYMENT_DAY = 1;
+
     public const MAX_PAYMENT_DAY = 28;
+
     public const DEFAULT_PAYMENT_DAY = 1;
 
     public const DEFAULT_FREQUENCY = BillingFrequency::MONTHLY;
@@ -47,9 +55,9 @@ final class InstallmentQuote
     ];
 
     /**
-     * @param  float  $totalAmount       server-trusted line total (unit price × qty)
-     * @param  float  $depositAmount     the up-front charge (the unpaid deposit invoice)
-     * @param  float  $installmentAmount the per-slice amount (last slice may differ by rounding)
+     * @param  float  $totalAmount  server-trusted line total (unit price × qty)
+     * @param  float  $depositAmount  the up-front charge (the unpaid deposit invoice)
+     * @param  float  $installmentAmount  the per-slice amount (last slice may differ by rounding)
      * @param  list<array{sequence:int, amount:float, due_at:string}>  $schedule
      */
     public function __construct(
@@ -87,7 +95,7 @@ final class InstallmentQuote
         int $paymentDay,
         string $currency,
         ?CarbonImmutable $now = null,
-        ?\App\Models\MerchantBillingSettings $bounds = null,
+        ?MerchantBillingSettings $bounds = null,
     ): self {
         $total = round(max(0.0, $totalAmount), 2);
 
@@ -178,7 +186,7 @@ final class InstallmentQuote
      * Snap a monthly-cadence due date onto the merchant's payment day-of-month.
      * Weekly/biweekly cadences are not month-anchored, so they pass through.
      */
-    private static function snapToPaymentDay(\Carbon\CarbonInterface $date, int $paymentDay, BillingFrequency $frequency): CarbonImmutable
+    private static function snapToPaymentDay(CarbonInterface $date, int $paymentDay, BillingFrequency $frequency): CarbonImmutable
     {
         $immutable = CarbonImmutable::parse($date->toDateTimeString());
 

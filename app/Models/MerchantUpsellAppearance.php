@@ -30,19 +30,27 @@ class MerchantUpsellAppearance extends Model
 
     /** theme_mode. */
     public const THEME_LIGHT = 'light';
+
     public const THEME_DARK = 'dark';
+
     public const THEME_MODES = [self::THEME_LIGHT, self::THEME_DARK];
 
     /** button_style. */
     public const BUTTON_SOLID = 'solid';
+
     public const BUTTON_OUTLINE = 'outline';
+
     public const BUTTON_STYLES = [self::BUTTON_SOLID, self::BUTTON_OUTLINE];
 
     /** corner_radius → CTA border-radius in px. House default = sharp (0). */
     public const RADIUS_SHARP = 'sharp';
+
     public const RADIUS_SOFT = 'soft';
+
     public const RADIUS_PILL = 'pill';
+
     public const CORNER_RADII = [self::RADIUS_SHARP, self::RADIUS_SOFT, self::RADIUS_PILL];
+
     public const RADIUS_PX = [
         self::RADIUS_SHARP => 0,
         self::RADIUS_SOFT => 7,
@@ -51,28 +59,39 @@ class MerchantUpsellAppearance extends Model
 
     /** card_shadow (mapped to a self-contained shadow value in the CSS via data-shadow). */
     public const SHADOW_NONE = 'none';
+
     public const SHADOW_SOFT = 'soft';
+
     public const SHADOW_ELEVATED = 'elevated';
+
     public const CARD_SHADOWS = [self::SHADOW_NONE, self::SHADOW_SOFT, self::SHADOW_ELEVATED];
 
     /** theme_font — the webfont (Heebo) vs the host's system font. */
     public const FONT_HEEBO = 'heebo';
+
     public const FONT_SYSTEM = 'system';
+
     public const FONTS = [self::FONT_HEEBO, self::FONT_SYSTEM];
 
     /** layout. */
     public const LAYOUT_STACKED = 'stacked';
+
     public const LAYOUT_MEDIA_SIDE = 'media_side';
+
     public const LAYOUTS = [self::LAYOUT_STACKED, self::LAYOUT_MEDIA_SIDE];
 
     /** image_ratio. */
     public const RATIO_NATURAL = 'natural';
+
     public const RATIO_SQUARE = 'square';
+
     public const IMAGE_RATIOS = [self::RATIO_NATURAL, self::RATIO_SQUARE];
 
     /** decline_style. */
     public const DECLINE_LINK = 'link';
+
     public const DECLINE_BUTTON = 'button';
+
     public const DECLINE_STYLES = [self::DECLINE_LINK, self::DECLINE_BUTTON];
 
     /** Hex colour guard: exactly #rrggbb. */
@@ -134,14 +153,23 @@ class MerchantUpsellAppearance extends Model
 
     // === Defaults (a fresh row = the beautiful house card) ===
     public const DEFAULT_THEME = self::THEME_LIGHT;
+
     public const DEFAULT_ACCENT = '#000000';
+
     public const DEFAULT_ACCENT_TEXT = '#ffffff';
+
     public const DEFAULT_BUTTON = self::BUTTON_SOLID;
+
     public const DEFAULT_RADIUS = self::RADIUS_SHARP;
+
     public const DEFAULT_SHADOW = self::SHADOW_SOFT;
+
     public const DEFAULT_FONT = self::FONT_HEEBO;
+
     public const DEFAULT_LAYOUT = self::LAYOUT_STACKED;
+
     public const DEFAULT_RATIO = self::RATIO_NATURAL;
+
     public const DEFAULT_DECLINE = self::DECLINE_LINK;
 
     protected $guarded = ['id', 'shop_id'];

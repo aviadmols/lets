@@ -25,6 +25,13 @@ return [
         'plan_cancelled' => 'התוכנית בוטלה — {business_name}',
         'login_code' => 'קוד הכניסה שלך: {code}',
         'order_updated' => 'ההזמנה שלך עודכנה — {business_name}',
+        'card_update' => 'נא לעדכן את כרטיס האשראי — {business_name}',
+    ],
+
+    'card_update' => [
+        'lead' => 'כדי שהמנוי שלכם על <strong>{product_title}</strong> ימשיך כרגיל, אנחנו צריכים כרטיס אשראי עדכני.',
+        'cta' => 'עדכון הכרטיס שלי',
+        'expiry_note' => 'הקישור תקף עד {expires_at}. אחריו בקשו מאיתנו קישור חדש.',
     ],
 
     'greeting' => 'שלום {customer_name},',

@@ -194,6 +194,14 @@ final class Timeline
     public const KIND_CARD_UPDATE_STARTED = 'card_update_started';
 
     /**
+     * A merchant put a card-update link in front of a customer — copied, emailed
+     * or texted. Its own kind, because the three-step story (sent → opened →
+     * updated) is what a merchant chasing a failing card actually reads, and the
+     * gap between any two steps is the thing worth acting on.
+     */
+    public const KIND_CARD_UPDATE_LINK_SENT = 'card_update_link_sent';
+
+    /**
      * A customer self-service verb SUCCEEDED (pause, resume, cancel, skip,
      * reschedule, edit items). The lifecycle rows already record what changed;
      * this row records WHO asked, in one scannable kind — the success twin of

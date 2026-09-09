@@ -22,6 +22,7 @@ class DataRequestExport extends Model
     protected $table = 'data_request_exports';
 
     public const STATUS_RECEIVED = 'received';
+
     public const STATUS_FULFILLED = 'fulfilled';
 
     protected $guarded = ['shop_id'];

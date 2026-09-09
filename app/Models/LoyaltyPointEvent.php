@@ -25,14 +25,22 @@ class LoyaltyPointEvent extends Model
     public const UPDATED_AT = null;
 
     public const KIND_EARN_PURCHASE = 'earn_purchase';
+
     public const KIND_JOIN = 'join_bonus';
+
     public const KIND_BIRTHDAY = 'birthday';
+
     public const KIND_SOCIAL = 'social';
+
     public const KIND_TIER_ENTRY = 'tier_entry';
+
     public const KIND_REDEEM = 'redeem_credit';
+
     public const KIND_ADJUST = 'admin_adjust';
+
     /** A friend bought through this member's referral link. */
     public const KIND_REFERRAL = 'referral';
+
     public const KINDS = [
         self::KIND_EARN_PURCHASE, self::KIND_JOIN, self::KIND_BIRTHDAY,
         self::KIND_SOCIAL, self::KIND_TIER_ENTRY, self::KIND_REDEEM,

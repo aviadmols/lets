@@ -25,10 +25,12 @@ class MerchantSmsSettings extends Model
 
     /** 019 (019sms.co.il) — the Israeli gateway the merchants asked for. */
     public const PROVIDER_019 = '019';
+
     public const PROVIDERS = [self::PROVIDER_019];
 
     /** 019 caps the `source` (sender) at 11 characters, letters and digits only. */
     public const MAX_SENDER = 11;
+
     private const SENDER_PATTERN = '/^[A-Za-z0-9]{1,11}$/';
 
     protected $guarded = ['id', 'shop_id'];

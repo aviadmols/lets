@@ -5,9 +5,9 @@ namespace App\Models\Concerns;
 use App\Models\Shop;
 use App\Support\Tenant;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Scope;
-use Illuminate\Database\Eloquent\Model;
 
 /**
  * Apply to EVERY tenant-owned model. Adds a global scope that constrains all
@@ -25,7 +25,7 @@ trait BelongsToShop
 
     public static function bootBelongsToShop(): void
     {
-        static::addGlobalScope(new TenantScope());
+        static::addGlobalScope(new TenantScope);
 
         static::creating(function (Model $model): void {
             if (empty($model->{self::SHOP_FOREIGN_KEY}) && Tenant::check()) {

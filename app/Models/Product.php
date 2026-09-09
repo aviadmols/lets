@@ -19,17 +19,24 @@ class Product extends Model
 
     // === CONSTANTS — status taxonomy (allow-lists guard sanitization) ===
     public const STATUS_ACTIVE = 'active';
+
     public const STATUS_DRAFT = 'draft';
+
     /** Soft-removed upstream: hidden from pickers but plans are KEPT. */
     public const STATUS_UNLISTED = 'unlisted';
+
     public const STATUSES = [self::STATUS_ACTIVE, self::STATUS_DRAFT, self::STATUS_UNLISTED];
 
     public const ONLINE_PUBLISHED = 'published';
+
     public const ONLINE_UNPUBLISHED = 'unpublished';
+
     public const ONLINE_STATUSES = [self::ONLINE_PUBLISHED, self::ONLINE_UNPUBLISHED];
 
     public const SOURCE_SHOPIFY = 'shopify';
+
     public const SOURCE_WOOCOMMERCE = 'woocommerce';
+
     public const SOURCES = [self::SOURCE_SHOPIFY, self::SOURCE_WOOCOMMERCE];
 
     /**

@@ -21,6 +21,8 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Services\Orders\PaidOrderPlanResolverFactory;
+use App\Services\Shopify\Orders\ShopifyOrderTags;
+use App\Services\Shopify\ShopifyClientFactory;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -206,7 +208,7 @@ final class PlanActivationService
         }
 
         try {
-            $client = \App\Services\Shopify\ShopifyClientFactory::for($shop);
+            $client = ShopifyClientFactory::for($shop);
             $order = $client->fetchOrderWithMetafields($orderId);
             if ($order === []) {
                 return;
@@ -216,7 +218,7 @@ final class PlanActivationService
             $existing = array_values(array_filter(array_map('trim', explode(',', (string) ($order['tags'] ?? '')))));
             $merged = array_values(array_unique([
                 ...$existing,
-                ...\App\Services\Shopify\Orders\ShopifyOrderTags::all('subscription_discount'),
+                ...ShopifyOrderTags::all('subscription_discount'),
             ]));
             $client->updateOrderTags($orderId, $merged);
         } catch (\Throwable $e) {

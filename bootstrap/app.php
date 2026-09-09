@@ -60,6 +60,11 @@ return Application::configure(basePath: dirname(__DIR__))
             // sandboxed customer-account extension worker. No web group / no CSRF.
             \Illuminate\Support\Facades\Route::group([], base_path('routes/subscriptions.php'));
 
+            // "Update your card": the durable link's landing pair (web group —
+            // its one POST button needs a CSRF token) plus the PayPlus callback
+            // and return, which are server-to-server and token-authenticated.
+            \Illuminate\Support\Facades\Route::group([], base_path('routes/cardupdate.php'));
+
             // Loyalty club, WooCommerce rail: a temporary SIGNED URL the plugin
             // renders in an iframe (Woo has no App Proxy to sign for us). The
             // signature carries the shop + customer reference and is the whole
@@ -116,6 +121,7 @@ return Application::configure(basePath: dirname(__DIR__))
             // PayPlus → SaaS card-update callback (server-to-server; the opaque
             // wc_shop_token segment + idempotent vaulting are the auth, not CSRF).
             'woocommerce/cardupdate/callback/*',
+            'payplus/cardupdate/callback/*',
             // RFC 8058 one-click unsubscribe: the mailbox provider POSTs with no
             // CSRF token. The URL signature is the auth (routes/campaigns.php).
             'c/unsubscribe/*',

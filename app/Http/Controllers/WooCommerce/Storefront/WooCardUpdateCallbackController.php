@@ -35,10 +35,13 @@ final class WooCardUpdateCallbackController
 
     private const CONFIG_REQUIRE_SIGNATURE = 'woocommerce.require_callback_signature';
 
-    public function __invoke(Request $request, string $wc_shop_token): JsonResponse
+    public function __invoke(Request $request, string $callback_token): JsonResponse
     {
+        // EITHER column: the token was born as `wc_shop_token` and PayPlus can be
+        // holding a page URL minted with it long before the rename.
         $shop = Shop::query()
-            ->where('wc_shop_token', $wc_shop_token)
+            ->where('callback_token', $callback_token)
+            ->orWhere('wc_shop_token', $callback_token)
             ->first();
 
         if ($shop === null) {
@@ -88,10 +91,13 @@ final class WooCardUpdateCallbackController
             return response()->json(['ok' => true, 'updated' => false]);
         }
 
-        $planPublicId = substr($moreInfo, strlen(CardUpdateService::MORE_INFO_PREFIX));
+        // `cardupd:{public_id}` as it always was, optionally followed by the id
+        // of the durable link the page was minted from — so the merchant's status
+        // line closes the RIGHT link when they sent more than one reminder.
+        ['public_id' => $planPublicId, 'link_id' => $linkId] = CardUpdateService::parseMoreInfo($moreInfo);
 
         $method = Tenant::run($shop, fn () => app(CardUpdateService::class)
-            ->applyCallback($shop, $planPublicId, $payload));
+            ->applyCallback($shop, $planPublicId, $payload, $linkId));
 
         return response()->json(['ok' => true, 'updated' => $method !== null]);
     }

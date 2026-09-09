@@ -239,6 +239,9 @@
             </div>
         @endif
 
+        {{-- Card-update links: sent → opened → updated, and the revoke lever --}}
+        @include("filament.resources.subscription.card-update-links")
+
         {{-- Payment ledger (this plan) — immutable money truth. No raw token / invoice_url. --}}
         <div class="rc-section">
             <div class="rc-section__title">{{ __('subscriptions.detail.payment_ledger') }}</div>

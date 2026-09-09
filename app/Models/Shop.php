@@ -133,6 +133,7 @@ class Shop extends Model
         'uninstalled_at',
         'woocommerce_domain',
         'wc_shop_token',
+        'callback_token',
         'lets_api_key_hash',
     ];
 
@@ -527,6 +528,27 @@ class Shop extends Model
     }
 
     /** Has the WooCommerce plugin completed the connect handshake (REST creds present)? */
+    /**
+     * The opaque token PayPlus posts its callbacks back to.
+     *
+     * Platform-neutral by name AND by fact: it was born as `wc_shop_token` on
+     * WooCommerce-prefixed routes, which quietly made the PayPlus card-update
+     * rail unavailable to Shopify shops that charge through the very same
+     * gateway. The old column is still read as the fallback so every callback
+     * URL PayPlus already holds keeps resolving to the same shop.
+     */
+    public function callbackToken(): ?string
+    {
+        foreach ([$this->callback_token, $this->wc_shop_token] as $candidate) {
+            $candidate = trim((string) ($candidate ?? ''));
+            if ($candidate !== '') {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
     public function hasWooConnection(): bool
     {
         return ! empty($this->wooCredential('consumer_key'))

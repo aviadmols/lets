@@ -22,7 +22,9 @@ class WebhookEvent extends Model
 {
     // === CONSTANTS ===
     public const SOURCE_SHOPIFY = 'shopify';
+
     public const SOURCE_PAYPLUS = 'payplus';
+
     public const SOURCE_WOOCOMMERCE = 'woocommerce';
 
     protected $guarded = [];

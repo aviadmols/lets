@@ -20,7 +20,9 @@ class ActivityEvent extends Model
     public const UPDATED_AT = null;            // append-only
 
     public const ACTOR_SYSTEM = 'system';
+
     public const ACTOR_CUSTOMER = 'customer';
+
     public const ACTOR_WEBHOOK = 'webhook';
 
     /**
@@ -28,7 +30,9 @@ class ActivityEvent extends Model
      * salted customer ref hash + per-table redaction counts (RedactionPolicy).
      */
     public const KIND_CUSTOMER_REDACTED = 'customer_redacted';
+
     public const KIND_SHOP_REDACTED = 'shop_redacted';
+
     public const KIND_CUSTOMER_DATA_EXPORTED = 'customer_data_exported';
 
     /** Email kinds that are previewable inline in the Timeline (see EmailPreviewRenderer). */

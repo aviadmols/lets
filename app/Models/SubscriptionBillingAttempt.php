@@ -23,8 +23,11 @@ class SubscriptionBillingAttempt extends Model
     protected $table = 'subscription_billing_attempts';
 
     public const STATUS_REQUESTED = 'requested';
+
     public const STATUS_SUCCEEDED = 'succeeded';
+
     public const STATUS_FAILED = 'failed';
+
     public const STATUS_CHALLENGED = 'challenged';
 
     protected $guarded = ['id', 'shop_id'];

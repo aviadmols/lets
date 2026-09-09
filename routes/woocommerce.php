@@ -281,8 +281,14 @@ Route::prefix('woocommerce')->group(function () {
     // Card update (the account area's "עדכון כרטיס"): the re-vault page's
     // server-to-server completion + the browser landing. Same token-segment
     // trust model; the callback only VAULTS, it never moves money.
-    Route::post('/cardupdate/callback/{wc_shop_token}', WooCardUpdateCallbackController::class)
+    //
+    // ALIASES. The flow's own routes now live in routes/cardupdate.php under
+    // `/payplus/`, because the rail is PayPlus's and a Shopify shop charging
+    // through it needs the same endpoints. These paths stay mounted because
+    // PayPlus can be holding a page URL minted days ago, and the parameter is
+    // named for what it now is — the controllers accept either column.
+    Route::post('/cardupdate/callback/{callback_token}', WooCardUpdateCallbackController::class)
         ->name('woocommerce.cardupdate.callback');
-    Route::get('/cardupdate/return/{wc_shop_token}', WooCardUpdateReturnController::class)
+    Route::get('/cardupdate/return/{callback_token}', WooCardUpdateReturnController::class)
         ->name('woocommerce.cardupdate.return');
 });

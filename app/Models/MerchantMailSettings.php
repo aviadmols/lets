@@ -30,10 +30,15 @@ class MerchantMailSettings extends Model
     protected $table = 'mail_settings';
 
     public const TEMPLATE_FIRST_PAYMENT_WELCOME = 'first_payment_welcome';
+
     public const TEMPLATE_RECURRING_PAYMENT_REMINDER = 'recurring_payment_reminder';
+
     public const TEMPLATE_MANUAL_RECURRING_PAYMENT = 'manual_recurring_payment';
+
     public const TEMPLATE_CHARGE_SUCCEEDED = 'charge_succeeded';
+
     public const TEMPLATE_CHARGE_FAILED = 'charge_failed';
+
     public const TEMPLATE_PLAN_CANCELLED = 'plan_cancelled';
 
     /**
@@ -49,6 +54,15 @@ class MerchantMailSettings extends Model
      */
     public const TEMPLATE_ORDER_UPDATED = 'order_updated';
 
+    /**
+     * "Your card needs updating" — carries the durable card-update link.
+     *
+     * Transactional, not marketing: the customer asked for a subscription and
+     * this is the arrangement failing without a live card. No unsubscribe line,
+     * no "פרסומת" tag.
+     */
+    public const TEMPLATE_CARD_UPDATE = 'card_update';
+
     /** Canonical template keys (drive the migration columns + the settings UI). */
     public const TEMPLATES = [
         self::TEMPLATE_FIRST_PAYMENT_WELCOME,
@@ -59,6 +73,7 @@ class MerchantMailSettings extends Model
         self::TEMPLATE_PLAN_CANCELLED,
         self::TEMPLATE_LOGIN_CODE,
         self::TEMPLATE_ORDER_UPDATED,
+        self::TEMPLATE_CARD_UPDATE,
     ];
 
     /** Spec defaults applied when a shop's row is first materialised. */

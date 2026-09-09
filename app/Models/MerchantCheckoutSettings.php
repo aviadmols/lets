@@ -33,11 +33,17 @@ class MerchantCheckoutSettings extends Model
 
     /** PayPlus `charge_default` enum (the documented set — nothing else is accepted). */
     public const METHOD_CREDIT_CARD = 'credit-card';
+
     public const METHOD_BIT = 'bit';
+
     public const METHOD_MULTIPASS = 'multipass';
+
     public const METHOD_PAYPAL = 'paypal';
+
     public const METHOD_PRAXELL = 'praxell';
+
     public const METHOD_VALUECARD = 'valuecard';
+
     public const METHOD_VERIFONE = 'verifone';
 
     /** @var list<string> */
@@ -62,11 +68,14 @@ class MerchantCheckoutSettings extends Model
 
     /** Page expiry (PayPlus `expiry_datetime`, in MINUTES) — clamped to something sane. */
     public const MIN_EXPIRY_MINUTES = 5;
+
     public const MAX_EXPIRY_MINUTES = 1440; // 24h
 
     // === Defaults (a fresh row must behave EXACTLY like today's hard-coded page) ===
     public const DEFAULT_LANGUAGE = 'he';
+
     public const DEFAULT_MAX_PAYMENTS = 1;      // 1 = no installments offered
+
     public const DEFAULT_CREATE_TOKEN = false;  // opt-in: required for the one-click upsell
 
     protected $guarded = ['id', 'shop_id'];

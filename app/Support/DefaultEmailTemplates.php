@@ -28,16 +28,23 @@ final class DefaultEmailTemplates
     // === CONSTANTS ===
     /** Locales the platform ships default copy in. */
     public const LOCALE_HE = 'he';
+
     public const LOCALE_EN = 'en';
+
     public const LOCALES = [self::LOCALE_HE, self::LOCALE_EN];
 
     private const RTL_LOCALES = ['he', 'ar'];
 
     private const H1 = 'style="font-size:20px;font-weight:700;margin:0 0 16px;color:#111827;"';
+
     private const P = 'style="font-size:15px;line-height:1.6;margin:0 0 14px;"';
+
     private const AMOUNT = 'style="font-size:15px;line-height:1.6;margin:0 0 14px;font-weight:700;"';
+
     private const CTA = 'style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:8px;font-size:15px;font-weight:600;margin:8px 0 16px;"';
+
     private const MUTED = 'style="font-size:12px;line-height:1.5;color:#6b7280;margin:18px 0 0;border-top:1px solid #e5e7eb;padding-top:14px;"';
+
     /** The sign-in digits: big, monospaced, and LTR even inside an RTL card. */
     private const CODE = 'style="direction:ltr;unicode-bidi:isolate;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:34px;font-weight:700;letter-spacing:8px;margin:8px 0 18px;color:#111827;"';
 
@@ -77,6 +84,10 @@ final class DefaultEmailTemplates
         MerchantMailSettings::TEMPLATE_ORDER_UPDATED => [
             'customer_name', 'business_name', 'order_number', 'items_table', 'added_total', 'currency',
         ],
+        MerchantMailSettings::TEMPLATE_CARD_UPDATE => [
+            'customer_name', 'business_name', 'product_title', 'plan_id',
+            'card_update_url', 'card_last_four', 'expires_at',
+        ],
     ];
 
     /** Default subject for a template ({tokens} still get strtr-substituted). */
@@ -100,6 +111,7 @@ final class DefaultEmailTemplates
             MerchantMailSettings::TEMPLATE_PLAN_CANCELLED => self::planCancelled(),
             MerchantMailSettings::TEMPLATE_LOGIN_CODE => self::loginCode(),
             MerchantMailSettings::TEMPLATE_ORDER_UPDATED => self::orderUpdated(),
+            MerchantMailSettings::TEMPLATE_CARD_UPDATE => self::cardUpdate(),
             default => self::card('<p '.self::P.'>{business_name}</p>'),
         };
     }
@@ -253,6 +265,25 @@ final class DefaultEmailTemplates
             self::greeting()
             .self::line('mail_default.plan_cancelled.lead', self::P)
             .self::cta('mail_default.plan_cancelled.cta', '{portal_url}')
+            .self::footer()
+        );
+    }
+
+    /**
+     * "Please update your card."
+     *
+     * The CTA is the ONE thing this email is for, so it is a real link and not a
+     * code: the customer is being asked to go and do something, and burying that
+     * behind "log in and find the card page" is how a subscription lapses over a
+     * card that expired.
+     */
+    private static function cardUpdate(): string
+    {
+        return self::card(
+            self::greeting()
+            .self::line('mail_default.card_update.lead', self::P)
+            .self::cta('mail_default.card_update.cta', '{card_update_url}')
+            .self::line('mail_default.card_update.expiry_note', self::MUTED)
             .self::footer()
         );
     }

@@ -44,8 +44,11 @@ class MerchantInvoicingSettings extends Model
 
     /** Scope: which money events produce documents. */
     public const SCOPE_PLANS_ONLY = 'plans_only';
+
     public const SCOPE_ALL_ORDERS = 'all_orders';
+
     public const SCOPES = [self::SCOPE_PLANS_ONLY, self::SCOPE_ALL_ORDERS];
+
     public const DEFAULT_SCOPE = self::SCOPE_PLANS_ONLY;
 
     /**
@@ -86,11 +89,17 @@ class MerchantInvoicingSettings extends Model
 
     /** Delivery + formatting defaults. */
     public const DEFAULT_ENABLED = false;
+
     public const DEFAULT_SEND_EMAIL_TO_CUSTOMER = false;
+
     public const DEFAULT_LANGUAGE = 'he';
+
     public const SELECTABLE_LANGUAGES = ['he', 'en'];
+
     public const DEFAULT_VAT_TYPE = 0;      // Green Invoice DOCUMENT vatType: 0 = apply this business's VAT
+
     public const DEFAULT_ROUNDING = false;
+
     public const DEFAULT_ATTACH_TO_ORDER = true;
 
     /**
@@ -101,6 +110,7 @@ class MerchantInvoicingSettings extends Model
      * rejects the document with 2422 (receipts ≠ payments).
      */
     public const ROW_VAT_INCLUDED = 1;      // the price already contains VAT
+
     public const ROW_VAT_BEFORE = 0;        // add VAT on top of the price
 
     /** A storefront price in Israel is what the shopper pays — VAT inside. */
@@ -155,7 +165,7 @@ class MerchantInvoicingSettings extends Model
         }
 
         try {
-            $row = new self();
+            $row = new self;
             $row->forceFill(array_merge(self::defaults(), ['shop_id' => $shopId]))->save();
 
             return $row;

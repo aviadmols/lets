@@ -15,6 +15,8 @@ return [
         'charge_failed' => 'Payment failed',
         'plan_cancelled' => 'Plan cancelled',
         'login_code' => 'Sign-in code',
+        'order_updated' => 'Order updated',
+        'card_update' => 'Card-update request',
     ],
 
     'field' => [
