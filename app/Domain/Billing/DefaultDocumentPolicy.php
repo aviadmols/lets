@@ -22,12 +22,19 @@ final class DefaultDocumentPolicy implements DocumentPolicy
 {
     // === CONSTANTS ===
     public const CONTEXT_DEPOSIT = 'deposit';
+
     public const CONTEXT_INSTALLMENT = 'installment';
+
     public const CONTEXT_FINAL_INSTALLMENT = 'final_installment';
+
     public const CONTEXT_RECURRING = 'recurring';
+
     public const CONTEXT_UPSELL = 'upsell';
+
     public const CONTEXT_REFUND = 'refund';
+
     public const CONTEXT_CANCELLATION = 'cancellation';
+
     /**
      * A plain paid store order — no LETS plan involved. Reported by the storefront
      * when the merchant runs invoicing in `all_orders` scope. It is a complete sale

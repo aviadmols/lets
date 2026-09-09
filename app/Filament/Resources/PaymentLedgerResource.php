@@ -2,7 +2,8 @@
 
 namespace App\Filament\Resources;
 
-use App\Domain\Lifecycle\RefundService;
+use App\Domain\Refunds\Models\RefundRequest;
+use App\Filament\Actions\RefundDrawer;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Filament\Resources\PaymentLedgerResource\Pages;
 use App\Models\PaymentLedger;
@@ -27,8 +28,11 @@ class PaymentLedgerResource extends Resource
 
     // === CONSTANTS ===
     protected static ?string $model = PaymentLedger::class;
+
     protected static ?string $slug = 'payments';
+
     protected static ?string $navigationIcon = 'heroicon-o-banknotes';
+
     protected static ?int $navigationSort = 10;
 
     public static function getNavigationGroup(): ?string
@@ -99,7 +103,7 @@ class PaymentLedgerResource extends Resource
 
                 Tables\Columns\TextColumn::make('charge_context')
                     ->label(__('subscriptions.detail.col.context'))
-                    ->formatStateUsing(fn (string $state): string => __('billing.charge_context.' . $state)),
+                    ->formatStateUsing(fn (string $state): string => __('billing.charge_context.'.$state)),
 
                 Tables\Columns\TextColumn::make('amount')
                     ->label(__('subscriptions.detail.col.amount'))
@@ -108,12 +112,12 @@ class PaymentLedgerResource extends Resource
                 Tables\Columns\TextColumn::make('status')
                     ->label(__('subscriptions.detail.col.status'))
                     ->badge()
-                    ->formatStateUsing(fn (string $state): string => __('billing.ledger_status.' . $state))
+                    ->formatStateUsing(fn (string $state): string => __('billing.ledger_status.'.$state))
                     ->color(fn (string $state): string => SubscriptionResource::filamentColor($state)),
 
                 Tables\Columns\TextColumn::make('payplus_transaction_uid')
                     ->label(__('subscriptions.detail.col.tx'))
-                    ->formatStateUsing(fn (?string $state): string => $state ? '••••' . Str::substr($state, -4) : '—'),
+                    ->formatStateUsing(fn (?string $state): string => $state ? '••••'.Str::substr($state, -4) : '—'),
 
                 // The accounting document for this money movement, when the merchant has
                 // invoicing on. THIS is the one place the document URL is surfaced — the
@@ -133,8 +137,20 @@ class PaymentLedgerResource extends Resource
                     ->options(collect(StatusBadge::TONES)
                         ->keys()
                         ->filter(fn (string $k): bool => in_array($k, ['pending', 'succeeded', 'failed', 'refunded', 'retry_scheduled', 'cancelled'], true))
-                        ->mapWithKeys(fn (string $k): array => [$k => __('billing.ledger_status.' . $k)])
+                        ->mapWithKeys(fn (string $k): array => [$k => __('billing.ledger_status.'.$k)])
                         ->all()),
+                // The money went back and the store did not follow: the one
+                // refund state that leaves two systems disagreeing about a
+                // completed sale, and therefore the one worth a filter.
+                Tables\Filters\Filter::make('refund_needs_attention')
+                    ->label(__('refunds.needs_attention.filter'))
+                    ->toggle()
+                    ->query(fn (Builder $query): Builder => $query->whereIn(
+                        'refund_request_id',
+                        RefundRequest::query()
+                            ->select('id')
+                            ->where('status', RefundRequest::STATUS_NEEDS_ATTENTION),
+                    )),
                 Tables\Filters\SelectFilter::make('charge_context')
                     ->label(__('subscriptions.detail.col.context'))
                     // Derived from the model's constants so a new context can
@@ -144,27 +160,25 @@ class PaymentLedgerResource extends Resource
                         ->all()),
             ])
             ->actions([
+                // The SAME drawer the payment page opens — one form, one set of
+                // promises, one ceiling. It used to be a confirm dialog that
+                // could only refund the whole charge and told neither the store
+                // nor the merchant anything afterwards.
                 Tables\Actions\Action::make('refund')
-                    ->label(__('billing.refund.label'))
+                    ->label(__('refunds.action.open'))
                     ->icon('heroicon-m-arrow-uturn-left')
                     ->color('danger')
-                    ->visible(fn (PaymentLedger $record): bool => $record->status === PaymentLedger::STATUS_SUCCEEDED)
-                    ->requiresConfirmation()
-                    ->modalHeading(__('billing.refund.heading'))
-                    ->modalDescription(fn (PaymentLedger $record): string => __('billing.refund.body', [
-                        'amount' => Money::format((float) $record->amount, $record->currency),
-                    ]))
-                    ->action(function (PaymentLedger $record): void {
-                        $result = app(RefundService::class)->refund($record);
-                        if ($result['ok'] ?? false) {
-                            Notification::make()->title(__('billing.refund.success'))->success()->send();
-                        } else {
-                            Notification::make()
-                                ->title(__('billing.refund.failed'))
-                                ->body((string) ($result['message'] ?? ''))
-                                ->danger()
-                                ->send();
+                    ->visible(fn (PaymentLedger $record): bool => $record->status === PaymentLedger::STATUS_SUCCEEDED
+                        && RefundDrawer::preview($record)->hasAnythingToRefund())
+                    ->modalHeading(__('refunds.heading'))
+                    ->modalSubmitActionLabel(__('refunds.action.submit'))
+                    ->form(fn (PaymentLedger $record): array => RefundDrawer::form($record))
+                    ->action(function (PaymentLedger $record, array $data): void {
+                        if (RefundDrawer::start($record, $data) === null) {
+                            return;
                         }
+
+                        Notification::make()->title(__('refunds.notify_result.started'))->success()->send();
                     }),
             ])
             // `issuedDocument` is eager-loaded alongside `plan`: the invoice column is

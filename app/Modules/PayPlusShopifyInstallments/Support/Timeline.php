@@ -35,6 +35,31 @@ final class Timeline
 
     public const KIND_REFUNDED = 'refunded';
 
+    /**
+     * A merchant asked for money to go back — written BEFORE any of it moves.
+     * Its own kind, separate from KIND_REFUNDED: the gap between the two is a
+     * refund that was asked for and did not happen, which is a thing somebody
+     * needs to be able to find.
+     */
+    public const KIND_REFUND_REQUESTED = 'refund_requested';
+
+    /** The store order was told about the refund (or cancelled outright). */
+    public const KIND_STORE_REFUND_SYNCED = 'store_refund_synced';
+
+    /**
+     * The money went back and the STORE did not follow. The shopper is whole and
+     * the merchant's own order still reads as paid — a task, not an error, and
+     * greppable on its own because it is the one failure in this path that leaves
+     * two systems disagreeing about a completed sale.
+     */
+    public const KIND_STORE_REFUND_SYNC_FAILED = 'store_refund_sync_failed';
+
+    /** Stock was returned to the shelf as part of a refund or cancellation. */
+    public const KIND_RESTOCKED = 'restocked';
+
+    /** A merchant cancelled the whole order from the LETS admin. */
+    public const KIND_ORDER_CANCELLED_BY_MERCHANT = 'order_cancelled_by_merchant';
+
     /** A merchant edited the plan (next charge date / amount / next-order line items) — W25. */
     public const KIND_PLAN_EDITED = 'plan_edited';
 

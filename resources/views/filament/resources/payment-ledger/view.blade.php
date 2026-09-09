@@ -95,6 +95,9 @@
             @endif
         </div>
 
+        {{-- Refunds asked for against this order, and how far each got --}}
+        @include("filament.resources.payment-ledger.refund-requests")
+
         {{-- Timeline --}}
         <div class="rc-section">
             <div class="rc-section__title">{{ __('subscriptions.detail.timeline') }}</div>

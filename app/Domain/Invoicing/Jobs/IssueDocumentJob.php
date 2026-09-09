@@ -74,6 +74,15 @@ final class IssueDocumentJob implements ShouldBeUnique, ShouldQueue
         public readonly ?float $amount = null,
         /** What the customer bought, when no plan carries it (e.g. an upsell offer). */
         public readonly ?string $itemTitle = null,
+        /**
+         * How much of this sale had ALREADY been credited before the refund this
+         * document is for. Part of the document's key, so two credit notes of the
+         * same amount against the same sale are two documents and not one — see
+         * DocumentIssuer::keyForRefund().
+         */
+        public readonly float $alreadyRefunded = 0.0,
+        /** The merchant decision this credit note belongs to, for the audit trail. */
+        public readonly ?int $refundRequestId = null,
     ) {
         $this->onQueue((string) config('invoicing.queue', TenantContext::QUEUE_INVOICES));
     }
@@ -114,10 +123,12 @@ final class IssueDocumentJob implements ShouldBeUnique, ShouldQueue
         ?string $linkedDocumentId = null,
         ?float $amount = null,
         ?string $itemTitle = null,
+        float $alreadyRefunded = 0.0,
+        ?int $refundRequestId = null,
     ): void {
-        $push = static function () use ($shopId, $context, $ledgerId, $order, $linkedDocumentId, $amount, $itemTitle): void {
+        $push = static function () use ($shopId, $context, $ledgerId, $order, $linkedDocumentId, $amount, $itemTitle, $alreadyRefunded, $refundRequestId): void {
             try {
-                self::dispatch($shopId, $context, $ledgerId, $order, $linkedDocumentId, $amount, $itemTitle);
+                self::dispatch($shopId, $context, $ledgerId, $order, $linkedDocumentId, $amount, $itemTitle, $alreadyRefunded, $refundRequestId);
             } catch (Throwable $e) {
                 Log::warning('invoicing.dispatch_failed', [
                     'shop_id' => $shopId,
@@ -172,13 +183,16 @@ final class IssueDocumentJob implements ShouldBeUnique, ShouldQueue
 
         // The context + amount are part of the key: a refund of a charge is a
         // DIFFERENT document from the charge's own, and two partial refunds of the
-        // same charge are two different documents again.
+        // same charge are two different documents again — which is only true if
+        // the STARTING POINT is in the key too, since two refunds of the same
+        // amount against the same sale are otherwise indistinguishable.
         return sprintf(
-            'shop:%d:doc:ledger:%d:%s:%s',
+            'shop:%d:doc:ledger:%d:%s:%s:%s',
             $this->shopId,
             $this->ledgerId,
             $this->context,
             $this->amount !== null ? number_format($this->amount, 2, '.', '') : 'full',
+            number_format($this->alreadyRefunded, 2, '.', ''),
         );
     }
 
@@ -232,6 +246,8 @@ final class IssueDocumentJob implements ShouldBeUnique, ShouldQueue
                 $this->linkedDocumentId,
                 $this->amount,
                 $this->itemTitle,
+                $this->alreadyRefunded,
+                $this->refundRequestId,
             ));
 
             return;

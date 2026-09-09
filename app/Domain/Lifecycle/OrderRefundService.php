@@ -6,6 +6,7 @@ use App\Models\PaymentLedger;
 use App\Models\Shop;
 use App\Support\Tenant;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -29,8 +30,15 @@ use Illuminate\Support\Facades\Log;
 final class OrderRefundService
 {
     // === CONSTANTS ===
-    /** Refundable charges are matched on either order column (see chargesFor). */
-    private const ORDER_COLUMNS = ['shopify_order_id', 'parent_order_id'];
+    /**
+     * Refundable charges are matched on either order column (see chargesFor).
+     *
+     * Public because "which ledger rows belong to this order" is asked outside
+     * this class too — the refund orchestrator sums what has already gone back
+     * across the same set — and two copies of that answer would be one copy too
+     * many the first time an order column is added.
+     */
+    public const ORDER_COLUMNS = ['shopify_order_id', 'parent_order_id'];
 
     public function __construct(private readonly RefundService $refunds) {}
 
@@ -101,9 +109,9 @@ final class OrderRefundService
      * followed as `parent_order_id` and has no order of its own — it is part of
      * the same order to everyone except the database.
      *
-     * @return \Illuminate\Support\Collection<int, PaymentLedger>
+     * @return Collection<int, PaymentLedger>
      */
-    public function chargesFor(Shop $shop, string $orderId): \Illuminate\Support\Collection
+    public function chargesFor(Shop $shop, string $orderId): Collection
     {
         return Tenant::run($shop, static fn () => PaymentLedger::query()
             ->where('status', PaymentLedger::STATUS_SUCCEEDED)

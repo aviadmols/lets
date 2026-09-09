@@ -2,8 +2,8 @@
 
 namespace App\Domain\Invoicing\Contracts;
 
-use App\Domain\Invoicing\IssueDocumentRequest;
 use App\Domain\Invoicing\IssuedDocumentResult;
+use App\Domain\Invoicing\IssueDocumentRequest;
 
 /**
  * One accounting-document provider, bound to ONE shop's credentials.

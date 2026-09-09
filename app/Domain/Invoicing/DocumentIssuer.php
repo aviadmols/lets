@@ -74,6 +74,8 @@ final class DocumentIssuer
         ?string $linkedDocumentId = null,
         ?float $amountOverride = null,
         ?string $itemTitle = null,
+        float $alreadyRefunded = 0.0,
+        ?int $refundRequestId = null,
     ): ?IssuedDocument {
         try {
             $shop = $this->shop($shopId);
@@ -100,10 +102,11 @@ final class DocumentIssuer
             // merchant's books would under-report the refund.
             $amount = round($amountOverride ?? (float) $ledger->amount, 2);
             $key = $context->isCredit()
-                ? self::keyForRefund($ledger, $amount)
+                ? self::keyForRefund($ledger, $amount, $alreadyRefunded)
                 : self::keyForLedger($ledger);
 
-            $existing = $this->findIssued($shopId, $key);
+            $existing = $this->findIssued($shopId, $key)
+                ?? ($context->isCredit() ? $this->findLegacyRefund($shopId, $ledger, $amount, $alreadyRefunded) : null);
             if ($existing !== null) {
                 return $existing;
             }
@@ -142,6 +145,7 @@ final class DocumentIssuer
             return $this->issue($shop, $context, $key, $request, [
                 'ledger_id' => $ledger->getKey(),
                 'plan_id' => $ledger->plan_id,
+                'refund_request_id' => $refundRequestId,
                 // A RECURRING cycle's document belongs to the CYCLE ORDER, and
                 // the cycle order must therefore be asked FIRST: the ledger's
                 // own shopify_order_id is the plan's ORIGINAL checkout order
@@ -299,14 +303,46 @@ final class DocumentIssuer
     }
 
     /**
-     * A credit note's key. Includes the AMOUNT because one sale can be credited
-     * more than once (successive partial refunds) — keying on the ledger row alone
-     * would silently swallow every refund after the first.
+     * A credit note's key.
+     *
+     * It carries the AMOUNT because one sale can be credited more than once, and
+     * it carries WHAT HAD ALREADY BEEN CREDITED because the amount alone is not
+     * enough: refunding ₪50 of a ₪200 sale today and another ₪50 tomorrow is an
+     * ordinary thing for a merchant to do, and on the amount alone the second one
+     * resolved to the first one's document. The customer got ₪100 back and the
+     * books declared ₪50 — a VAT under-report, discovered by an accountant rather
+     * than by us.
+     *
+     * The same shape `IdempotencyKey::refund()` uses at the gateway, for the same
+     * reason: the STARTING POINT is what makes two equal slices distinguishable.
      */
-    public static function keyForRefund(PaymentLedger $ledger, float $amount): string
+    public static function keyForRefund(PaymentLedger $ledger, float $amount, float $alreadyRefunded = 0.0): string
     {
         return IssuedDocument::KEY_PREFIX.'refund:'.$ledger->getKey()
+            .':'.number_format(round($alreadyRefunded, 2), 2, '.', '')
             .':'.number_format(round($amount, 2), 2, '.', '');
+    }
+
+    /**
+     * The key shape credit notes were written under BEFORE the starting point
+     * joined it. Consulted only for the FIRST refund of a sale, where the two
+     * shapes describe the same event and confusing them is therefore impossible.
+     *
+     * Without this, the first re-queue of an already-issued credit note would not
+     * find its own row and would mint a SECOND real tax document — the one
+     * failure this module exists to prevent. Later slices (already > 0) have no
+     * legacy twin and are looked up under the new key alone.
+     */
+    private function findLegacyRefund(int $shopId, PaymentLedger $ledger, float $amount, float $alreadyRefunded): ?IssuedDocument
+    {
+        if (round($alreadyRefunded, 2) > 0) {
+            return null;
+        }
+
+        return $this->findIssued(
+            $shopId,
+            IssuedDocument::KEY_PREFIX.'refund:'.$ledger->getKey().':'.number_format(round($amount, 2), 2, '.', ''),
+        );
     }
 
     /**

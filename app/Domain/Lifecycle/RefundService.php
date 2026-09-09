@@ -41,21 +41,40 @@ final class RefundService
     private const EPSILON = 0.005;
 
     /**
-     * @return array{ok: bool, message?: string}
+     * @param  DocumentContext|null  $context  which paperwork this money is for.
+     *                                         REFUND by default; a CANCELLATION
+     *                                         credits the same money under the
+     *                                         merchant's cancellation document
+     *                                         type, which their books may map
+     *                                         differently. Anything that is not
+     *                                         a credit context is refused rather
+     *                                         than filed as a sale.
+     * @param  int|null  $refundRequestId  the merchant decision this belongs to,
+     *                                     written onto the ledger row and onto the
+     *                                     credit note so the three can be walked
+     *                                     between later.
+     * @return array{ok: bool, message?: string, amount: float, ledger_id: int, refund_uid?: ?string}
      */
-    public function refund(PaymentLedger $ledger, ?float $amount = null): array
-    {
+    public function refund(
+        PaymentLedger $ledger,
+        ?float $amount = null,
+        ?DocumentContext $context = null,
+        ?int $refundRequestId = null,
+    ): array {
+        $ledgerId = (int) $ledger->getKey();
+        $context = $this->creditContext($context);
+
         $status = (string) $ledger->status;
         if ($status === LedgerStatus::REFUNDED->value) {
-            return ['ok' => true, 'message' => 'already_refunded'];
+            return ['ok' => true, 'message' => 'already_refunded', 'amount' => 0.0, 'ledger_id' => $ledgerId];
         }
         if ($status !== LedgerStatus::SUCCEEDED->value) {
-            return ['ok' => false, 'message' => 'not_refundable'];
+            return ['ok' => false, 'message' => 'not_refundable', 'amount' => 0.0, 'ledger_id' => $ledgerId];
         }
 
         $uid = (string) ($ledger->payplus_transaction_uid ?? '');
         if ($uid === '') {
-            return ['ok' => false, 'message' => 'no_transaction'];
+            return ['ok' => false, 'message' => 'no_transaction', 'amount' => 0.0, 'ledger_id' => $ledgerId];
         }
 
         $shop = Shop::query()->findOrFail((int) $ledger->shop_id);
@@ -67,12 +86,12 @@ final class RefundService
         $refundAmount = $amount !== null ? round($amount, 2) : $remaining;
 
         if ($refundAmount <= 0) {
-            return ['ok' => false, 'message' => 'nothing_to_refund'];
+            return ['ok' => false, 'message' => 'nothing_to_refund', 'amount' => 0.0, 'ledger_id' => $ledgerId];
         }
         if ($refundAmount > $remaining) {
             // Never hand back more than came in — the sum of the credit notes
             // must equal the sale, or the books stop balancing.
-            return ['ok' => false, 'message' => 'exceeds_remaining'];
+            return ['ok' => false, 'message' => 'exceeds_remaining', 'amount' => 0.0, 'ledger_id' => $ledgerId];
         }
 
         // MONEY OUT NEEDS A KEY. The gateway only sends an Idempotency-Key header
@@ -96,15 +115,25 @@ final class RefundService
         ]);
 
         if (! $result->success) {
-            return ['ok' => false, 'message' => $result->errorMessage ?: 'refund_failed'];
+            return [
+                'ok' => false,
+                'message' => $result->errorMessage ?: 'refund_failed',
+                'amount' => 0.0,
+                'ledger_id' => $ledgerId,
+            ];
         }
 
-        return DB::transaction(function () use ($ledger, $uid, $refundAmount, $charged, $result): array {
+        return DB::transaction(function () use ($ledger, $uid, $refundAmount, $charged, $alreadyRefunded, $result, $context, $refundRequestId): array {
             // Re-read under a lock so concurrent refunds serialise (no double-refund).
             $row = PaymentLedger::query()->lockForUpdate()->findOrFail($ledger->getKey());
 
             $refundedTotal = round((float) ($row->refunded_amount ?? 0) + $refundAmount, 2);
-            $row->forceFill(['refunded_amount' => $refundedTotal])->save();
+            $row->forceFill(array_filter([
+                'refunded_amount' => $refundedTotal,
+                // Which decision reversed this charge. Null on the direct path
+                // (an admin clicking a single row), which is why it is filtered.
+                'refund_request_id' => $refundRequestId,
+            ], static fn ($v): bool => $v !== null))->save();
 
             // A PARTIAL refund leaves the row `succeeded`: the sale still stands
             // for the part that was not given back, and the next partial refund
@@ -137,13 +166,31 @@ final class RefundService
             // original sale, and the credit note must say so.
             IssueDocumentJob::queueAfterCommit(
                 shopId: (int) $row->shop_id,
-                context: DocumentContext::REFUND->value,
+                context: $context->value,
                 ledgerId: (int) $row->getKey(),
                 amount: $refundAmount,
+                alreadyRefunded: $alreadyRefunded,
+                refundRequestId: $refundRequestId,
             );
 
-            return ['ok' => true];
+            return [
+                'ok' => true,
+                'amount' => $refundAmount,
+                'ledger_id' => (int) $row->getKey(),
+                'refund_uid' => $result->transactionUid,
+            ];
         });
+    }
+
+    /**
+     * The paperwork context for money going out. Only a CREDIT context is legal
+     * here — filing a refund as a sale would report income the merchant never
+     * received, so an unexpected value falls back to REFUND rather than being
+     * trusted.
+     */
+    private function creditContext(?DocumentContext $context): DocumentContext
+    {
+        return $context !== null && $context->isCredit() ? $context : DocumentContext::REFUND;
     }
 
     /** Best-effort: transition the linked payment slot to refunded (never fails the refund). */

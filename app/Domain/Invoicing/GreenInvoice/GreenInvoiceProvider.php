@@ -4,8 +4,8 @@ namespace App\Domain\Invoicing\GreenInvoice;
 
 use App\Domain\Invoicing\Contracts\InvoiceProvider;
 use App\Domain\Invoicing\DocumentLine;
-use App\Domain\Invoicing\IssueDocumentRequest;
 use App\Domain\Invoicing\IssuedDocumentResult;
+use App\Domain\Invoicing\IssueDocumentRequest;
 use App\Models\MerchantInvoicingSettings;
 use App\Models\Shop;
 
@@ -40,8 +40,11 @@ final class GreenInvoiceProvider implements InvoiceProvider
 
     /** Failure codes this provider originates (transport codes come from the client). */
     private const ERROR_TOTALS_MISMATCH = 'totals_mismatch';
+
     private const ERROR_MISSING_LINK = 'missing_linked_document';
+
     private const ERROR_UNPAID_PAYMENT_TYPE = 'unpaid_requires_payment';
+
     private const ERROR_NO_RESPONSE = 'no_response';
 
     public function __construct(

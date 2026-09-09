@@ -21,6 +21,7 @@ final class StatusBadge
 
     /**
      * status value => semantic tone (green|gray|teal|red|amber).
+     *
      * @var array<string, string>
      */
     public const TONES = [
@@ -41,6 +42,17 @@ final class StatusBadge
         'retry_scheduled' => 'amber',
         // ledger 'cancelled' shared above (gray)
 
+        // --- RefundRequest (a merchant decision to give money back) ---
+        // In-flight halves are TEAL: they are progress, not an outcome.
+        'money_done' => 'teal',
+        'store_done' => 'teal',
+        // AMBER, not red, for the same reason an unresolved document is amber:
+        // the money went back exactly as asked and the STORE did not follow. It
+        // is a task with a button, and colouring it as a failure would push a
+        // merchant to refund again — the one action that cannot be undone.
+        'needs_attention' => 'amber',
+        // 'pending' / 'completed' / 'failed' shared above.
+
         // --- PayPlus connection status (settings) ---
         'connected' => 'green',
         'not_connected' => 'gray',
@@ -60,6 +72,7 @@ final class StatusBadge
 
     /** The translation domain that holds the human label for a status. */
     public const LABEL_DOMAIN_PLAN = 'billing.status';
+
     public const LABEL_DOMAIN_LEDGER = 'billing.ledger_status';
 
     public static function tone(?string $status): string

@@ -2,11 +2,15 @@
 
 namespace App\Filament\Resources\PaymentLedgerResource\Pages;
 
-use App\Domain\Lifecycle\OrderRefundService;
-use App\Domain\Lifecycle\RefundService;
+use App\Domain\Refunds\Models\RefundRequest;
+use App\Domain\Refunds\RefundOrchestrator;
+use App\Domain\Refunds\RefundPreview;
+use App\Filament\Actions\RefundDrawer;
 use App\Filament\Resources\PaymentLedgerResource;
 use App\Models\ActivityEvent;
+use App\Models\IssuedDocument;
 use App\Models\PaymentLedger;
+use App\Models\Shop;
 use App\Support\Tenant;
 use App\Support\Ui\Money;
 use Filament\Actions;
@@ -24,18 +28,25 @@ use Livewire\Attributes\Locked;
  * needs to answer "what IS this charge?" — the transaction id in full, the card,
  * the approval number, the linked plan and order, the document — lives here.
  *
- * Read-only apart from Refund, which is the one verb this screen owns and which
- * goes through RefundService (the ledger's own state machine), never a direct
- * write. Every value the Blade prints is computed here; the view renders.
+ * Read-only apart from ONE verb: refund or cancel. It opens a RefundRequest and
+ * hands the legs to a queued job — the money through the ledger's own guarded
+ * path, the store through its platform refunder, the credit note through the
+ * central DocumentPolicy. Nothing here writes to a money table directly.
+ *
+ * Every value the Blade prints is computed here; the view renders.
  */
 class ViewPayment extends Page
 {
     // === CONSTANTS ===
     protected static string $resource = PaymentLedgerResource::class;
+
     protected static string $view = 'filament.resources.payment-ledger.view';
 
     /** Cap the Timeline feed on the detail page. */
     public const FEED_LIMIT = 50;
+
+    /** Cap the refund-decision feed. One order rarely has more than a couple. */
+    public const REFUND_FEED_LIMIT = 10;
 
     /**
      * #[Locked] — Livewire re-hydrates public properties from the request, and
@@ -119,105 +130,153 @@ class ViewPayment extends Page
             ->get();
     }
 
-    /** Every succeeded charge that belongs to this payment's order. */
-    public function orderCharges(): Collection
-    {
-        $shop = Tenant::current();
-        $orderId = (string) ($this->record->shopify_order_id ?: $this->record->parent_order_id ?: '');
-
-        if (! $shop instanceof \App\Models\Shop || $orderId === '') {
-            return collect();
-        }
-
-        return app(OrderRefundService::class)->chargesFor($shop, $orderId);
-    }
-
     protected function getHeaderActions(): array
     {
         return [
-            // Refund the WHOLE order when it holds more than one charge — a
-            // checkout plus an accepted upsell is two charges, and reversing only
-            // the row the merchant clicked leaves the shopper still out of pocket
-            // for the other. Each charge keeps its own credit note, because a
-            // credit note credits ONE sale document and these were two sales.
-            Actions\Action::make('refund_order')
-                ->label(fn (): string => __('billing.refund.order_label', [
-                    'count' => $this->orderCharges()->count(),
-                ]))
-                ->icon('heroicon-m-arrow-uturn-left')
-                ->color('danger')
-                ->visible(fn (): bool => $this->record->status === PaymentLedger::STATUS_SUCCEEDED
-                    && $this->orderCharges()->count() > 1)
-                ->requiresConfirmation()
-                ->modalHeading(__('billing.refund.order_heading'))
-                ->modalDescription(fn (): string => __('billing.refund.order_body', [
-                    'count' => $this->orderCharges()->count(),
-                    'amount' => Money::format(
-                        (float) $this->orderCharges()->sum('amount'),
-                        (string) $this->record->currency,
-                    ),
-                ]))
-                ->action(function (): void {
-                    $shop = Tenant::current();
-                    if (! $shop instanceof \App\Models\Shop) {
-                        return;
-                    }
-
-                    $result = app(OrderRefundService::class)->refundOrder(
-                        $shop,
-                        (string) ($this->record->shopify_order_id ?: $this->record->parent_order_id),
-                    );
-
-                    $this->record = $this->record->fresh() ?? $this->record;
-
-                    if ($result['ok']) {
-                        Notification::make()
-                            ->title(__('billing.refund.order_success', ['count' => $result['refunded']]))
-                            ->success()
-                            ->send();
-
-                        return;
-                    }
-
-                    // Partial success is reported as such: the charges that DID
-                    // reverse are not rolled back — that money is already moving.
-                    Notification::make()
-                        ->title(__('billing.refund.order_partial', [
-                            'refunded' => $result['refunded'],
-                            'failed' => $result['failed'],
-                        ]))
-                        ->body(implode(' · ', $result['messages']))
-                        ->danger()
-                        ->send();
-                }),
-
-            Actions\Action::make('refund')
-                ->label(__('billing.refund.label'))
-                ->icon('heroicon-m-arrow-uturn-left')
-                ->color('danger')
-                ->visible(fn (): bool => $this->record->status === PaymentLedger::STATUS_SUCCEEDED)
-                ->requiresConfirmation()
-                ->modalHeading(__('billing.refund.heading'))
-                ->modalDescription(fn (): string => __('billing.refund.body', [
-                    'amount' => Money::format((float) $this->record->amount, (string) $this->record->currency),
-                ]))
-                ->action(function (): void {
-                    $result = app(RefundService::class)->refund($this->record);
-
-                    if ($result['ok'] ?? false) {
-                        $this->record = $this->record->fresh() ?? $this->record;
-                        Notification::make()->title(__('billing.refund.success'))->success()->send();
-
-                        return;
-                    }
-
-                    Notification::make()
-                        ->title(__('billing.refund.failed'))
-                        ->body((string) ($result['message'] ?? ''))
-                        ->danger()
-                        ->send();
-                }),
+            // ONE drawer for the whole decision. The two buttons that used to
+            // live here could only ever refund a full amount, and told neither
+            // the store nor the merchant what had happened afterwards.
+            $this->refundAction(),
+            $this->retryStoreSyncAction(),
         ];
+    }
+
+    /**
+     * Refund or cancel — the merchant's whole decision in one form.
+     *
+     * The form asks four questions and then SHOWS what each answer will cost,
+     * because this is the one screen in the app that authorises something
+     * irreversible. Pressing it opens a request row and hands the legs to a
+     * queued job; the panel on this page watches the row.
+     */
+    public function refundAction(): Actions\Action
+    {
+        return Actions\Action::make('refund')
+            ->label(__('refunds.action.open'))
+            ->icon('heroicon-m-arrow-uturn-left')
+            ->color('danger')
+            ->visible(fn (): bool => $this->refundPreview()->hasAnythingToRefund())
+            ->modalHeading(__('refunds.heading'))
+            ->modalSubmitActionLabel(__('refunds.action.submit'))
+            ->form(fn (): array => RefundDrawer::form($this->record))
+            ->action(fn (array $data) => $this->startRefund($data));
+    }
+
+    /**
+     * The task button. Only ever visible when money has already gone back and
+     * the store does not know — and safe to press twice: the store leg
+     * recognises its own marker on the order.
+     */
+    public function retryStoreSyncAction(): Actions\Action
+    {
+        return Actions\Action::make('retryStoreSync')
+            ->label(__('refunds.action.retry_store'))
+            ->icon('heroicon-m-arrow-path')
+            ->color('warning')
+            ->visible(fn (): bool => $this->stuckRequest() !== null)
+            ->requiresConfirmation()
+            ->modalHeading(__('refunds.needs_attention.title'))
+            ->action(function (): void {
+                $shop = Tenant::current();
+                $request = $this->stuckRequest();
+
+                if (! $shop instanceof Shop || $request === null) {
+                    return;
+                }
+
+                $out = app(RefundOrchestrator::class)->retryStore($shop, $request);
+
+                if ($out->needsAttention()) {
+                    Notification::make()
+                        ->title(__('refunds.notify_result.needs_attention'))
+                        ->body((string) ($out->store_result['error'] ?? ''))
+                        ->danger()
+                        ->send();
+
+                    return;
+                }
+
+                Notification::make()->title(__('refunds.notify_result.retried'))->success()->send();
+            });
+    }
+
+    /**
+     * Open the request and hand it to the queue, then say so.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function startRefund(array $data): void
+    {
+        if (RefundDrawer::start($this->record, $data) === null) {
+            return;
+        }
+
+        Notification::make()->title(__('refunds.notify_result.started'))->success()->send();
+    }
+    // === What this page shows about refunds ===
+
+    /** The order this payment belongs to, or null for a charge that has none. */
+    public function refundOrderId(): ?string
+    {
+        return RefundDrawer::orderIdFor($this->record);
+    }
+
+    /** What a refund from here would do — the drawer's own answer, not a second one. */
+    public function refundPreview(): RefundPreview
+    {
+        return RefundDrawer::preview($this->record);
+    }
+
+    /**
+     * Every refund decision made against this order, newest first — the result
+     * panel. Read live rather than from a cached summary, so a queued job's
+     * progress appears as it happens.
+     *
+     * @return Collection<int, RefundRequest>
+     */
+    public function refundRequests(): Collection
+    {
+        $orderId = $this->refundOrderId();
+
+        return RefundRequest::query()
+            ->when(
+                $orderId !== null,
+                fn ($q) => $q->where('external_order_id', $orderId),
+                fn ($q) => $q->where('ledger_id', (int) $this->record->getKey()),
+            )
+            ->latest('id')
+            ->limit(self::REFUND_FEED_LIMIT)
+            ->get();
+    }
+
+    /** Is any request on this order still running? Decides whether to poll. */
+    public function refundsInFlight(): bool
+    {
+        return $this->refundRequests()->contains(
+            static fn (RefundRequest $r): bool => ! $r->isSettled() && ! $r->needsAttention(),
+        );
+    }
+
+    /** The one request whose money went back while the store did not follow. */
+    public function stuckRequest(): ?RefundRequest
+    {
+        return $this->refundRequests()->first(static fn (RefundRequest $r): bool => $r->needsAttention());
+    }
+
+    /**
+     * The credit notes one request produced. Named ON the document rather than
+     * collected on the request, because the documents are issued by a queued job
+     * that lands after the request itself has finished.
+     *
+     * @return Collection<int, IssuedDocument>
+     */
+    public function refundDocuments(RefundRequest $request): Collection
+    {
+        return IssuedDocument::query()
+            ->where('refund_request_id', (int) $request->getKey())
+            ->where('status', IssuedDocument::STATUS_ISSUED)
+            ->orderBy('id')
+            ->get();
     }
 
     /**

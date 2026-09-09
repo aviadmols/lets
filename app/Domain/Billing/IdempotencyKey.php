@@ -76,6 +76,42 @@ final class IdempotencyKey
         return sprintf('refund:%d:%d:%s:%s', $shopId, $ledgerId, number_format($alreadyRefunded, 2, '.', ''), number_format($amount, 2, '.', ''));
     }
 
+    /**
+     * ONE merchant decision to give money back. Keyed by WHAT WAS ASKED —
+     * the target, the mode, the amount, the basket, the restock choice — plus
+     * how much had already gone back from this target before the click.
+     *
+     * That last part is what separates a double-click from a second refund. Two
+     * ₪50 refunds of the same order are a legitimate, ordinary thing to want;
+     * without the starting point in the key the second one would resolve to the
+     * first request and silently return nothing to the customer. With it, a
+     * genuine second slice gets its own row and a double-submitted form does not.
+     *
+     * @param  array<int|string, mixed>  $lines  the chosen basket, if any
+     */
+    public static function refundRequest(
+        int $shopId,
+        string $target,
+        string $mode,
+        float $amount,
+        float $alreadyRefunded,
+        array $lines = [],
+        bool $restock = false,
+    ): string {
+        $basket = $lines === [] ? '-' : substr(hash('sha256', json_encode($lines)), 0, 16);
+
+        return sprintf(
+            'refundreq:%d:%s:%s:%s:%s:%s:%s',
+            $shopId,
+            $target,
+            $mode,
+            number_format($amount, 2, '.', ''),
+            number_format($alreadyRefunded, 2, '.', ''),
+            $basket,
+            $restock ? 'restock' : 'keep',
+        );
+    }
+
     public static function gateway(int $shopId, string $orderId): string
     {
         return "gateway:{$shopId}:{$orderId}";

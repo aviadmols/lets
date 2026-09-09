@@ -31,14 +31,13 @@ final class PlanGate
     private const DEFAULT_FEATURE_ALLOWED = true;
 
     /**
-     * @param BillingPlan $plan the tier this gate evaluates against
-     * @param array<string, int|bool|null> $limits its resolved gate matrix
+     * @param  BillingPlan  $plan  the tier this gate evaluates against
+     * @param  array<string, int|bool|null>  $limits  its resolved gate matrix
      */
     private function __construct(
         private readonly BillingPlan $plan,
         private readonly array $limits,
-    ) {
-    }
+    ) {}
 
     /** Build a gate for a shop, reading its resolved BillingPlan (defaults to FREE). */
     public static function for(Shop $shop): self
@@ -64,7 +63,7 @@ final class PlanGate
      * The matrix shape is identical to BillingPlan::limits(); missing keys fall
      * back to the same fail-open defaults as a real tier.
      *
-     * @param array<string, int|bool|null> $limits
+     * @param  array<string, int|bool|null>  $limits
      */
     public static function withLimits(BillingPlan $plan, array $limits): self
     {

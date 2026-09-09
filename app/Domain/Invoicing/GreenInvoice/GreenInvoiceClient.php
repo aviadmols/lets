@@ -30,6 +30,7 @@ final class GreenInvoiceClient
 {
     // === CONSTANTS ===
     private const PATH_TOKEN = '/account/token';
+
     private const PATH_DOCUMENTS = '/documents';
 
     /** Cache key namespace. Includes shop id + a hash of the key id. */
@@ -43,10 +44,14 @@ final class GreenInvoiceClient
 
     /** Machine-readable failure reasons surfaced to the settings screen. */
     public const REASON_NO_CREDENTIALS = 'no_credentials';
+
     public const REASON_UNAUTHORIZED = 'unauthorized';
+
     public const REASON_REJECTED = 'rejected';
+
     /** The document POST itself failed in transport — a document MAY exist. */
     public const REASON_TRANSPORT = 'transport';
+
     /**
      * The TOKEN request failed in transport, so we never reached POST /documents.
      * Distinct from REASON_TRANSPORT precisely because it PROVES nothing was
@@ -66,8 +71,8 @@ final class GreenInvoiceClient
     public array $lastResponse = [];
 
     /**
-     * @param array{provider:string, api_key_id:?string, api_secret:?string, environment:string} $credentials
-     *   The decrypted per-shop bag from Shop::invoicingConfig().
+     * @param  array{provider:string, api_key_id:?string, api_secret:?string, environment:string}  $credentials
+     *                                                                                                           The decrypted per-shop bag from Shop::invoicingConfig().
      */
     public function __construct(
         private readonly array $credentials,
