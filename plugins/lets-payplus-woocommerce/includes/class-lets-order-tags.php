@@ -164,7 +164,7 @@ function lets_payplus_tags_filter_dropdown()
     echo '<select name="' . esc_attr(LETS_PAYPLUS_TAGS_FILTER_ARG) . '">';
     echo '<option value="">' . esc_html($he ? 'כל ההזמנות' : 'All orders') . '</option>';
     echo '<option value="' . esc_attr(LETS_PAYPLUS_TAGS_UMBRELLA) . '"' . selected($selected, LETS_PAYPLUS_TAGS_UMBRELLA, false) . '>'
-        . esc_html($he ? 'נוצרו על ידי LETS' : 'Created by LETS') . '</option>';
+        . esc_html($he ? 'נוצרו אוטומטית' : 'Created automatically') . '</option>';
 
     foreach (lets_payplus_tag_kinds() as $value => $label) {
         echo '<option value="' . esc_attr($value) . '"' . selected($selected, $value, false) . '>'

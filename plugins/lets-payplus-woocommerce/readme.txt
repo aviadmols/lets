@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.46.0
+Stable tag: 0.47.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -19,7 +19,7 @@ LETS lets Israeli WooCommerce merchants on PayPlus:
 * Take a **deposit + installments** until an item is fully paid, then release fulfillment.
 * Run open-ended **recurring subscriptions** (billed automatically until cancelled).
 * Offer **one-click post-purchase upsells** on the saved card (no card re-entry).
-* Optionally accept **normal checkout through PayPlus** (the "PayPlus (LETS)" gateway).
+* Optionally accept **normal checkout through PayPlus** (the "PayPlus" gateway).
 
 Everything is managed from the LETS dashboard at https://app.lets.co.il. The plugin links
 your store to LETS and renders the storefront surfaces; the money, schedules, retries, and
@@ -46,7 +46,7 @@ or stores card data.
    into wp-content/plugins/).
 2. Activate "LETS — PayPlus Subscriptions & Installments for WooCommerce".
 3. Go to Settings → LETS and paste your connection token, then click "Connect to LETS".
-4. (Optional) To accept normal checkout through PayPlus, enable "PayPlus (LETS)" under
+4. (Optional) To accept normal checkout through PayPlus, enable "PayPlus" under
    WooCommerce → Settings → Payments.
 
 == Frequently Asked Questions ==
@@ -64,6 +64,23 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.47.0 =
+* Refund or cancel an order from the order screen. WooCommerce's own Refund
+  button only ever offered "refund manually" for a deposit or instalments order —
+  those are paid on the PayPlus page, so WooCommerce has no refund handler for
+  them and a manual entry returns nobody's money. The new box refunds through
+  PayPlus for real: a full or partial amount, optionally returning the items to
+  stock, and optionally cancelling the whole order (which also stops the
+  subscription the order started). The money moves first and WooCommerce's own
+  refund record is written only once it has.
+* WooCommerce's own Refund button now works too, for orders paid through the
+  PayPlus gateway — it hands the refund to PayPlus rather than recording it.
+* A refund made anywhere else in WooCommerce is reported back, so the ledger and
+  the credit note keep up with it.
+* The word "LETS" is gone from the order screen, the payment-methods list and
+  the checkout messages a shopper reads. It stays only where it names the
+  connection itself (Settings → LETS and the management panel).
 
 = 0.46.0 =
 * Settings → LETS → "Password fields": hide WooCommerce's "Password change"

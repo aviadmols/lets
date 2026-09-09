@@ -37,8 +37,8 @@ add_action('plugins_loaded', function () {
         public function __construct()
         {
             $this->id = 'lets_payplus';
-            $this->method_title = __('PayPlus (LETS)', 'lets-payplus');
-            $this->method_description = __('Accept payments through PayPlus via your LETS connection.', 'lets-payplus');
+            $this->method_title = __('PayPlus', 'lets-payplus');
+            $this->method_description = __('Accept credit-card payments through PayPlus.', 'lets-payplus');
             $this->has_fields = false;
             // WooCommerce shows the "Refund" button on an order only for a gateway
             // that says it can. The money goes back through PayPlus, via the SaaS.
@@ -59,7 +59,7 @@ add_action('plugins_loaded', function () {
                 'enabled' => array(
                     'title' => __('Enable/Disable', 'lets-payplus'),
                     'type' => 'checkbox',
-                    'label' => __('Enable PayPlus (LETS) checkout', 'lets-payplus'),
+                    'label' => __('Enable PayPlus checkout', 'lets-payplus'),
                     'default' => 'no',
                 ),
                 'title' => array(
@@ -163,13 +163,13 @@ add_action('plugins_loaded', function () {
                 $detail = is_wp_error($result) ? $result->get_error_message() : 'no_redirect_url';
 
                 if ('lets_not_connected' === $code || 'lets_bad_origin' === $code) {
-                    $reason = __('This store is not connected to LETS yet. Please contact the store — the LETS connection token needs to be set in Settings → LETS.', 'lets-payplus');
+                    $reason = __('Card payments are not finished being set up on this store. Please contact the store.', 'lets-payplus');
                 } elseif ('payplus_not_connected' === $detail) {
                     $reason = __('The store’s PayPlus account is not connected. Please contact the store to enter its PayPlus API key and secret.', 'lets-payplus');
                 } elseif ('payplus_no_payment_page' === $detail) {
                     $reason = __('The store’s PayPlus payment page is not set up yet. Please contact the store to finish the PayPlus connection (choose a Payment Page).', 'lets-payplus');
                 } elseif (401 === $status || 403 === $status) {
-                    $reason = __('LETS could not authenticate this store (the connection token may be out of date). Please contact the store to re-connect the plugin.', 'lets-payplus');
+                    $reason = __('Card payments could not be started for this store. Please contact the store.', 'lets-payplus');
                 } elseif ($status >= 500) {
                     $reason = __('The payment service is temporarily unavailable. Please try again in a few minutes.', 'lets-payplus');
                 } else {
@@ -203,7 +203,7 @@ add_action('plugins_loaded', function () {
             }
 
             // Mark awaiting payment; reduce stock holds per WC defaults.
-            $order->update_status('pending', __('Awaiting PayPlus payment via LETS.', 'lets-payplus'));
+            $order->update_status('pending', __('Awaiting PayPlus payment.', 'lets-payplus'));
 
             // Store the page-request id so we can VERIFY-ON-RETURN on the thank-you page — the
             // reliable way to mark the order paid when PayPlus doesn't push the callback.

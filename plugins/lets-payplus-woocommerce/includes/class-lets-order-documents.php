@@ -52,7 +52,7 @@ function lets_payplus_order_docs_register_metabox()
 
     add_meta_box(
         'lets_payplus_order_documents',
-        lets_payplus_is_he() ? 'LETS — חשבוניות וקבלות' : 'LETS — Invoices & receipts',
+        lets_payplus_is_he() ? 'חשבוניות וקבלות' : 'Invoices & receipts',
         'lets_payplus_render_order_docs_metabox',
         $screen,
         'side',
@@ -79,7 +79,7 @@ function lets_payplus_render_order_docs_metabox($post_or_order)
             'neutral',
             '·',
             $he ? 'לא מחובר' : 'Not connected',
-            $he ? 'חברו את החנות ל-LETS כדי לראות מסמכי חשבונאות כאן.' : 'Connect this store to LETS to see accounting documents here.'
+            $he ? 'החנות אינה מחוברת, ולכן אין כאן מסמכי חשבונאות.' : 'This store is not connected, so no accounting documents appear here.'
         );
 
         return;
