@@ -70,8 +70,8 @@ function lets_payplus_gateway_process_refund($order_id, $amount = null, $reason 
         // refund" is something a merchant can act on; "HTTP 422" is not.
         $message = ! empty($body['reason'])
             ? sprintf(
-                /* translators: %s: a short reason code from LETS. */
-                __('LETS could not refund this order (%s).', 'lets-payplus'),
+                /* translators: %s: a short reason code. */
+                __('This order could not be refunded (%s).', 'lets-payplus'),
                 (string) $body['reason']
             )
             : $result->get_error_message();
@@ -84,13 +84,13 @@ function lets_payplus_gateway_process_refund($order_id, $amount = null, $reason 
     if (empty($result['ok'])) {
         return new WP_Error(
             'lets_refund_failed',
-            __('LETS did not refund this order. Nothing was returned to the customer.', 'lets-payplus')
+            __('This order was not refunded. Nothing was returned to the customer.', 'lets-payplus')
         );
     }
 
     $order->add_order_note(sprintf(
         /* translators: %s: the refunded amount, formatted. */
-        __('LETS refunded %s through PayPlus.', 'lets-payplus'),
+        __('%s was refunded through PayPlus.', 'lets-payplus'),
         wc_price((float) $result['refunded'], array('currency' => $order->get_currency()))
     ));
 

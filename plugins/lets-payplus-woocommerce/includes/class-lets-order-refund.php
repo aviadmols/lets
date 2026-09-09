@@ -1,30 +1,35 @@
 <?php
 /**
- * LETS — refund this order, from the WooCommerce order screen.
+ * Refund or cancel this order, from the WooCommerce order screen.
  *
- * WooCommerce has its own Refund button, and for an order paid through the LETS
- * gateway it now works (the gateway declares `refunds` and delegates to us). But
- * it is missing for the orders that matter most here: a DEPOSIT or INSTALLMENTS
- * order is paid on the PayPlus page, so WooCommerce records a payment method it
- * has no refund handler for, greys the API-refund path out, and offers only
- * "refund manually" — a bookkeeping entry that returns nobody's money. The money
- * for those orders is in the LETS ledger and is perfectly refundable; WooCommerce
- * just has no way to ask.
+ * WooCommerce has its own Refund button, and for an order paid through our
+ * gateway it now works. But it is missing for the orders that matter most here:
+ * a DEPOSIT or INSTALLMENTS order is paid on the PayPlus page, so WooCommerce
+ * records a payment method it has no refund handler for, greys the API-refund
+ * path out, and offers only "refund manually" — a bookkeeping entry that returns
+ * nobody's money. The money for those orders is on the PayPlus side and is
+ * perfectly refundable; WooCommerce just has no way to ask.
  *
- * So this box asks. It shows what LETS says is still refundable, takes a full or
- * partial amount, and:
+ * So this box asks. It shows what is still refundable, takes a full or partial
+ * amount, optionally cancels the whole order, and:
  *
- *   1. asks the SaaS to move the money (PayPlus, the ledger, the credit note);
+ *   1. asks the SaaS to move the money (PayPlus, the ledger, the credit note,
+ *      and — when cancelling — the subscription the order started);
  *   2. only if that succeeded, writes WooCommerce's OWN refund record here with
  *      `wc_create_refund()` — the canonical API, which restocks and fires the
- *      hooks WooCommerce expects.
+ *      hooks WooCommerce expects — and cancels the order if asked.
  *
  * STEP 2 IS DELIBERATELY LOCAL. The SaaS knows how to write the store record
- * itself (it does exactly that when the refund starts in the LETS admin), but
- * calling back into WooCommerce from inside a request WooCommerce is already
- * blocking on is a round trip WP → SaaS → WP: on a small host with few PHP
- * workers that deadlocks until it times out. Writing it here costs nothing and
- * cannot.
+ * itself (it does exactly that when the refund starts in the app), but calling
+ * back into WooCommerce from inside a request WooCommerce is already blocking on
+ * is a round trip WP → SaaS → WP: on a small host with few PHP workers that
+ * deadlocks until it times out. Writing it here costs nothing and cannot.
+ *
+ * THERE IS NO <form> IN THE BOX. The order screen IS a form, browsers silently
+ * drop a nested one, and the first version of this box therefore rendered a
+ * button that quietly submitted WooCommerce's order-save instead — pressing it
+ * did nothing at all. The fields carry ids and no names (so an order save never
+ * sees them) and the button builds a top-level form in JS and submits that.
  *
  * Loads AFTER the signer and after class-lets-refunds.php.
  *
@@ -42,6 +47,9 @@ define('LETS_PAYPLUS_REFUND_NOTICE', 'lets_payplus_refund_notice');
 
 /** How long the refundable figure is cached per order (seconds). */
 define('LETS_PAYPLUS_REFUND_STATE_TTL', 60);
+
+/** Order statuses there is no point offering to cancel. */
+define('LETS_PAYPLUS_REFUND_CLOSED_STATUSES', array('cancelled', 'refunded'));
 
 // ---------------------------------------------------------------------------
 // The box
@@ -63,7 +71,7 @@ function lets_payplus_refund_register_metabox()
 
     add_meta_box(
         'lets_payplus_order_refund',
-        lets_payplus_is_he() ? 'LETS — זיכוי ההזמנה' : 'LETS — Refund this order',
+        lets_payplus_is_he() ? 'זיכוי או ביטול' : 'Refund or cancel',
         'lets_payplus_render_refund_metabox',
         $screen,
         'side',
@@ -90,104 +98,240 @@ function lets_payplus_render_refund_metabox($post_or_order)
             'neutral',
             '·',
             $he ? 'לא מחובר' : 'Not connected',
-            $he ? 'חברו את החנות ל-LETS כדי לזכות מכאן.' : 'Connect this store to LETS to refund from here.'
+            $he ? 'החנות אינה מחוברת, ולכן אי אפשר לזכות מכאן.' : 'This store is not connected, so refunds cannot be made here.'
         );
 
         return;
     }
 
     $state = lets_payplus_refund_state($order);
+    $refundable = $state === null ? 0.0 : (float) $state['refundable'];
+    $cancellable = ! in_array($order->get_status(), LETS_PAYPLUS_REFUND_CLOSED_STATUSES, true);
 
-    if ($state === null) {
+    // Nothing to refund AND nothing to cancel — say so and offer no controls.
+    if ($refundable <= 0 && ! $cancellable) {
         echo lets_payplus_mb_card(
             'neutral',
             '—',
-            $he ? 'אין מה לזכות' : 'Nothing to refund',
+            $he ? 'אין מה לעשות' : 'Nothing to do',
             $he
-                ? 'ל-LETS אין חיוב פתוח על ההזמנה הזו — או שלא שולם בה דבר דרכנו, או שהיא כבר זוכתה במלואה.'
-                : 'LETS has no open charge on this order — either nothing was paid through it, or it has already been fully refunded.'
+                ? 'ההזמנה סגורה ואין עליה חיוב פתוח.'
+                : 'This order is closed and has no open charge.'
         );
 
         return;
     }
 
     echo lets_payplus_mb_card(
-        'ok',
-        '₪',
-        $he ? 'ניתן לזכות' : 'Refundable',
-        lets_payplus_refund_form($order, $state, $he),
+        $refundable > 0 ? 'ok' : 'neutral',
+        $refundable > 0 ? '₪' : '—',
+        $refundable > 0
+            ? ($he ? 'ניתן לזכות' : 'Refundable')
+            : ($he ? 'אין מה לזכות' : 'Nothing to refund'),
+        lets_payplus_refund_controls($order, $state, $cancellable, $he),
         '',
         true
     );
 }
 
 /**
- * The form. Deliberately a plain POST to admin-post: no JavaScript, so it works
- * on every host and every WordPress, and the browser's own "are you sure" on a
- * re-submit is one more thing between a merchant and a second refund.
+ * The controls.
  *
- * @param  array{refundable: float, currency: string, has_plan: bool}  $state
+ * NO <form> and NO name attributes — see the file docblock. The ids are what the
+ * script reads; without names, a merchant pressing WooCommerce's own "Update"
+ * button never posts any of this by accident.
+ *
+ * @param  array{refundable: float, currency: string, has_plan: bool}|null  $state
+ * @param  bool  $cancellable
+ * @param  bool  $he
+ * @return string
  */
-function lets_payplus_refund_form(WC_Order $order, array $state, $he)
+function lets_payplus_refund_controls(WC_Order $order, $state, $cancellable, $he)
 {
-    $max = number_format($state['refundable'], 2, '.', '');
-    $formatted = wc_price($state['refundable'], array('currency' => $state['currency']));
+    $refundable = $state === null ? 0.0 : (float) $state['refundable'];
+    $has_plan = $state !== null && ! empty($state['has_plan']);
+    $currency = $state === null ? $order->get_currency() : (string) $state['currency'];
 
-    $html = '<p class="lets-mb__price">' . wp_kses_post($formatted) . '</p>';
+    $html = '';
 
-    // A subscription is not money: refunding a cycle does not end the
-    // arrangement, and a merchant should not learn that next month.
-    if (! empty($state['has_plan'])) {
-        $html .= '<p class="lets-mb__hint">'
+    if ($refundable > 0) {
+        $html .= '<p class="lets-mb__price">'
+            . wp_kses_post(wc_price($refundable, array('currency' => $currency)))
+            . '</p>';
+    } else {
+        $html .= '<p class="lets-mb__text">'
             . esc_html($he
-                ? 'להזמנה הזו מקושר מנוי. זיכוי לא מבטל אותו — לביטול, פתחו את ההזמנה ב-LETS.'
-                : 'A subscription belongs to this order. A refund does not end it — to cancel, open the order in LETS.')
+                ? 'אין חיוב פתוח על ההזמנה הזו — אפשר עדיין לבטל אותה.'
+                : 'This order has no open charge — it can still be cancelled.')
             . '</p>';
     }
 
-    $html .= '<form class="lets-refund" method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
-    $html .= '<input type="hidden" name="action" value="' . esc_attr(LETS_PAYPLUS_REFUND_ACTION) . '">';
-    $html .= '<input type="hidden" name="order_id" value="' . esc_attr((string) $order->get_id()) . '">';
-    $html .= wp_nonce_field(LETS_PAYPLUS_REFUND_ACTION, '_wpnonce', true, false);
+    $html .= '<div class="lets-refund" id="lets-refund">';
 
-    $html .= '<p class="lets-refund__row">'
-        . '<label class="lets-refund__label" for="lets-refund-amount">'
-        . esc_html($he ? 'סכום לזיכוי' : 'Amount to refund')
-        . '</label>'
-        . '<input class="lets-refund__amount" type="number" step="0.01" min="0.01"'
-        . ' max="' . esc_attr($max) . '" id="lets-refund-amount" name="amount"'
-        . ' value="' . esc_attr($max) . '" required>'
-        . '</p>';
+    if ($refundable > 0) {
+        $max = number_format($refundable, 2, '.', '');
+
+        $html .= '<p class="lets-refund__row" id="lets-refund-amount-row">'
+            . '<label class="lets-refund__label" for="lets-refund-amount">'
+            . esc_html($he ? 'סכום לזיכוי' : 'Amount to refund')
+            . '</label>'
+            . '<input class="lets-refund__amount" type="number" step="0.01" min="0.01"'
+            . ' max="' . esc_attr($max) . '" id="lets-refund-amount" value="' . esc_attr($max) . '">'
+            . '</p>';
+    }
 
     $html .= '<p class="lets-refund__row">'
         . '<label class="lets-refund__label" for="lets-refund-reason">'
         . esc_html($he ? 'סיבה' : 'Reason')
         . '</label>'
-        . '<input class="lets-refund__reason" type="text" maxlength="255"'
-        . ' id="lets-refund-reason" name="reason">'
+        . '<input class="lets-refund__reason" type="text" maxlength="255" id="lets-refund-reason">'
         . '</p>';
 
-    $html .= '<p class="lets-refund__row lets-refund__row--check">'
-        . '<label><input type="checkbox" name="restock" value="1"> '
-        . esc_html($he ? 'החזרת הפריטים למלאי' : 'Return the items to stock')
-        . '</label>'
-        . '</p>';
+    if ($refundable > 0) {
+        $html .= '<p class="lets-refund__row lets-refund__row--check">'
+            . '<label><input type="checkbox" id="lets-refund-restock"> '
+            . esc_html($he ? 'החזרת הפריטים למלאי' : 'Return the items to stock')
+            . '</label>'
+            . '</p>';
+    }
+
+    if ($cancellable) {
+        $html .= '<p class="lets-refund__row lets-refund__row--check">'
+            . '<label><input type="checkbox" id="lets-refund-cancel"' . ($refundable > 0 ? '' : ' checked') . '> '
+            . esc_html($he ? 'ביטול ההזמנה כולה' : 'Cancel the whole order')
+            . '</label>'
+            . '</p>';
+
+        // What cancelling ADDS, said before it is ticked rather than after.
+        $html .= '<p class="lets-mb__hint" id="lets-refund-cancel-note" hidden>'
+            . esc_html($he
+                ? ($has_plan
+                    ? 'כל מה שנותר יוזכר, ההזמנה תסומן כמבוטלת, והמנוי שהתחיל ממנה ייעצר.'
+                    : 'כל מה שנותר יוזכר וההזמנה תסומן כמבוטלת.')
+                : ($has_plan
+                    ? 'Everything still refundable goes back, the order is marked cancelled, and the subscription it started is stopped.'
+                    : 'Everything still refundable goes back and the order is marked cancelled.'))
+            . '</p>';
+    }
+
+    if ($has_plan && $cancellable) {
+        // A refund is not a cancellation, and a merchant should not learn that
+        // next month when the subscription bills again.
+        $html .= '<p class="lets-mb__hint" id="lets-refund-plan-note">'
+            . esc_html($he
+                ? 'להזמנה הזו מקושר מנוי. זיכוי לבדו לא עוצר אותו.'
+                : 'A subscription belongs to this order. A refund alone does not stop it.')
+            . '</p>';
+    }
 
     $html .= '<p class="lets-refund__row">'
-        . '<button type="submit" class="button button-primary">'
-        . esc_html($he ? 'זיכוי דרך LETS' : 'Refund through LETS')
+        . '<button type="button" class="button button-primary" id="lets-refund-submit">'
+        . esc_html($he ? 'ביצוע' : 'Apply')
         . '</button>'
         . '</p>';
 
     $html .= '<p class="lets-mb__hint">'
         . esc_html($he
-            ? 'הכסף חוזר דרך PayPlus, וחשבונית הזיכוי מופקת לפי ההגדרות שלכם. לא ניתן לבטל.'
+            ? 'הכסף חוזר דרך PayPlus וחשבונית הזיכוי מופקת לפי ההגדרות שלכם. לא ניתן לבטל.'
             : 'The money goes back through PayPlus and the credit note follows your settings. This cannot be undone.')
         . '</p>';
 
-    $html .= '</form>';
+    $html .= '</div>';
+
+    $html .= lets_payplus_refund_script($order, $he);
 
     return $html;
+}
+
+/**
+ * The one piece of script the box needs: build a TOP-LEVEL form and submit it.
+ *
+ * The order screen is itself a form and browsers drop a nested one, so there is
+ * no markup answer here — the form has to be created outside it. It is built at
+ * click time, appended to <body>, and submitted; nothing is left in the DOM for
+ * WooCommerce's own save to pick up.
+ *
+ * @param  bool  $he
+ * @return string
+ */
+function lets_payplus_refund_script(WC_Order $order, $he)
+{
+    $config = array(
+        'action' => admin_url('admin-post.php'),
+        'name' => LETS_PAYPLUS_REFUND_ACTION,
+        'nonce' => wp_create_nonce(LETS_PAYPLUS_REFUND_ACTION),
+        'order' => (string) $order->get_id(),
+        'confirm' => $he
+            ? 'לבצע? הפעולה מחזירה כסף ללקוח ואי אפשר לבטל אותה.'
+            : 'Apply? This returns money to the customer and cannot be undone.',
+    );
+
+    ob_start();
+    ?>
+<script>
+(function () {
+    var cfg = <?php echo wp_json_encode($config); ?>;
+    var box = document.getElementById('lets-refund');
+    if (! box) { return; }
+
+    var cancel = document.getElementById('lets-refund-cancel');
+    var amountRow = document.getElementById('lets-refund-amount-row');
+    var cancelNote = document.getElementById('lets-refund-cancel-note');
+    var planNote = document.getElementById('lets-refund-plan-note');
+
+    // Cancelling means "everything still refundable", so the amount field has
+    // nothing to say — hiding it is how the box avoids promising a partial
+    // refund it would then ignore.
+    function sync() {
+        var on = cancel && cancel.checked;
+        if (amountRow) { amountRow.hidden = on; }
+        if (cancelNote) { cancelNote.hidden = ! on; }
+        if (planNote) { planNote.hidden = on; }
+    }
+
+    if (cancel) { cancel.addEventListener('change', sync); }
+    sync();
+
+    document.getElementById('lets-refund-submit').addEventListener('click', function () {
+        if (! window.confirm(cfg.confirm)) { return; }
+
+        var amountField = document.getElementById('lets-refund-amount');
+        var reason = document.getElementById('lets-refund-reason');
+        var restock = document.getElementById('lets-refund-restock');
+
+        var fields = {
+            action: cfg.name,
+            _wpnonce: cfg.nonce,
+            order_id: cfg.order,
+            amount: (cancel && cancel.checked) || ! amountField ? '' : amountField.value,
+            reason: reason ? reason.value : '',
+            restock: restock && restock.checked ? '1' : '',
+            cancel: cancel && cancel.checked ? '1' : ''
+        };
+
+        // A top-level form: the order screen is already one, and a nested form
+        // is dropped by the browser.
+        var form = document.createElement('form');
+        form.method = 'post';
+        form.action = cfg.action;
+        form.style.display = 'none';
+
+        Object.keys(fields).forEach(function (key) {
+            var input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = key;
+            input.value = fields[key];
+            form.appendChild(input);
+        });
+
+        document.body.appendChild(form);
+        form.submit();
+    });
+}());
+</script>
+    <?php
+
+    return (string) ob_get_clean();
 }
 
 // ---------------------------------------------------------------------------
@@ -217,18 +361,24 @@ function lets_payplus_refund_handle()
         wp_die(esc_html__('That order could not be loaded.', 'lets-payplus'), '', array('response' => 404));
     }
 
-    $amount = isset($_POST['amount']) ? round((float) wp_unslash($_POST['amount']), 2) : 0.0;
-    $reason = isset($_POST['reason']) ? sanitize_text_field(wp_unslash($_POST['reason'])) : '';
+    $cancel = ! empty($_POST['cancel']);
     $restock = ! empty($_POST['restock']);
+    $reason = isset($_POST['reason']) ? sanitize_text_field(wp_unslash($_POST['reason'])) : '';
+    $amount = isset($_POST['amount']) ? round((float) wp_unslash($_POST['amount']), 2) : 0.0;
 
-    if ($amount <= 0) {
+    // A cancellation names no amount — it means everything still refundable.
+    if (! $cancel && $amount <= 0) {
         lets_payplus_refund_redirect($order, 'error', __('Enter an amount to refund.', 'lets-payplus'));
     }
 
-    // 1. The money. The SaaS owns PayPlus, the ledger and the credit note.
+    // 1. The money, and the subscription. Ours to move, so ask the app.
     $result = lets_payplus_signed_post(
         '/api/woocommerce/orders/' . rawurlencode((string) $order_id) . '/refund',
-        array('amount' => $amount, 'reason' => $reason)
+        array(
+            'amount' => $cancel ? 0 : $amount,
+            'reason' => $reason,
+            'cancel' => $cancel ? 1 : 0,
+        )
     );
 
     if (is_wp_error($result) || empty($result['ok'])) {
@@ -241,57 +391,92 @@ function lets_payplus_refund_handle()
             'error',
             $code !== ''
                 ? sprintf(
-                    /* translators: %s: a short reason code from LETS. */
-                    __('LETS did not refund this order (%s). Nothing was returned to the customer.', 'lets-payplus'),
+                    /* translators: %s: a short reason code. */
+                    __('The refund did not go through (%s). Nothing was returned to the customer.', 'lets-payplus'),
                     $code
                 )
-                : __('LETS did not refund this order. Nothing was returned to the customer.', 'lets-payplus')
+                : __('The refund did not go through. Nothing was returned to the customer.', 'lets-payplus')
         );
     }
 
     $refunded = round((float) $result['refunded'], 2);
+    $problem = '';
 
     // 2. WooCommerce's own record — written only now that money has moved.
     //    wc_create_refund() is the canonical API: it restocks, recalculates the
     //    order's totals and fires the hooks a theme or another plugin listens for.
-    $refund = wc_create_refund(array(
-        'order_id' => $order_id,
-        'amount' => $refunded,
-        'reason' => $reason,
-        'restock_items' => $restock,
-        // FALSE: the money already went back through PayPlus. True would ask the
-        // order's own gateway to send it a second time.
-        'refund_payment' => false,
-    ));
-
-    if (is_wp_error($refund)) {
-        // The customer HAS their money; only WooCommerce's own record is missing.
-        // Say so plainly and leave a note on the order — silently reporting
-        // success would hide a refund the store does not know it made.
-        $order->add_order_note(sprintf(
-            /* translators: %s: the refunded amount, formatted. */
-            __('LETS refunded %s through PayPlus, but this order\'s refund record could not be written. Add it by hand.', 'lets-payplus'),
-            wp_strip_all_tags(wc_price($refunded, array('currency' => $order->get_currency())))
+    if ($refunded > 0) {
+        $refund = wc_create_refund(array(
+            'order_id' => $order_id,
+            'amount' => $refunded,
+            'reason' => $reason,
+            'restock_items' => $restock,
+            // FALSE: the money already went back through PayPlus. True would ask
+            // the order's own gateway to send it a second time.
+            'refund_payment' => false,
         ));
 
-        lets_payplus_refund_redirect(
-            $order,
-            'warning',
-            __('The customer was refunded, but this order could not record it. See the order notes.', 'lets-payplus')
+        if (is_wp_error($refund)) {
+            // The customer HAS their money; only WooCommerce's own record is
+            // missing. Say so plainly and leave a note — reporting success would
+            // hide a refund the store does not know it made.
+            $order->add_order_note(sprintf(
+                /* translators: %s: the refunded amount, formatted. */
+                __('%s was refunded through PayPlus, but this order\'s refund record could not be written. Add it by hand.', 'lets-payplus'),
+                wp_strip_all_tags(wc_price($refunded, array('currency' => $order->get_currency())))
+            ));
+
+            $problem = __('The customer was refunded, but this order could not record it. See the order notes.', 'lets-payplus');
+        }
+    }
+
+    // 3. The cancellation, after the refund — WooCommerce restocks on the move to
+    //    `cancelled` too, and the refund above has already returned whatever the
+    //    merchant asked for, so doing it the other way round returns it twice.
+    if ($cancel && ! in_array($order->get_status(), LETS_PAYPLUS_REFUND_CLOSED_STATUSES, true)) {
+        $order->update_status(
+            'cancelled',
+            $reason !== ''
+                ? sprintf(
+                    /* translators: %s: the merchant's reason. */
+                    __('Cancelled: %s', 'lets-payplus'),
+                    $reason
+                )
+                : __('Cancelled from the order screen.', 'lets-payplus')
         );
     }
 
     delete_transient(lets_payplus_refund_state_key($order_id));
 
-    lets_payplus_refund_redirect(
-        $order,
-        'success',
-        sprintf(
-            /* translators: %s: the refunded amount, formatted. */
-            __('Refunded %s through PayPlus.', 'lets-payplus'),
-            wp_strip_all_tags(wc_price($refunded, array('currency' => $order->get_currency())))
-        )
-    );
+    if ($problem !== '') {
+        lets_payplus_refund_redirect($order, 'warning', $problem);
+    }
+
+    lets_payplus_refund_redirect($order, 'success', lets_payplus_refund_success_message($order, $refunded, $cancel));
+}
+
+/**
+ * What actually happened, in one sentence.
+ *
+ * @param  float  $refunded
+ * @param  bool   $cancel
+ * @return string
+ */
+function lets_payplus_refund_success_message(WC_Order $order, $refunded, $cancel)
+{
+    $money = wp_strip_all_tags(wc_price($refunded, array('currency' => $order->get_currency())));
+
+    if ($cancel && $refunded > 0) {
+        /* translators: %s: the refunded amount, formatted. */
+        return sprintf(__('Order cancelled and %s refunded through PayPlus.', 'lets-payplus'), $money);
+    }
+
+    if ($cancel) {
+        return __('Order cancelled. Nothing was paid on it, so no money moved.', 'lets-payplus');
+    }
+
+    /* translators: %s: the refunded amount, formatted. */
+    return sprintf(__('Refunded %s through PayPlus.', 'lets-payplus'), $money);
 }
 
 /** Carry the outcome back to the order screen and stop. Never returns. */
@@ -309,7 +494,7 @@ function lets_payplus_refund_redirect(WC_Order $order, $level, $message)
 
 add_action('admin_notices', 'lets_payplus_refund_admin_notice');
 
-/** Show (once) whatever the last refund attempt had to say. */
+/** Show (once) whatever the last attempt had to say. */
 function lets_payplus_refund_admin_notice()
 {
     $key = LETS_PAYPLUS_REFUND_NOTICE . '_' . get_current_user_id();
@@ -335,11 +520,11 @@ function lets_payplus_refund_admin_notice()
 // ---------------------------------------------------------------------------
 
 /**
- * What LETS says is still refundable on this order, or null when nothing is.
+ * What is still refundable on this order, or null when nothing is.
  *
  * Cached briefly: an order screen renders on every save and every tab, and the
- * figure only changes when money moves. Fails CLOSED — a SaaS hiccup shows "no
- * connection" rather than a stale ceiling somebody could refund against.
+ * figure only changes when money moves. Fails CLOSED — a hiccup shows no
+ * refundable amount rather than a stale ceiling somebody could refund against.
  *
  * @return array{refundable: float, currency: string, has_plan: bool}|null
  */

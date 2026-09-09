@@ -181,6 +181,12 @@ class RefundRequest extends Model
         ], true);
     }
 
+    /** Nothing moved. Safe to try again, and never a task about money already gone. */
+    public function isFailed(): bool
+    {
+        return $this->status === self::STATUS_FAILED;
+    }
+
     public function needsAttention(): bool
     {
         return $this->status === self::STATUS_NEEDS_ATTENTION;

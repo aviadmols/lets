@@ -304,3 +304,48 @@ suite 1862 green.
 
 **Unverified live:** the whole box, like the rest of R5 — it has never run inside
 a real WooCommerce admin.
+
+---
+
+## 2026-09-09 — R5c (the box actually works: no nested form, plus cancel)
+
+**The bug.** The first version of the order-screen box rendered a `<form>`. The
+WooCommerce order screen IS a form, browsers silently drop a nested one, and the
+merchant's own HTML showed exactly that: the hidden inputs present, the `<form>`
+tag gone. The submit button was therefore submitting WooCommerce's order-save,
+so pressing it did nothing at all — no error, no request, no clue.
+
+**The fix is structural, not a workaround.** The controls carry ids and NO `name`
+attributes, so WooCommerce's own "Update" can never post them by accident, and
+the button builds a top-level form in JS at click time and submits that. There is
+no markup answer available here; the form has to be created outside the one the
+screen already is.
+
+**Cancel.** A checkbox, and a `cancel` flag on `/orders/{order}/refund`. It is a
+flag rather than a fourth endpoint because the three-endpoint split is about WHO
+MOVES THE MONEY, and this changes WHAT THE REQUEST MEANS — which is exactly what
+`mode` is for. Ticking it hides the amount field (cancelling means everything
+still refundable; a number the run would ignore is a promise the box cannot
+keep), and the box is offered even when nothing is refundable, because cancelling
+an unpaid order is a real thing to want.
+
+`ok` had to change meaning per mode: for a refund it stays "did the money go
+back" (WooCommerce writes its refund record from it), for a cancellation it is
+"did the instruction go through", since cancelling an unpaid order moves nothing
+and is still a success.
+
+**Order of operations in the handler:** money → WooCommerce's refund record →
+cancel the order. The cancel goes last for the same reason it does on the SaaS
+side: WooCommerce restocks on the move to `cancelled` too, and the refund above
+has already returned whatever the merchant asked for.
+
+**"LETS" removed** from every merchant-facing string in this flow — the box
+title, its copy, the notices, and the order notes the gateway's own refund path
+writes. PayPlus stays: it is the actual gateway and it means something to a
+merchant reading their order.
+
+**Tests.** `StoreInitiatedRefundTest` 17 (3 new on cancel) · full suite 1865 green.
+
+**Still unverified live:** the box has now been rendered in a real WooCommerce
+admin (the nested-form bug was found that way), but no refund has been put
+through it end to end.

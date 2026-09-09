@@ -27,12 +27,20 @@ use Symfony\Component\HttpFoundation\Response;
  * why they are separate rather than one with a flag the plugin might mis-set,
  * because getting it wrong is a double refund. The third only reads.
  *
- *   /orders/{order}/refund     the LETS GATEWAY's own `process_refund`.
- *                              WooCommerce is ASKING us to move it, so this runs
- *                              the money leg — PayPlus, then the credit note —
- *                              and answers whether it worked. WooCommerce writes
- *                              its own refund record from that answer, which is
- *                              why the store leg here is already done.
+ *   /orders/{order}/refund     WooCommerce is ASKING us to move the money —
+ *                              the gateway's own `process_refund`, or the
+ *                              plugin's refund box. Runs the money leg (PayPlus,
+ *                              then the credit note) and answers whether it
+ *                              worked; WooCommerce writes its own refund record
+ *                              from that answer, which is why the store leg here
+ *                              is already done.
+ *
+ *                              `cancel: true` makes it the whole cancellation:
+ *                              everything still refundable goes back and the
+ *                              SUBSCRIPTION the order started is stopped. That
+ *                              is a different instruction, not a different
+ *                              money rail, which is why it is a flag on this
+ *                              endpoint and not a fourth one.
  *
  *   /orders/{order}/refunded   a refund WooCommerce made WITHOUT us (another
  *                              gateway, an offline refund). The money is already
@@ -75,28 +83,36 @@ final class RefundMirrorController extends WooStorefrontController
             return response()->json(['error' => 'unauthorized'], Response::HTTP_UNAUTHORIZED);
         }
 
+        $cancel = $request->boolean('cancel');
         $amount = round((float) $request->input('amount', 0), 2);
-        if ($amount <= 0) {
+
+        // A CANCELLATION names no amount: it means everything still refundable,
+        // and an order nobody ever paid for is a legitimate thing to cancel.
+        if (! $cancel && $amount <= 0) {
             return response()->json(['error' => 'invalid_amount'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        $result = Tenant::run($shop, function () use ($shop, $order, $amount, $request): RefundRequest {
+        $result = Tenant::run($shop, function () use ($shop, $order, $amount, $cancel, $request): RefundRequest {
             $orchestrator = app(RefundOrchestrator::class);
 
-            return $orchestrator->run($shop, $this->open($shop, $order, $amount, $request));
+            return $orchestrator->run($shop, $this->open($shop, $order, $amount, $request, $cancel));
         });
 
         $refunded = $result->refundedTotal();
 
-        // WooCommerce reads `ok` as "did the gateway hand the money back?" — a
-        // false leaves its own refund record unwritten, which is exactly right
-        // when PayPlus refused.
+        // For a plain refund, `ok` is "did the gateway hand the money back?" — a
+        // false leaves WooCommerce's own refund record unwritten, which is
+        // exactly right when PayPlus refused. For a CANCELLATION it is "did the
+        // instruction go through", because cancelling an unpaid order moves no
+        // money and is still a success.
+        $ok = $cancel ? ! $result->isFailed() : $refunded > 0;
+
         return response()->json([
-            'ok' => $refunded > 0,
+            'ok' => $ok,
             'status' => (string) $result->status,
             'refunded' => $refunded,
             'reason' => $result->failure_code,
-        ], $refunded > 0 ? Response::HTTP_OK : Response::HTTP_UNPROCESSABLE_ENTITY);
+        ], $ok ? Response::HTTP_OK : Response::HTTP_UNPROCESSABLE_ENTITY);
     }
 
     /**
@@ -187,11 +203,17 @@ final class RefundMirrorController extends WooStorefrontController
      * `process_refund`, or because it already wrote one. Calling back into the
      * store would put a SECOND refund record on the same order.
      */
-    private function open(Shop $shop, string $orderId, float $amount, Request $request): RefundRequest
-    {
+    private function open(
+        Shop $shop,
+        string $orderId,
+        float $amount,
+        Request $request,
+        bool $cancel = false,
+    ): RefundRequest {
         $refundRequest = app(RefundOrchestrator::class)->open($shop, [
-            'mode' => RefundRequest::MODE_REFUND_PARTIAL,
-            'amount' => $amount,
+            'mode' => $cancel ? RefundRequest::MODE_CANCEL_ORDER : RefundRequest::MODE_REFUND_PARTIAL,
+            // A cancellation takes everything left; only a partial names a figure.
+            'amount' => $cancel ? 0.0 : $amount,
             'order_id' => $orderId,
             'reason' => $request->input('reason'),
             // The store made its own decision about stock; asking again would

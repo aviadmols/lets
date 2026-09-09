@@ -4,9 +4,15 @@ namespace Tests\Feature\Refunds;
 
 use App\Domain\Invoicing\DocumentContext;
 use App\Domain\Invoicing\Jobs\IssueDocumentJob;
+use App\Models\InstallmentPlan;
 use App\Models\PaymentLedger;
 use App\Models\Shop;
+use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
+use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
+use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
@@ -194,6 +200,64 @@ final class StoreInitiatedRefundTest extends TestCase
         $this->assertSame(PaymentLedger::STATUS_REFUNDED, (string) $charge->fresh()->status);
     }
 
+    // === Cancelling from the order screen ===
+
+    public function test_cancelling_refunds_everything_left_and_stops_the_plan(): void
+    {
+        Queue::fake();
+        Mail::fake();
+        $shop = $this->connectedShop();
+        $this->fakeGateway();
+
+        $plan = $this->planFor($shop, '9201');
+        $charge = $this->makeCharge($shop, orderId: '9201', amount: 90.00, uid: 'txn-sale');
+        Tenant::run($shop, static fn () => $charge->forceFill(['plan_id' => $plan->getKey()])->save());
+
+        $response = $this->signedPost($shop, '/api/woocommerce/orders/9201/refund', [
+            'amount' => 0,
+            'cancel' => 1,
+        ]);
+
+        $response->assertOk();
+        $response->assertJson(['ok' => true, 'refunded' => 90.0]);
+        $this->assertSame(PlanStatus::CANCELLED, $plan->fresh()->status);
+    }
+
+    /**
+     * An order nobody paid for can still be cancelled. `ok` has to say yes: for
+     * a cancellation it means "the instruction went through", not "money moved".
+     */
+    public function test_cancelling_an_unpaid_order_succeeds_with_no_money(): void
+    {
+        Queue::fake();
+        Mail::fake();
+        $shop = $this->connectedShop();
+        $this->fakeGateway();
+
+        $plan = $this->planFor($shop, '9202');
+
+        $response = $this->signedPost($shop, '/api/woocommerce/orders/9202/refund', [
+            'amount' => 0,
+            'cancel' => 1,
+        ]);
+
+        $response->assertOk();
+        $response->assertJson(['ok' => true, 'refunded' => 0.0]);
+        $this->assertSame([], $this->gatewayRefunds);
+        $this->assertSame(PlanStatus::CANCELLED, $plan->fresh()->status);
+    }
+
+    /** Without the cancel flag, an amount is still required. */
+    public function test_a_plain_refund_still_needs_an_amount(): void
+    {
+        $shop = $this->connectedShop();
+        $this->fakeGateway();
+
+        $this->signedPost($shop, '/api/woocommerce/orders/9203/refund', ['amount' => 0])
+            ->assertStatus(422)
+            ->assertJson(['error' => 'invalid_amount']);
+    }
+
     // === What the plugin's own refund box reads ===
 
     /**
@@ -260,6 +324,32 @@ final class StoreInitiatedRefundTest extends TestCase
     }
 
     // === Fixtures ===
+
+    /** A live recurring plan hanging off one store order. */
+    private function planFor(Shop $shop, string $orderId): InstallmentPlan
+    {
+        return Tenant::run($shop, function () use ($shop, $orderId): InstallmentPlan {
+            $plan = new InstallmentPlan;
+            $plan->forceFill([
+                'shop_id' => (int) $shop->getKey(),
+                'public_id' => 'PLN-'.uniqid('', true),
+                'plan_kind' => PlanKind::RECURRING->value,
+                'status' => PlanStatus::ACTIVE->value,
+                'external_order_id' => $orderId,
+                'customer_name' => 'Dana Subscriber',
+                'customer_email' => 'dana@example.com',
+                'total_amount' => 0,
+                'total_charged' => 90,
+                'installment_amount' => 90,
+                'currency' => 'ILS',
+                'billing_frequency' => BillingFrequency::MONTHLY->value,
+                'interval_count' => 1,
+                'next_charge_at' => now()->addMonth(),
+            ])->save();
+
+            return $plan->fresh();
+        });
+    }
 
     private function connectedShop(): Shop
     {
