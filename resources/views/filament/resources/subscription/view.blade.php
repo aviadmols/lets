@@ -254,6 +254,7 @@
                             <th>{{ __('subscriptions.detail.col.amount') }}</th>
                             <th>{{ __('subscriptions.detail.col.status') }}</th>
                             <th>{{ __('subscriptions.detail.col.tx') }}</th>
+                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -264,6 +265,17 @@
                                 <td class="rc-ltr">{{ \App\Support\Ui\Money::format($row->amount, $row->currency) }}</td>
                                 <td><x-rc.badge :status="$row->status" :label="'billing.ledger_status.' . $row->status" /></td>
                                 <td class="rc-ltr rc-muted">{{ $row->payplus_transaction_uid ? '••••' . \Illuminate\Support\Str::substr($row->payplus_transaction_uid, -4) : '—' }}</td>
+                                {{-- Through to the payment's own page, which owns the
+                                     refund/cancel drawer. A LINK rather than a second
+                                     drawer here: this plan's cycles all share the
+                                     original checkout order, so an order-scoped refund
+                                     opened from this table would sweep every cycle the
+                                     customer ever paid. --}}
+                                <td class="rc-ltr">
+                                    <a href="{{ \App\Filament\Resources\PaymentLedgerResource\Pages\ViewPayment::getUrl(['payment' => $row->getKey()]) }}">
+                                        {{ __('refunds.action.open') }}
+                                    </a>
+                                </td>
                             </tr>
                         @endforeach
                     </tbody>

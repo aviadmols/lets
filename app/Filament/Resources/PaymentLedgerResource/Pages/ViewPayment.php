@@ -155,7 +155,7 @@ class ViewPayment extends Page
             ->label(__('refunds.action.open'))
             ->icon('heroicon-m-arrow-uturn-left')
             ->color('danger')
-            ->visible(fn (): bool => $this->refundPreview()->hasAnythingToRefund())
+            ->visible(fn (): bool => RefundDrawer::isOfferedFor($this->record))
             ->modalHeading(__('refunds.heading'))
             ->modalSubmitActionLabel(__('refunds.action.submit'))
             ->form(fn (): array => RefundDrawer::form($this->record))

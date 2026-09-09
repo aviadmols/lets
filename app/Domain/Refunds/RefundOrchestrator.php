@@ -49,6 +49,7 @@ final class RefundOrchestrator
         private readonly RefundTargetResolver $targets,
         private readonly RefundService $refunds,
         private readonly OrderRefundService $orders,
+        private readonly RefundPlanCanceller $plans,
     ) {}
 
     /**
@@ -169,6 +170,11 @@ final class RefundOrchestrator
                 return $request;
             }
 
+            // AFTER the store, because a plan left running is a charge next
+            // month, and a merchant whose store leg is stuck should not also be
+            // billed again while they sort it out.
+            $this->runPlans($shop, $request);
+
             $request->moveTo(RefundRequest::STATUS_COMPLETED);
 
             return $request;
@@ -186,6 +192,9 @@ final class RefundOrchestrator
             $request = $this->runStore($shop, $request);
 
             if (! $request->needsAttention()) {
+                // The first run stopped before this; a retry that only fixed the
+                // store would otherwise leave the subscription billing.
+                $this->runPlans($shop, $request);
                 $request->moveTo(RefundRequest::STATUS_COMPLETED);
             }
 
@@ -432,6 +441,33 @@ final class RefundOrchestrator
         );
 
         return $request;
+    }
+
+    // === The subscription leg ===
+
+    /**
+     * Stop what this refund ended. Idempotent: the lifecycle service only acts
+     * on a live plan, so a second run finds nothing to cancel.
+     */
+    private function runPlans(Shop $shop, RefundRequest $request): void
+    {
+        if (! $this->plans->shouldCancelAfterRefund($shop, $request)) {
+            return;
+        }
+
+        $outcome = $this->plans->cancelFor($shop, $request);
+
+        if ($outcome['cancelled'] === [] && $outcome['failed'] === []) {
+            return;
+        }
+
+        // Recorded beside the other legs rather than in place of one: the plan
+        // is not a fourth thing that can fail the refund, it is what the refund
+        // meant.
+        $request->recordLeg('doc_result', array_merge(
+            (array) ($request->doc_result ?? []),
+            ['plans' => $outcome],
+        ));
     }
 
     // === Internals ===

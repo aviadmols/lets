@@ -15,6 +15,7 @@ use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Forms\Get;
+use Filament\Forms\Set;
 use Illuminate\Support\HtmlString;
 
 /**
@@ -74,6 +75,38 @@ final class RefundDrawer
     }
 
     /**
+     * What this target can be asked to do.
+     *
+     * An order with nothing left to give back can still be CANCELLED — the
+     * merchant who refunded it yesterday and wants it off their books today has
+     * a real question, and offering them a refund mode that would be refused is
+     * not an answer. Cancelling needs an order to cancel, so a standalone charge
+     * gets the refund modes only.
+     *
+     * @return list<string>
+     */
+    public static function modesFor(PaymentLedger $record): array
+    {
+        $preview = self::preview($record);
+
+        $modes = $preview->hasAnythingToRefund()
+            ? [RefundRequest::MODE_REFUND_FULL, RefundRequest::MODE_REFUND_PARTIAL]
+            : [];
+
+        if ($preview->orderId !== null) {
+            $modes[] = RefundRequest::MODE_CANCEL_ORDER;
+        }
+
+        return $modes;
+    }
+
+    /** Is there anything at all this drawer could do for this charge? */
+    public static function isOfferedFor(PaymentLedger $record): bool
+    {
+        return self::modesFor($record) !== [];
+    }
+
+    /**
      * The drawer's fields.
      *
      * `refund_partial` is the only mode that asks for a number, and the ceiling
@@ -85,21 +118,27 @@ final class RefundDrawer
     public static function form(PaymentLedger $record): array
     {
         $preview = self::preview($record);
+        $modes = self::modesFor($record);
 
         return [
             Radio::make('mode')
                 ->label(__('refunds.field.mode'))
-                ->options([
-                    RefundRequest::MODE_REFUND_FULL => __('refunds.field.mode_option.refund_full'),
-                    RefundRequest::MODE_REFUND_PARTIAL => __('refunds.field.mode_option.refund_partial'),
-                ])
-                ->descriptions([
-                    RefundRequest::MODE_REFUND_FULL => __('refunds.field.mode_help.refund_full'),
-                    RefundRequest::MODE_REFUND_PARTIAL => __('refunds.field.mode_help.refund_partial'),
-                ])
-                ->default(RefundRequest::MODE_REFUND_FULL)
+                ->options(collect($modes)
+                    ->mapWithKeys(fn (string $m): array => [$m => __('refunds.field.mode_option.'.$m)])
+                    ->all())
+                ->descriptions(collect($modes)
+                    ->mapWithKeys(fn (string $m): array => [$m => __('refunds.field.mode_help.'.$m)])
+                    ->all())
+                ->default($modes[0] ?? RefundRequest::MODE_REFUND_FULL)
                 ->required()
-                ->live(),
+                ->live()
+                // Cancelling an order usually means the goods are coming back,
+                // so the toggle PROPOSES it rather than making the merchant
+                // remember. It is a proposal: they can untick it.
+                ->afterStateUpdated(static fn (Set $set, ?string $state): mixed => $set(
+                    'restock',
+                    $state === RefundRequest::MODE_CANCEL_ORDER,
+                )),
 
             TextInput::make('amount')
                 ->label(__('refunds.field.amount'))
@@ -159,8 +198,10 @@ final class RefundDrawer
         $moving = $mode === RefundRequest::MODE_REFUND_PARTIAL
             ? round((float) $amount, 2)
             : $preview->refundable;
+
         $moving = max(0.0, min($moving, $preview->refundable));
 
+        $cancelling = $mode === RefundRequest::MODE_CANCEL_ORDER;
         $restockSuffix = $restock ? __('refunds.summary.store_restock_suffix') : '';
 
         $lines = [
@@ -172,7 +213,10 @@ final class RefundDrawer
                 : __('refunds.summary.money_none'),
 
             __('refunds.summary.store') => $preview->storeConnected
-                ? __('refunds.summary.store_refund', ['restock' => $restockSuffix])
+                ? __(
+                    $cancelling ? 'refunds.summary.store_cancel' : 'refunds.summary.store_refund',
+                    ['restock' => $restockSuffix],
+                )
                 : __('refunds.summary.store_none'),
 
             __('refunds.summary.document') => $preview->invoicingConnected
@@ -181,7 +225,9 @@ final class RefundDrawer
         ];
 
         if ($preview->planId !== null) {
-            $lines[__('refunds.summary.plan')] = __('refunds.summary.plan_keep');
+            $lines[__('refunds.summary.plan')] = __($cancelling
+                ? 'refunds.summary.plan_cancel'
+                : 'refunds.summary.plan_keep');
         }
 
         $html = '';

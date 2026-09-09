@@ -13,7 +13,8 @@ return [
 
     'action' => [
         'open' => 'Refund or cancel',
-        'submit' => 'Refund',
+        // Fits both modes, and says the part that matters about either.
+        'submit' => 'Confirm — this cannot be undone',
         'submit_cancel' => 'Cancel the order',
         'retry_store' => 'Retry store sync',
     ],

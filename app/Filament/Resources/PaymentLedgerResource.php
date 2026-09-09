@@ -169,7 +169,7 @@ class PaymentLedgerResource extends Resource
                     ->icon('heroicon-m-arrow-uturn-left')
                     ->color('danger')
                     ->visible(fn (PaymentLedger $record): bool => $record->status === PaymentLedger::STATUS_SUCCEEDED
-                        && RefundDrawer::preview($record)->hasAnythingToRefund())
+                        && RefundDrawer::isOfferedFor($record))
                     ->modalHeading(__('refunds.heading'))
                     ->modalSubmitActionLabel(__('refunds.action.submit'))
                     ->form(fn (PaymentLedger $record): array => RefundDrawer::form($record))
