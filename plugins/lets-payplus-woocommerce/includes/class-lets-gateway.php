@@ -24,6 +24,9 @@ add_filter('woocommerce_payment_gateways', function ($gateways) {
 });
 
 /** Define the class once WooCommerce's base class is available. */
+/** The gateway's WooCommerce id — compared against an order's payment method. */
+define('LETS_PAYPLUS_GATEWAY_ID', 'lets_payplus');
+
 add_action('plugins_loaded', function () {
     if (! class_exists('WC_Payment_Gateway') || class_exists('LETS_PayPlus_Gateway')) {
         return;
@@ -37,6 +40,9 @@ add_action('plugins_loaded', function () {
             $this->method_title = __('PayPlus (LETS)', 'lets-payplus');
             $this->method_description = __('Accept payments through PayPlus via your LETS connection.', 'lets-payplus');
             $this->has_fields = false;
+            // WooCommerce shows the "Refund" button on an order only for a gateway
+            // that says it can. The money goes back through PayPlus, via the SaaS.
+            $this->supports[] = 'refunds';
 
             $this->init_form_fields();
             $this->init_settings();
@@ -80,6 +86,18 @@ add_action('plugins_loaded', function () {
         }
 
         /** Only available when the store is connected to LETS. */
+        /**
+         * The Refund button in WooCommerce's own order screen.
+         *
+         * Delegated whole to the SaaS, which owns the money path: PayPlus, the
+         * ledger, the credit note. TRUE only when the money actually went back —
+         * WooCommerce writes its refund record from this answer.
+         */
+        public function process_refund($order_id, $amount = null, $reason = '')
+        {
+            return lets_payplus_gateway_process_refund($order_id, $amount, $reason);
+        }
+
         public function is_available()
         {
             return parent::is_available() && function_exists('lets_payplus_connection') && lets_payplus_connection() !== null;

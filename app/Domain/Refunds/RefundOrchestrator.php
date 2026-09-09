@@ -3,14 +3,17 @@
 namespace App\Domain\Refunds;
 
 use App\Domain\Billing\IdempotencyKey;
+use App\Domain\Billing\Ledger;
 use App\Domain\Invoicing\DocumentContext;
 use App\Domain\Invoicing\DocumentIssuer;
+use App\Domain\Invoicing\Jobs\IssueDocumentJob;
 use App\Domain\Lifecycle\OrderRefundService;
 use App\Domain\Lifecycle\RefundService;
 use App\Domain\Refunds\Models\RefundRequest;
 use App\Models\ActivityEvent;
 use App\Models\PaymentLedger;
 use App\Models\Shop;
+use App\Modules\PayPlusShopifyInstallments\Enums\LedgerStatus;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Support\Tenant;
 use Illuminate\Database\Eloquent\Builder;
@@ -45,6 +48,13 @@ final class RefundOrchestrator
     // === CONSTANTS ===
     /** Rounding slack, the same grain the ledger and RefundService use. */
     private const EPSILON = 0.005;
+
+    /**
+     * The store leg is already done — the STORE is the one doing it, because
+     * this refund started there. Calling back would write a second refund
+     * record onto the same order.
+     */
+    public const STORE_APPLIED_BY_STORE = 'applied_by_store';
 
     public function __construct(
         private readonly RefundTargetResolver $targets,
@@ -420,6 +430,14 @@ final class RefundOrchestrator
 
     private function runStore(Shop $shop, RefundRequest $request): RefundRequest
     {
+        // The refund started INSIDE the store, which is writing its own record.
+        // Nothing to tell it, and a call here would be a second refund row.
+        if (($request->store_result['details']['reason'] ?? null) === self::STORE_APPLIED_BY_STORE) {
+            $request->moveTo(RefundRequest::STATUS_STORE_DONE);
+
+            return $request;
+        }
+
         $refunder = StoreRefunderFactory::for($shop);
 
         if ($refunder === null) {
@@ -513,6 +531,188 @@ final class RefundOrchestrator
         return $request;
     }
 
+    // === Money somebody else already moved ===
+
+    /**
+     * Record a refund the STORE made on its own, and issue its paperwork.
+     *
+     * PayPlus is never called: the shopper already has the money. What is missing
+     * is our side of it — the ledger still reads as a whole sale, and the books
+     * have declared income that came back. So the amount is written onto the
+     * ledger rows (oldest first, capped at what each still carries) and the credit
+     * note follows.
+     *
+     * The ledger write is deliberately NOT a gateway refund and does not pretend
+     * to be one: no transaction uid, because there is no transaction of ours.
+     */
+    public function mirrorExternal(Shop $shop, RefundRequest $request, float $amount): RefundRequest
+    {
+        return Tenant::run($shop, function () use ($shop, $request, $amount): RefundRequest {
+            if ($request->isSettled()) {
+                return $request;
+            }
+
+            $applied = $this->applyExternalToLedger($shop, $request, round($amount, 2));
+
+            $request->moveTo(RefundRequest::STATUS_MONEY_DONE, [
+                'money_rail' => RefundRequest::RAIL_EXTERNAL,
+                'money_result' => [
+                    'delegated_amount' => round($amount, 2),
+                    'ledger' => $applied,
+                    'note' => 'refunded_by_store',
+                ],
+            ]);
+
+            Timeline::record(
+                kind: Timeline::KIND_REFUNDED,
+                details: array_filter([
+                    'request_id' => (int) $request->getKey(),
+                    'order_id' => $request->external_order_id,
+                    'amount' => round($amount, 2),
+                    'source' => 'store',
+                ], static fn ($v): bool => $v !== null),
+                planId: $request->plan_id !== null ? (int) $request->plan_id : null,
+                shopId: (int) $shop->getKey(),
+            );
+
+            $request->moveTo(RefundRequest::STATUS_STORE_DONE);
+
+            $this->creditForExternal($shop, $request, $applied);
+            $this->runPlans($shop, $request);
+
+            $request->moveTo(RefundRequest::STATUS_COMPLETED);
+
+            return $request;
+        });
+    }
+
+    /**
+     * How much of this order LETS already believes has gone back.
+     *
+     * The ledger when there is one — it is the money truth and every path writes
+     * to it. For an order this app never charged there is no ledger row, so the
+     * mirrored requests themselves are the record.
+     */
+    public function knownRefunded(Shop $shop, string $orderId): float
+    {
+        $orderId = trim($orderId);
+
+        if ($orderId === '') {
+            return 0.0;
+        }
+
+        return (float) Tenant::run($shop, function () use ($orderId): float {
+            $rows = PaymentLedger::query()
+                ->where(function (Builder $q) use ($orderId): void {
+                    foreach (OrderRefundService::ORDER_COLUMNS as $column) {
+                        $q->orWhere($column, $orderId);
+                    }
+                })
+                ->get();
+
+            if ($rows->isNotEmpty()) {
+                return round((float) $rows->sum('refunded_amount'), 2);
+            }
+
+            $total = 0.0;
+            foreach (RefundRequest::query()->where('external_order_id', $orderId)->get() as $request) {
+                if ($request->moneyHasMoved()) {
+                    $total = round($total + $request->refundedTotal(), 2);
+                }
+            }
+
+            return $total;
+        });
+    }
+
+    /**
+     * Spread an externally-refunded amount across the order's ledger rows.
+     *
+     * Oldest first here, unlike our own partial refunds: this is bookkeeping
+     * catching up with something that already happened, and there is no
+     * "which cycle is the customer unhappy about" to honour — only a total to
+     * account for.
+     *
+     * @return array<int, float> ledger id => amount written
+     */
+    private function applyExternalToLedger(Shop $shop, RefundRequest $request, float $amount): array
+    {
+        $orderId = trim((string) ($request->external_order_id ?? ''));
+
+        if ($orderId === '' || $amount <= 0) {
+            return [];
+        }
+
+        $applied = [];
+        $left = $amount;
+
+        foreach ($this->orders->chargesFor($shop, $orderId) as $charge) {
+            if ($left <= self::EPSILON) {
+                break;
+            }
+
+            $slice = min(RefundTarget::remainingOn($charge), $left);
+            if ($slice <= 0) {
+                continue;
+            }
+
+            $row = PaymentLedger::query()->lockForUpdate()->find($charge->getKey());
+            if ($row === null) {
+                continue;
+            }
+
+            $refundedTotal = round((float) ($row->refunded_amount ?? 0) + $slice, 2);
+
+            $row->forceFill([
+                'refunded_amount' => $refundedTotal,
+                'refund_request_id' => (int) $request->getKey(),
+            ])->save();
+
+            if ($refundedTotal >= round((float) $row->amount - self::EPSILON, 2)) {
+                Ledger::transition($row, LedgerStatus::REFUNDED);
+            }
+
+            $applied[(int) $row->getKey()] = round($slice, 2);
+            $left = round($left - $slice, 2);
+        }
+
+        return $applied;
+    }
+
+    /**
+     * The credit note for money the store returned.
+     *
+     * One per ledger row it was applied to (each credits its own sale document),
+     * falling back to the ORDER when there is no ledger row at all.
+     *
+     * @param  array<int, float>  $applied
+     */
+    private function creditForExternal(Shop $shop, RefundRequest $request, array $applied): void
+    {
+        $context = $request->isCancellation() ? DocumentContext::CANCELLATION : DocumentContext::REFUND;
+
+        if ($applied === []) {
+            $this->creditForOrder($shop, $request);
+
+            return;
+        }
+
+        foreach ($applied as $ledgerId => $slice) {
+            $row = PaymentLedger::query()->find($ledgerId);
+
+            IssueDocumentJob::queueAfterCommit(
+                shopId: (int) $shop->getKey(),
+                context: $context->value,
+                ledgerId: $ledgerId,
+                amount: $slice,
+                // What had gone back BEFORE this slice — the credit note key needs
+                // it for the same reason the gateway key does.
+                alreadyRefunded: round((float) ($row->refunded_amount ?? 0) - $slice, 2),
+                refundRequestId: (int) $request->getKey(),
+            );
+        }
+    }
+
     // === The subscription leg ===
 
     /**
@@ -549,7 +749,10 @@ final class RefundOrchestrator
      */
     private function creditForOrder(Shop $shop, RefundRequest $request): void
     {
-        if (! $request->isDelegated()) {
+        // Delegated (the store moved it now) or external (the store moved it
+        // before we heard) — either way there is no charge of ours to key a
+        // credit note to, so the ORDER is the money event.
+        if (! $request->isDelegated() && $request->money_rail !== RefundRequest::RAIL_EXTERNAL) {
             return;
         }
 

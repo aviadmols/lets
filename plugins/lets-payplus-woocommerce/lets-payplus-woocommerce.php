@@ -429,6 +429,11 @@ require_once __DIR__ . '/includes/class-lets-invoicing.php';
 // Invoices & receipts ON the order (W20): admin order metabox + customer order-page
 // link. Loads AFTER invoicing (uses its meta constants + stamp + settings helpers)
 // and AFTER the signer (fallback documents read).
+// Refunds pressed inside WooCommerce: the gateway's own process_refund, and the
+// mirror for refunds another gateway made. AFTER the gateway (whose id constant
+// it compares against) and after the invoicing file (whose meta keys it reads).
+require_once __DIR__ . '/includes/class-lets-refunds.php';
+
 require_once __DIR__ . '/includes/class-lets-order-documents.php';
 
 // The "LETS" column + filter on WooCommerce → Orders. WooCommerce has no order

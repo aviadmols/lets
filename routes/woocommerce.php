@@ -14,6 +14,7 @@ use App\Http\Controllers\WooCommerce\EmbedSessionController;
 use App\Http\Controllers\WooCommerce\InstallController;
 use App\Http\Controllers\WooCommerce\InvoicingController;
 use App\Http\Controllers\WooCommerce\PortalSettingsController;
+use App\Http\Controllers\WooCommerce\RefundMirrorController;
 use App\Http\Controllers\WooCommerce\Storefront\WooCardUpdateCallbackController;
 use App\Http\Controllers\WooCommerce\Storefront\WooCardUpdateReturnController;
 use App\Http\Controllers\WooCommerce\Storefront\WooDepositCallbackController;
@@ -121,6 +122,21 @@ Route::middleware(VerifyWooCommerceSignature::class)
         // POST, not GET — the plugin's GET signer excludes the query string.
         Route::post('/orders/documents', [InvoicingController::class, 'documents'])
             ->name('woocommerce.invoicing.documents');
+
+        /*
+         * REFUNDS MADE INSIDE WOOCOMMERCE. Merchants do not work in one admin,
+         * and a refund pressed in the WP dashboard used to move money with no
+         * PayPlus refund, no ledger adjustment and no credit note.
+         *
+         * TWO endpoints, because the difference is WHO MOVES THE MONEY and
+         * getting it wrong is a double refund: `/refund` is the LETS gateway's
+         * own process_refund asking us to move it; `/refunded` mirrors one
+         * WooCommerce already made and never calls PayPlus.
+         */
+        Route::post('/orders/{order}/refund', [RefundMirrorController::class, 'refund'])
+            ->name('woocommerce.refunds.process');
+        Route::post('/orders/{order}/refunded', [RefundMirrorController::class, 'refunded'])
+            ->name('woocommerce.refunds.mirror');
 
         /*
         |----------------------------------------------------------------------

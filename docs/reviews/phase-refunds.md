@@ -213,3 +213,48 @@ reason. Trailing `*` on any stub whose real call carries a query.
 Woo gateway actually implements `process_refund` (when it does not, WooCommerce
 records the refund without moving money and the drawer will report success —
 §8.5), and the Shopify `write_inventory` question.
+
+---
+
+## 2026-09-09 — R5, WooCommerce half (refunds pressed inside the store)
+
+**Scope.** `RefundMirrorController` + two signed routes,
+`RefundOrchestrator::mirrorExternal()` / `knownRefunded()`, the plugin's
+`class-lets-refunds.php`, and the gateway's `supports('refunds')` +
+`process_refund()`.
+
+**Two endpoints, not one with a flag**, because the difference between them is
+who moves the money and getting it wrong is a double refund. `/orders/{id}/refund`
+is the LETS gateway's own `process_refund` asking us to move it — it runs INLINE
+(WooCommerce blocks on the answer and writes its refund record from it, so a
+queued "we will get to it" is not something it can render). `/orders/{id}/refunded`
+mirrors a refund WooCommerce already made and never calls PayPlus.
+
+**The double-count wall is structural, not a guard.** `woocommerce_order_refunded`
+fires for the gateway's own refunds too, and a retried request fires it again. So
+the mirror takes the order's RUNNING TOTAL and records only the delta against
+what LETS already knows — every duplicate collapses to zero by construction. The
+plugin also skips the hook for `lets_payplus` orders, which is the cheaper of the
+two walls but not the only one; a test pins the SaaS side holding on its own.
+
+**Where "what we already know" comes from:** the ledger when the order has rows
+(it is the money truth and every path writes to it), else the mirrored requests
+themselves. `mirrorExternal` writes the delta onto the ledger rows OLDEST FIRST —
+unlike our own partial refunds, because this is bookkeeping catching up with
+something that already happened and there is no "which cycle is the customer
+unhappy about" to honour, only a total to account for. It writes no transaction
+uid: there is no transaction of ours, and pretending otherwise would make an
+external refund indistinguishable from one we made.
+
+**Store leg stands down.** A request opened from the store carries
+`store_result = applied_by_store`, and `runStore()` returns without calling —
+WooCommerce is writing its own refund record as the return value of the very call
+we are answering, and a second one would appear on the order.
+
+**Tests.** `StoreInitiatedRefundTest` 10 · `tests/Feature/Refunds/` 61 · full suite 1858 green.
+
+**NOT done in this unit:** the Shopify half. `refunds/create` is declared in the
+toml but commented out pending protected-customer-data approval, so a refund made
+in Shopify admin is still not mirrored. The SaaS-side machinery it needs
+(`mirrorExternal`, `knownRefunded`, `issueCreditForOrder`) now exists and is
+tested; what is missing is the webhook handler and the approval.
