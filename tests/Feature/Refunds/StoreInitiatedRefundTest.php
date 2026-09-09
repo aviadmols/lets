@@ -194,6 +194,63 @@ final class StoreInitiatedRefundTest extends TestCase
         $this->assertSame(PaymentLedger::STATUS_REFUNDED, (string) $charge->fresh()->status);
     }
 
+    // === What the plugin's own refund box reads ===
+
+    /**
+     * The figure the box shows must be the one the money leg will act on — a
+     * merchant authorising a refund against a number computed some other way is
+     * a merchant authorising something else.
+     */
+    public function test_the_state_endpoint_reports_what_is_still_refundable(): void
+    {
+        $shop = $this->connectedShop();
+        $this->fakeGateway();
+
+        $this->makeCharge($shop, orderId: '9101', amount: 120.00, uid: 'txn-a');
+        $this->makeUpsellCharge($shop, parentOrderId: '9101', amount: 30.00, uid: 'txn-b');
+
+        $response = $this->signedPost($shop, '/api/woocommerce/orders/9101/refund-state', []);
+
+        $response->assertOk();
+        $response->assertJson(['ok' => true, 'state' => [
+            'refundable' => 150.0,
+            'charges' => 2,
+            'has_plan' => false,
+        ]]);
+    }
+
+    public function test_the_state_endpoint_nets_out_what_already_went_back(): void
+    {
+        $shop = $this->connectedShop();
+        $this->fakeGateway();
+
+        $this->makeCharge($shop, orderId: '9102', amount: 200.00, uid: 'txn-a');
+        $this->signedPost($shop, '/api/woocommerce/orders/9102/refund', ['amount' => 75.00])->assertOk();
+
+        $this->signedPost($shop, '/api/woocommerce/orders/9102/refund-state', [])
+            ->assertJson(['state' => ['refundable' => 125.0]]);
+    }
+
+    /** Nothing left is reported as zero, and the box renders "nothing to refund". */
+    public function test_a_fully_refunded_order_reports_nothing_refundable(): void
+    {
+        $shop = $this->connectedShop();
+        $this->fakeGateway();
+
+        $this->makeCharge($shop, orderId: '9103', amount: 60.00, uid: 'txn-a');
+        $this->signedPost($shop, '/api/woocommerce/orders/9103/refund', ['amount' => 60.00])->assertOk();
+
+        $this->signedPost($shop, '/api/woocommerce/orders/9103/refund-state', [])
+            ->assertJson(['state' => ['refundable' => 0.0, 'charges' => 0]]);
+    }
+
+    public function test_the_state_endpoint_refuses_an_unsigned_read(): void
+    {
+        $this->connectedShop();
+
+        $this->postJson('/api/woocommerce/orders/9104/refund-state', [])->assertStatus(401);
+    }
+
     public function test_an_unsigned_request_is_refused(): void
     {
         $shop = $this->connectedShop();

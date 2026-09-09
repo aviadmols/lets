@@ -3,7 +3,7 @@
  * Plugin Name: LETS — PayPlus Subscriptions & Installments for WooCommerce
  * Plugin URI: https://app.lets.co.il
  * Description: Connect your WooCommerce store to LETS to offer PayPlus deposits + installments, recurring subscriptions, one-click post-purchase upsells, and optional full PayPlus checkout. Paste the connection token from your LETS dashboard to link this store.
- * Version: 0.46.0
+ * Version: 0.47.0
  * Author: LETS
  * Author URI: https://app.lets.co.il
  * Text Domain: lets-payplus
@@ -24,7 +24,7 @@ if (! defined('ABSPATH')) {
     exit; // never run outside WordPress
 }
 
-define('LETS_PAYPLUS_VERSION', '0.46.0');
+define('LETS_PAYPLUS_VERSION', '0.47.0');
 define('LETS_PAYPLUS_OPT', 'lets_payplus_connection'); // wp_option holding the decoded token
 define('LETS_PAYPLUS_FILE', __FILE__);
 define('LETS_PAYPLUS_URL', plugin_dir_url(__FILE__)); // base URL for assets
@@ -433,6 +433,11 @@ require_once __DIR__ . '/includes/class-lets-invoicing.php';
 // mirror for refunds another gateway made. AFTER the gateway (whose id constant
 // it compares against) and after the invoicing file (whose meta keys it reads).
 require_once __DIR__ . '/includes/class-lets-refunds.php';
+
+// The refund box on the order screen. AFTER the refunds file (whose endpoints
+// it shares) and after the subscriptions file (whose metabox card helpers it
+// reuses).
+require_once __DIR__ . '/includes/class-lets-order-refund.php';
 
 require_once __DIR__ . '/includes/class-lets-order-documents.php';
 

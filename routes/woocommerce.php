@@ -137,6 +137,9 @@ Route::middleware(VerifyWooCommerceSignature::class)
             ->name('woocommerce.refunds.process');
         Route::post('/orders/{order}/refunded', [RefundMirrorController::class, 'refunded'])
             ->name('woocommerce.refunds.mirror');
+        // A READ, POSTed because the plugin's signer excludes the query string.
+        Route::post('/orders/{order}/refund-state', [RefundMirrorController::class, 'state'])
+            ->name('woocommerce.refunds.state');
 
         /*
         |----------------------------------------------------------------------

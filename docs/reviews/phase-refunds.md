@@ -258,3 +258,49 @@ toml but commented out pending protected-customer-data approval, so a refund mad
 in Shopify admin is still not mirrored. The SaaS-side machinery it needs
 (`mirrorExternal`, `knownRefunded`, `issueCreditForOrder`) now exists and is
 tested; what is missing is the webhook handler and the approval.
+
+---
+
+## 2026-09-09 — R5b (the refund box on the WooCommerce order screen)
+
+**Scope.** `RefundMirrorController::state()` + `/orders/{order}/refund-state`,
+the plugin's `class-lets-order-refund.php` (metabox + admin-post handler), plugin
+0.47.0.
+
+**Why a box when WooCommerce has its own Refund button.** For a LETS-gateway
+order that button now works (R5 gave the gateway `supports('refunds')`). But a
+DEPOSIT or INSTALLMENTS order is paid on the PayPlus page, so WooCommerce records
+a payment method it has no refund handler for, greys out the API-refund path and
+offers only "refund manually" — a bookkeeping entry that returns nobody's money.
+Those orders' money IS in the ledger and IS refundable; WooCommerce simply had no
+way to ask.
+
+**The step order is the safety property.** Money first (the SaaS: PayPlus, the
+ledger, the credit note), and WooCommerce's own refund record only after that
+succeeded. A store record written first is a store telling a merchant their
+customer was refunded when nobody was. When the money moves and
+`wc_create_refund()` then fails, the box says so and writes an order note rather
+than reporting success — a refund the store does not know it made is worse than
+a visible gap.
+
+**The store record is written LOCALLY, not by the SaaS.** The SaaS knows how to
+write it (that is exactly what it does when the refund starts in the LETS admin),
+but calling back into WooCommerce from inside a request WooCommerce is already
+blocking on is a WP → SaaS → WP round trip: on a small host with few PHP workers
+that deadlocks until it times out. `wc_create_refund()` costs nothing here and
+cannot deadlock — and it is the canonical API, so restock, totals and hooks are
+WooCommerce's own.
+
+**`refund_payment: false`** on that call, for the same reason `api_refund` is
+false everywhere on our rail: PayPlus already sent the money.
+
+**The box's figure comes from the same resolver the money leg uses** — not a
+second opinion — so what a merchant reads and what they authorise cannot
+disagree. Cached 60s (an order screen re-renders constantly) and failing CLOSED:
+a SaaS hiccup shows "not connected" rather than a stale ceiling.
+
+**Tests.** `StoreInitiatedRefundTest` 14 (4 new on the state endpoint) · full
+suite 1862 green.
+
+**Unverified live:** the whole box, like the rest of R5 — it has never run inside
+a real WooCommerce admin.

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\WooCommerce;
 
 use App\Domain\Refunds\Models\RefundRequest;
 use App\Domain\Refunds\RefundOrchestrator;
+use App\Domain\Refunds\RefundPreview;
 use App\Domain\Refunds\StoreRefundResult;
 use App\Http\Controllers\WooCommerce\Storefront\WooStorefrontController;
 use App\Models\ActivityEvent;
@@ -22,7 +23,9 @@ use Symfony\Component\HttpFoundation\Response;
  * the shopper was made whole by WooCommerce alone and the merchant's books never
  * heard about it.
  *
- * TWO ENDPOINTS, AND THE DIFFERENCE BETWEEN THEM IS WHO MOVES THE MONEY:
+ * THREE ENDPOINTS. The two that act differ in WHO MOVES THE MONEY — which is
+ * why they are separate rather than one with a flag the plugin might mis-set,
+ * because getting it wrong is a double refund. The third only reads.
  *
  *   /orders/{order}/refund     the LETS GATEWAY's own `process_refund`.
  *                              WooCommerce is ASKING us to move it, so this runs
@@ -36,8 +39,10 @@ use Symfony\Component\HttpFoundation\Response;
  *                              gone; this records it and issues the paperwork,
  *                              and PayPlus is never called.
  *
- * Getting those the wrong way round is a double refund, which is why they are
- * separate endpoints rather than one with a flag the plugin might mis-set.
+ *   /orders/{order}/refund-state  what LETS knows about this order, for the
+ *                              plugin's own refund box: how much is still
+ *                              refundable and through which rail. A READ.
+ *
  *
  * THE MIRROR TAKES A RUNNING TOTAL, NOT AN AMOUNT. WooCommerce fires its refund
  * hook for the gateway's own refunds too, and a re-delivery fires it again — so
@@ -132,6 +137,43 @@ final class RefundMirrorController extends WooStorefrontController
                 'ok' => true,
                 'recorded' => $result->refundedTotal(),
                 'request_id' => (int) $result->getKey(),
+            ]);
+        });
+    }
+
+    /**
+     * POST /api/woocommerce/orders/{order}/refund-state — what LETS knows.
+     *
+     * POST rather than GET because the plugin's signer excludes the query string,
+     * which is the same reason `/orders/documents` is a POST. It writes nothing.
+     *
+     * The figure it returns is the one the money leg will actually act on — the
+     * same resolver, not a second opinion — so the box a merchant reads and the
+     * refund they authorise cannot disagree.
+     */
+    public function state(Request $request, string $order): JsonResponse
+    {
+        $shop = $this->verifiedShop($request);
+        if ($shop === null) {
+            return response()->json(['error' => 'unauthorized'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        return Tenant::run($shop, function () use ($shop, $order): JsonResponse {
+            $preview = RefundPreview::for($shop, $order);
+
+            return response()->json([
+                'ok' => true,
+                'state' => [
+                    'refundable' => $preview->refundable,
+                    'currency' => $preview->currency,
+                    'rail' => $preview->rail,
+                    'charges' => $preview->chargeCount,
+                    // Whether a subscription hangs off this order: the box says
+                    // so, because refunding money is not cancelling a plan and a
+                    // merchant should not discover that next month.
+                    'has_plan' => $preview->planId !== null,
+                    'invoicing' => $preview->invoicingConnected,
+                ],
             ]);
         });
     }
