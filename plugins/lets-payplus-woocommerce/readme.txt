@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.47.0
+Stable tag: 0.48.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,13 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.48.0 =
+* The orders list no longer says "LETS". The column and its umbrella tag now read
+  "Subscription" — on a screen a merchant opens to do ordinary shop work, the
+  product's name answered a question nobody asked, where what they want to know
+  is why the order exists. The tag STORED on each order is unchanged, so orders
+  already stamped keep their tag and the filter dropdown keeps finding them.
 
 = 0.47.0 =
 * Refund or cancel an order from the order screen. WooCommerce's own Refund

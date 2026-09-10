@@ -22,11 +22,31 @@ defined('ABSPATH') || exit;
 /** Order meta holding the comma-separated tag line stamped by LETS. */
 define('LETS_PAYPLUS_TAGS_META', 'lets_tags');
 
-/** The umbrella tag: this order was created by LETS. Mirrors WooOrderTags::UMBRELLA. */
+/**
+ * The umbrella tag: this order was created by LETS. Mirrors WooOrderTags::UMBRELLA.
+ *
+ * This is the STORED value — it is written into order meta and is what the filter
+ * dropdown submits. It must never change: every order already stamped carries this
+ * exact string, and renaming it would orphan them all. What the merchant READS is
+ * lets_payplus_umbrella_label() instead.
+ */
 define('LETS_PAYPLUS_TAGS_UMBRELLA', 'LETS');
 
 /** The query arg the filter dropdown submits. */
 define('LETS_PAYPLUS_TAGS_FILTER_ARG', 'lets_tag');
+
+/**
+ * What the merchant reads on the umbrella tag and on the column heading.
+ *
+ * The product name means nothing to somebody doing ordinary shop work: on the
+ * orders list "LETS" answered a question nobody asked, where what the merchant
+ * wants to know is WHY this order exists. Kept as one function so the badge and
+ * the column heading can never drift apart.
+ */
+function lets_payplus_umbrella_label()
+{
+    return 'Subscription';
+}
 
 /**
  * The kinds LETS stamps, mirroring WooOrderTags. Values are the raw tag; labels
@@ -88,8 +108,7 @@ add_filter('manage_edit-shop_order_columns', 'lets_payplus_tags_column', 20);
 
 function lets_payplus_tags_column($columns)
 {
-    $he = function_exists('lets_payplus_is_he') && lets_payplus_is_he();
-    $columns['lets_tags'] = $he ? 'LETS' : 'LETS';
+    $columns['lets_tags'] = lets_payplus_umbrella_label();
 
     return $columns;
 }
@@ -127,7 +146,13 @@ function lets_payplus_render_tags_cell($order)
     $kinds = lets_payplus_tag_kinds();
     $out = array();
     foreach ($tags as $tag) {
-        $label = isset($kinds[$tag]) ? $kinds[$tag] : $tag;
+        if (LETS_PAYPLUS_TAGS_UMBRELLA === $tag) {
+            $label = lets_payplus_umbrella_label();
+        } elseif (isset($kinds[$tag])) {
+            $label = $kinds[$tag];
+        } else {
+            $label = $tag;
+        }
         $out[] = '<span class="lets-tag">' . esc_html($label) . '</span>';
     }
 
