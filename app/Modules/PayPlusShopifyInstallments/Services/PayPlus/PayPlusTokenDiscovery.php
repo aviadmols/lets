@@ -145,26 +145,43 @@ final class PayPlusTokenDiscovery
      */
     public function customerByEmail(string $email): ?array
     {
+        $customers = $this->customersByEmail($email);
+
+        if ($customers === []) {
+            $this->lastReason = self::REASON_NOT_FOUND;
+
+            return null;
+        }
+
+        return $customers[0];
+    }
+
+    /**
+     * EVERY PayPlus customer carrying this email, not just the first.
+     *
+     * The relaxed matcher leans on the email alone to say whose cards these are,
+     * so it needs to know when an email belongs to two people — a family, a
+     * shared office inbox — and refuse, rather than quietly taking the first.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function customersByEmail(string $email): array
+    {
         $body = $this->request('GET', self::PATH_CUSTOMERS_VIEW, [
             'email' => $email,
             'take' => self::CUSTOMER_TAKE,
         ]);
 
         if ($body === null) {
-            return null;
+            return [];
         }
 
         $customers = $body['customers'] ?? $body['data']['customers'] ?? $body['data'] ?? [];
 
-        foreach ((array) $customers as $customer) {
-            if (is_array($customer) && ($customer['customer_uid'] ?? $customer['uid'] ?? '') !== '') {
-                return $customer;
-            }
-        }
-
-        $this->lastReason = self::REASON_NOT_FOUND;
-
-        return null;
+        return array_values(array_filter(
+            (array) $customers,
+            static fn ($c): bool => is_array($c) && ($c['customer_uid'] ?? $c['uid'] ?? '') !== '',
+        ));
     }
 
     /**
@@ -212,15 +229,87 @@ final class PayPlusTokenDiscovery
             return null;
         }
 
-        // PayPlus returns expiry as MMYY; ours is stored as two integers.
-        $mmyy = str_pad((string) $expMonth, 2, '0', STR_PAD_LEFT)
-            .str_pad((string) ($expYear % 100), 2, '0', STR_PAD_LEFT);
+        $mmyy = self::mmyy($expMonth, $expYear);
 
         $hits = array_values(array_filter($tokens, static fn (array $t): bool => trim((string) ($t['last_4_digits'] ?? '')) === $lastFour
             && trim((string) ($t['card_date_mmyy'] ?? '')) === $mmyy));
 
         // Two cards that agree on both is not a match — it is a coin toss.
         return count($hits) === 1 ? $hits[0] : null;
+    }
+
+    /**
+     * The card to use when we hold NO last-4 — or hold one that matches nothing.
+     *
+     * This is only safe because of where $tokens came from: Token/List filtered
+     * by ONE customer_uid, found by email. Every candidate is the same person's
+     * card, so the strict matcher's fear — charging somebody else — does not
+     * apply here. What remains is picking the wrong card of the RIGHT person,
+     * and the worst that does is a decline, which the dunning ladder already
+     * handles. So the rules only have to be unambiguous, not paranoid:
+     *
+     *   only_card       — they have exactly one card. Nothing to choose.
+     *   expiry          — exactly one card carries the expiry we hold.
+     *   only_unexpired  — exactly one card has not expired yet.
+     *
+     * Anything still ambiguous after that is refused, as before.
+     *
+     * @param  list<array<string, mixed>>  $tokens
+     * @return array{card: array<string, mixed>, basis: string}|null
+     */
+    public static function matchCardRelaxed(array $tokens, ?int $expMonth, ?int $expYear): ?array
+    {
+        $tokens = array_values(array_filter($tokens, static fn ($t): bool => is_array($t) && ($t['token'] ?? '') !== ''));
+
+        if (count($tokens) === 1) {
+            return ['card' => $tokens[0], 'basis' => 'only_card'];
+        }
+
+        if ($tokens === []) {
+            return null;
+        }
+
+        if ($expMonth !== null && $expYear !== null) {
+            $mmyy = self::mmyy($expMonth, $expYear);
+            $byExpiry = array_values(array_filter($tokens, static fn (array $t): bool => trim((string) ($t['card_date_mmyy'] ?? '')) === $mmyy));
+
+            if (count($byExpiry) === 1) {
+                return ['card' => $byExpiry[0], 'basis' => 'expiry'];
+            }
+        }
+
+        $unexpired = array_values(array_filter($tokens, static fn (array $t): bool => self::isUnexpired((string) ($t['card_date_mmyy'] ?? ''))));
+
+        if (count($unexpired) === 1) {
+            return ['card' => $unexpired[0], 'basis' => 'only_unexpired'];
+        }
+
+        return null;
+    }
+
+    /** PayPlus returns expiry as MMYY; ours is stored as two integers. */
+    private static function mmyy(int $expMonth, int $expYear): string
+    {
+        return str_pad((string) $expMonth, 2, '0', STR_PAD_LEFT)
+            .str_pad((string) ($expYear % 100), 2, '0', STR_PAD_LEFT);
+    }
+
+    /** A card whose MMYY month has not ended yet. Malformed expiry counts as expired. */
+    private static function isUnexpired(string $mmyy): bool
+    {
+        if (preg_match('/^(\d{2})(\d{2})$/', trim($mmyy), $m) !== 1) {
+            return false;
+        }
+
+        $month = (int) $m[1];
+        $year = 2000 + (int) $m[2];
+
+        if ($month < 1 || $month > 12) {
+            return false;
+        }
+
+        // Valid through the last day of its month.
+        return ($year * 100 + $month) >= ((int) date('Y') * 100 + (int) date('n'));
     }
 
     // === Internals ===

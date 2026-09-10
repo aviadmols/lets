@@ -81,4 +81,66 @@ final class PayPlusTokenMatchTest extends TestCase
     {
         $this->assertNull(PayPlusTokenDiscovery::matchCard([], '9963', 2, 2030));
     }
+
+    // === The RELAXED matcher — same person's cards, no last-4 to lean on ===
+
+    public function test_relaxed_takes_the_customers_only_card_without_a_last_four(): void
+    {
+        $only = [['token' => self::TOKEN_A, 'last_4_digits' => '9963', 'card_date_mmyy' => '0230']];
+
+        $pick = PayPlusTokenDiscovery::matchCardRelaxed($only, null, null);
+
+        $this->assertSame(self::TOKEN_A, $pick['card']['token'] ?? null);
+        $this->assertSame('only_card', $pick['basis'] ?? null);
+    }
+
+    public function test_relaxed_picks_the_one_card_carrying_our_expiry(): void
+    {
+        // Two cards, no last-4 held — but only one has the expiry we do.
+        $pick = PayPlusTokenDiscovery::matchCardRelaxed($this->tokens(), 5, 2032);
+
+        $this->assertSame(self::TOKEN_B, $pick['card']['token'] ?? null);
+        $this->assertSame('expiry', $pick['basis'] ?? null);
+    }
+
+    public function test_relaxed_falls_back_to_the_only_unexpired_card(): void
+    {
+        $cards = [
+            ['token' => self::TOKEN_A, 'last_4_digits' => '1111', 'card_date_mmyy' => '0121'], // long expired
+            ['token' => self::TOKEN_B, 'last_4_digits' => '2222', 'card_date_mmyy' => '1235'],
+        ];
+
+        // Our expiry matches neither, so expiry cannot decide; liveness can.
+        $pick = PayPlusTokenDiscovery::matchCardRelaxed($cards, 6, 2028);
+
+        $this->assertSame(self::TOKEN_B, $pick['card']['token'] ?? null);
+        $this->assertSame('only_unexpired', $pick['basis'] ?? null);
+    }
+
+    public function test_relaxed_still_refuses_when_two_live_cards_cannot_be_told_apart(): void
+    {
+        $cards = [
+            ['token' => self::TOKEN_A, 'last_4_digits' => '1111', 'card_date_mmyy' => '1235'],
+            ['token' => self::TOKEN_B, 'last_4_digits' => '2222', 'card_date_mmyy' => '1236'],
+        ];
+
+        // Two live cards, neither with our expiry: a guess, so no.
+        $this->assertNull(PayPlusTokenDiscovery::matchCardRelaxed($cards, 6, 2028));
+    }
+
+    public function test_relaxed_refuses_when_every_card_has_expired(): void
+    {
+        $cards = [
+            ['token' => self::TOKEN_A, 'last_4_digits' => '1111', 'card_date_mmyy' => '0120'],
+            ['token' => self::TOKEN_B, 'last_4_digits' => '2222', 'card_date_mmyy' => '0621'],
+        ];
+
+        // Even the "only card" rule does not apply: there are two, both dead.
+        $this->assertNull(PayPlusTokenDiscovery::matchCardRelaxed($cards, 6, 2028));
+    }
+
+    public function test_relaxed_matches_nothing_on_an_empty_list(): void
+    {
+        $this->assertNull(PayPlusTokenDiscovery::matchCardRelaxed([], 2, 2030));
+    }
 }

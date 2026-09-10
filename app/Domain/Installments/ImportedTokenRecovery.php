@@ -38,6 +38,15 @@ final class ImportedTokenRecovery
     /** Recovered by finding the customer at PayPlus and matching their saved card. */
     public const ROUTE_EMAIL = 'email';
 
+    /**
+     * Recovered by email with the RELAXED matcher — no last-4 to check, so the
+     * card was chosen because it was the customer's only one, or the only one
+     * with our expiry, or the only one not yet expired. Kept distinct from
+     * ROUTE_EMAIL so a report can always say which members were matched on
+     * weaker evidence.
+     */
+    public const ROUTE_EMAIL_RELAXED = 'email_relaxed';
+
     /** PayPlus holds nothing we can safely attach to this member. */
     public const ROUTE_NONE = 'none';
 
@@ -60,7 +69,7 @@ final class ImportedTokenRecovery
      * @param  list<string>  $routes  which routes to try, from ALL_ROUTES
      * @return array{route:string, token:?string, customer_uid:?string, recurring_live:bool, detail:string}
      */
-    public function probe(InstallmentPlan $plan, ?string $terminalOverride = null, array $routes = self::ALL_ROUTES): array
+    public function probe(InstallmentPlan $plan, ?string $terminalOverride = null, array $routes = self::ALL_ROUTES, bool $relaxed = false): array
     {
         $shop = $plan->shop ?: Shop::find((int) $plan->shop_id);
 
@@ -118,12 +127,15 @@ final class ImportedTokenRecovery
             : '';
 
         if ($email !== '') {
-            $customer = $probe->customerByEmail($email);
+            $customers = $probe->customersByEmail($email);
+            $customer = $customers[0] ?? null;
             $customerUid = (string) ($customer['customer_uid'] ?? $customer['uid'] ?? '');
 
             if ($customerUid !== '') {
+                $tokens = $probe->tokens($customerUid);
+
                 $match = PayPlusTokenDiscovery::matchCard(
-                    $probe->tokens($customerUid),
+                    $tokens,
                     $method->card_last_four,
                     $method->exp_month,
                     $method->exp_year,
@@ -136,6 +148,32 @@ final class ImportedTokenRecovery
                         customerUid: $customerUid,
                         detail: 'matched_saved_card',
                     );
+                }
+
+                // Strict matching found the person but could not name the card.
+                // The relaxed matcher may — but it trusts the EMAIL alone to say
+                // whose cards these are, so it first insists the email names
+                // exactly one PayPlus customer. Two people on one inbox is the
+                // one way "the customer's own cards" stops being true.
+                if ($relaxed) {
+                    if (count($customers) !== 1) {
+                        return $this->outcome(self::ROUTE_NONE, detail: 'email_not_unique');
+                    }
+
+                    $pick = PayPlusTokenDiscovery::matchCardRelaxed($tokens, $method->exp_month, $method->exp_year);
+
+                    if ($pick !== null) {
+                        return $this->outcome(
+                            self::ROUTE_EMAIL_RELAXED,
+                            token: (string) $pick['card']['token'],
+                            customerUid: $customerUid,
+                            detail: $pick['basis'],
+                        );
+                    }
+
+                    return $this->outcome(self::ROUTE_NONE, detail: $tokens === []
+                        ? 'no_cards_at_payplus'
+                        : 'expired_or_ambiguous');
                 }
 
                 // Found the person, could not tell their cards apart — the one
@@ -161,7 +199,7 @@ final class ImportedTokenRecovery
     {
         $token = $outcome['token'] ?? null;
 
-        if ($token === null || $token === '' || ! in_array($outcome['route'] ?? '', [self::ROUTE_RECURRING, self::ROUTE_EMAIL], true)) {
+        if ($token === null || $token === '' || ! in_array($outcome['route'] ?? '', [self::ROUTE_RECURRING, self::ROUTE_EMAIL, self::ROUTE_EMAIL_RELAXED], true)) {
             return false;
         }
 

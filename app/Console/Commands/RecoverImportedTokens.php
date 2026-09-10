@@ -37,6 +37,8 @@ final class RecoverImportedTokens extends Command
     protected $signature = 'payplus:recover-tokens
         {--shop= : the shop id (required)}
         {--apply : actually write the recovered tokens (default: dry run)}
+        {--force : with --apply, skip the confirmation prompt (for non-interactive runs)}
+        {--relaxed : when last-4 cannot decide, accept a customer\'s only card, or only card with our expiry, or only unexpired card}
         {--routes=email : which routes to try — check,recurring,email (comma separated)}
         {--limit=0 : stop after this many members (0 = all)}
         {--sleep=0 : milliseconds to wait between members, to be gentle on PayPlus}
@@ -104,7 +106,7 @@ final class RecoverImportedTokens extends Command
 
         if (! $apply) {
             $this->warn('DRY RUN — PayPlus will be asked, but nothing will be written. Re-run with --apply to save.');
-        } elseif (! $this->confirm("Write recovered tokens onto up to {$total} payment methods?", false)) {
+        } elseif (! $this->option('force') && ! $this->confirm("Write recovered tokens onto up to {$total} payment methods?", false)) {
             $this->info('Nothing written.');
 
             return self::SUCCESS;
@@ -142,10 +144,10 @@ final class RecoverImportedTokens extends Command
                         return false; // stop chunking
                     }
 
-                    $outcome = $recovery->probe($plan, null, $routes);
+                    $outcome = $recovery->probe($plan, null, $routes, (bool) $this->option('relaxed'));
                     $ok = $apply
                         ? $recovery->apply($plan, $outcome)
-                        : in_array($outcome['route'], [ImportedTokenRecovery::ROUTE_RECURRING, ImportedTokenRecovery::ROUTE_EMAIL], true);
+                        : in_array($outcome['route'], [ImportedTokenRecovery::ROUTE_RECURRING, ImportedTokenRecovery::ROUTE_EMAIL, ImportedTokenRecovery::ROUTE_EMAIL_RELAXED], true);
 
                     $seen++;
                     $ok ? $recovered++ : null;
@@ -300,8 +302,11 @@ final class RecoverImportedTokens extends Command
 
     /** Plain-language meaning for each reason the CSV can carry. */
     private const MEANING = [
-        'no_last_four_to_match_on' => 'we hold no last-4, so a card at PayPlus cannot be matched safely',
-        'no_card_matched' => 'PayPlus knows them but no saved card matches the one we hold',
+        'no_last_four_to_match_on' => 'we hold no last-4, so a card at PayPlus cannot be matched safely (try --relaxed)',
+        'no_card_matched' => 'PayPlus knows them but no saved card matches the one we hold (try --relaxed)',
+        'email_not_unique' => 'that email belongs to more than one PayPlus customer — cannot say whose cards they are',
+        'expired_or_ambiguous' => 'PayPlus holds several cards for them and none stands out: all expired, or more than one live',
+        'no_cards_at_payplus' => 'PayPlus knows the customer but holds no saved card for them',
         'not_found_at_payplus' => 'PayPlus has no customer with that email',
         'no_payment_method' => 'this plan has no saved card at all',
         'payplus_not_connected' => 'the shop has no usable PayPlus credentials',
