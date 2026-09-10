@@ -46,8 +46,20 @@ final class PayPlusTokenDiscovery
     /** Tokens fetched per Token/List page. PayPlus caps `take` at 500. */
     public const TOKEN_PAGE = 500;
 
-    /** Customers matched on one email lookup — an email should resolve to one. */
-    private const CUSTOMER_TAKE = 5;
+    /**
+     * Customer records fetched for one email. Not one: a checkout that mints a
+     * new PayPlus customer every time somebody types their name differently
+     * leaves the same person behind as "Tuvia Lerner", "טוביה לרנר" and
+     * "א.ט לרנר", each holding cards. Their cards are all theirs.
+     */
+    private const CUSTOMER_TAKE = 20;
+
+    /**
+     * Beyond this many records for one email we stop rather than fan out a
+     * Token/List call per record — and an email on that many records is more
+     * likely a shared mailbox than one prolific typist.
+     */
+    public const MAX_CUSTOMER_RECORDS = 10;
 
     /** Chars of a PayPlus response kept in a failure log (their body, no secrets of ours). */
     private const LOG_BODY_CHARS = 300;
@@ -157,11 +169,13 @@ final class PayPlusTokenDiscovery
     }
 
     /**
-     * EVERY PayPlus customer carrying this email, not just the first.
+     * EVERY PayPlus customer record carrying EXACTLY this email, not just the
+     * first.
      *
-     * The relaxed matcher leans on the email alone to say whose cards these are,
-     * so it needs to know when an email belongs to two people — a family, a
-     * shared office inbox — and refuse, rather than quietly taking the first.
+     * The first record is an accident of insertion order and may be the one
+     * with no cards on it at all, while the card we are looking for sits on the
+     * third. Exact equality is enforced here rather than trusted from the API,
+     * so a filter that ever turned fuzzy could not hand back a stranger.
      *
      * @return list<array<string, mixed>>
      */
@@ -177,11 +191,47 @@ final class PayPlusTokenDiscovery
         }
 
         $customers = $body['customers'] ?? $body['data']['customers'] ?? $body['data'] ?? [];
+        $wanted = mb_strtolower(trim($email));
 
         return array_values(array_filter(
             (array) $customers,
-            static fn ($c): bool => is_array($c) && ($c['customer_uid'] ?? $c['uid'] ?? '') !== '',
+            static fn ($c): bool => is_array($c)
+                && ($c['customer_uid'] ?? $c['uid'] ?? '') !== ''
+                && mb_strtolower(trim((string) ($c['email'] ?? ''))) === $wanted,
         ));
+    }
+
+    /**
+     * One entry per physical card. The same card re-vaulted on three duplicate
+     * customer records comes back as three tokens with one last-4 and one
+     * expiry; counting it three times would make "the customer's only card"
+     * look like a choice. The first token seen is kept — any of them charges
+     * the same card.
+     *
+     * @param  list<array<string, mixed>>  $tokens
+     * @return list<array<string, mixed>>
+     */
+    public static function dedupeCards(array $tokens): array
+    {
+        $seen = [];
+        $out = [];
+
+        foreach ($tokens as $t) {
+            if (! is_array($t) || ($t['token'] ?? '') === '') {
+                continue;
+            }
+
+            $key = trim((string) ($t['last_4_digits'] ?? '')).'/'.trim((string) ($t['card_date_mmyy'] ?? ''));
+
+            if (isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $out[] = $t;
+        }
+
+        return $out;
     }
 
     /**
@@ -252,12 +302,20 @@ final class PayPlusTokenDiscovery
      *   expiry          — exactly one card carries the expiry we hold.
      *   only_unexpired  — exactly one card has not expired yet.
      *
-     * Anything still ambiguous after that is refused, as before.
+     * The last rule uses no evidence of OURS at all, so it is offered only when
+     * $allowUnexpiredRule is true — the caller sets that false when the cards
+     * were pooled from several customer records under one email, because a
+     * shared family or office inbox is exactly where "the same person's cards"
+     * stops being guaranteed, and a rule that picks a card on liveness alone
+     * would then pick somebody else's.
+     *
+     * Anything still ambiguous after that is refused, as before. Pass tokens
+     * through dedupeCards() first when they were pooled across records.
      *
      * @param  list<array<string, mixed>>  $tokens
      * @return array{card: array<string, mixed>, basis: string}|null
      */
-    public static function matchCardRelaxed(array $tokens, ?int $expMonth, ?int $expYear): ?array
+    public static function matchCardRelaxed(array $tokens, ?int $expMonth, ?int $expYear, bool $allowUnexpiredRule = true): ?array
     {
         $tokens = array_values(array_filter($tokens, static fn ($t): bool => is_array($t) && ($t['token'] ?? '') !== ''));
 
@@ -276,6 +334,10 @@ final class PayPlusTokenDiscovery
             if (count($byExpiry) === 1) {
                 return ['card' => $byExpiry[0], 'basis' => 'expiry'];
             }
+        }
+
+        if (! $allowUnexpiredRule) {
+            return null;
         }
 
         $unexpired = array_values(array_filter($tokens, static fn (array $t): bool => self::isUnexpired((string) ($t['card_date_mmyy'] ?? ''))));

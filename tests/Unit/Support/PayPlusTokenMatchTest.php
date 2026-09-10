@@ -143,4 +143,66 @@ final class PayPlusTokenMatchTest extends TestCase
     {
         $this->assertNull(PayPlusTokenDiscovery::matchCardRelaxed([], 2, 2030));
     }
+
+    // === Cards pooled across a person's duplicate customer records ===
+
+    public function test_the_same_card_vaulted_on_three_records_is_one_card(): void
+    {
+        // ישעיהו אברהם at PayPlus: one physical card, three customer records.
+        $pooled = [
+            ['token' => 'tok-rec2', 'last_4_digits' => '2175', 'card_date_mmyy' => '0126'],
+            ['token' => 'tok-rec3', 'last_4_digits' => '2175', 'card_date_mmyy' => '0126'],
+            ['token' => 'tok-rec4', 'last_4_digits' => '2175', 'card_date_mmyy' => '0126'],
+        ];
+
+        $cards = PayPlusTokenDiscovery::dedupeCards($pooled);
+
+        $this->assertCount(1, $cards);
+        $this->assertSame('tok-rec2', $cards[0]['token'], 'The first token seen is kept; any of them charges the same card.');
+
+        // And so it counts as the customer's ONLY card, not a three-way choice.
+        $this->assertSame('only_card', PayPlusTokenDiscovery::matchCardRelaxed($cards, null, null)['basis'] ?? null);
+    }
+
+    public function test_dedupe_keeps_genuinely_different_cards_and_drops_tokenless_rows(): void
+    {
+        $pooled = [
+            ['token' => 'a', 'last_4_digits' => '0500', 'card_date_mmyy' => '0727'],
+            ['token' => 'b', 'last_4_digits' => '9118', 'card_date_mmyy' => '0929'],
+            ['token' => 'c', 'last_4_digits' => '0500', 'card_date_mmyy' => '0727'], // same as a
+            ['token' => '', 'last_4_digits' => '1111', 'card_date_mmyy' => '0101'], // unusable
+            ['token' => 'd', 'last_4_digits' => '0500', 'card_date_mmyy' => '0725'], // same digits, older expiry: different card
+        ];
+
+        $this->assertSame(['a', 'b', 'd'], array_column(PayPlusTokenDiscovery::dedupeCards($pooled), 'token'));
+    }
+
+    public function test_the_liveness_rule_is_withheld_when_cards_came_from_several_records(): void
+    {
+        // Two live-looking cards from two records under one email, neither with
+        // our expiry. On a single record the only-unexpired rule could decide;
+        // pooled across records it must not — the second record may be a
+        // relative sharing the inbox.
+        $pooled = [
+            ['token' => self::TOKEN_A, 'last_4_digits' => '1111', 'card_date_mmyy' => '0121'], // expired
+            ['token' => self::TOKEN_B, 'last_4_digits' => '2222', 'card_date_mmyy' => '1235'],
+        ];
+
+        $this->assertNotNull(PayPlusTokenDiscovery::matchCardRelaxed($pooled, 6, 2028, allowUnexpiredRule: true));
+        $this->assertNull(PayPlusTokenDiscovery::matchCardRelaxed($pooled, 6, 2028, allowUnexpiredRule: false));
+    }
+
+    public function test_the_expiry_rule_still_decides_across_records(): void
+    {
+        // Natan Fartuk: two records, two cards, ours expires 04/30.
+        $pooled = [
+            ['token' => 'tok-1', 'last_4_digits' => '0044', 'card_date_mmyy' => '0430'],
+            ['token' => 'tok-2', 'last_4_digits' => '1242', 'card_date_mmyy' => '0429'],
+        ];
+
+        $pick = PayPlusTokenDiscovery::matchCardRelaxed($pooled, 4, 2030, allowUnexpiredRule: false);
+
+        $this->assertSame('tok-1', $pick['card']['token'] ?? null);
+        $this->assertSame('expiry', $pick['basis'] ?? null);
+    }
 }

@@ -41,9 +41,9 @@ final class ImportedTokenRecovery
     /**
      * Recovered by email with the RELAXED matcher — no last-4 to check, so the
      * card was chosen because it was the customer's only one, or the only one
-     * with our expiry, or the only one not yet expired. Kept distinct from
-     * ROUTE_EMAIL so a report can always say which members were matched on
-     * weaker evidence.
+     * with our expiry, or (single record only) the only one not yet expired.
+     * Kept distinct from ROUTE_EMAIL so a report can always say which members
+     * were matched on weaker evidence.
      */
     public const ROUTE_EMAIL_RELAXED = 'email_relaxed';
 
@@ -128,60 +128,90 @@ final class ImportedTokenRecovery
 
         if ($email !== '') {
             $customers = $probe->customersByEmail($email);
-            $customer = $customers[0] ?? null;
-            $customerUid = (string) ($customer['customer_uid'] ?? $customer['uid'] ?? '');
 
-            if ($customerUid !== '') {
-                $tokens = $probe->tokens($customerUid);
+            if ($customers === []) {
+                return $this->outcome(self::ROUTE_NONE, detail: 'not_found_at_payplus');
+            }
 
-                $match = PayPlusTokenDiscovery::matchCard(
+            if (count($customers) > PayPlusTokenDiscovery::MAX_CUSTOMER_RECORDS) {
+                return $this->outcome(self::ROUTE_NONE, detail: 'too_many_customer_records');
+            }
+
+            // Pool the cards of EVERY record carrying this exact email. The old
+            // checkout minted a fresh PayPlus customer whenever somebody typed
+            // their name differently, so one person is three records and their
+            // card may sit on any of them — the first record is an accident of
+            // insertion order, sometimes an empty one. Each token remembers the
+            // record it came from, because that is the customer_uid we must save.
+            $tokens = [];
+            $ownerOf = [];
+
+            foreach ($customers as $customer) {
+                $uid = (string) ($customer['customer_uid'] ?? $customer['uid'] ?? '');
+
+                foreach ($probe->tokens($uid) as $t) {
+                    $tokens[] = $t;
+                    $ownerOf[(string) ($t['token'] ?? '')] = $uid;
+                }
+            }
+
+            // The same card re-vaulted on three records is one card.
+            $tokens = PayPlusTokenDiscovery::dedupeCards($tokens);
+
+            $match = PayPlusTokenDiscovery::matchCard(
+                $tokens,
+                $method->card_last_four,
+                $method->exp_month,
+                $method->exp_year,
+            );
+
+            if ($match !== null && ($match['token'] ?? '') !== '') {
+                return $this->outcome(
+                    self::ROUTE_EMAIL,
+                    token: (string) $match['token'],
+                    customerUid: $ownerOf[(string) $match['token']] ?? null,
+                    detail: count($customers) > 1
+                        ? 'matched_saved_card_across_'.count($customers).'_records'
+                        : 'matched_saved_card',
+                );
+            }
+
+            // Strict matching found the person but could not name the card.
+            // The relaxed matcher may. Its liveness-only rule is withheld when
+            // the cards were pooled from several records: a shared inbox is
+            // exactly where "the same person's cards" stops being guaranteed,
+            // and only a rule that uses OUR evidence (the expiry) is safe there.
+            if ($relaxed) {
+                $pick = PayPlusTokenDiscovery::matchCardRelaxed(
                     $tokens,
-                    $method->card_last_four,
                     $method->exp_month,
                     $method->exp_year,
+                    allowUnexpiredRule: count($customers) === 1,
                 );
 
-                if ($match !== null && ($match['token'] ?? '') !== '') {
+                if ($pick !== null) {
+                    $token = (string) $pick['card']['token'];
+
                     return $this->outcome(
-                        self::ROUTE_EMAIL,
-                        token: (string) $match['token'],
-                        customerUid: $customerUid,
-                        detail: 'matched_saved_card',
+                        self::ROUTE_EMAIL_RELAXED,
+                        token: $token,
+                        customerUid: $ownerOf[$token] ?? null,
+                        detail: count($customers) > 1
+                            ? $pick['basis'].'_across_'.count($customers).'_records'
+                            : $pick['basis'],
                     );
                 }
 
-                // Strict matching found the person but could not name the card.
-                // The relaxed matcher may — but it trusts the EMAIL alone to say
-                // whose cards these are, so it first insists the email names
-                // exactly one PayPlus customer. Two people on one inbox is the
-                // one way "the customer's own cards" stops being true.
-                if ($relaxed) {
-                    if (count($customers) !== 1) {
-                        return $this->outcome(self::ROUTE_NONE, detail: 'email_not_unique');
-                    }
-
-                    $pick = PayPlusTokenDiscovery::matchCardRelaxed($tokens, $method->exp_month, $method->exp_year);
-
-                    if ($pick !== null) {
-                        return $this->outcome(
-                            self::ROUTE_EMAIL_RELAXED,
-                            token: (string) $pick['card']['token'],
-                            customerUid: $customerUid,
-                            detail: $pick['basis'],
-                        );
-                    }
-
-                    return $this->outcome(self::ROUTE_NONE, detail: $tokens === []
-                        ? 'no_cards_at_payplus'
-                        : 'expired_or_ambiguous');
-                }
-
-                // Found the person, could not tell their cards apart — the one
-                // case where guessing would charge the wrong card.
-                return $this->outcome(self::ROUTE_NONE, detail: $method->card_last_four
-                    ? 'no_card_matched'
-                    : 'no_last_four_to_match_on');
+                return $this->outcome(self::ROUTE_NONE, detail: $tokens === []
+                    ? 'no_cards_at_payplus'
+                    : 'expired_or_ambiguous');
             }
+
+            // Found the person, could not tell their cards apart — the one
+            // case where guessing would charge the wrong card.
+            return $this->outcome(self::ROUTE_NONE, detail: $method->card_last_four
+                ? 'no_card_matched'
+                : 'no_last_four_to_match_on');
         }
 
         return $this->outcome(self::ROUTE_NONE, detail: 'not_found_at_payplus');

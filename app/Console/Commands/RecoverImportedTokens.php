@@ -304,8 +304,8 @@ final class RecoverImportedTokens extends Command
     private const MEANING = [
         'no_last_four_to_match_on' => 'we hold no last-4, so a card at PayPlus cannot be matched safely (try --relaxed)',
         'no_card_matched' => 'PayPlus knows them but no saved card matches the one we hold (try --relaxed)',
-        'email_not_unique' => 'that email belongs to more than one PayPlus customer — cannot say whose cards they are',
-        'expired_or_ambiguous' => 'PayPlus holds several cards for them and none stands out: all expired, or more than one live',
+        'too_many_customer_records' => 'that email is on more than '.PayPlusTokenDiscovery::MAX_CUSTOMER_RECORDS.' PayPlus customer records — a shared mailbox, not one person',
+        'expired_or_ambiguous' => 'PayPlus holds several distinct cards for them and none stands out — more than one live card, or none with our expiry',
         'no_cards_at_payplus' => 'PayPlus knows the customer but holds no saved card for them',
         'not_found_at_payplus' => 'PayPlus has no customer with that email',
         'no_payment_method' => 'this plan has no saved card at all',
