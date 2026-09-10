@@ -139,6 +139,9 @@ class InstallmentPlan extends Model
             'requires_manual_payment' => 'boolean',
             'next_charge_at' => 'datetime',
             'last_charge_attempt_at' => 'datetime',
+            // When collection gave up on this plan's owed cycle. Set means the
+            // pause is ours, not the customer's — see the migration.
+            'payment_failed_at' => 'datetime',
             'meta' => 'array',
         ];
     }

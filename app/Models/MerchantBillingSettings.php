@@ -42,7 +42,8 @@ class MerchantBillingSettings extends Model
 
     public const DEFAULT_RETRY_INTERVAL_HOURS = 24;
 
-    public const DEFAULT_MAX_CHARGE_ATTEMPTS = 10;
+    /** One attempt a day for a week, then the plan is held — see config/payplus.php. */
+    public const DEFAULT_MAX_CHARGE_ATTEMPTS = 7;
 
     public const DEFAULT_FAILED_PAYMENT_GRACE_DAYS = 3;
 

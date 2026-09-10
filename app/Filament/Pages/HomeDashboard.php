@@ -34,8 +34,11 @@ class HomeDashboard extends Page
 
     // === CONSTANTS ===
     protected static ?string $navigationIcon = 'heroicon-o-home';
+
     protected static string $view = 'filament.pages.home-dashboard';
+
     protected static ?string $slug = '/';
+
     protected static ?int $navigationSort = -10; // top of the sidebar
 
     /** Default date range (days). */
@@ -61,6 +64,9 @@ class HomeDashboard extends Page
 
     /** How many upcoming charges the Home "Upcoming orders" panel lists. */
     public const UPCOMING_LIMIT = 8;
+
+    /** Unpaid subscribers listed by name before the list turns into a wall. */
+    public const UNPAID_LIMIT = 10;
 
     /**
      * Overrides ShopScopedScreen::canAccess(). A bound user (merchant, or platform
@@ -132,7 +138,7 @@ class HomeDashboard extends Page
         $value = $row[$col];
 
         if ($row['percent']) {
-            return Money::number($value, 1) . '%';
+            return Money::number($value, 1).'%';
         }
 
         return $row['currency'] ? Money::format((float) $value) : Money::number($value);
@@ -173,11 +179,48 @@ class HomeDashboard extends Page
             ->get()
             ->map(fn (InstallmentPlan $plan): array => [
                 'customer' => $plan->customerLabel(),
-                'kind' => __('billing.plan_kind.' . $plan->plan_kind->value),
+                'kind' => __('billing.plan_kind.'.$plan->plan_kind->value),
                 'amount' => Money::format((float) $plan->installment_amount, $plan->currency ?: Money::DEFAULT_CURRENCY),
                 'date' => $plan->next_charge_at->format('d M Y'),
                 'url' => ViewSubscription::getUrl(['plan' => $plan->getKey()]),
             ])
             ->all();
+    }
+
+    /**
+     * Subscribers we could not collect from, held on the cycle they still owe.
+     *
+     * These are the only rows on this screen that are somebody's JOB: a held
+     * plan bills nobody until a person settles it or the customer updates their
+     * card, so it has to be visible by name rather than waiting to be noticed
+     * in a list of a thousand subscriptions. Sorted by how long they have been
+     * unpaid, oldest debt first.
+     *
+     * @return list<array{customer: string, email: string, amount: string, due: string, since: string, url: string}>
+     */
+    public function unpaidSubscriptions(): array
+    {
+        return InstallmentPlan::query()
+            ->whereNotNull('payment_failed_at')
+            ->orderBy('payment_failed_at')
+            ->limit(self::UNPAID_LIMIT)
+            ->get()
+            ->map(fn (InstallmentPlan $plan): array => [
+                'customer' => $plan->customerLabel(),
+                'email' => (string) $plan->customer_email,
+                'amount' => Money::format((float) $plan->installment_amount, $plan->currency ?: Money::DEFAULT_CURRENCY),
+                // The cycle they owe — deliberately NOT moved when collection
+                // gave up, so this is the date it was always due.
+                'due' => $plan->next_charge_at?->format('d M Y') ?? '—',
+                'since' => $plan->payment_failed_at->diffForHumans(),
+                'url' => ViewSubscription::getUrl(['plan' => $plan->getKey()]),
+            ])
+            ->all();
+    }
+
+    /** How many subscribers are unpaid in total, for the heading's count. */
+    public function unpaidCount(): int
+    {
+        return InstallmentPlan::query()->whereNotNull('payment_failed_at')->count();
     }
 }

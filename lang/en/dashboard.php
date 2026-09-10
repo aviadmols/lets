@@ -34,6 +34,20 @@ return [
         'title' => 'Recent activity',
     ],
 
+    /*
+    | Subscribers whose cycle could not be collected. They are held on the date
+    | they owe rather than rolled to next month, so they bill nobody until
+    | somebody settles them or the customer updates their card.
+    */
+    'unpaid' => [
+        'title' => 'Could not be charged',
+        'help' => 'We tried once a day for a week and the payment did not go through. These subscriptions are on hold — they will not be billed again on their own. Open one to charge it, or send the customer a link to update their card.',
+        'customer' => 'Customer',
+        'amount' => 'Amount',
+        'due' => 'Cycle owed',
+        'since' => 'On hold',
+    ],
+
     'upcoming' => [
         'title' => 'Upcoming orders',
         'customer' => 'Customer',

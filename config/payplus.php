@@ -34,14 +34,21 @@ return [
     | the SAME payment slot and therefore under the SAME idempotency key — a
     | retry is another attempt at one debt, never a second debt.
     |
-    | When the days run out we STOP asking for that cycle. The cycle is skipped
-    | and the plan is scheduled for its next ordinary renewal, in the future.
-    | It is never collected retroactively: a subscriber who was unreachable for
-    | a fortnight must not wake up to a fortnight of back-charges, which is how
-    | chargebacks are made. The plan waits in `awaiting_payment` throughout —
-    | still a subscriber, still scheduled, visibly unpaid.
+    | When the days run out we STOP asking — but we do NOT skip the cycle. The
+    | plan is PAUSED on the date it still owes, stamped `payment_failed_at`, and
+    | surfaced by name on the merchant's home screen. Rolling it forward to the
+    | next ordinary renewal, as this once did, quietly wrote off a month of
+    | revenue and told nobody.
+    |
+    | Holding the date is also what keeps the billing DAY stable: when the money
+    | finally lands, the following cycle is counted from the original date, not
+    | from whenever the customer got round to paying.
+    |
+    | What is still never done is collecting retroactively — the held cycle is
+    | ONE cycle, never a fortnight of back-charges, which is how chargebacks are
+    | made.
     */
-    'retry_daily_attempts' => (int) env('PAYPLUS_RETRY_DAILY_ATTEMPTS', 10),
+    'retry_daily_attempts' => (int) env('PAYPLUS_RETRY_DAILY_ATTEMPTS', 7),
 
     'retry_interval_hours' => (int) env('PAYPLUS_RETRY_INTERVAL_HOURS', 24),
 

@@ -41,8 +41,8 @@ final class MerchantBillingSettingsTest extends TestCase
             $this->assertTrue($first->is($second));
             $this->assertSame(1, MerchantBillingSettings::query()->where('shop_id', $shop->getKey())->count());
 
-            // Spec defaults (plan §4.7) + the dunning policy: ten daily asks.
-            $this->assertSame(10, $first->maxChargeAttempts());
+            // Spec defaults (plan §4.7) + the dunning policy: a week of daily asks.
+            $this->assertSame(7, $first->maxChargeAttempts());
             $this->assertSame(24, $first->retryIntervalHours());
             $this->assertSame(3, $first->failedPaymentGraceDays());
             $this->assertSame(10, $first->minDepositPercent());

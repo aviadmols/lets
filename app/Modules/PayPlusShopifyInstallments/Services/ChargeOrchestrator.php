@@ -74,17 +74,8 @@ use Illuminate\Support\Facades\Mail;
 final class ChargeOrchestrator
 {
     // === CONSTANTS ===
-    /** Daily charge attempts before the cycle is given up on. @see config/payplus.php */
-    private const MAX_ATTEMPTS_FALLBACK = 10;
-
-    /**
-     * A safety stop on rolling a stale schedule forward.
-     *
-     * A plan whose date is years behind (a bad import, a long-dormant row) must
-     * land on a future date without spinning: past this many cycles we take the
-     * date we have reached and move on.
-     */
-    private const MAX_CYCLE_ROLL_FORWARD = 240;
+    /** Daily charge attempts before the plan is held on its unpaid cycle. @see config/payplus.php */
+    private const MAX_ATTEMPTS_FALLBACK = 7;
 
     /**
      * How long an unsettled `pending` ledger row counts as a charge still in
@@ -474,9 +465,16 @@ final class ChargeOrchestrator
 
             Timeline::record(Timeline::KIND_PLAN_COMPLETED, ['plan_id' => $plan->getKey()], $plan->getKey(), shopId: $plan->shop_id);
         } elseif ($plan->plan_kind === PlanKind::RECURRING) {
-            // Recurring never completes — advance the clock by one cycle.
+            // Recurring never completes — advance the clock by one cycle. This
+            // counts from next_charge_at, which a held plan never moved off the
+            // date it owed: paying eleven days late does not move a billing day.
             $plan->next_charge_at = $this->advanceNextChargeAt($plan);
             $plan->save();
+
+            // A cycle we had stopped asking for has been settled — by a merchant
+            // pressing "charge now", or by the customer's new card going through.
+            // Lift the hold and put the subscription back to work.
+            $this->releaseUnpaidHold($plan);
 
             // A recurring plan whose FIRST payment was collected by this engine (no
             // hosted page, no external checkout — the account-offer path charges a
@@ -499,6 +497,8 @@ final class ChargeOrchestrator
             if ($plan->status === PlanStatus::AWAITING_PAYMENT) {
                 $plan->transitionTo(PlanStatus::ACTIVE, ['action' => 'payment_recovered']);
             }
+
+            $this->releaseUnpaidHold($plan);
 
             // Schedule the next slot + update parent.
             $plan->next_charge_at = $this->advanceNextChargeAt($plan);
@@ -686,10 +686,18 @@ final class ChargeOrchestrator
             ]);
             Ledger::transition($ledger, LedgerStatus::RETRY_SCHEDULED);
         } else {
-            // The days ran out. We stop asking for THIS cycle — and we do not
-            // collect it later either: the slot is closed, and the plan is
-            // pointed at its next ordinary renewal, in the future. The plan
-            // stays in dunning so the merchant can see who owes what.
+            // The days ran out. We stop ASKING — but we do not forgive the cycle
+            // and we do not roll the plan forward to its next ordinary renewal.
+            // Rolling forward silently skipped a month of revenue and told the
+            // customer nothing; the debt is real and next_charge_at stays on the
+            // date it was always owed, which is also what makes the eventual
+            // payment bill from the ORIGINAL cycle rather than from the day it
+            // finally landed.
+            //
+            // The plan is PAUSED instead, so the scheduler stops picking it up
+            // every five minutes (a past next_charge_at with no retry hold is
+            // otherwise due forever), and stamped so this pause is known to be
+            // ours rather than one the customer asked for.
             $payment->next_retry_at = null;
             $payment->save();
             $payment->transitionTo(PaymentStatus::FAILED);
@@ -700,7 +708,7 @@ final class ChargeOrchestrator
                 'raw_response_masked' => ResponseMasker::mask($result->raw),
             ]);
 
-            $this->skipToNextCycle($plan);
+            $this->holdForUnpaidCycle($plan);
         }
 
         Timeline::record(
@@ -1004,15 +1012,38 @@ final class ChargeOrchestrator
 
         $candidate = $plan->payments()->where('sequence', $sequence)->first();
 
-        $abandoned = $candidate !== null
-            && $candidate->status === PaymentStatus::FAILED
-            && $candidate->next_retry_at === null;
-
-        if (! $abandoned) {
+        if ($candidate === null) {
             return $sequence;
         }
 
-        // A fresh debt, after the one we stopped asking for.
+        // A plan HELD on an unpaid cycle is being asked for that SAME debt — by
+        // a merchant pressing "charge now", or by the customer's new card. The
+        // debt did not change when we stopped asking, so it keeps its slot:
+        // one debt, one slot, one key, however late it settles.
+        if ($plan->payment_failed_at !== null
+            && $candidate->status === PaymentStatus::FAILED
+            && $candidate->next_retry_at === null) {
+            return $sequence;
+        }
+
+        // Otherwise: is that slot CLOSED — does it belong to a debt already over?
+        //
+        //   - FAILED with no retry pending: a cycle abandoned under the older
+        //     policy, which rolled the plan on instead of holding it.
+        //   - SUCCEEDED: a cycle settled LATE, which lands past its own ordinal
+        //     when the plan was held. Reusing it would hand the NEW cycle a slot
+        //     already marked paid, the charge would be skipped as
+        //     `payment_already_succeeded`, and the subscription would quietly
+        //     stop billing forever. (A genuine repeat of one cycle never reaches
+        //     here — Ledger::hasSucceeded short-circuits it on the key.)
+        $closed = $candidate->status === PaymentStatus::SUCCEEDED
+            || ($candidate->status === PaymentStatus::FAILED && $candidate->next_retry_at === null);
+
+        if (! $closed) {
+            return $sequence;
+        }
+
+        // A fresh debt, after the one that slot belongs to.
         return (int) $plan->payments()->max('sequence') + 1;
     }
 
@@ -1188,54 +1219,85 @@ final class ChargeOrchestrator
     }
 
     /**
-     * The dunning window closed without the money arriving: give up on THIS
-     * cycle and wait for the next ordinary one.
+     * The dunning window closed without the money arriving: HOLD the plan on the
+     * cycle it still owes.
      *
-     * The new date is rolled forward whole cycles until it is in the FUTURE.
-     * Adding a single interval to a date already weeks past would leave the
-     * plan still due, and the scheduler — which runs every five minutes —
-     * would bill every missed cycle in a matter of minutes. A subscriber owes
-     * the cycle they are in, never the ones they were never asked for.
+     * This deliberately does NOT move next_charge_at. The date stays on the day
+     * the cycle was owed, which is what makes the eventual payment schedule the
+     * following cycle from the ORIGINAL date instead of from whenever the money
+     * happened to land — a customer who pays eleven days late does not thereby
+     * move their billing day.
+     *
+     * Leaving the date in the past is only safe because the plan leaves the
+     * chargeable statuses at the same moment: the scheduler's window is
+     * "chargeable AND due AND not inside a retry hold", so a past date with no
+     * hold and a live status would be re-dispatched every five minutes forever.
+     * PAUSED is what stops that, and payment_failed_at is what says the pause is
+     * ours — the merchant's home screen reads it, the subscription screen keeps
+     * its "Charge now" button because of it, and a successful charge clears it.
      */
-    private function skipToNextCycle(InstallmentPlan $plan): void
+    private function holdForUnpaidCycle(InstallmentPlan $plan): void
     {
-        if ($plan->plan_kind !== PlanKind::RECURRING) {
-            // An installments plan owes a FIXED total; a skipped attempt is not a
-            // forgiven slice. It waits for the merchant (or a card update), so
-            // the schedule stops here rather than inventing a new date.
-            $plan->next_charge_at = null;
-            $plan->save();
-
-            return;
-        }
-
-        $skipped = 0;
-        $next = $this->advanceNextChargeAt($plan);
-        $now = CarbonImmutable::now();
-
-        while ($next->lessThanOrEqualTo($now) && $skipped < self::MAX_CYCLE_ROLL_FORWARD) {
-            $next = $this->oneCycleAfter($plan, $next);
-            $skipped++;
-        }
-
-        $plan->next_charge_at = $next;
+        $plan->payment_failed_at = CarbonImmutable::now();
         $plan->save();
+
+        $current = $plan->status instanceof PlanStatus
+            ? $plan->status
+            : PlanStatus::from((string) $plan->status);
+
+        // awaiting_payment → paused is legal; a plan already paused or in a
+        // terminal state is left exactly as it is.
+        if (! in_array($current, [PlanStatus::PAUSED, PlanStatus::CANCELLED, PlanStatus::COMPLETED], true)) {
+            $plan->transitionTo(PlanStatus::PAUSED, ['action' => 'unpaid_cycle_held']);
+        }
 
         Timeline::record(
             kind: Timeline::KIND_CHARGE_FAILED,
             details: [
-                'action' => 'cycle_skipped',
-                'skipped_cycles' => $skipped + 1,
-                'next_charge_at' => $next->toIso8601String(),
+                'action' => 'held_for_unpaid_cycle',
+                // Said explicitly, because the whole point is that it did NOT move.
+                'cycle_still_due_at' => $plan->next_charge_at?->toIso8601String(),
             ],
             planId: $plan->getKey(),
             shopId: $plan->shop_id,
         );
     }
 
+    /**
+     * Money landed on a plan we had given up on: lift the hold and put the
+     * subscription back to work.
+     *
+     * Only OUR pause is lifted, and the stamp is what tells them apart. A plan
+     * the CUSTOMER asked us to pause stays paused even if a charge succeeds on
+     * it — resuming somebody's subscription because money moved would be us
+     * overriding a decision they already made.
+     */
+    private function releaseUnpaidHold(InstallmentPlan $plan): void
+    {
+        if ($plan->payment_failed_at === null) {
+            return;
+        }
+
+        $plan->payment_failed_at = null;
+        $plan->save();
+
+        $current = $plan->status instanceof PlanStatus
+            ? $plan->status
+            : PlanStatus::from((string) $plan->status);
+
+        if ($current === PlanStatus::PAUSED) {
+            $plan->transitionTo(PlanStatus::ACTIVE, ['action' => 'unpaid_cycle_settled']);
+        }
+    }
+
     /** Bring a plan to ACTIVE first if needed, then transition to the target. */
     private function ensureActiveThen(InstallmentPlan $plan, PlanStatus $target): void
     {
+        // Money arrived, so any hold collection put on this plan is over. Done
+        // first because it may itself return a held plan to ACTIVE, which is the
+        // rung the transitions below start from.
+        $this->releaseUnpaidHold($plan);
+
         $current = $plan->status instanceof PlanStatus ? $plan->status : PlanStatus::from((string) $plan->status);
 
         if ($current === $target) {

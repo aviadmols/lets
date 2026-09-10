@@ -21,11 +21,12 @@ use Illuminate\Support\Facades\Config;
 use Tests\TestCase;
 
 /**
- * WHAT HAPPENS TO THE CYCLE AFTER THE ONE WE GAVE UP ON.
+ * WHAT THE CYCLE AFTER A FAILED ONE IS OWED.
  *
- * DunningPolicyTest pins the window itself: ten daily asks on ONE slot under ONE
- * key, then we stop asking for THAT cycle and point the plan at its next
- * ordinary renewal. This file pins what the NEXT renewal is owed — which the
+ * DunningPolicyTest pins the window itself: a week of daily asks on ONE slot
+ * under ONE key, then the plan is HELD on the cycle it still owes. It reaches a
+ * next cycle only when that debt is settled — so that is how these tests get
+ * there. This file pins what the next cycle is owed once it arrives, which the
  * ladder above is silent about, and which is where a subscription quietly dies.
  *
  * A recurring slot's sequence is derived from the count of SUCCEEDED payments,
@@ -34,7 +35,7 @@ use Tests\TestCase;
  * month's frozen price. Two consequences, one root:
  *
  *   - the new cycle is born with its dunning window already spent, so it gets a
- *     single ask instead of the ten the merchant configured — for the rest of
+ *     single ask instead of the week the merchant configured — for the rest of
  *     the subscription's life;
  *   - the new cycle is charged at the price stamped on the old slot, so a price
  *     the merchant has since changed is never collected.
@@ -47,7 +48,7 @@ final class CycleAfterGivingUpTest extends TestCase
     use RefreshDatabase;
 
     // === CONSTANTS ===
-    private const ATTEMPTS = 10;
+    private const ATTEMPTS = 7;
 
     private const OLD_PRICE = 49.90;
 
@@ -120,7 +121,7 @@ final class CycleAfterGivingUpTest extends TestCase
         [$shop, $plan] = $this->plan();
         Tenant::set($shop);
 
-        $this->exhaustOneCycle($plan);
+        $this->exhaustAndSettleOneCycle($plan);
 
         // Next month arrives. The scheduler would dispatch on next_charge_at.
         $this->travelTo($plan->fresh()->next_charge_at);
@@ -147,7 +148,7 @@ final class CycleAfterGivingUpTest extends TestCase
         [$shop, $plan] = $this->plan();
         Tenant::set($shop);
 
-        $this->exhaustOneCycle($plan);
+        $this->exhaustAndSettleOneCycle($plan);
 
         // The merchant raises the subscription price between cycles.
         $plan->fresh()->forceFill(['installment_amount' => self::NEW_PRICE])->save();
@@ -171,7 +172,7 @@ final class CycleAfterGivingUpTest extends TestCase
         [$shop, $plan] = $this->plan();
         Tenant::set($shop);
 
-        $this->exhaustOneCycle($plan);
+        $this->exhaustAndSettleOneCycle($plan);
 
         $this->travelTo($plan->fresh()->next_charge_at);
         app(ChargeOrchestrator::class)->charge($plan->id, PaymentType::RECURRING);
@@ -184,8 +185,15 @@ final class CycleAfterGivingUpTest extends TestCase
         );
     }
 
-    /** Run one cycle's ten daily asks into the ground. */
-    private function exhaustOneCycle(InstallmentPlan $plan): void
+    /**
+     * Run one cycle's week of asks into the ground, then settle it.
+     *
+     * The settle is not decoration: a plan whose week runs out is HELD on the
+     * date it owes and bills nobody until that debt is paid. Paying it is the
+     * only thing that moves the plan on to a next cycle, which is what every
+     * test here is about.
+     */
+    private function exhaustAndSettleOneCycle(InstallmentPlan $plan): void
     {
         $orchestrator = app(ChargeOrchestrator::class);
 
@@ -195,6 +203,23 @@ final class CycleAfterGivingUpTest extends TestCase
         }
 
         $this->assertSame(self::ATTEMPTS, $this->callCount, 'Precondition: the window ran out.');
+        $this->assertSame(
+            PlanStatus::PAUSED,
+            $plan->fresh()->status,
+            'Precondition: the plan is held on the cycle it owes.',
+        );
+
+        // Settling the debt is the ONLY thing that moves this plan to a next
+        // cycle — which is what every test in this file then measures.
+        $this->succeed = true;
+        $orchestrator->charge($plan->id, PaymentType::RECURRING);
+
+        $this->assertNull($plan->fresh()->payment_failed_at, 'Precondition: the hold was lifted.');
+
+        // Back to a clean slate so each test measures only the NEXT cycle.
+        $this->succeed = false;
+        $this->callCount = 0;
+        $this->amountsCharged = [];
     }
 
     /** @return array{0: Shop, 1: InstallmentPlan} */

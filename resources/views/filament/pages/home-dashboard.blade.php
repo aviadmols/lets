@@ -97,6 +97,43 @@
             </table>
         </div>
 
+        {{-- Subscribers we could not collect from. Held on the cycle they still owe, so
+             they bill nobody until somebody acts — the only rows on this screen that are
+             a job. Hidden entirely when there are none, rather than showing an empty
+             table that trains the eye to skip it. --}}
+        @php $unpaid = $this->unpaidSubscriptions(); @endphp
+        @if($unpaid !== [])
+            <div class="rc-section">
+                <div class="rc-section__title">
+                    {{ __('dashboard.unpaid.title') }}
+                    <span class="rc-badge rc-badge--danger">{{ $this->unpaidCount() }}</span>
+                </div>
+                <p class="rc-muted">{{ __('dashboard.unpaid.help') }}</p>
+                <table class="rc-table">
+                    <thead>
+                        <tr>
+                            <th>{{ __('dashboard.unpaid.customer') }}</th>
+                            <th>{{ __('dashboard.unpaid.amount') }}</th>
+                            <th>{{ __('dashboard.unpaid.due') }}</th>
+                            <th>{{ __('dashboard.unpaid.since') }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($unpaid as $row)
+                            <tr>
+                                <td class="rc-strong">
+                                    <a class="rc-link" href="{{ $row['url'] }}" wire:navigate>{{ $row['customer'] }}</a>
+                                </td>
+                                <td class="rc-ltr">{{ $row['amount'] }}</td>
+                                <td class="rc-ltr">{{ $row['due'] }}</td>
+                                <td class="rc-muted">{{ $row['since'] }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+
         {{-- Upcoming orders — the next scheduled charges (subscriptions + installments), soonest first.
              Rows are precomputed by upcomingCharges(); each links to the subscription. --}}
         <div class="rc-section">

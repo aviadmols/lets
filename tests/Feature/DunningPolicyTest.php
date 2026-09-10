@@ -24,18 +24,23 @@ use Tests\TestCase;
 /**
  * THE DUNNING POLICY, pinned.
  *
- * A cycle that does not go through is asked for once a day for ten days, on ONE
- * slot under ONE idempotency key. Then we stop asking for that cycle: it is
- * skipped — never collected retroactively — and the plan waits for its next
- * ordinary renewal in `awaiting_payment`, which is a LIVE subscription with an
- * unpaid cycle, not a dead one.
+ * A cycle that does not go through is asked for once a day for a week, on ONE
+ * slot under ONE idempotency key. Then we stop ASKING — but we do not forgive
+ * the cycle and we do not roll the plan on to next month. The plan is HELD:
+ * paused, stamped `payment_failed_at`, still sitting on the date it owes.
+ *
+ * That last part is the whole design. Rolling forward, as this once did, wrote
+ * off a month of revenue in silence. Holding the date also keeps the billing
+ * DAY stable — when the money finally lands, the next cycle is counted from the
+ * original date, not from whenever the customer got round to paying.
  */
 final class DunningPolicyTest extends TestCase
 {
     use RefreshDatabase;
 
     // === CONSTANTS ===
-    private const ATTEMPTS = 10;
+    /** One attempt a day for a week. */
+    private const ATTEMPTS = 7;
 
     public int $callCount = 0;
 
@@ -123,7 +128,31 @@ final class DunningPolicyTest extends TestCase
         );
     }
 
-    public function test_ten_daily_attempts_reuse_one_slot_and_one_ledger_row(): void
+    public function test_a_weeks_daily_attempts_reuse_one_slot_and_one_ledger_row(): void
+    {
+        [$shop, $plan] = $this->plan();
+        Tenant::set($shop);
+
+        $orchestrator = app(ChargeOrchestrator::class);
+
+        for ($day = 0; $day < self::ATTEMPTS; $day++) {
+            $orchestrator->charge($plan->id, PaymentType::RECURRING);
+            $this->travel(24)->hours();
+        }
+
+        $this->assertSame(self::ATTEMPTS, $this->callCount, 'Seven asks, one per day.');
+
+        // ONE debt: one slot, one ledger row, one idempotency key throughout.
+        $this->assertSame(1, InstallmentPayment::where('plan_id', $plan->id)->count());
+        $this->assertSame(1, PaymentLedger::where('shop_id', $shop->id)->count());
+
+        // And the scheduler asks no eighth time. (A merchant pressing "charge
+        // now" still can — that is a person deciding, not the ladder running.)
+        $this->artisan('payplus:dispatch-due')->assertSuccessful();
+        $this->assertSame(self::ATTEMPTS, $this->callCount, 'We stopped asking for this cycle.');
+    }
+
+    public function test_the_week_ends_by_holding_the_plan_on_the_cycle_it_still_owes(): void
     {
         [$shop, $plan] = $this->plan();
         Tenant::set($shop);
@@ -136,25 +165,23 @@ final class DunningPolicyTest extends TestCase
             $this->travel(24)->hours();
         }
 
-        $this->assertSame(self::ATTEMPTS, $this->callCount, 'Ten asks, one per day.');
+        $plan->refresh();
 
-        // ONE debt: one slot, one ledger row, one idempotency key throughout.
-        $this->assertSame(1, InstallmentPayment::where('plan_id', $plan->id)->count());
-        $this->assertSame(1, PaymentLedger::where('shop_id', $shop->id)->count());
-
-        // And the scheduler asks no eleventh time. (A merchant pressing "charge
-        // now" still can — that is a person deciding, not the ladder running.)
-        $this->artisan('payplus:dispatch-due')->assertSuccessful();
-        $this->assertSame(self::ATTEMPTS, $this->callCount, 'We stopped asking for this cycle.');
-
-        $this->assertNotSame(
+        // The date does NOT move. Rolling it to next month wrote off the cycle
+        // in silence; the debt is real and stays on the day it was owed.
+        $this->assertSame(
             $cycle->toDateString(),
-            $plan->fresh()->next_charge_at->toDateString(),
-            'The cycle was skipped, not retried forever.',
+            $plan->next_charge_at->toDateString(),
+            'The owed cycle keeps its date — it is held, not skipped.',
         );
+
+        // Leaving a past date is only safe because the plan left the chargeable
+        // statuses at the same moment.
+        $this->assertSame(PlanStatus::PAUSED, $plan->status, 'Held, so the scheduler stops picking it up.');
+        $this->assertNotNull($plan->payment_failed_at, 'Stamped, so this pause is known to be OURS.');
     }
 
-    public function test_the_skipped_cycle_lands_in_the_future_and_is_never_back_billed(): void
+    public function test_a_held_plan_is_never_picked_up_again_by_the_scheduler(): void
     {
         [$shop, $plan] = $this->plan();
         Tenant::set($shop);
@@ -165,39 +192,69 @@ final class DunningPolicyTest extends TestCase
             $orchestrator->charge($plan->id, PaymentType::RECURRING);
             $this->travel(24)->hours();
         }
+
+        $this->callCount = 0;
+
+        // Its date is in the PAST and it carries no retry hold. Were it still
+        // chargeable, every five-minute tick would ask again, forever.
+        $this->assertTrue($plan->fresh()->next_charge_at->isPast());
+
+        $this->artisan('payplus:dispatch-due')->assertSuccessful();
+        $this->travel(48)->hours();
+        $this->artisan('payplus:dispatch-due')->assertSuccessful();
+
+        $this->assertSame(0, $this->callCount, 'A held plan is asked for exactly never.');
+    }
+
+    public function test_settling_a_held_plan_bills_the_next_cycle_from_the_original_date(): void
+    {
+        [$shop, $plan] = $this->plan();
+        Tenant::set($shop);
+
+        $cycle = $plan->next_charge_at->copy();
+        $orchestrator = app(ChargeOrchestrator::class);
+
+        for ($day = 0; $day < self::ATTEMPTS; $day++) {
+            $orchestrator->charge($plan->id, PaymentType::RECURRING);
+            $this->travel(24)->hours();
+        }
+
+        $this->assertSame(PlanStatus::PAUSED, $plan->fresh()->status);
+
+        // Eleven days after the cycle was due, somebody settles it by hand.
+        $this->travel(4)->days();
+        $this->succeed = true;
+        $orchestrator->charge($plan->id, PaymentType::RECURRING);
 
         $plan->refresh();
 
-        // The whole point: the next date is AHEAD of us. A date left in the past
-        // would be billed again on the very next scheduler tick — and every
-        // missed cycle with it, minutes apart.
-        $this->assertTrue(
-            $plan->next_charge_at->isFuture(),
-            'The next charge is scheduled forward, never into the past.',
+        $this->assertSame(PlanStatus::ACTIVE, $plan->status, 'Paid, so the hold is lifted.');
+        $this->assertNull($plan->payment_failed_at, 'And the stamp is cleared.');
+
+        // The customer does not move their billing day by paying late.
+        $this->assertSame(
+            $cycle->copy()->addMonth()->toDateString(),
+            $plan->next_charge_at->toDateString(),
+            'The next cycle counts from the ORIGINAL date, not from the day the money landed.',
         );
-        $this->assertSame(PlanStatus::AWAITING_PAYMENT, $plan->status, 'Still a subscriber, still unpaid.');
     }
 
-    public function test_a_plan_weeks_overdue_is_rolled_forward_whole_cycles_not_billed_for_each(): void
+    public function test_a_pause_the_customer_asked_for_is_never_lifted_by_a_payment(): void
     {
         [$shop, $plan] = $this->plan();
         Tenant::set($shop);
 
-        // A worker outage: the plan comes back three months late.
-        $plan->forceFill(['next_charge_at' => now()->subMonths(3)])->save();
+        // The customer paused it themselves: no payment_failed_at stamp.
+        $plan->transitionTo(PlanStatus::PAUSED);
+        $this->assertNull($plan->fresh()->payment_failed_at);
 
-        $orchestrator = app(ChargeOrchestrator::class);
+        $this->succeed = true;
+        app(ChargeOrchestrator::class)->charge($plan->id, PaymentType::RECURRING);
 
-        for ($day = 0; $day < self::ATTEMPTS; $day++) {
-            $orchestrator->charge($plan->id, PaymentType::RECURRING);
-            $this->travel(24)->hours();
-        }
-
-        $this->assertTrue($plan->fresh()->next_charge_at->isFuture());
         $this->assertSame(
-            self::ATTEMPTS,
-            $this->callCount,
-            'Three missed months are three months nobody is charged for.',
+            PlanStatus::PAUSED,
+            $plan->fresh()->status,
+            'Resuming somebody\'s subscription because money moved would be us overriding their decision.',
         );
     }
 

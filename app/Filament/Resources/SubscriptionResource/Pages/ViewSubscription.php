@@ -1003,9 +1003,19 @@ class ViewSubscription extends Page
             ? $this->record->status
             : PlanStatus::tryFrom((string) $this->record->status);
 
-        return $status !== null
-            && in_array($status->value, PlanStatus::chargeable(), true)
-            && $this->record->activePaymentMethod() !== null;
+        if ($status === null || $this->record->activePaymentMethod() === null) {
+            return false;
+        }
+
+        // A plan WE paused for an unpaid cycle is not chargeable by the
+        // scheduler — that is the point of the pause — but it is exactly the
+        // plan a merchant comes here to settle by hand, so the button stays.
+        // A pause the customer asked for gets no such button.
+        if ($status === PlanStatus::PAUSED) {
+            return $this->record->payment_failed_at !== null;
+        }
+
+        return in_array($status->value, PlanStatus::chargeable(), true);
     }
 
     /** The one stuck charge on this plan waiting for a person, if there is one. */
