@@ -168,6 +168,26 @@ return [
             'reason' => 'Reason (optional)',
             'success' => 'Subscription cancelled.',
         ],
+        /*
+        | A member migrated from another system charges against the token that
+        | system exported. When PayPlus does not recognise it, the card is
+        | usually still there under a uid we were never given — so we ask PayPlus
+        | rather than sending the customer back to a payment page.
+        */
+        'recover_token' => [
+            'label' => 'Find saved card',
+            'heading' => 'Look up this member\'s card at PayPlus?',
+            'body' => 'This subscription was migrated and its saved card is not being recognised. PayPlus will be asked what card it holds for this member, and if it finds one it will be saved here so you can charge it. Nothing is charged by this button.',
+            'submit' => 'Ask PayPlus',
+            'recovered' => 'Card found and saved. You can charge this subscription now.',
+            'already_valid' => 'The saved card is valid at PayPlus, so the charge is failing for another reason — most likely the card was saved on a different PayPlus terminal.',
+            'not_found' => 'PayPlus holds no card we can safely attach to this member.',
+            'ambiguous' => 'PayPlus knows this customer but holds more than one card and we cannot tell which is theirs. Ask them to update their card instead.',
+            'no_last_four' => 'We hold no last-4 digits for this member, so a card at PayPlus cannot be matched to them safely.',
+            'not_connected' => 'This store has no PayPlus connection configured.',
+            'recurring_live' => 'Warning: PayPlus is still billing this member on its own schedule. Cancel it there before charging, or they will be billed twice.',
+        ],
+
         'charge_now' => [
             'label' => 'Charge now',
             'heading' => 'Charge this subscription now?',

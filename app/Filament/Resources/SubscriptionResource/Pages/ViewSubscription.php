@@ -7,6 +7,7 @@ use App\Domain\Billing\StuckChargeResolver;
 use App\Domain\Installments\CardUpdateLinks;
 use App\Domain\Installments\CardUpdateLinkSender;
 use App\Domain\Installments\CardUpdateService;
+use App\Domain\Installments\ImportedTokenRecovery;
 use App\Domain\Installments\Models\CardUpdateLink;
 use App\Domain\Lifecycle\ChargeNowService;
 use App\Domain\Lifecycle\SubscriptionEditService;
@@ -193,6 +194,20 @@ class ViewSubscription extends Page
                 ->action(fn (array $data) => $this->applyLifecycle('cancel', $data['reason'] ?? null)),
 
             $this->sendCardUpdateLinkAction(),
+
+            // A migrated member whose exported token PayPlus does not recognise.
+            // Shown only when that is actually this plan's situation, so it never
+            // appears beside a card that is working.
+            Actions\Action::make('recoverToken')
+                ->label(__('subscriptions.action.recover_token.label'))
+                ->icon('heroicon-m-magnifying-glass')
+                ->color('warning')
+                ->visible(fn (): bool => $this->canRecoverToken())
+                ->requiresConfirmation()
+                ->modalHeading(__('subscriptions.action.recover_token.heading'))
+                ->modalDescription(__('subscriptions.action.recover_token.body'))
+                ->modalSubmitActionLabel(__('subscriptions.action.recover_token.submit'))
+                ->action(fn () => $this->recoverToken()),
 
             Actions\Action::make('chargeNow')
                 ->label(__('subscriptions.action.charge_now.label'))
@@ -921,6 +936,67 @@ class ViewSubscription extends Page
      * attempt. The orchestrator is idempotent on the cycle's key, so pressing it
      * beside a scheduled attempt collapses to one charge rather than two.
      */
+    /**
+     * Is this a migrated member whose token PayPlus does not recognise?
+     *
+     * Two marks together, so the button never offers itself beside a card that
+     * works: the payment method came from an import (a token reference but no
+     * PayPlus customer uid — a vaulted card always has one), AND a charge has
+     * actually come back saying the token does not exist.
+     */
+    private function canRecoverToken(): bool
+    {
+        $method = $this->record->paymentMethod;
+
+        if ($method === null || $method->payplus_customer_uid !== null) {
+            return false;
+        }
+
+        return PaymentLedger::query()
+            ->where('plan_id', $this->record->getKey())
+            ->where('failure_message', 'like', '%token-not-exist%')
+            ->exists();
+    }
+
+    /** Ask PayPlus for this member's card and, if it answers, save it. Charges nothing. */
+    protected function recoverToken(): void
+    {
+        $outcome = app(ImportedTokenRecovery::class)->recover($this->record);
+        $this->record->refresh();
+
+        if ($outcome['applied'] ?? false) {
+            Notification::make()
+                ->title(__('subscriptions.action.recover_token.recovered'))
+                ->success()
+                ->persistent()
+                ->send();
+
+            // PayPlus still billing this member on its own is the one thing that
+            // turns a fix into a double charge, so it is said loudly and stays.
+            if ($outcome['recurring_live'] ?? false) {
+                Notification::make()
+                    ->title(__('subscriptions.action.recover_token.recurring_live'))
+                    ->warning()
+                    ->persistent()
+                    ->send();
+            }
+
+            return;
+        }
+
+        Notification::make()
+            ->title(match (true) {
+                $outcome['route'] === ImportedTokenRecovery::ROUTE_ALREADY_VALID => __('subscriptions.action.recover_token.already_valid'),
+                $outcome['detail'] === 'payplus_not_connected' => __('subscriptions.action.recover_token.not_connected'),
+                $outcome['detail'] === 'no_last_four_to_match_on' => __('subscriptions.action.recover_token.no_last_four'),
+                $outcome['detail'] === 'no_card_matched' => __('subscriptions.action.recover_token.ambiguous'),
+                default => __('subscriptions.action.recover_token.not_found'),
+            })
+            ->warning()
+            ->persistent()
+            ->send();
+    }
+
     private function canChargeNow(): bool
     {
         $status = $this->record->status instanceof PlanStatus
