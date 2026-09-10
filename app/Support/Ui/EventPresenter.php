@@ -93,6 +93,9 @@ final class EventPresenter
         // SUCCESS: a failing card replaced by the customer themselves is the
         // best outcome a dunning cycle has.
         'card_updated' => ['success', 'timeline.kind.card_updated'],
+        // A migrated member's token was found at PayPlus and swapped in — the
+        // card they are billed on changed, which is worth a line of its own.
+        'payment_method_token_recovered' => ['success', 'timeline.kind.payment_method_token_recovered'],
         'card_update_started' => ['info', 'timeline.kind.card_update_started'],
         // The success twin of account_action_failed: the shopper asked, and it
         // happened. The summary names the verb (details.action → timeline.action.*).

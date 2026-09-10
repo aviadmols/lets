@@ -14,12 +14,14 @@ use App\Modules\PayPlusShopifyInstallments\Contracts\PayPlusGatewayInterface;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Modules\PayPlusShopifyInstallments\Jobs\ChargeJob;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\GatewayResult;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
 use App\Services\Sms\SmsSender;
 use App\Services\Sms\SmsSenderFactory;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -229,6 +231,72 @@ final class CardUpdateLinkTest extends TestCase
 
         $this->assertNotNull($link->fresh()->completed_at);
         $this->assertSame('completed', $link->fresh()->state());
+    }
+
+    public function test_a_new_card_on_a_held_plan_is_charged_for_the_cycle_it_owes(): void
+    {
+        $shop = $this->shop();
+        $this->fakeGateway();
+        Bus::fake([ChargeJob::class]);
+
+        $link = Tenant::run($shop, function () use ($shop): CardUpdateLink {
+            $plan = $this->plan($shop);
+            $link = app(CardUpdateLinks::class)->mint($shop, $plan)['link'];
+
+            // Collection gave up on this plan: held on the cycle it owes.
+            $plan->transitionTo(PlanStatus::PAUSED);
+            $plan->forceFill(['payment_failed_at' => now()->subDays(3)])->save();
+
+            return $link;
+        });
+
+        $plan = Tenant::run($shop, static fn () => InstallmentPlan::query()->findOrFail($link->plan_id));
+
+        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), [
+            'transaction' => [
+                'status_code' => '000',
+                'more_info' => CardUpdateService::moreInfoFor($plan, $link),
+                'token_uid' => 'tok-new-card',
+                'four_digits' => '4242',
+                'brand_name' => 'Visa',
+            ],
+        ])->assertOk();
+
+        // The new card is asked for the owed cycle at once — on the worker, not
+        // inside the callback — rather than the plan staying paused until a
+        // person happens to look.
+        Bus::assertDispatched(
+            ChargeJob::class,
+            static fn (ChargeJob $job): bool => $job->shopId === (int) $shop->getKey()
+                && $job->planId === (int) $plan->getKey(),
+        );
+    }
+
+    public function test_a_new_card_on_a_healthy_plan_charges_nothing_early(): void
+    {
+        $shop = $this->shop();
+        $this->fakeGateway();
+        Bus::fake([ChargeJob::class]);
+
+        $link = Tenant::run($shop, function () use ($shop): CardUpdateLink {
+            return app(CardUpdateLinks::class)->mint($shop, $this->plan($shop))['link'];
+        });
+
+        $plan = Tenant::run($shop, static fn () => InstallmentPlan::query()->findOrFail($link->plan_id));
+
+        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), [
+            'transaction' => [
+                'status_code' => '000',
+                'more_info' => CardUpdateService::moreInfoFor($plan, $link),
+                'token_uid' => 'tok-new-card',
+                'four_digits' => '4242',
+                'brand_name' => 'Visa',
+            ],
+        ])->assertOk();
+
+        // Nothing is owed, so nothing is asked for: the next cycle bills on its
+        // own date, exactly as it would have.
+        Bus::assertNotDispatched(ChargeJob::class);
     }
 
     public function test_a_completed_link_cannot_be_used_again(): void

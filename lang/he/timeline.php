@@ -42,6 +42,7 @@ return [
         'shopify_subscription_products_edited' => 'מוצרי המנוי עודכנו',
         'shopify_subscription_card_update_email' => 'נשלח ללקוח מייל לעדכון כרטיס',
         'card_updated' => 'הלקוח עדכן את הכרטיס',
+        'payment_method_token_recovered' => 'נמצא כרטיס שמור ב-PayPlus ושויך למנוי',
         'card_update_started' => 'הלקוח פתח את דף עדכון הכרטיס',
         'account_action' => 'הלקוח ביצע פעולה באזור האישי',
         'customer_address_updated' => 'הלקוח עדכן את הכתובת שלו בחנות',

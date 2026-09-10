@@ -9,11 +9,14 @@ use App\Models\InstallmentPlan;
 use App\Models\MerchantLoyaltySettings;
 use App\Models\MerchantPortalAppearance;
 use App\Models\Shop;
+use App\Modules\PayPlusShopifyInstallments\Enums\PaymentType;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Modules\PayPlusShopifyInstallments\Jobs\ChargeJob;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Services\PayPlus\PayPlusPageOptions;
 use App\Services\WooCommerce\Orders\WooDepositTokenResolver;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -202,7 +205,35 @@ final class CardUpdateService
             shopId: (int) $shop->getKey(),
         );
 
+        // A plan HELD on an unpaid cycle was waiting for exactly this. Ask for
+        // the owed cycle now, with the new card, instead of leaving it paused
+        // until somebody notices. Queued rather than inline: this runs inside a
+        // gateway callback, and a charge belongs on the worker with the ledger,
+        // the row lock and the retry ladder. The job is unique per plan, so a
+        // callback delivered twice cannot ask twice.
+        foreach ($this->heldPlansOn($method) as $held) {
+            ChargeJob::dispatch(
+                (int) $shop->getKey(),
+                (int) $held->getKey(),
+                ($held->isRecurring() ? PaymentType::RECURRING : PaymentType::INSTALLMENT)->value,
+            );
+        }
+
         return $method;
+    }
+
+    /**
+     * Every plan now billing on this card that collection had given up on —
+     * the one the customer updated, and any sibling repoint() carried along.
+     *
+     * @return Collection<int, InstallmentPlan>
+     */
+    private function heldPlansOn(InstallmentPaymentMethod $method): Collection
+    {
+        return InstallmentPlan::query()
+            ->where('payment_method_id', $method->getKey())
+            ->whereNotNull('payment_failed_at')
+            ->get();
     }
 
     /**

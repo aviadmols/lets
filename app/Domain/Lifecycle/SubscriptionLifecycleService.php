@@ -46,7 +46,14 @@ final class SubscriptionLifecycleService
         return DB::transaction(function () use ($plan, $reason): InstallmentPlan {
             $fresh = InstallmentPlan::query()->lockForUpdate()->findOrFail($plan->getKey());
 
-            if ($fresh->next_charge_at !== null && $fresh->next_charge_at->isPast()) {
+            // A plan WE paused for an unpaid cycle keeps the date it owes. Snapping
+            // it to today would throw away the one thing the hold exists to keep —
+            // the billing day — and turn "resume" into "forgive last month". The
+            // scheduler picks the plan up on that past date and asks once more;
+            // the stamp stays until the money actually lands.
+            $heldByUs = $fresh->payment_failed_at !== null;
+
+            if (! $heldByUs && $fresh->next_charge_at !== null && $fresh->next_charge_at->isPast()) {
                 $fresh->forceFill(['next_charge_at' => now()->startOfDay()])->save();
             }
 

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Domain\Lifecycle\SubscriptionLifecycleService;
 use App\Models\CustomerConsent;
 use App\Models\InstallmentPayment;
 use App\Models\InstallmentPaymentMethod;
@@ -237,6 +238,41 @@ final class DunningPolicyTest extends TestCase
             $plan->next_charge_at->toDateString(),
             'The next cycle counts from the ORIGINAL date, not from the day the money landed.',
         );
+    }
+
+    public function test_resuming_a_held_plan_by_hand_keeps_the_cycle_it_owes(): void
+    {
+        [$shop, $plan] = $this->plan();
+        Tenant::set($shop);
+
+        $cycle = $plan->next_charge_at->copy();
+        $orchestrator = app(ChargeOrchestrator::class);
+
+        for ($day = 0; $day < self::ATTEMPTS; $day++) {
+            $orchestrator->charge($plan->id, PaymentType::RECURRING);
+            $this->travel(24)->hours();
+        }
+
+        $this->assertSame(PlanStatus::PAUSED, $plan->fresh()->status);
+
+        // A merchant presses "Resume" instead of "Charge now". Resume used to snap
+        // an elapsed date to today — which, on a held plan, silently forgave the
+        // owed cycle and moved the billing day.
+        app(SubscriptionLifecycleService::class)->resume($plan->fresh());
+
+        $plan->refresh();
+        $this->assertSame(PlanStatus::ACTIVE, $plan->status, 'Resumed.');
+        $this->assertSame(
+            $cycle->toDateString(),
+            $plan->next_charge_at->toDateString(),
+            'The owed cycle keeps its date through a manual resume.',
+        );
+        $this->assertNotNull($plan->payment_failed_at, 'Still unpaid, so still stamped and still on the home screen.');
+
+        // And the scheduler now asks for that cycle once more, on its own.
+        $this->callCount = 0;
+        $this->artisan('payplus:dispatch-due')->assertSuccessful();
+        $this->assertSame(1, $this->callCount, 'Resume means "try again", not "forget it".');
     }
 
     public function test_a_pause_the_customer_asked_for_is_never_lifted_by_a_payment(): void

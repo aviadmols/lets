@@ -42,6 +42,7 @@ return [
         'shopify_subscription_products_edited' => 'Subscription products changed',
         'shopify_subscription_card_update_email' => 'Card-update email sent to the shopper',
         'card_updated' => 'The customer updated their card',
+        'payment_method_token_recovered' => 'Saved card found at PayPlus and attached',
         'card_update_started' => 'The customer opened the card-update page',
         'account_action' => 'The customer used a self-service action',
         'customer_address_updated' => 'The customer updated their address in the store',
