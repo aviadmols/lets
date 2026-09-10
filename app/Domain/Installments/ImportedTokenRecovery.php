@@ -45,12 +45,22 @@ final class ImportedTokenRecovery
     public const KIND_RECOVERED = 'payment_method_token_recovered';
 
     /**
+     * The routes probe() may try, in order. All three by default — but a bulk
+     * run across a whole book pays one HTTP round-trip per route per member, and
+     * a merchant whose old system was never PayPlus-native gets nothing from
+     * ROUTE_RECURRING except a thousand wasted calls. So a caller that has
+     * already learned which routes answer may narrow this.
+     */
+    public const ALL_ROUTES = [self::ROUTE_ALREADY_VALID, self::ROUTE_RECURRING, self::ROUTE_EMAIL];
+
+    /**
      * Ask PayPlus what it holds for this plan. Reads only — nothing is written
      * here, and no endpoint used can move money.
      *
+     * @param  list<string>  $routes  which routes to try, from ALL_ROUTES
      * @return array{route:string, token:?string, customer_uid:?string, recurring_live:bool, detail:string}
      */
-    public function probe(InstallmentPlan $plan, ?string $terminalOverride = null): array
+    public function probe(InstallmentPlan $plan, ?string $terminalOverride = null, array $routes = self::ALL_ROUTES): array
     {
         $shop = $plan->shop ?: Shop::find((int) $plan->shop_id);
 
@@ -75,13 +85,17 @@ final class ImportedTokenRecovery
         // the token would fix nothing while destroying a good one.
         $existing = (string) ($method->payplus_card_token_uid ?? '');
 
-        if ($existing !== '' && $probe->checkToken($existing) !== null) {
+        if (in_array(self::ROUTE_ALREADY_VALID, $routes, true)
+            && $existing !== ''
+            && $probe->checkToken($existing) !== null) {
             return $this->outcome(self::ROUTE_ALREADY_VALID, detail: 'token_exists_at_payplus');
         }
 
         // B — the old system's recurring id, which returns the LIVE token, the
         // customer uid, and whether PayPlus is still billing it on its own.
-        $recurringId = (string) ((($plan->meta ?? [])['import']['recurring_payment_id']) ?? '');
+        $recurringId = in_array(self::ROUTE_RECURRING, $routes, true)
+            ? (string) ((($plan->meta ?? [])['import']['recurring_payment_id']) ?? '')
+            : '';
 
         if ($recurringId !== '') {
             $recurring = $probe->viewRecurring($recurringId);
@@ -99,7 +113,9 @@ final class ImportedTokenRecovery
         }
 
         // C — the customer at PayPlus, and the card of theirs that matches ours.
-        $email = trim((string) $plan->customer_email);
+        $email = in_array(self::ROUTE_EMAIL, $routes, true)
+            ? trim((string) $plan->customer_email)
+            : '';
 
         if ($email !== '') {
             $customer = $probe->customerByEmail($email);
