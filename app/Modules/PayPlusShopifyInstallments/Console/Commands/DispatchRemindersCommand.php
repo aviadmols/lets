@@ -47,6 +47,10 @@ final class DispatchRemindersCommand extends Command
         // plan against ITS shop's exact offset inside the loop.
         $maxOffsetHours = (int) (MerchantMailSettings::query()
             ->where('reminder_enabled', true)
+            // A shop with ALL email switched off contributes no window — queueing
+            // reminders whose only purpose is to stop is pure cost, the same
+            // reasoning DispatchDuePlansCommand applies to a paused shop.
+            ->where('emails_enabled', true)
             ->max('reminder_offset_hours')
             ?? MerchantMailSettings::DEFAULT_REMINDER_OFFSET_HOURS);
 
@@ -90,7 +94,8 @@ final class DispatchRemindersCommand extends Command
         return (bool) Tenant::run($shop, function () use ($plan, $now): bool {
             $settings = MerchantMailSettings::current();
 
-            if (! $settings->reminder_enabled) {
+            // Both taps, in one question. @see MerchantMailSettings::sendsTemplate
+            if (! $settings->sendsTemplate(MerchantMailSettings::TEMPLATE_RECURRING_PAYMENT_REMINDER)) {
                 return false;
             }
 

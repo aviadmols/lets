@@ -66,6 +66,14 @@ class EmailCampaignRecipient extends Model
 
     public const REASON_SHOP_NOT_LIVE = 'shop_not_live';
 
+    /**
+     * The shop has ALL email switched off (Settings → Email). Its own reason, not
+     * folded into shop_not_live: the shop is perfectly live and selling — the
+     * merchant simply closed the mail tap, and the merchant's own list has to say
+     * which of the two it was.
+     */
+    public const REASON_EMAILS_OFF = 'emails_off';
+
     /** status is guarded: it moves only through the helpers below. */
     protected $guarded = ['id', 'shop_id', 'status'];
 

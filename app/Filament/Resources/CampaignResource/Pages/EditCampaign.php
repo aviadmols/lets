@@ -9,10 +9,12 @@ use App\Domain\Campaigns\Email\EmailCampaignAudience;
 use App\Domain\Campaigns\Email\EmailCampaignSender;
 use App\Domain\Campaigns\Email\Jobs\StartCampaignJob;
 use App\Domain\Campaigns\Email\Models\EmailCampaign;
+use App\Domain\Mail\MailPolicy;
 use App\Filament\Pages\NewsletterStudio;
 use App\Filament\Resources\CampaignResource;
 use App\Mail\CampaignTestMail;
 use App\Mail\Support\CampaignMailer;
+use App\Models\MerchantMailSettings;
 use App\Models\Shop;
 use App\Support\Tenant;
 use Filament\Actions\Action;
@@ -299,6 +301,21 @@ class EditCampaign extends EditRecord
             Notification::make()
                 ->warning()
                 ->title(__(CampaignResource::LANG.'.form.cannot_send'))
+                ->send();
+
+            return;
+        }
+
+        // The master tap (Settings → Email). Told HERE, at the click, because the
+        // send itself runs on a worker where nobody is listening — and a campaign
+        // that silently enrols three thousand people and mails none of them is
+        // the worst possible way to discover the switch is off.
+        if (! app(MailPolicy::class)->allows($shop, MerchantMailSettings::CHANNEL_CAMPAIGN)) {
+            Notification::make()
+                ->warning()
+                ->title(__('mail.switches.blocked_title'))
+                ->body(__('mail.switches.blocked_campaign'))
+                ->persistent()
                 ->send();
 
             return;

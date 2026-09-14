@@ -2,6 +2,7 @@
 
 namespace App\Listeners;
 
+use App\Domain\Mail\MailPolicy;
 use App\Events\ChargeFailed;
 use App\Mail\ChargeFailedMail;
 use App\Mail\Support\CampaignMailer;
@@ -64,9 +65,21 @@ final class SendChargeFailedNotification
                 return;
             }
 
-            try {
-                $shop = Tenant::current();
+            $shop = Tenant::current();
 
+            // The merchant's own switch (Settings → Email → which emails go out).
+            // Checked BEFORE the send-once guard is claimed: a message the shop
+            // does not want must not burn the guard that would let it be sent if
+            // they switch it back on.
+            if (! app(MailPolicy::class)->allowsAndLogs(
+                $shop,
+                MerchantMailSettings::TEMPLATE_CHARGE_FAILED,
+                ['plan_id' => $plan->getKey()],
+            )) {
+                return;
+            }
+
+            try {
                 // Per-shop mailer built at RUN time on this worker — see
                 // SendChargeSucceededNotification for why the configurator +
                 // facade pattern leaks the first shop's relay across tenants

@@ -8,6 +8,7 @@ use App\Domain\Campaigns\Email\CampaignUnsubscribeLinks;
 use App\Domain\Campaigns\Email\Models\CampaignUnsubscribe;
 use App\Domain\Campaigns\Email\Models\EmailCampaign;
 use App\Domain\Campaigns\Email\Models\EmailCampaignRecipient;
+use App\Domain\Mail\MailPolicy;
 use App\Mail\CampaignMail;
 use App\Mail\Support\CampaignMailer;
 use App\Models\MerchantMailSettings;
@@ -154,6 +155,19 @@ final class SendCampaignEmailJob implements ShouldBeUnique, ShouldQueue
                 isMarketing: $campaign->isMarketing(),
                 textTemplate: (string) ($campaign->body_text ?? ''),
             );
+
+            // The master tap, re-read PER MESSAGE. A campaign hands thousands of
+            // these to the queue at once; a merchant who closes the tap while it
+            // is draining has to actually stop it, not watch the rest go out.
+            if (! app(MailPolicy::class)->allowsAndLogs(
+                $shop,
+                MerchantMailSettings::CHANNEL_CAMPAIGN,
+                ['campaign_id' => (int) $campaign->getKey()],
+            )) {
+                $recipient->markSkipped(EmailCampaignRecipient::REASON_EMAILS_OFF);
+
+                return;
+            }
 
             CampaignMailer::for($shop)->to((string) $recipient->email)->send($mail);
 

@@ -227,11 +227,20 @@ final class ChargeLineDescriptionTest extends TestCase
                 ->save();
         });
 
-        // Resolved while the OTHER shop is bound — the resolver must still read the
-        // plan's own shop, which is the shape a queued job runs in.
+        Tenant::run($mine, static function (): void {
+            MerchantBillingSettings::current()
+                ->forceFill(['recurring_charge_description' => 'MY WORDING {plan}'])
+                ->save();
+        });
+
+        // Resolved while the OTHER shop is bound. The resolver must read the
+        // PLAN's shop — not the neighbour's wording, and not the generic default
+        // either, which is what a tenant-scoped query for a foreign shop_id
+        // silently produces.
         $line = Tenant::run($theirs, fn (): string => $this->resolver()->for($minePlan, PaymentType::RECURRING, 1));
 
         $this->assertStringNotContainsString('THEIR WORDING', $line);
+        $this->assertStringContainsString('MY WORDING', $line);
     }
 
     // === The gateway payload ===

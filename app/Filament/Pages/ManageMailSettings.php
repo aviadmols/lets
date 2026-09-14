@@ -17,6 +17,7 @@ use App\Support\Tenant;
 use Filament\Actions\Action as HeaderAction;
 use Filament\Forms\Components\Actions;
 use Filament\Forms\Components\Actions\Action;
+use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Section;
@@ -130,6 +131,11 @@ class ManageMailSettings extends Page implements HasForms
 
         $state = [
             'email_locale' => $settings->emailLocale(),
+            'emails_enabled' => $settings->emailsEnabled(),
+            // The checkbox list states what IS sent — the question a merchant is
+            // actually asking — while the column stores the inverse, so that an
+            // email added next release arrives ON rather than silently muted.
+            'enabled_templates' => $settings->enabledTemplates(),
             'reminder_enabled' => (bool) $settings->reminder_enabled,
             'reminder_offset_hours' => (int) ($settings->reminder_offset_hours ?: MerchantMailSettings::DEFAULT_REMINDER_OFFSET_HOURS),
             'override_env_smtp' => (bool) $settings->override_env_smtp,
@@ -174,6 +180,8 @@ class ManageMailSettings extends Page implements HasForms
         return $form
             ->statePath('data')
             ->schema([
+                // First: whether anything below is sent at all.
+                $this->switchesSection(),
                 $this->localeSection(),
                 $this->senderDomainSection(),
                 Section::make(__('mail.edit.heading'))
@@ -307,6 +315,104 @@ class ManageMailSettings extends Page implements HasForms
             ]);
     }
 
+    /**
+     * WHICH EMAILS GO OUT — the master tap and the per-email list.
+     *
+     * First on the screen, above the templates, because it decides whether any of
+     * the editing below matters at all. Two levels on purpose: the list is for
+     * "not that one", the tap is for "none of them", and a merchant reaching for
+     * the second one usually wants it for a reason they can state (a migration, a
+     * test store, a store on hold) and wants it reversible in one click.
+     *
+     * The copy carries the two things this screen must not let a merchant discover
+     * later: their customers' INVOICES are not affected (the invoicing provider
+     * sends those, on its own setting), and the sign-in code IS — a closed tap
+     * means nobody can get into the customer area by email.
+     */
+    private function switchesSection(): Section
+    {
+        $settings = MerchantMailSettings::current();
+        $pausedAt = $settings->emails_paused_at;
+
+        return Section::make(__('mail.switches.heading'))
+            ->description(__('mail.switches.intro'))
+            ->schema([
+                Toggle::make('emails_enabled')
+                    ->label(__('mail.switches.master'))
+                    ->helperText(__('mail.switches.master_help'))
+                    ->columnSpanFull(),
+
+                // Only while it is OFF, and it names the DATE — "since when has
+                // nobody been emailed?" is the question a merchant comes back
+                // with, and a toggle alone cannot answer it.
+                Placeholder::make('emails_paused_notice')
+                    ->label(__('mail.switches.paused_heading'))
+                    ->content(__('mail.switches.paused_body', [
+                        'since' => $pausedAt?->format('d M Y H:i') ?? '—',
+                    ]))
+                    ->visible(fn (Get $get): bool => ! (bool) $get('emails_enabled') && $pausedAt !== null)
+                    ->columnSpanFull(),
+
+                CheckboxList::make('enabled_templates')
+                    ->label(__('mail.switches.per_email'))
+                    ->helperText(__('mail.switches.per_email_help'))
+                    ->options(fn (): array => collect(MerchantMailSettings::SWITCHABLE_TEMPLATES)
+                        ->mapWithKeys(fn (string $t): array => [$t => __('mail.template.'.$t)])
+                        ->all())
+                    ->descriptions(fn (): array => collect(MerchantMailSettings::SWITCHABLE_TEMPLATES)
+                        ->mapWithKeys(fn (string $t): array => [$t => __('mail.trigger.'.$t)])
+                        ->all())
+                    ->bulkToggleable()
+                    // Greyed out while the tap is closed: the list cannot mean
+                    // anything then, and leaving it live invites a merchant to
+                    // tick boxes that change nothing.
+                    ->disabled(fn (Get $get): bool => ! (bool) $get('emails_enabled'))
+                    ->columnSpanFull(),
+
+                // The two exclusions, in words, where the decision is made.
+                Placeholder::make('emails_not_affected')
+                    ->label(__('mail.switches.excluded_heading'))
+                    ->content(new HtmlString(e(__('mail.switches.excluded_body'))))
+                    ->columnSpanFull(),
+            ])
+            ->columns(1);
+    }
+
+    /**
+     * Write the two switches.
+     *
+     * The list arrives as what IS enabled and is stored as its INVERSE — see the
+     * column's own docblock for why. `emails_paused_at` is stamped on the way down
+     * and kept on the way up until the next pause, exactly like
+     * `charging_paused_at` on the billing settings.
+     *
+     * @param  array<string, mixed>  $input
+     */
+    private function applyEmailSwitches(MerchantMailSettings $settings, array $input): void
+    {
+        $wanted = (bool) ($input['emails_enabled'] ?? MerchantMailSettings::DEFAULT_EMAILS_ENABLED);
+        $was = $settings->emailsEnabled();
+
+        $settings->emails_enabled = $wanted;
+
+        if ($was !== $wanted) {
+            $settings->emails_paused_at = $wanted ? $settings->emails_paused_at : now();
+        }
+
+        $enabled = array_values(array_filter(
+            array_map(
+                static fn ($v): string => is_string($v) ? $v : '',
+                (array) ($input['enabled_templates'] ?? []),
+            ),
+            static fn (string $v): bool => in_array($v, MerchantMailSettings::SWITCHABLE_TEMPLATES, true),
+        ));
+
+        $settings->disabled_templates = array_values(array_filter(
+            MerchantMailSettings::SWITCHABLE_TEMPLATES,
+            static fn (string $template): bool => ! in_array($template, $enabled, true),
+        ));
+    }
+
     /** Reminders behaviour (DispatchRemindersCommand reads these). */
     private function remindersSection(): Section
     {
@@ -437,6 +543,8 @@ class ManageMailSettings extends Page implements HasForms
                 $this->defaultBody($template, $locale),
             );
         }
+
+        $this->applyEmailSwitches($settings, $input);
 
         $settings->reminder_enabled = (bool) ($input['reminder_enabled'] ?? false);
         $settings->reminder_offset_hours = (int) ($input['reminder_offset_hours'] ?? MerchantMailSettings::DEFAULT_REMINDER_OFFSET_HOURS);

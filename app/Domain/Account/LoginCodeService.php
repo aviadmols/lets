@@ -2,9 +2,11 @@
 
 namespace App\Domain\Account;
 
+use App\Domain\Mail\MailPolicy;
 use App\Mail\LoginCodeMail;
 use App\Models\CustomerLoginCode;
 use App\Models\MerchantLoyaltySettings;
+use App\Models\MerchantMailSettings;
 use App\Models\MerchantPortalAppearance;
 use App\Models\Shop;
 use App\Services\Sms\SmsSenderFactory;
@@ -260,6 +262,16 @@ class LoginCodeService
                     'minutes' => self::TTL_MINUTES,
                 ]));
 
+                return;
+            }
+
+            // The MASTER tap only — the sign-in code has no row on the per-email
+            // list, because Settings → Customer area already owns whether code
+            // sign-in exists at all. But "send no email at all" has to mean what
+            // it says, so a shop with the tap closed sends no code either. It is
+            // the one consequence the screen warns about in words: with the tap
+            // closed, nobody can sign in to the customer area by email.
+            if (! app(MailPolicy::class)->allowsAndLogs($shop, MerchantMailSettings::TEMPLATE_LOGIN_CODE)) {
                 return;
             }
 

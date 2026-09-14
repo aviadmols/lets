@@ -3,10 +3,12 @@
 namespace App\Domain\Installments;
 
 use App\Domain\Installments\Models\CardUpdateLink;
+use App\Domain\Mail\MailPolicy;
 use App\Mail\CardUpdateLinkMail;
 use App\Mail\Support\CampaignMailer;
 use App\Models\ActivityEvent;
 use App\Models\InstallmentPlan;
+use App\Models\MerchantMailSettings;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Services\Sms\SmsSenderFactory;
@@ -105,6 +107,17 @@ final class CardUpdateLinkSender
 
     private function email(Shop $shop, InstallmentPlan $plan, CardUpdateLink $link, string $url, string $to): bool
     {
+        // The merchant's own switch (Settings → Email → which emails go out).
+        // Turning this one off is consequential — a failing card goes unchased —
+        // which is why the settings screen says so beside the row.
+        if (! app(MailPolicy::class)->allowsAndLogs(
+            $shop,
+            MerchantMailSettings::TEMPLATE_CARD_UPDATE,
+            ['plan_id' => $plan->getKey()],
+        )) {
+            return false;
+        }
+
         try {
             // Per-shop mailer built at RUN time: on a worker that just served
             // another shop, the facade would carry that shop's relay.

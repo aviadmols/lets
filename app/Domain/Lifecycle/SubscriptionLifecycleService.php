@@ -2,9 +2,11 @@
 
 namespace App\Domain\Lifecycle;
 
+use App\Domain\Mail\MailPolicy;
 use App\Mail\PlanCancelledMail;
 use App\Mail\Support\CampaignMailer;
 use App\Models\InstallmentPlan;
+use App\Models\MerchantMailSettings;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -103,6 +105,17 @@ final class SubscriptionLifecycleService
     {
         $to = (string) ($plan->customer_email ?? '');
         if ($to === '') {
+            return;
+        }
+
+        // The merchant's own switch (Settings → Email → which emails go out).
+        // The cancellation still happens and is still on the Timeline; only the
+        // notice is withheld.
+        if (! app(MailPolicy::class)->allowsAndLogs(
+            $plan->shop,
+            MerchantMailSettings::TEMPLATE_PLAN_CANCELLED,
+            ['plan_id' => $plan->getKey()],
+        )) {
             return;
         }
 

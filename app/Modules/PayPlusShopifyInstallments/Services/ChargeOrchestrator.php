@@ -10,6 +10,7 @@ use App\Domain\Billing\IdempotencyKey;
 use App\Domain\Billing\Ledger;
 use App\Domain\Invoicing\DocumentContext;
 use App\Domain\Invoicing\Jobs\IssueDocumentJob;
+use App\Domain\Mail\MailPolicy;
 use App\Domain\Portal\PortalSignedUrlService;
 use App\Events\ChargeFailed;
 use App\Events\ChargeSucceeded;
@@ -33,6 +34,7 @@ use App\Modules\PayPlusShopifyInstallments\Support\ResponseMasker;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Services\Orders\PlatformOrderStrategyFactory;
 use App\Services\Shopify\Orders\ShopifyOrderStrategy;
+use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -827,7 +829,16 @@ final class ChargeOrchestrator
      */
     private function recurringOrdersEnabled(InstallmentPlan $plan): bool
     {
-        $settings = MerchantBillingSettings::query()->where('shop_id', $plan->shop_id)->first();
+        $shop = $plan->shop;
+
+        // Read INSIDE the plan's own tenant context: the settings model is
+        // BelongsToShop-scoped, so a hand-written where() for a shop other than
+        // the bound one resolves to no row at all. The tenant IS this plan's shop
+        // on every path that reaches here, and this is what makes that a fact
+        // rather than an assumption.
+        $settings = $shop === null
+            ? null
+            : Tenant::run($shop, static fn (): ?MerchantBillingSettings => MerchantBillingSettings::query()->first());
 
         return $settings?->recurringCreatesOrder()
             ?? MerchantBillingSettings::DEFAULT_RECURRING_CREATES_ORDER;
@@ -915,6 +926,17 @@ final class ChargeOrchestrator
         $recipient = $plan === null ? '' : $this->recipientFor($plan);
 
         if ($plan === null || $recipient === '') {
+            return;
+        }
+
+        // The merchant's own switch (Settings → Email → which emails go out).
+        // This is the one that asks a manual-payment customer to pay, so turning
+        // it off means nobody is asked — said beside the row on the screen.
+        if (! app(MailPolicy::class)->allowsAndLogs(
+            $plan->shop,
+            MerchantMailSettings::TEMPLATE_MANUAL_RECURRING_PAYMENT,
+            ['plan_id' => $plan->getKey()],
+        )) {
             return;
         }
 

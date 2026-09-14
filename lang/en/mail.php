@@ -27,6 +27,33 @@ return [
         'placeholders' => 'Available placeholders',
     ],
 
+    /*
+    | WHICH EMAILS GO OUT — the master tap and the per-email list.
+    |
+    | The copy carries the two facts a merchant must not discover later: their
+    | customers' INVOICES are unaffected (the invoicing provider sends those, on
+    | its own setting), and the sign-in code IS affected by the master tap.
+    */
+    'switches' => [
+        'heading' => 'Which emails go out',
+        'intro' => 'Choose the emails this store sends its customers — or stop all of them at once.',
+
+        'master' => 'Send emails to customers',
+        'master_help' => 'Turn this off and this store emails nobody: no welcome, no reminder, no receipt, no campaign. Subscriptions keep running and cards keep being charged — only the messages stop. Your customers\' invoices are NOT affected (see below), but nobody will be able to sign in to the customer area by email while it is off.',
+
+        'paused_heading' => 'Email is off',
+        'paused_body' => 'Nobody at this store has been emailed since :since. Turn the switch back on to resume — the messages that were skipped are not sent retroactively.',
+
+        'per_email' => 'Emails this store sends',
+        'per_email_help' => 'Untick the ones you do not want. The renewal reminder has its own section below (it also carries the timing), and the sign-in code is governed by Settings → Customer area.',
+
+        'excluded_heading' => 'Not affected by these switches',
+        'excluded_body' => 'Invoices and receipts. Those are sent by your invoicing provider as part of issuing the document, not by this app — a tax document is not a notification. Turn them off on Settings → Invoicing if you ever need to.',
+
+        'blocked_title' => 'Email is switched off for this store',
+        'blocked_campaign' => 'Nothing was sent and nobody was enrolled. Turn "Send emails to customers" back on under Settings → Email, then send the campaign again.',
+    ],
+
     'reminder' => [
         'heading' => 'Reminders',
         'enabled' => 'Send an upcoming-charge reminder',

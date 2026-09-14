@@ -2,8 +2,10 @@
 
 namespace App\Domain\Upsell\Holds;
 
+use App\Domain\Mail\MailPolicy;
 use App\Domain\Upsell\Models\UpsellOrderHold;
 use App\Mail\OrderUpdatedMail;
+use App\Models\MerchantMailSettings;
 use App\Models\Shop;
 use Illuminate\Support\Facades\Mail;
 
@@ -26,7 +28,9 @@ final class OrderUpdatedNotifier
     // === CONSTANTS ===
     /** Inline CSS — the allowed email exception. */
     private const TABLE = 'style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 16px;"';
+
     private const TH = 'style="text-align:start;padding:8px 10px;border-bottom:2px solid #e5e7eb;font-size:12px;color:#6b7280;"';
+
     private const TD = 'style="padding:8px 10px;border-bottom:1px solid #e5e7eb;"';
 
     /** Beyond this the email is a catalogue, not a confirmation. */
@@ -38,6 +42,15 @@ final class OrderUpdatedNotifier
         $recipient = $this->recipientFrom($items);
 
         if ($items === [] || $recipient === null) {
+            return false;
+        }
+
+        // The merchant's own switch (Settings → Email → which emails go out).
+        if (! app(MailPolicy::class)->allowsAndLogs(
+            $shop,
+            MerchantMailSettings::TEMPLATE_ORDER_UPDATED,
+            ['order_id' => (string) $hold->external_order_id],
+        )) {
             return false;
         }
 

@@ -99,9 +99,12 @@ final class SendReminderEmailJob implements ShouldBeUnique, ShouldQueue
         }
 
         // Re-checked at RUN time, not at dispatch: a merchant may have switched
-        // reminders off, or the customer's charge date moved, while this waited.
+        // reminders off — or ALL email off — while this waited. sendsTemplate()
+        // answers both taps at once, and for the reminder it reads the same
+        // `reminder_enabled` column the scheduler's pre-filter uses, so the two
+        // can never disagree.
         $settings = MerchantMailSettings::current();
-        if (! $settings->reminder_enabled) {
+        if (! $settings->sendsTemplate(MerchantMailSettings::TEMPLATE_RECURRING_PAYMENT_REMINDER)) {
             return;
         }
 

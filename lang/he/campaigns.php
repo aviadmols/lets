@@ -118,6 +118,7 @@ return [
         'mail_error' => 'שרת הדואר סירב',
         'campaign_cancelled' => 'הקמפיין בוטל',
         'shop_not_live' => 'החנות נותקה',
+        'emails_off' => 'המיילים כבויים בחנות הזו',
     ],
 
     'rail' => [

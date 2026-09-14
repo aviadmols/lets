@@ -5,6 +5,7 @@ namespace App\Domain\Billing;
 use App\Models\InstallmentPlan;
 use App\Models\MerchantBillingSettings;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentType;
+use App\Support\Tenant;
 
 /**
  * The SENTENCE PayPlus prints on the document it issues for a charge.
@@ -128,9 +129,16 @@ final class ChargeLineDescription
      */
     private function template(InstallmentPlan $plan): string
     {
-        $settings = MerchantBillingSettings::query()
-            ->where('shop_id', $plan->shop_id)
-            ->first();
+        $shop = $plan->shop;
+
+        // Read INSIDE the plan's own tenant context. MerchantBillingSettings is
+        // BelongsToShop-scoped, so a hand-written `where('shop_id', …)` for a
+        // shop other than the bound one resolves to NO row — which would silently
+        // fall back to the default wording instead of using the merchant's. Safe,
+        // but wrong, and the claim above deserves to be true rather than lucky.
+        $settings = $shop === null
+            ? null
+            : Tenant::run($shop, static fn (): ?MerchantBillingSettings => MerchantBillingSettings::query()->first());
 
         return $settings?->recurringChargeDescription()
             ?? __('billing.settings.recurring.description_default');

@@ -128,6 +128,7 @@ return [
         'mail_error' => 'The mail server refused it',
         'campaign_cancelled' => 'The campaign was cancelled',
         'shop_not_live' => 'The store was disconnected',
+        'emails_off' => 'Email is switched off for this store',
     ],
 
     'rail' => [

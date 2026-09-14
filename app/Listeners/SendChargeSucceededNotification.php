@@ -2,6 +2,7 @@
 
 namespace App\Listeners;
 
+use App\Domain\Mail\MailPolicy;
 use App\Events\ChargeSucceeded;
 use App\Mail\ChargeSucceededMail;
 use App\Mail\FirstPaymentWelcomeMail;
@@ -65,9 +66,17 @@ final class SendChargeSucceededNotification
                 return;
             }
 
-            try {
-                $shop = Tenant::current();
+            $shop = Tenant::current();
 
+            // The merchant's own switch (Settings → Email → which emails go out).
+            // Checked BEFORE markSent() claims the guard: a message the shop does
+            // not want must not burn the guard that would let it be sent if they
+            // switch it back on.
+            if (! app(MailPolicy::class)->allowsAndLogs($shop, $template, ['plan_id' => $plan->getKey()])) {
+                return;
+            }
+
+            try {
                 $mailable = $event->isFirstPayment
                     ? new FirstPaymentWelcomeMail(shop: $shop, plan: $plan, payment: $event->payment)
                     : new ChargeSucceededMail(shop: $shop, plan: $plan, payment: $event->payment);
