@@ -133,6 +133,31 @@ return [
             'resumed_body' => ':rolled overdue subscriptions were rolled forward a cycle. :due are now due within :days days, totalling :money.',
         ],
 
+        /*
+        | WHAT A RENEWAL PRODUCES. Two questions, and both of them are about
+        | paperwork the merchant's customers and accountant actually read — so the
+        | copy explains the consequence, not the field.
+        */
+        'recurring' => [
+            'heading' => 'Renewals',
+            'intro' => 'What happens in your store each time a subscription renews.',
+
+            'creates_order' => 'Create an order for each renewal',
+            'creates_order_help' => 'On, every renewal opens a paid order in your store — the picking slip for a shop that ships a box. Off, the renewal still charges the card, still records the payment and still issues the customer\'s invoice, but no order is created: right for a membership or a service nobody packs. Invoices for those renewals appear in the customer\'s own account area instead of hanging off an order.',
+
+            'description' => 'What the customer\'s receipt says',
+            'description_help' => 'The product line PayPlus prints on the receipt it issues for a renewal. Leave it empty to use the default. Placeholders: :placeholders',
+            'description_default' => 'Subscription — {plan}',
+            'preview' => 'On the next renewal this reads',
+            'preview_empty' => 'No subscription yet to preview this against.',
+
+            'placeholder_plan' => 'the product they subscribed to',
+            'placeholder_cycle' => 'which renewal this is (2, 3, …)',
+            'placeholder_frequency' => 'how often it bills ("monthly")',
+            'placeholder_customer' => 'the customer\'s name',
+            'placeholder_id' => 'the subscription\'s reference',
+        ],
+
         'retries' => [
             'heading' => 'Payments & retries',
             'intro' => 'How a failed charge is retried before a plan is marked failed.',
@@ -205,5 +230,20 @@ return [
             'quarterly' => 'Quarterly',
             'yearly' => 'Yearly',
         ],
+    ],
+
+    /*
+    | The product line PayPlus prints on a document it auto-issues for a charge.
+    | The RECURRING line is the merchant's own (billing.settings.recurring.*);
+    | these are the ones we write for them, in the SAME {placeholder} vocabulary
+    | so one renderer serves both. See App\Domain\Billing\ChargeLineDescription —
+    | and the reason it exists: with no line at all, PayPlus prints the
+    | idempotency key on a customer's tax receipt.
+    */
+    'charge_line' => [
+        'deposit' => '{plan} — deposit',
+        'installment' => '{plan} — payment {cycle}',
+        'recurring' => 'Subscription — {plan}',
+        'fallback' => 'Subscription :reference',
     ],
 ];

@@ -77,10 +77,32 @@ Read-only list of the customer's charges for this plan (date, type, amount, stat
 Timeline). A document, if the merchant issues one, is surfaced only as a customer-safe "receipt" link if and
 where the merchant's DocumentPolicy exposes one — `TODO-DATA`.
 
+### Documents shelf — "Invoices & receipts" (`documents` section)
+
+A standalone list of every ISSUED accounting document for this shopper's subscriptions: number, date, amount,
+what it was for, and an open link. Rendered by OUR renderer (`renderDocuments` in `lets-account.js`), not by
+the platform.
+
+**Why it is not the order list.** `documents` used to sit in the plugin's `PLATFORM_SECTIONS`, on the
+assumption that a receipt always hangs off an order — so WooCommerce's order pages would carry it. A shop
+that turns **"create an order for each renewal"** off ([50 § 7a](50-settings.md)) has renewals with real
+money, a real ledger row and a real tax document, and **no order anywhere**: WooCommerce's Orders tab has
+nothing to show, and the per-payment `receipt_url` we already render lives inside a subscription card, folded
+behind the payment history. The paperwork existed and the customer could not reach it. `AccountLayoutTest`
+pins `documents` out of `PLATFORM_SECTIONS` for exactly that reason.
+
+Sourced from the visitor's PLANS — `issued_documents` carries `plan_id` and never an email, so a shopper sees
+the paperwork for the subscriptions they can already see on this page and nothing else: one wall, not a second
+identity check to get wrong. Only `issued` rows with a URL; `failed`/`unresolved` are the SaaS admin's work
+queue, and showing a customer a receipt that does not exist yet earns a support call and produces no invoice.
+Capped at `AccountPresenter::MAX_DOCUMENTS` (24 — two years of a monthly plan); past that the shopper is
+auditing and should ask the merchant. Hideable by the merchant like any other section.
+
 ### Data fields (source)
 | Field | Source |
 |---|---|
 | Plans (kind, status, next charge, frequency) | plan models, `shop_id`-scoped via signed link context |
+| **Invoices & receipts** | **`issued_documents` where `plan_id` ∈ the visitor's plans, `status=issued`, URL present** |
 | paid/total, remaining balance, schedule | installment plan (engine: `total_amount`, `total_charged`, `payments`, `outstandingBalance()`) |
 | Masked card (brand + last-4 + expiry) | `InstallmentPaymentMethod` (engine) — masked only |
 | Payment history | `payment_ledger` | laravel-backend |

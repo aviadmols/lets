@@ -48,6 +48,7 @@
         subscriptions: renderSubscriptions,
         upcoming: renderUpcoming,
         gifts: renderGifts,
+        documents: renderDocuments,
         benefits: renderBenefits,
         loyalty: renderLoyalty,
         support: renderSupport
@@ -55,8 +56,14 @@
 
     /* Sections WooCommerce itself owns. They are listed so the merchant can
        order and hide them in the admin, but they render as the platform's own
-       screens — we restyle those, we do not reimplement them. */
-    var PLATFORM_SECTIONS = ['orders', 'documents', 'profile', 'addresses'];
+       screens — we restyle those, we do not reimplement them.
+
+       `documents` USED to be on this list and is not any more. It was here on the
+       assumption that a receipt always hangs off an order, so WooCommerce's order
+       pages would carry it. A shop that turns "create an order for each renewal"
+       off has receipts with no order anywhere — so the platform has nothing to
+       show, and this is now a section of our own. */
+    var PLATFORM_SECTIONS = ['orders', 'profile', 'addresses'];
 
     /* The greeting is not a section in the column flow — it is the page's
        header, above both columns. */
@@ -423,6 +430,83 @@
         });
 
         append(card, list);
+        append(wrap, card);
+
+        return wrap;
+    }
+
+    /**
+     * The customer's invoices and receipts, standing on their own.
+     *
+     * For a shop that creates an order per renewal this is a convenience beside the
+     * order list. For a shop that does NOT, it is the only place the customer can
+     * reach their paperwork at all — WooCommerce's Orders tab has nothing to show
+     * for a renewal that never became an order.
+     *
+     * A table, not cards: the shopper is looking for one row by date or number, and
+     * a table is what people scan for that. Nothing is drawn when the list is
+     * empty — an "Invoices" heading over emptiness reads as something broken.
+     */
+    function renderDocuments(state) {
+        var m = state.model;
+        var docs = Array.isArray(m.documents) ? m.documents : [];
+        if (!docs.length) { return null; }
+
+        var wrap = el('section', 'la-block');
+        append(wrap, sectionHead(m.copy.documents_heading));
+
+        var card = el('div', 'la-card');
+        if (m.copy.documents_intro) {
+            append(card, el('p', 'la-muted', m.copy.documents_intro));
+        }
+
+        var tableWrap = el('div', 'la-table-wrap');
+        var table = el('table', 'la-table');
+
+        var thead = el('thead');
+        var hrow = el('tr');
+        append(hrow,
+            el('th', null, m.copy.document_number || ''),
+            el('th', null, m.copy.payments_heading || ''),
+            el('th', null, '')
+        );
+        append(thead, hrow);
+        append(table, thead);
+
+        var tbody = el('tbody');
+        docs.forEach(function (doc) {
+            var row = el('tr');
+
+            // The number, with what it was for underneath — a shopper with two
+            // subscriptions needs to tell two receipts of the same amount apart.
+            var first = el('td');
+            append(first, el('span', null, doc.number || ''));
+            if (doc.title) { append(first, el('span', 'la-doc__for', doc.title)); }
+
+            // money() reads currency off the row it is given, so the document's
+            // own currency is handed to it rather than a subscription's.
+            var amount = money(doc.amount, doc);
+            var when = doc.issued_at ? dateLong(doc.issued_at) + ' ' + dateYear(doc.issued_at) : '';
+
+            var openCell = el('td', 'la-payments__receipt');
+            if (doc.url) {
+                var link = el('a', 'la-link', m.copy.document_open || '');
+                attr(link, 'href', String(doc.url));
+                attr(link, 'target', '_blank');
+                attr(link, 'rel', 'noopener noreferrer');
+                append(openCell, link);
+            }
+
+            append(row,
+                first,
+                el('td', null, when + (amount ? ' · ' + amount : '')),
+                openCell
+            );
+            append(tbody, row);
+        });
+        append(table, tbody);
+
+        append(card, append(tableWrap, table));
         append(wrap, card);
 
         return wrap;
@@ -1442,7 +1526,7 @@
 
     // === Export ===
 
-    window.LetsAccount = { render: render, version: 8 };
+    window.LetsAccount = { render: render, version: 9 };
 
     /**
      * Preview bridge. The admin's iframe posts a draft appearance on every

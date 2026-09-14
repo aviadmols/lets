@@ -2,6 +2,7 @@
 
 namespace App\Modules\PayPlusShopifyInstallments\Services;
 
+use App\Domain\Billing\ChargeLineDescription;
 use App\Domain\Billing\Contracts\DocumentPolicy;
 use App\Domain\Billing\Contracts\DocumentPolicyInput;
 use App\Domain\Billing\CycleAmountResolver;
@@ -98,6 +99,7 @@ final class ChargeOrchestrator
         private readonly DocumentPolicy $documentPolicy,
         private readonly ?ShopifyOrderStrategy $shopifyOrders = null,
         private readonly CycleAmountResolver $cycleAmounts = new CycleAmountResolver,
+        private readonly ChargeLineDescription $chargeLine = new ChargeLineDescription,
     ) {}
 
     /**
@@ -161,7 +163,18 @@ final class ChargeOrchestrator
             $plan->activePaymentMethod(),
             $prepared['amount'],
             $prepared['key'],
-            ['currency' => $plan->currency],
+            [
+                'currency' => $plan->currency,
+                // The line a PayPlus terminal set to auto-issue prints on the
+                // customer's document. Sent on EVERY charge: without it PayPlus
+                // falls back to more_info and puts the idempotency key on real
+                // paperwork. Merchant-editable for recurring cycles.
+                'item_name' => $this->chargeLine->for(
+                    $plan,
+                    $type,
+                    (int) ($prepared['payment']->sequence ?? 1),
+                ),
+            ],
         );
 
         // === PHASE C — record the outcome, in its own short transaction. ===
@@ -746,6 +759,28 @@ final class ChargeOrchestrator
      */
     private function materializePlatformOrder(InstallmentPlan $plan, ChargeContext $context, bool $isFinal): void
     {
+        // THE MERCHANT'S CHOICE, read at the ONE place that materialises anything.
+        //
+        // Deliberately here and not inside each platform strategy: a policy that
+        // lives in the strategies is a policy the next platform forgets, and the
+        // two rails would then disagree about what a subscription does. Money,
+        // ledger and document are untouched — the only thing that does not happen
+        // is the store order.
+        if ($context === ChargeContext::RECURRING && ! $this->recurringOrdersEnabled($plan)) {
+            // On the PLAN's own timeline, not only in a log. The question this
+            // answers — "where is October's order?" — is asked while looking at
+            // the subscription, and the honest answer is "you turned that off",
+            // said in the place it is asked. The same shape as KIND_CHARGING_PAUSED.
+            Timeline::record(
+                kind: Timeline::KIND_STORE_ORDER_SKIPPED,
+                details: ['context' => $context->value],
+                planId: $plan->getKey(),
+                shopId: (int) $plan->shop_id,
+            );
+
+            return;
+        }
+
         $strategy = $plan->shop->platform === Shop::PLATFORM_WOOCOMMERCE
             ? PlatformOrderStrategyFactory::for($plan->shop)
             : $this->shopifyOrders;
@@ -780,6 +815,22 @@ final class ChargeOrchestrator
                 shopId: (int) $plan->shop_id,
             );
         }
+    }
+
+    /**
+     * Does this shop want a store order for each recurring cycle?
+     *
+     * Read off the PLAN's shop rather than the bound tenant — the same pattern
+     * onFailure() uses for the retry policy — so a charge can never be judged by
+     * another shop's settings. A shop with no settings row yet gets the default,
+     * which is the behaviour every shop had before this switch existed.
+     */
+    private function recurringOrdersEnabled(InstallmentPlan $plan): bool
+    {
+        $settings = MerchantBillingSettings::query()->where('shop_id', $plan->shop_id)->first();
+
+        return $settings?->recurringCreatesOrder()
+            ?? MerchantBillingSettings::DEFAULT_RECURRING_CREATES_ORDER;
     }
 
     /**

@@ -160,6 +160,14 @@ final class AccountPresenter
     /** Gift rows on the "gifts from us" list — a keepsake shelf, not an archive. */
     private const MAX_GIFTS = 24;
 
+    /**
+     * Invoices and receipts on the documents shelf.
+     *
+     * Two years of a monthly subscription. Past that a shopper is not browsing,
+     * they are auditing — and they should ask the merchant, who can send the lot.
+     */
+    private const MAX_DOCUMENTS = 24;
+
     /** The sample subscription's public id — the preview's only "plan". */
     private const SAMPLE_PLAN_ID = 'SAMPLE-1';
 
@@ -209,6 +217,7 @@ final class AccountPresenter
                 'upcoming' => [],
                 'benefits' => [],
                 'gifts' => [],
+                'documents' => [],
                 'loyalty' => null,
                 'payment_methods' => [],
                 // An offer is taken FROM a subscription, on a saved card. We know
@@ -244,6 +253,7 @@ final class AccountPresenter
             'upcoming' => $this->benefits->for($plans, $account, $loyaltySettings),
             'benefits' => $this->activeBenefits($plans, $account),
             'gifts' => $this->giftsFor($visitor, $settings),
+            'documents' => $this->documentsFor($plans, $settings),
             'loyalty' => $this->loyalty($visitor, $loyaltySettings),
             'payment_methods' => $this->paymentMethods($plans),
             'offers' => $offers[AccountOffer::PLACEMENT_TOP],
@@ -478,6 +488,30 @@ final class AccountPresenter
                     'note' => __('account.active.intro_left', ['count' => 1]),
                 ],
             ],
+            // Two invented receipts, so the merchant previewing this page can see
+            // what their customers will read — including the shop that has turned
+            // renewal orders off, for whom this shelf is the ONLY place a customer
+            // reaches their paperwork.
+            'documents' => [
+                [
+                    'number' => '2026-0412',
+                    'url' => '#',
+                    'issued_at' => now()->subDays(2)->toDateString(),
+                    'amount' => 89.0,
+                    'currency' => 'ILS',
+                    'currency_symbol' => self::CURRENCY_SYMBOLS['ILS'],
+                    'title' => __('account.sample.product'),
+                ],
+                [
+                    'number' => '2026-0381',
+                    'url' => '#',
+                    'issued_at' => now()->subDays(32)->toDateString(),
+                    'amount' => 89.0,
+                    'currency' => 'ILS',
+                    'currency_symbol' => self::CURRENCY_SYMBOLS['ILS'],
+                    'title' => __('account.sample.product'),
+                ],
+            ],
             'loyalty' => $loyaltySettings->enabled
                 ? $this->compactLoyalty(app(LoyaltyPagePresenter::class)->sample($loyaltySettings))
                 : null,
@@ -691,7 +725,8 @@ final class AccountPresenter
     {
         $keys = [
             'welcome_heading', 'welcome_subtext', 'subscriptions_heading', 'upcoming_heading',
-            'benefits_heading', 'loyalty_heading', 'orders_heading', 'gifts_heading', 'gifts_empty', 'gift_sent_on', 'documents_heading',
+            'benefits_heading', 'loyalty_heading', 'orders_heading', 'gifts_heading', 'gifts_empty', 'gift_sent_on',
+            'documents_heading', 'documents_intro', 'document_number', 'document_open',
             'profile_heading', 'addresses_heading', 'support_heading', 'empty_subscriptions',
             'empty_upcoming', 'next_charge', 'every', 'status', 'payment_method', 'no_card',
             'action_pause', 'action_resume', 'action_cancel', 'action_skip',
@@ -823,6 +858,87 @@ final class AccountPresenter
                 ], $campaign->giftItems());
             })
             ->take(self::MAX_GIFTS)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * THE CUSTOMER'S OWN INVOICES AND RECEIPTS — every accounting document issued
+     * for this shopper's subscriptions, standing on its own rather than hanging off
+     * an order.
+     *
+     * WHY IT IS NOT THE ORDER LIST. A shop that has switched "create an order for
+     * each renewal" off has renewals with real money, a real ledger row and a real
+     * tax document behind them — and no order anywhere. Before this block those
+     * documents existed and the customer could not reach any of them: WooCommerce's
+     * own Orders tab has nothing to show, and the receipt link we already render
+     * lives INSIDE a subscription card, folded behind the payment history, where
+     * somebody looking for "my invoice from March" will not find it.
+     *
+     * Sourced from the visitor's PLANS, which is the only link an issued document
+     * has to a person (`issued_documents` carries plan_id, never an email). So a
+     * shopper sees exactly the paperwork for the subscriptions they can already see
+     * on this page, and nothing else — the same wall, no second identity check to
+     * get wrong.
+     *
+     * ISSUED rows with a URL only. A `failed` or `unresolved` document is the SaaS
+     * admin's work queue; showing a customer a receipt that does not exist yet
+     * produces a support call and no invoice.
+     *
+     * @param  Collection<int, InstallmentPlan>  $plans
+     * @return list<array<string, mixed>>
+     */
+    private function documentsFor(Collection $plans, MerchantPortalAppearance $settings): array
+    {
+        if (! in_array(MerchantPortalAppearance::SECTION_DOCUMENTS, $settings->visibleSections(), true)) {
+            return [];
+        }
+
+        $planIds = $plans->map(static fn (InstallmentPlan $plan): int => (int) $plan->getKey())->all();
+
+        if ($planIds === []) {
+            return [];
+        }
+
+        // Tenant-scoped by IssuedDocument's own global scope; narrowed to plans
+        // this visitor was already served.
+        $documents = IssuedDocument::query()
+            ->whereIn('plan_id', $planIds)
+            ->where('status', IssuedDocument::STATUS_ISSUED)
+            ->whereNotNull('document_url')
+            ->orderByDesc('issued_at')
+            ->orderByDesc('id')
+            ->limit(self::MAX_DOCUMENTS)
+            ->get();
+
+        if ($documents->isEmpty()) {
+            return [];
+        }
+
+        // Which subscription each document belongs to, so a shopper with two of
+        // them can tell the receipts apart. Resolved from the plans already in
+        // hand — no second query.
+        $titles = [];
+        foreach ($plans as $plan) {
+            $titles[(int) $plan->getKey()] = trim((string) ($plan->itemTitle() ?? $plan->productTitle() ?? ''));
+        }
+
+        return $documents
+            ->map(function (IssuedDocument $doc) use ($titles): array {
+                $currency = strtoupper((string) ($doc->currency ?: 'ILS'));
+
+                return [
+                    'number' => (string) ($doc->document_number ?? ''),
+                    'url' => (string) $doc->document_url,
+                    'issued_at' => ($doc->issued_at ?? $doc->created_at)?->toDateString(),
+                    'amount' => $doc->amount === null ? null : round((float) $doc->amount, 2),
+                    'currency' => $currency,
+                    'currency_symbol' => self::CURRENCY_SYMBOLS[$currency] ?? $currency,
+                    // What it was FOR, in the shopper's words — never the internal
+                    // context value ("recurring"), which means nothing to them.
+                    'title' => $titles[(int) $doc->plan_id] ?? '',
+                ];
+            })
             ->values()
             ->all();
     }

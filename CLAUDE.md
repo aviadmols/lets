@@ -104,7 +104,21 @@ Composer: `<php84> C:\Users\user\.config\herd\bin\composer.phar`
   (gateway factory, `ChargeOrchestrator`, jobs, scheduler, mail, Timeline,
   portal, refunds).
 - `app/Domain/Billing/` — `payment_ledger`, idempotency, `DocumentPolicy`,
-  state machines.
+  state machines. `ChargeLineDescription` writes the LINE a PayPlus terminal set
+  to auto-issue prints on the customer's document: sent as `items[0].name` on
+  EVERY charge, because PayPlus falls back to `more_info` (our idempotency key)
+  when we send none. Merchant-editable for renewals
+  (`merchant_billing_settings.recurring_charge_description`), substituted with
+  `strtr()` and never a template engine.
+- **Does a renewal create a store order?** `recurring_creates_order` (default
+  TRUE) is read at ONE place — `ChargeOrchestrator::materializePlatformOrder` —
+  never inside a platform strategy, so the rails cannot disagree. Off, the cycle
+  still charges, ledgers, advances and issues its document; only the order is
+  skipped, and the plan's Timeline says so (`KIND_STORE_ORDER_SKIPPED`, gray,
+  never the `store_order_failed` kind). Renewal-only: a deposit's parent order IS
+  the sale. Those order-less documents reach the customer through the account
+  area's `documents` section, which our renderer draws — it is NOT a platform
+  section, because a receipt with no order has no platform page to live on.
 - `app/Domain/Invoicing/` — accounting documents (Green Invoice / "Morning").
   `DocumentIssuer` is the ONE entry point; `issued_documents` is its ledger
   (no document without a row, unique `(shop_id, idempotency_key)`).

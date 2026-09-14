@@ -2,13 +2,16 @@
 
 namespace App\Filament\Pages;
 
+use App\Domain\Billing\ChargeLineDescription;
 use App\Domain\Billing\ChargingResumeService;
 use App\Domain\ShopifySubscriptions\Jobs\BackfillContractsJob;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Jobs\Shopify\RegisterShopifyWebhooksJob;
+use App\Models\InstallmentPlan;
 use App\Models\MerchantBillingSettings;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
+use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Support\Tenant;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\Placeholder;
@@ -101,6 +104,14 @@ class ManageBillingSettings extends Page implements HasForms
             ),
             'lock_fulfillment_until_paid' => $settings->lockFulfillmentUntilPaid(),
 
+            'recurring_creates_order' => $settings->recurringCreatesOrder(),
+            // The RAW column, not the accessor: an untouched setting must show an
+            // empty box with the default as its placeholder, so the merchant can
+            // see they have not overridden anything. Filling the box with the
+            // default would make "I never set this" indistinguishable from "I set
+            // it to exactly the default", and clearing it back would be impossible.
+            'recurring_charge_description' => $settings->recurring_charge_description,
+
             'allow_customer_pause' => $settings->allowsCustomerPause(),
             'allow_customer_cancel' => $settings->allowsCustomerCancel(),
             'customer_cancel_mode' => $settings->customerCancelMode(),
@@ -126,6 +137,7 @@ class ManageBillingSettings extends Page implements HasForms
             ->schema([
                 $this->railSection(),
                 $this->liveChargingSection(),
+                $this->recurringSection(),
                 $this->retriesSection(),
                 $this->installmentsSection(),
                 $this->selfServiceSection(),
@@ -264,6 +276,94 @@ class ManageBillingSettings extends Page implements HasForms
     }
 
     /**
+     * WHAT A RENEWAL PRODUCES — the two questions a subscription merchant asks
+     * about every cycle after the first.
+     *
+     * 1. Does it make an ORDER in the store? For a shop selling a box, yes: the
+     *    order is the picking slip. For a shop selling a ₪39 membership, every
+     *    cycle produces an order nobody will ever pack, and a year of them buries
+     *    the real orders. Off, the cycle still charges, still writes its ledger row
+     *    and still gets its invoice — the customer just reads it in their personal
+     *    area instead of hanging off an order.
+     *
+     * 2. What does the CUSTOMER'S DOCUMENT say? A PayPlus terminal set to
+     *    auto-issue prints the line we send with the charge, and prints the
+     *    idempotency key when we send none. This is the merchant writing that line
+     *    themselves, because they are the ones who know whether their customers
+     *    should read "מנוי חודשי", "דמי חבר" or the product's own name.
+     */
+    private function recurringSection(): Section
+    {
+        return Section::make(__('billing.settings.recurring.heading'))
+            ->description(__('billing.settings.recurring.intro'))
+            ->schema([
+                Toggle::make('recurring_creates_order')
+                    ->label(__('billing.settings.recurring.creates_order'))
+                    ->helperText(__('billing.settings.recurring.creates_order_help'))
+                    ->columnSpanFull(),
+
+                TextInput::make('recurring_charge_description')
+                    ->label(__('billing.settings.recurring.description'))
+                    // The placeholder list is BUILT from the substitution's own
+                    // table, so this form can never advertise a token the renderer
+                    // does not know.
+                    ->helperText(__('billing.settings.recurring.description_help', [
+                        'placeholders' => $this->placeholderHelp(),
+                    ]))
+                    ->placeholder(__('billing.settings.recurring.description_default'))
+                    ->maxLength(MerchantBillingSettings::MAX_CHARGE_DESCRIPTION)
+                    ->columnSpanFull(),
+
+                // What the sentence above ACTUALLY produces, rendered against this
+                // shop's own newest subscription. A template language nobody can
+                // preview is a template language merchants leave alone.
+                Placeholder::make('recurring_description_preview')
+                    ->label(__('billing.settings.recurring.preview'))
+                    ->content(fn (Get $get): string => $this->describePreview($get('recurring_charge_description')))
+                    ->columnSpanFull(),
+            ])
+            ->columns(1);
+    }
+
+    /** "{plan} — the product · {cycle} — …", built from ChargeLineDescription's own table. */
+    private function placeholderHelp(): string
+    {
+        return collect(ChargeLineDescription::PLACEHOLDERS)
+            ->map(fn (string $labelKey, string $token): string => $token.' — '.__($labelKey))
+            ->implode(' · ');
+    }
+
+    /**
+     * The line as PayPlus would print it, for THIS shop's newest subscription.
+     *
+     * Rendered through the real resolver rather than a second implementation, so
+     * the preview cannot promise a sentence the charge would not send. With no
+     * subscription to draw on it says so plainly instead of inventing a customer.
+     */
+    private function describePreview(mixed $template): string
+    {
+        $plan = InstallmentPlan::query()
+            ->where('plan_kind', PlanKind::RECURRING->value)
+            ->orderByDesc('id')
+            ->first();
+
+        if ($plan === null) {
+            return __('billing.settings.recurring.preview_empty');
+        }
+
+        // The UNSAVED form value, so the merchant reads the sentence they are
+        // typing rather than the one they saved last week. Blank falls back to the
+        // same default the charge would use.
+        $typed = is_string($template) ? trim($template) : '';
+        $effective = $typed !== '' ? $typed : __('billing.settings.recurring.description_default');
+
+        // Cycle 2, not 1: the first charge of a subscription is rarely the one a
+        // merchant is picturing, and a "{cycle}" that always renders "1" hides
+        // whether the placeholder works at all.
+        return app(ChargeLineDescription::class)->render($effective, $plan, 2);
+    }
+
+    /**
      * Customer self-service — which buttons the subscription card offers.
      *
      * Each switch is read twice by CustomerSubscriptionActions: once to decide
@@ -386,6 +486,13 @@ class ManageBillingSettings extends Page implements HasForms
         $settings->max_installments = max(1, (int) ($input['max_installments'] ?? MerchantBillingSettings::DEFAULT_MAX_INSTALLMENTS));
         $settings->allowed_frequencies = $this->normalizeFrequencies($input['allowed_frequencies'] ?? []);
         $settings->lock_fulfillment_until_paid = (bool) ($input['lock_fulfillment_until_paid'] ?? true);
+
+        $settings->recurring_creates_order = (bool) ($input['recurring_creates_order']
+            ?? MerchantBillingSettings::DEFAULT_RECURRING_CREATES_ORDER);
+        // Blank means "use the default", stored as NULL — never as the rendered
+        // default text, which would freeze today's wording into the row and stop
+        // a future improvement to it from ever reaching this shop.
+        $settings->recurring_charge_description = $this->chargeDescription($input['recurring_charge_description'] ?? null);
 
         $settings->allow_customer_pause = (bool) ($input['allow_customer_pause'] ?? true);
         $settings->allow_customer_cancel = (bool) ($input['allow_customer_cancel'] ?? true);
@@ -562,5 +669,28 @@ class ManageBillingSettings extends Page implements HasForms
         $value = is_string($value) ? trim($value) : $value;
 
         return ($value === null || $value === '') ? null : (string) $value;
+    }
+
+    /**
+     * The charge-line template, as it goes into the column: trimmed to one line
+     * and clamped, or NULL for "use the default".
+     *
+     * Flattened HERE as well as at render time, because the column is read by the
+     * charge path and a stored newline is a broken document line whichever side
+     * put it there.
+     */
+    private function chargeDescription(mixed $value): ?string
+    {
+        $text = $this->blankToNull($value);
+
+        if ($text === null) {
+            return null;
+        }
+
+        $flat = trim(preg_replace('/\s+/u', ' ', $text) ?? $text);
+
+        return $flat === ''
+            ? null
+            : mb_substr($flat, 0, MerchantBillingSettings::MAX_CHARGE_DESCRIPTION);
     }
 }

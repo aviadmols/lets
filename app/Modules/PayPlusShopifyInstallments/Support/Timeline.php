@@ -179,6 +179,19 @@ final class Timeline
     public const KIND_STORE_ORDER_FAILED = 'store_order_failed';
 
     /**
+     * No store order was created for this cycle BECAUSE THE MERCHANT ASKED FOR
+     * NONE (Settings → Billing → "Create an order for each renewal", off).
+     *
+     * Its own kind, and deliberately not the failure above. The two look identical
+     * from the store's admin — a paid cycle with no order behind it — and the whole
+     * value of this row is telling them apart: one is a gap somebody has to fix,
+     * the other is the shop working as configured. Written per cycle, on the plan's
+     * own feed, because "where is October's order?" is a question asked while
+     * looking at that subscription. details: {context}.
+     */
+    public const KIND_STORE_ORDER_SKIPPED = 'store_order_skipped';
+
+    /**
      * The customer re-vaulted their card on the PayPlus hosted page and the
      * plan (plus any siblings on the old card) now charges the new one.
      * details: {brand, last_four, plans} — never a token.

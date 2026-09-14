@@ -22,6 +22,12 @@ interface PayPlusGatewayInterface
      * and as `more_info` (the correlation marker used by reconciliation).
      *
      * POST {base}/{api_prefix}/Transactions/Charge
+     *
+     * $meta keys the implementation reads:
+     *   currency  — the charge currency, defaulting to the shop's.
+     *   item_name — the LINE a terminal set to auto-issue prints on the customer's
+     *               document. Absent, PayPlus falls back to more_info and prints
+     *               the idempotency key on real paperwork; see the implementation.
      */
     public function chargeWithReference(
         InstallmentPaymentMethod $method,

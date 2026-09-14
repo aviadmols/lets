@@ -723,6 +723,19 @@
     border-block-end: 0;
 }
 
+/* The documents shelf: a receipt's number on the first line and WHAT IT WAS FOR
+   underneath it. Two subscriptions billing the same amount on the same day
+   produce two receipts a shopper otherwise cannot tell apart. Wrapping is allowed
+   here (and only here) because a product title is a sentence, not a figure —
+   .la-table's nowrap would push it off the side of a phone. */
+.la-doc__for {
+    display: block;
+    margin-block-start: 2px;
+    font-size: 0.75rem;
+    color: var(--la-muted);
+    white-space: normal;
+}
+
 /* =========================================================================
    Benefit timeline — "what's next"
    ========================================================================= */

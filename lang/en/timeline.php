@@ -36,6 +36,7 @@ return [
         'account_offer_charge_failed' => 'Offer accepted, but the card was declined',
         'account_action_failed' => 'A customer-area action was refused',
         'store_order_failed' => 'Charged, but creating the store order failed',
+        'store_order_skipped' => 'Charged — no store order, as this store is set up',
         'shopify_subscription_resumed' => 'Subscription resumed',
         'shopify_subscription_rescheduled' => 'Next charge date changed',
         'shopify_subscription_bill_now' => 'Immediate charge requested from Shopify',

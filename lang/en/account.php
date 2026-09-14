@@ -34,7 +34,15 @@ return [
         'gifts_empty' => 'No products have been sent to you yet.',
         'gifts_tab' => 'Gifts',
         'gift_sent_on' => 'Sent on',
+        /*
+        | The documents shelf. For a shop that has turned renewal orders off this
+        | is the ONLY place a customer reaches their paperwork — so the intro says
+        | what the list is, rather than assuming an order page they cannot use.
+        */
         'documents_heading' => 'Invoices & receipts',
+        'documents_intro' => 'Every invoice and receipt issued for your subscriptions.',
+        'document_number' => 'Document',
+        'document_open' => 'Open',
         'profile_heading' => 'My details',
         'addresses_heading' => 'Addresses',
         'support_heading' => 'Need a hand?',

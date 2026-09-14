@@ -78,6 +78,10 @@ final class EventPresenter
         // money that moved with no order behind it is exactly what a merchant
         // audits for, and this was invisible outside a rotating log.
         'store_order_failed' => ['failure', 'timeline.kind.store_order_failed'],
+        // GRAY, not failure: no order was created because the merchant asked for
+        // none. The two rows look identical from the store's admin, and colouring
+        // this one red would send somebody hunting for a bug in their own setting.
+        'store_order_skipped' => ['gray', 'timeline.kind.store_order_skipped'],
         // The Shopify-Payments rail's contract verbs (ContractActionService) —
         // without these mappings the contract Timeline reads every row as the
         // humanized "Activity" fallback.

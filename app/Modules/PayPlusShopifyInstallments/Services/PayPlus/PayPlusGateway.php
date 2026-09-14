@@ -23,6 +23,7 @@ final class PayPlusGateway implements PayPlusGatewayInterface
 {
     // === CONSTANTS ===
     private const PATH_CHARGE = '/Transactions/Charge';
+
     /**
      * PayPlus has TWO refund endpoints and they take different identifiers:
      * /Transactions/Refund refunds by CREDIT CARD DETAILS, and
@@ -32,19 +33,23 @@ final class PayPlusGateway implements PayPlusGatewayInterface
      * were simply absent).
      */
     private const PATH_REFUND = '/Transactions/RefundByTransactionUID';
+
     private const PATH_GENERATE_LINK = '/PaymentPages/generateLink';
+
     private const PATH_TOKEN_LIST = '/Token/List';
 
     // PayPlus authenticates on TWO request headers (not a bearer token). These are
     // public so account-discovery / probe callers (PayPlusAccountDiscovery) reuse
     // the SAME header names — one source of truth, never duplicated.
     public const HEADER_API_KEY = 'api-key';
+
     public const HEADER_SECRET_KEY = 'secret-key';
+
     private const HEADER_IDEMPOTENCY = 'Idempotency-Key';
 
     /**
-     * @param array $credentials Decrypted per-shop bag from Shop::payplusConfig():
-     *   api_key, secret_key, terminal_uid, cashier_uid, payment_page_uid, base_url, webhook_secret.
+     * @param  array  $credentials  Decrypted per-shop bag from Shop::payplusConfig():
+     *                              api_key, secret_key, terminal_uid, cashier_uid, payment_page_uid, base_url, webhook_secret.
      */
     public function __construct(
         private readonly array $credentials,
@@ -95,6 +100,34 @@ final class PayPlusGateway implements PayPlusGatewayInterface
             // stuck charge by idempotency key (scar tissue: recoverStuckRecurringPayment).
             'more_info' => $idempotencyKey,
         ], static fn ($v): bool => $v !== null && $v !== '');
+
+        /*
+         * THE LINE ON THE CUSTOMER'S DOCUMENT.
+         *
+         * A terminal configured to auto-issue a document per transaction prints the
+         * line item from `items` — and FALLS BACK TO `more_info` when items is
+         * absent. more_info here is the idempotency key, which is how a customer of
+         * the reference engine once received a חשבונית מס קבלה whose product name
+         * read "payplus_installment_plan_41_payment_2". The port dropped this block;
+         * this is it coming back.
+         *
+         * more_info stays exactly what it was: the correlation marker
+         * StuckChargeResolver looks a transaction up by. It is not a label, and
+         * making it one would trade a reconciliation tool for a cosmetic.
+         *
+         * The caller owns the sentence (ChargeLineDescription, merchant-editable for
+         * recurring cycles); the gateway only carries it.
+         */
+        $itemName = trim((string) ($meta['item_name'] ?? ''));
+
+        if ($itemName !== '') {
+            $payload['items'] = [[
+                'name' => $itemName,
+                'quantity' => 1,
+                'price' => round($amount, 2),
+                'currency_code' => $meta['currency'] ?? $this->currency,
+            ]];
+        }
 
         return $this->post(self::PATH_CHARGE, $payload, $idempotencyKey);
     }

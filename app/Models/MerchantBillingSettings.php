@@ -84,6 +84,34 @@ class MerchantBillingSettings extends Model
     public const DEFAULT_SINGLE_ACTIVE_SUBSCRIPTION = false;
 
     /**
+     * Does a recurring cycle materialise an ORDER in the store?
+     *
+     * TRUE by default, because that is what every shop does today and an upgrade
+     * must change nothing. Turned off, the cycle still charges, still writes its
+     * ledger row and still gets its accounting document — there is simply no store
+     * order behind it. For a shop selling a box the order is the picking slip and
+     * this stays on; for a shop selling a ₪39 membership every cycle produces an
+     * order nobody will ever pick, pack or ship, and a year of them buries the real
+     * orders in the store's admin.
+     */
+    public const DEFAULT_RECURRING_CREATES_ORDER = true;
+
+    /**
+     * The LINE PayPlus prints on the document it issues for a recurring charge.
+     *
+     * Why this is a setting and not a constant: a terminal configured to auto-issue
+     * a document per transaction takes the line from the `items` we send — and
+     * falls back to `more_info` when we send none, which in this app is the
+     * idempotency key. That is how a customer once received a חשבונית מס קבלה whose
+     * product name read "payplus_installment_plan_41_payment_2". The merchant
+     * writes the sentence their customers will read instead.
+     *
+     * The stored value is a TEMPLATE over ChargeLineDescription::PLACEHOLDERS; null
+     * falls back to the translated default, never to nothing.
+     */
+    public const MAX_CHARGE_DESCRIPTION = 120;
+
+    /**
      * Live charging. TRUE by default — a shop that never opens the screen charges
      * exactly as it always did. Turned off, no saved token is charged for this
      * shop by ANY path, while plans stay active and their dates stay readable.
@@ -128,6 +156,7 @@ class MerchantBillingSettings extends Model
             'max_installments' => 'integer',
             'allowed_frequencies' => 'array',
             'lock_fulfillment_until_paid' => 'boolean',
+            'recurring_creates_order' => 'boolean',
             'allow_customer_pause' => 'boolean',
             'allow_customer_cancel' => 'boolean',
             'allow_customer_skip' => 'boolean',
@@ -159,6 +188,7 @@ class MerchantBillingSettings extends Model
                 'max_installments' => self::DEFAULT_MAX_INSTALLMENTS,
                 'allowed_frequencies' => self::SELECTABLE_FREQUENCIES,
                 'lock_fulfillment_until_paid' => true,
+                'recurring_creates_order' => self::DEFAULT_RECURRING_CREATES_ORDER,
                 // The two portal self-service flags inherit the platform config
                 // default at row-creation time, so a merchant who never opened this
                 // screen still respects the operator's configured default (and the
@@ -234,6 +264,31 @@ class MerchantBillingSettings extends Model
     public function lockFulfillmentUntilPaid(): bool
     {
         return (bool) ($this->lock_fulfillment_until_paid ?? true);
+    }
+
+    /**
+     * Does a recurring cycle materialise an order in the store?
+     *
+     * Read at ONE place — ChargeOrchestrator::materializePlatformOrder — so no
+     * platform strategy can forget it and the two rails cannot disagree.
+     */
+    public function recurringCreatesOrder(): bool
+    {
+        return (bool) ($this->recurring_creates_order ?? self::DEFAULT_RECURRING_CREATES_ORDER);
+    }
+
+    /**
+     * The merchant's template for the line PayPlus prints on a recurring charge.
+     *
+     * Never empty. A blank column falls back to the translated default rather than
+     * to nothing, because "nothing" is what makes PayPlus print the idempotency key
+     * on a customer's tax document.
+     */
+    public function recurringChargeDescription(): string
+    {
+        $stored = trim((string) ($this->recurring_charge_description ?? ''));
+
+        return $stored !== '' ? $stored : __('billing.settings.recurring.description_default');
     }
 
     public function allowsCustomerPause(): bool

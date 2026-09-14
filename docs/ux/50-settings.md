@@ -112,6 +112,8 @@ The rules that govern **every** charge for this shop. All `shop_id`-scoped (Spat
 | Allowed installment frequencies | multiselect | per-shop | plan/portal options |
 | Max number of installments | number | per-shop | installment plan validation |
 | Fulfillment locked for installments | toggle | on | `FulfillmentLockService` |
+| **Create an order for each renewal** | toggle | **on** | `ChargeOrchestrator::materializePlatformOrder` — see below |
+| **What the customer's receipt says** | text (template, ≤120) | built-in default | `ChargeLineDescription` → the charge's `items[0].name` |
 | Customers can pause subscriptions | toggle | per-shop | portal pause availability ([60](60-customer-portal.md)) |
 | Customers can cancel subscriptions | toggle | per-shop | portal cancel availability |
 | Cancellation policy text | textarea | per-shop | `customer_consents.cancellation_policy_snapshot` + consent UI |
@@ -119,6 +121,43 @@ The rules that govern **every** charge for this shop. All `shop_id`-scoped (Spat
 | Support email | email | per-shop | email engine sender + portal "contact support" |
 | DocumentPolicy preferences | grouped controls (per context: deposit/installment/final/recurring/upsell/refund/cancellation) | per-shop | `DocumentPolicy` outputs (§4.2) |
 | Default upsell order strategy | radio (child order [default] / order-edit where supported) | child order | upsell pillar (mirrors [40](40-post-purchase-offers.md) Settings tab) |
+
+### Section 7a — Renewals (what a recurring cycle produces)
+
+Two questions a subscription merchant has to answer for themselves, both about artefacts their customers and
+their accountant actually read.
+
+**"Create an order for each renewal"** (`recurring_creates_order`, default **true** — an upgrade changes
+nothing). For a shop shipping a box, the order is the picking slip and this stays on. For a shop selling a
+₪39 membership, every cycle produced an order nobody would ever pick or pack, and a year of them buried the
+real orders. Off, the cycle still charges, still writes its `payment_ledger` row, still advances the clock
+and still issues the customer's document — **only the store order is skipped.**
+
+Enforced at exactly ONE place: `ChargeOrchestrator::materializePlatformOrder()`, not inside the platform
+strategies. A policy that lives in the strategies is a policy the next platform forgets, and the two rails
+would then disagree about what a subscription does. It is also **renewal-only** — a deposit's parent order
+IS the sale, and an instalment plan's order is what gets released when the last payment lands.
+
+The skipped order writes `Timeline::KIND_STORE_ORDER_SKIPPED` on the plan's own feed, in gray and never as
+the `store_order_failed` FAILURE kind: from the store's admin the two look identical (a paid cycle with no
+order), and telling them apart is the whole value of the row. With no order to attach to, the document's
+`external_order_id` is simply null and the customer reaches it in their account area —
+[60 § Documents](60-customer-portal.md).
+
+**"What the customer's receipt says"** (`recurring_charge_description`). A PayPlus terminal set to auto-issue
+a document per transaction prints the line from the `items` array we send with the charge, and **falls back
+to `more_info` when we send none** — which in this app is the idempotency key. That is how a customer of the
+reference engine received a חשבונית מס קבלה whose product name read
+`payplus_installment_plan_41_payment_2`. So every charge now carries a written line, and the merchant owns
+the recurring one.
+
+The stored value is a template substituted with `strtr()` — never a template engine, the same law the email
+bodies live under. Placeholders come from `ChargeLineDescription::PLACEHOLDERS`, and the settings screen
+builds its helper text from that same table so the form can never advertise a token the renderer does not
+know: `{plan}` `{cycle}` `{frequency}` `{customer}` `{id}`. Blank stores NULL (= "use the default"), never
+today's wording. The live preview renders through the real resolver, so it cannot promise a sentence the
+charge would not send. Deposits and instalments use translated templates (`billing.charge_line.*`) in the
+same vocabulary rather than a second setting.
 
 ### Data fields / source
 All from a per-shop `MerchantBillingSettings` (Spatie, `shop_id`-scoped) — `laravel-backend`. Several fields are

@@ -212,8 +212,10 @@ final class AccountLayoutTest extends TestCase
         // The renderer's version is the plugin's compatibility handle: a payload
         // shape this wide has to be visible to the page that mounts it. Bumped
         // to 7 when the renderer learned `nonceHeader` — the SaaS-hosted area
-        // sends Laravel's CSRF token, WordPress keeps its X-WP-Nonce default.
-        $this->assertStringContainsString('version: 8', $js);
+        // sends Laravel's CSRF token, WordPress keeps its X-WP-Nonce default —
+        // and to 9 when it learned to draw the DOCUMENTS section itself, which
+        // WooCommerce used to be assumed to own.
+        $this->assertStringContainsString('version: 9', $js);
     }
 
     /**
@@ -429,6 +431,44 @@ final class AccountLayoutTest extends TestCase
         // …and it declines rather than guesses when the move could break a theme.
         $this->assertStringContainsString('isConstrained', $shellJs);
         $this->assertStringContainsString('hasNeighbour', $shellJs);
+    }
+
+    /**
+     * The DOCUMENTS shelf is drawn by US, not left to WooCommerce.
+     *
+     * It used to be listed as a platform section, on the assumption that a receipt
+     * always hangs off an order — so WooCommerce's order pages would carry it. A
+     * shop that turns "create an order for each renewal" off has receipts with no
+     * order anywhere, and the platform has nothing to show. If `documents` ever
+     * returns to PLATFORM_SECTIONS, the loop that draws sections skips it and
+     * those customers silently lose the only route to their own paperwork.
+     */
+    public function test_the_documents_shelf_is_drawn_by_the_renderer(): void
+    {
+        $js = (string) file_get_contents(base_path(self::PLUGIN_JS));
+        $css = (string) file_get_contents(base_path(self::PLUGIN_CSS));
+
+        $this->assertStringContainsString('documents: renderDocuments', $js, 'the section has no renderer');
+        $this->assertStringContainsString('function renderDocuments(state)', $js);
+
+        // The line that would silently switch it back off.
+        $this->assertMatchesRegularExpression(
+            "/var PLATFORM_SECTIONS = \[[^\]]*\];/",
+            $js,
+        );
+        preg_match("/var PLATFORM_SECTIONS = \[([^\]]*)\];/", $js, $m);
+        $this->assertStringNotContainsString(
+            "'documents'",
+            $m[1] ?? '',
+            'documents is a section of OUR own — the platform cannot draw a receipt with no order',
+        );
+
+        // It reads the payload key the presenter sends, and nothing else.
+        $this->assertStringContainsString('m.documents', $js);
+
+        // The second line of a row (what the receipt was FOR) has a style, or two
+        // receipts of the same amount are indistinguishable.
+        $this->assertStringContainsString('.la-doc__for', $css);
     }
 
     public function test_woocommerces_own_screens_are_reskinned_with_the_same_tokens(): void
