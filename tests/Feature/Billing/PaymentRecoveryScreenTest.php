@@ -10,13 +10,19 @@ use App\Models\InstallmentPlan;
 use App\Models\MerchantBillingSettings;
 use App\Models\Shop;
 use App\Models\User;
+use App\Modules\PayPlusShopifyInstallments\Contracts\PayPlusGatewayInterface;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
+use App\Modules\PayPlusShopifyInstallments\Enums\PaymentType;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Modules\PayPlusShopifyInstallments\Jobs\ChargeJob;
+use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\GatewayResult;
+use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -335,6 +341,132 @@ final class PaymentRecoveryScreenTest extends TestCase
             0,
             CardUpdateLink::query()->where('plan_id', $noEmail->getKey())->count(),
         );
+    }
+
+    /**
+     * Ask PayPlus what card it holds, for a whole selection.
+     *
+     * The per-subscription button only appears when the plan is provably in that
+     * situation, so a migrated book's broken tokens surface one failed cycle at a
+     * time. This is the same ImportedTokenRecovery run across a selection — and it
+     * must still CHARGE NOTHING, which is what the gateway fake proves.
+     */
+    public function test_finding_saved_cards_in_bulk_charges_nothing_and_reports_each_wall(): void
+    {
+        $charged = 0;
+
+        PayPlusGatewayFactory::fake(fn (Shop $shop): PayPlusGatewayInterface => new class($charged) implements PayPlusGatewayInterface
+        {
+            public function __construct(private int &$charged) {}
+
+            public function chargeWithReference($method, float $amount, string $key, array $meta = []): GatewayResult
+            {
+                $this->charged++;
+
+                return GatewayResult::fromResponse(['results' => ['status' => 'success']]);
+            }
+
+            public function refund(string $uid, float $amount, array $meta = []): GatewayResult
+            {
+                return GatewayResult::fromResponse(['results' => ['status' => 'success']]);
+            }
+
+            public function generateLink(array $payload): GatewayResult
+            {
+                return GatewayResult::fromResponse(['results' => ['status' => 'success']]);
+            }
+
+            // PayPlus holds nothing for these members — the "not found" wall, which
+            // must be reported rather than silently counted as a failure.
+            public function lookupVaultToken(array $payload): GatewayResult
+            {
+                return GatewayResult::fromResponse(['results' => ['status' => 'success'], 'data' => []]);
+            }
+        });
+
+        $a = $this->plan('probe-a', PlanStatus::AWAITING_PAYMENT);
+        $this->payment($a, 1, PaymentStatus::RETRY_SCHEDULED, nextRetry: now()->addDay());
+
+        // No card record at all — skipped before a call is spent on it.
+        $b = $this->plan('probe-b', PlanStatus::AWAITING_PAYMENT, withCard: false);
+        $this->payment($b, 1, PaymentStatus::RETRY_SCHEDULED, nextRetry: now()->addDay());
+
+        Livewire::test(PaymentRecovery::class)
+            ->callTableBulkAction('recoverTokens', [$a, $b])
+            ->assertHasNoTableBulkActionErrors();
+
+        $this->assertSame(0, $charged, 'finding a saved card must never move money');
+
+        PayPlusGatewayFactory::clearFake();
+    }
+
+    /**
+     * Find the card, then take the money — QUEUED, on the scheduler's own job.
+     *
+     * A member with a working card the issuer declined is not probed (a lookup
+     * would spend a call to learn the token is valid) and goes straight to a
+     * ChargeJob. A member with no card is not charged. A cancelled one is not a
+     * debt anybody may collect. And a member whose token is in doubt but for whom
+     * PayPlus holds nothing gets no charge at all — there is no card to ask.
+     */
+    public function test_find_and_charge_queues_the_schedulers_own_job_for_each_chargeable_member(): void
+    {
+        Queue::fake();
+
+        PayPlusGatewayFactory::fake(fn (Shop $shop): PayPlusGatewayInterface => new class implements PayPlusGatewayInterface
+        {
+            public function chargeWithReference($method, float $amount, string $key, array $meta = []): GatewayResult
+            {
+                return GatewayResult::fromResponse(['results' => ['status' => 'success']]);
+            }
+
+            public function refund(string $uid, float $amount, array $meta = []): GatewayResult
+            {
+                return GatewayResult::fromResponse(['results' => ['status' => 'success']]);
+            }
+
+            public function generateLink(array $payload): GatewayResult
+            {
+                return GatewayResult::fromResponse(['results' => ['status' => 'success']]);
+            }
+
+            public function lookupVaultToken(array $payload): GatewayResult
+            {
+                return GatewayResult::fromResponse(['results' => ['status' => 'success'], 'data' => []]);
+            }
+        });
+
+        // A working card the issuer declined: token not in doubt → charged.
+        $declined = $this->plan('declined', PlanStatus::PAUSED, failedAt: now());
+        $declined->paymentMethod->forceFill(['payplus_customer_uid' => 'cust-declined'])->save();
+        $this->payment($declined, 1, PaymentStatus::FAILED);
+
+        // No card at all → nothing to charge.
+        $noCard = $this->plan('no-card', PlanStatus::PAUSED, failedAt: now(), withCard: false);
+        $this->payment($noCard, 1, PaymentStatus::FAILED);
+
+        // Cancelled → not a debt anybody may collect.
+        $cancelled = $this->plan('cancelled', PlanStatus::CANCELLED, failedAt: now());
+        $this->payment($cancelled, 1, PaymentStatus::FAILED);
+
+        // Token in doubt (no customer uid) and PayPlus holds nothing → no charge.
+        $orphan = $this->plan('orphan', PlanStatus::PAUSED, failedAt: now());
+        $this->payment($orphan, 1, PaymentStatus::FAILED);
+
+        Livewire::test(PaymentRecovery::class)
+            ->call('setTab', PaymentRecovery::TAB_STOPPED)
+            ->callTableBulkAction('recoverAndCharge', [$declined, $noCard, $cancelled, $orphan])
+            ->assertHasNoTableBulkActionErrors();
+
+        Queue::assertPushed(ChargeJob::class, 1);
+        Queue::assertPushed(
+            ChargeJob::class,
+            fn (ChargeJob $job): bool => $job->planId === (int) $declined->getKey()
+                && $job->shopId === (int) $this->shop->getKey()
+                && $job->paymentType === PaymentType::RECURRING->value,
+        );
+
+        PayPlusGatewayFactory::clearFake();
     }
 
     /** RELEASE BLOCKER: another shop's failures are never on this screen. */
