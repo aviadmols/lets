@@ -16,6 +16,8 @@ return [
     'test_connection' => 'Test connection',
     'back' => 'Back',
     'none' => '—',
+    'yes' => 'Yes',
+    'no' => 'No',
 
     // timeline actor chips (components §4.14)
     'actor' => [

@@ -53,6 +53,14 @@ final class StatusBadge
         'needs_attention' => 'amber',
         // 'pending' / 'completed' / 'failed' shared above.
 
+        // --- BulkSubscriptionEdit (one mass edit a merchant asked for) ---
+        // TEAL for the in-flight pair, for the same reason the refund halves are
+        // teal: they are progress, not an outcome, and a merchant watching a run
+        // walk forty thousand rows must not read "still going" as "went wrong".
+        'queued' => 'teal',
+        'running' => 'teal',
+        // 'completed' (green) / 'failed' (red) / 'cancelled' (gray) shared above.
+
         // --- PayPlus connection status (settings) ---
         'connected' => 'green',
         'not_connected' => 'gray',

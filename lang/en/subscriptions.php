@@ -261,4 +261,158 @@ return [
             'success' => 'The next charge was updated.',
         ],
     ],
+
+    /*
+    | BULK EDIT — change many subscriptions at once (app/Domain/Bulk).
+    |
+    | The copy carries the screen's whole safety argument, so it is written to be
+    | read by somebody about to change four thousand people's billing: every count
+    | is named, every refusal says which rule refused and what to do instead, and
+    | the two changes that can charge a card immediately say so in words before
+    | they can be confirmed.
+    */
+    'bulk' => [
+        'nav' => 'Bulk edit',
+        'title' => 'Bulk edit subscriptions',
+        'intro' => 'Change many subscriptions at once — pick who, pick what changes, then check the count before it runs.',
+        'back_to_list' => 'Back to subscriptions',
+
+        'step' => [
+            'target' => '1. Which subscriptions',
+            'target_help' => 'Every filter you set narrows the group. Leave a filter empty to ignore it.',
+            'change' => '2. What changes',
+            'change_label' => 'Change',
+            'confirm' => '3. Check and run',
+        ],
+
+        'criteria' => [
+            'interval' => 'Every (interval)',
+            'interval_help' => 'Use with a frequency — “every 3” plus “monthly” finds the quarterly ones.',
+            'status_help' => 'Tick none to include every status.',
+            'no_next_charge' => 'Only subscriptions with no next charge date',
+            'no_next_charge_help' => 'Their clock is stopped. Choosing this ignores the charge-date range above.',
+        ],
+
+        'unit' => [
+            'days' => 'days',
+            'weeks' => 'weeks',
+            'months' => 'months',
+            'years' => 'years',
+        ],
+
+        'op' => [
+            'set_date' => [
+                'label' => 'Set the next charge date',
+                'help' => 'Every matched subscription moves to the same date. Later cycles follow from there, on each subscription’s own frequency.',
+                'summary' => 'Set the next charge date to :date',
+            ],
+            'shift' => [
+                'label' => 'Move the next charge date',
+                'help' => 'Each subscription keeps its own date and moves by the same amount — so a group stays spread out instead of landing on one day.',
+                'amount' => 'Move by',
+                'amount_help' => 'A negative number moves charges earlier.',
+                'summary_forward' => 'Move the next charge :amount :unit later',
+                'summary_back' => 'Move the next charge :amount :unit earlier',
+            ],
+            'frequency' => [
+                'label' => 'Change the billing frequency',
+                'help' => 'Recurring subscriptions only. Instalment plans bill a fixed schedule until they are paid off.',
+                'summary' => 'Bill every :amount :unit',
+                'keeps_date' => 'The next charge date does not move. The new frequency applies from the cycle after it — use “Set the next charge date” to move the date itself.',
+            ],
+            'pause' => [
+                'label' => 'Pause',
+                'help' => 'Stops charging until you resume. Nothing is cancelled and nothing is refunded.',
+                'summary' => 'Pause these subscriptions',
+            ],
+            'resume' => [
+                'label' => 'Resume',
+                'help' => 'Puts paused subscriptions back on schedule. One charge each, never a backlog of the cycles they missed.',
+                'summary' => 'Resume these subscriptions',
+            ],
+            'lifecycle_note' => 'Each subscription moves through the normal state machine, one at a time, and gets its own timeline entry. Subscriptions that are no longer in the right state are skipped.',
+        ],
+
+        'due_now' => [
+            'title' => 'This will make these subscriptions due immediately',
+            'body' => 'The date you have chosen is today or earlier, so the scheduler will charge every matched card on its next run — within the hour.',
+            'ack' => 'I understand these cards will be charged as soon as the scheduler runs',
+        ],
+
+        'action' => [
+            'preview' => 'Count and preview',
+            'counting' => 'Counting…',
+            'apply' => 'Change :count subscriptions',
+            'queueing' => 'Starting…',
+            'stop' => 'Stop this run',
+            'stop_help' => 'Changes already made stay. Nothing further is touched.',
+        ],
+
+        'preview' => [
+            'empty' => 'Set your filters and the change, then press “Count and preview”. Nothing is changed until you confirm.',
+            'matched' => 'Match your filters',
+            'eligible' => 'Will be changed',
+            'ineligible' => 'Cannot be changed',
+            'ineligible_help' => ':count of them cannot take this change — cancelled or completed subscriptions, or the wrong plan kind for it. They are left alone.',
+            'sample' => 'First :count, before and after',
+            'before' => 'Now',
+            'after' => 'After',
+            'unfiltered' => [
+                'title' => 'No filters are set',
+                'body' => 'This will change every subscription in the store that can take the change.',
+            ],
+        ],
+
+        'confirm' => [
+            'label' => 'Type :count to confirm',
+            'help' => 'This is a large change, so the number has to be typed.',
+        ],
+
+        'queued' => 'Started. :count subscriptions are being changed in the background.',
+        'stopped' => 'Run stopped. Changes already made stay.',
+
+        'run' => [
+            'title' => 'Run #:id',
+            'queued' => 'Waiting for a worker to pick it up…',
+            'changed' => 'Changed',
+            'skipped' => 'Skipped',
+            'failed' => 'Failed',
+            'skipped_help' => 'Skipped means nothing needed doing — already on that value, or no longer eligible when the run reached it.',
+            'errored' => 'The run stopped on an error',
+        ],
+
+        'status' => [
+            'queued' => 'Queued',
+            'running' => 'Running',
+            'completed' => 'Completed',
+            'failed' => 'Failed',
+            'cancelled' => 'Stopped',
+        ],
+
+        'history' => [
+            'title' => 'Recent bulk edits',
+            'when' => 'When',
+            'what' => 'What was asked for',
+        ],
+
+        'error' => [
+            'no_shop' => 'No store is selected, so there is nothing to edit.',
+            'preview_first' => 'Count and preview the change first — the confirmation has to match what you were shown.',
+            'confirm_count' => 'The number does not match the count shown. Check the preview and type it again.',
+            'nothing_matched' => 'No subscription matches those filters that can take this change. Nothing was run.',
+            'invalid_params' => 'That change cannot be applied as set.',
+            'date_required' => 'Choose the date the next charge should move to.',
+            'date_unreadable' => 'That date could not be read.',
+            'date_due_now' => 'That date is today or earlier, which would charge every matched card straight away. Tick the acknowledgement if that is what you mean.',
+            'unit_unknown' => 'Choose days, weeks or months.',
+            'amount_required' => 'Enter how far to move the charge date.',
+            'amount_zero' => 'Moving by zero would change nothing.',
+            'amount_too_large' => 'That is further than a bulk move allows. Use a smaller amount, or set the date directly.',
+            'shift_backwards' => 'Moving charges earlier can make them due immediately. Tick the acknowledgement if that is what you mean.',
+            'frequency_unknown' => 'Choose months or years.',
+            'interval_required' => 'Enter how many months or years between charges.',
+            'interval_range' => 'The interval has to be between 1 and 12.',
+            'operation_unknown' => 'That change is not one this app knows how to make.',
+        ],
+    ],
 ];

@@ -251,3 +251,80 @@ Linked in [99-i18n-conventions.md](99-i18n-conventions.md).
   allowance" toggle. Recommend: installments cancel allowed (with refund-scope), pause **not** offered for
   installments by default (a deposit-installment plan pausing is unusual). Confirm.
 - **D3 — Manual "Charge now" on a recurring plan** — allowed for all tiers, or Pro only? `TODO-GATE`.
+
+---
+
+# Part C — Bulk edit (Subscriptions → Bulk edit)
+
+## Purpose
+Change many subscriptions in one act: move a group's next charge date, move the whole group by an interval,
+re-cadence a book, or put a group on hold. The merchant's own framing was "everyone who bills on the 3rd now
+bills on the 10th" — a filter plus a verb — so that is the shape of the screen.
+
+Built for **tens of thousands of rows**: the target is a stored *filter*, never a list of ids, and the write is
+a chunked, resumable, queued walk. Code lives in [`app/Domain/Bulk/`](../../app/Domain/Bulk).
+
+## Entry points / nav
+- Sidebar: **Customers → Bulk edit** (`/subscriptions-bulk-edit`, `navigationSort` 25 — between Subscriptions
+  and Import).
+- Header action **"Bulk edit"** on the subscriptions list, which seeds only the six filters that map
+  one-to-one (`kind`, `status`, `product`, `frequency`, `from`, `until`). The tab, the search box and the
+  balance range are deliberately NOT carried — a filter that arrives silently and means something slightly
+  different is worse than one the merchant sets again in front of the count.
+- Hidden (like the list itself) on a shop billing through the Shopify-Payments rail, unless historical PayPlus
+  plans exist.
+
+## Layout (regions)
+1. **Step 1 — Which subscriptions.** Kind · product · frequency · "every N" · next-charge range ·
+   created range · customer search · status (multi-select) · "no next charge date".
+2. **Step 2 — What changes.** One verb from the registry, then only that verb's own fields. A change that
+   would make the group due immediately shows a banner + a mandatory acknowledgement.
+3. **Step 3 — Check and run.** Three KPIs (match your filters / will be changed / cannot be changed), the
+   summary sentence, the filter spelled back out, the first ten rows as **before → after**, and — above
+   `TYPED_CONFIRM_THRESHOLD` (100) — an input where the count must be re-typed.
+4. **The run.** Progress bar (stepped CSS class, no inline width), changed/skipped/failed counters, a Stop
+   button, polled at 3s and only while unfinished.
+5. **Recent bulk edits.** The receipt book: what was asked for, by whom, and what came of it.
+
+## The verbs (`BulkOperationRegistry`)
+| Key | What it does | Acts on |
+|---|---|---|
+| `set_next_charge_date` | every match moves to ONE date | both kinds, non-terminal |
+| `shift_next_charge_date` | each match moves by the same interval, keeping the spread | both kinds, non-terminal, has a date |
+| `change_billing_frequency` | every N months/years — **the next charge date does not move** | recurring, non-terminal |
+| `pause` | active/dunning → paused, via the guarded state machine | active, awaiting_payment |
+| `resume` | paused → active, via `SubscriptionLifecycleService` (elapsed-date + held-cycle rules intact) | paused |
+
+**Cancel is deliberately absent.** Everything above is reversible or re-movable; cancelling is terminal, emails
+every customer, and the state machine offers no way back. Adding it later is one class in `Operations/` plus one
+registry line — the architecture does not forbid it, the registry does.
+
+## Safety rules (each pinned by a test in `tests/Feature/Bulk/`)
+- **No apply without a preview**, and **any** change to the filter or the verb throws the preview away.
+- The typed count is judged against a **recount** taken at click time, not against the number on screen.
+- A **due-now** date (today or earlier) or a **backwards shift** is refused without an explicit
+  acknowledgement — it would hand the scheduler every matched card within the hour.
+- `eligible()` on each operation mirrors what the DETAIL page allows, so a bulk edit can never do what the
+  single-subscription screen refuses.
+- Status is **never** written set-based: `ColumnEdit::FORBIDDEN_COLUMNS` refuses it, and lifecycle verbs go
+  row-by-row through the guarded `transitionTo()`.
+- Rows, audit and cursor commit in **one transaction per chunk**, which is what makes a retried chunk redo work
+  that was rolled back rather than double work that landed (the shift verb is not idempotent).
+- Every changed subscription gets its **own** `plan_edited` / `status_changed` Timeline row, stamped with
+  `bulk_edit_id` and the actor frozen on the run.
+
+## States
+- **Empty (first run):** no preview yet → "Set your filters and the change…".
+- **Nothing eligible:** the preview shows 0 and Apply is refused with `error.nothing_matched`.
+- **Running:** progress + counters, polled; Stop available.
+- **Failed:** the reason is on the row (and in the log), with the cursor showing how far it got.
+- **Stopped:** committed chunks stand, and the copy says so.
+
+## i18n keys
+All under `subscriptions.bulk.*` in `lang/en` + `lang/he` (mirrored; pinned by
+`AdminDesignSystemTest::test_lang_catalogs_mirror_between_en_and_he`). Run statuses render through
+`StatusBadge` (`queued`/`running` are teal — progress, not an outcome).
+
+## Definition of Done
+Filter → count → sample → typed confirmation → queued run → per-row audit → receipt, at forty thousand rows,
+with a run that survives a deploy and a retry that never double-applies. EN/HE, RTL, zero inline CSS.

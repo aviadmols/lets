@@ -188,7 +188,7 @@ final class EventPresenter
      * Detail keys that are SAFE to surface in the UI. Anything else (notably
      * invoice_url / document_url / raw token / payplus_* secrets) is dropped.
      */
-    public const SAFE_DETAIL_KEYS = ['amount', 'currency', 'sequence', 'from', 'to', 'context', 'reason', 'changed', 'from_amount', 'to_amount', 'charge_number', 'coupon_codes', 'action', 'result', 'subscription', 'campaign'];
+    public const SAFE_DETAIL_KEYS = ['amount', 'currency', 'sequence', 'from', 'to', 'context', 'reason', 'changed', 'from_amount', 'to_amount', 'charge_number', 'coupon_codes', 'action', 'result', 'subscription', 'campaign', 'bulk_edit_id'];
 
     public static function tone(ActivityEvent $event): string
     {
@@ -286,6 +286,14 @@ final class EventPresenter
                 continue;
             }
             $parts[] = self::changePart((string) $field, $change, (string) ($safe['currency'] ?? Money::DEFAULT_CURRENCY));
+        }
+
+        // This change was one of many, made by a bulk edit. Said out loud on the
+        // subscription's own feed because the alternative is a merchant reading
+        // "Next charge: 3 Oct → 10 Oct, by Dana" on four thousand subscriptions and
+        // having no way to tell it was one click rather than four thousand.
+        if (isset($safe['bulk_edit_id'])) {
+            $parts[] = __('timeline.bulk_edit', ['id' => (int) $safe['bulk_edit_id']]);
         }
 
         return $parts === [] ? null : implode(' · ', $parts);

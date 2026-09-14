@@ -57,7 +57,15 @@ return [
         'next_charge_at' => 'Next charge',
         'amount' => 'Amount',
         'items' => 'Products',
+        'billing_frequency' => 'Billing frequency',
     ],
+
+    /*
+    | This change was part of a bulk edit. Shown on the subscription's OWN feed,
+    | because otherwise a merchant reads "Next charge: 3 Oct → 10 Oct, by Dana" on
+    | four thousand subscriptions with no way to tell it was one click.
+    */
+    'bulk_edit' => 'as part of bulk edit #:id',
 
     // The verb a shopper clicked (account_action_failed summary).
     'action' => [

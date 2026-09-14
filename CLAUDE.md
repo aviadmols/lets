@@ -114,6 +114,18 @@ Composer: `<php84> C:\Users\user\.config\herd\bin\composer.phar`
   (`plans_only` vs `all_orders`, the WooCommerce "invoice every site order"
   switch) and a per-context document-type map.
 - `app/Domain/Upsell/` — flows, triggers, offers, branches, events.
+- `app/Domain/Bulk/` — editing MANY subscriptions at once. The target is a stored
+  `SubscriptionCriteria` (a filter, never a list of ids), so the preview that counts
+  and the worker that walks read one definition. Verbs are whitelisted in
+  `BulkOperationRegistry` (no cancel — terminal + emails every customer); each
+  declares an `eligible()` wall mirroring what the DETAIL page allows, so bulk can
+  never do what the single screen refuses. `ColumnEdit` writes columns set-based
+  (grouped by value → one statement per distinct value) and REFUSES `status`;
+  `LifecycleEdit` moves state row-by-row through the guarded `transitionTo()`.
+  `BulkEditRunner` walks an id cursor and commits rows + audit + cursor in ONE
+  transaction per chunk — which is what makes a retried chunk safe for the
+  non-idempotent shift verb — and `RunBulkSubscriptionEditJob` is
+  `ShouldBeUniqueUntilProcessing` so it can re-dispatch itself mid-run.
 - `app/Domain/Campaigns/Studio/` + `app/Domain/Ai/` + `app/Domain/Brand/` — the
   AI Newsletter Studio. A campaign in `editor_mode='studio'` has a JSON block
   document as its ONE source of truth; every save compiles it into `body_html`

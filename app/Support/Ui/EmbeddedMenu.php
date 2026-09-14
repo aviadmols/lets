@@ -3,6 +3,7 @@
 namespace App\Support\Ui;
 
 use App\Filament\Pages\Analytics;
+use App\Filament\Pages\BulkEditSubscriptions;
 use App\Filament\Pages\CustomerDetail;
 use App\Filament\Pages\Customers;
 use App\Filament\Pages\FlowBuilder;
@@ -136,6 +137,10 @@ final class EmbeddedMenu
 
         SubscriptionResource::class => self::AREA_SUBSCRIPTIONS,
         SubscriptionContractResource::class => self::AREA_SUBSCRIPTIONS,
+        // Mapped EXPLICITLY rather than left to fail open: an unmapped screen is
+        // allowed everywhere, and "change four thousand charge dates" is not a
+        // thing to hand a shop whose owner unticked subscriptions altogether.
+        BulkEditSubscriptions::class => self::AREA_SUBSCRIPTIONS,
 
         ManageLoyalty::class => self::AREA_LOYALTY,
         LoyaltyMembers::class => self::AREA_LOYALTY,

@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\SubscriptionResource\Pages;
 
 use App\Domain\Import\SubscriptionExporter;
+use App\Filament\Pages\BulkEditSubscriptions;
 use App\Filament\Resources\SubscriptionResource;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
@@ -59,7 +60,58 @@ class ListSubscriptions extends ListRecords
                 ->icon('heroicon-m-arrow-down-tray')
                 ->color('gray')
                 ->action(fn (): ?StreamedResponse => $this->exportFiltered()),
+
+            /*
+             * Change many at once. A LINK, not a modal, and deliberately not an
+             * action on the table's selected rows.
+             *
+             * Row selection is the obvious shape and the wrong one at this scale:
+             * "select all" on forty thousand subscriptions either loads forty
+             * thousand models into a request or quietly means something different
+             * from what the checkbox implied. The bulk screen states its own target
+             * as a filter, counts it server-side, and shows the count before
+             * anything runs.
+             *
+             * It carries the filters that map ONE-TO-ONE onto the bulk screen's
+             * criteria — and nothing else. The tab, the search box and the balance
+             * range are not seeded, because a filter that arrived silently and
+             * means something slightly different is worse than one the merchant
+             * sets again in front of the count.
+             */
+            Action::make('bulkEdit')
+                ->label(__('subscriptions.bulk.nav'))
+                ->icon('heroicon-m-pencil-square')
+                ->color('gray')
+                ->url(fn (): string => BulkEditSubscriptions::getUrl($this->bulkEditSeed())),
         ];
+    }
+
+    /**
+     * The current table filters, as the bulk screen's query parameters.
+     *
+     * Only exact equivalents travel. Every value is re-validated against the
+     * canonical enums by SubscriptionCriteria on the other side, so a hand-edited
+     * URL cannot smuggle in a filter value the engine does not recognise.
+     *
+     * @return array<string, string>
+     */
+    private function bulkEditSeed(): array
+    {
+        $filters = $this->tableFilters ?? [];
+
+        $seed = [
+            'kind' => $filters['plan_kind']['value'] ?? null,
+            'status' => $filters['status']['value'] ?? null,
+            'product' => $filters['external_product_id']['value'] ?? null,
+            'frequency' => $filters['billing_frequency']['value'] ?? null,
+            'from' => $filters['next_charge_at']['from'] ?? null,
+            'until' => $filters['next_charge_at']['until'] ?? null,
+        ];
+
+        return array_filter(
+            array_map(static fn ($v): string => is_scalar($v) ? trim((string) $v) : '', $seed),
+            static fn (string $v): bool => $v !== '',
+        );
     }
 
     /** Stream the current query as the round-trippable subscriptions CSV. */

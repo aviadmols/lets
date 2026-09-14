@@ -236,6 +236,69 @@ final class Timeline
     public const KIND_CAMPAIGN_UNSUBSCRIBED = 'campaign_unsubscribed';
 
     /**
+     * Rows per INSERT in recordMany(). A bulk edit's chunk is smaller than this,
+     * so in practice one statement per chunk — the point of the method.
+     */
+    public const BULK_INSERT_CHUNK = 500;
+
+    /**
+     * Record MANY Timeline events in one statement — and, unlike record(), THROW
+     * when it cannot.
+     *
+     * Why it exists: a bulk edit changes tens of thousands of subscriptions, and
+     * one ActivityEvent::create() per row would make the audit trail cost more
+     * than the change it describes (three queries a row instead of one a chunk).
+     *
+     * Why it does NOT swallow, when record() carefully does: record()'s silence
+     * protects the MONEY path — a failed audit write must never undo a charge that
+     * already left the building. A bulk edit is the opposite case. Nothing has left
+     * the building, the whole chunk is inside the runner's transaction, and a mass
+     * mutation with no record of who asked for it is worse than a chunk that rolls
+     * back and is retried. So the exception travels, the runner's transaction
+     * unwinds the row changes with it, and the run stops with a reason a human can
+     * read. An unaudited bulk edit is not a cheaper outcome; it is an unanswerable
+     * one.
+     *
+     * @param  list<array{kind: string, details?: array<string, mixed>, plan_id?: ?int, payment_id?: ?int, actor?: string}>  $rows
+     * @return int rows written
+     */
+    public static function recordMany(array $rows, ?string $actor = null, ?int $shopId = null): int
+    {
+        if ($rows === []) {
+            return 0;
+        }
+
+        // Resolved ONCE for the batch. Inside a queued run there is no acting
+        // admin to ask (the request that started it is long gone), which is why
+        // the runner passes the actor it froze on the run row.
+        $shop = $shopId ?? Tenant::id();
+        $who = $actor ?? PlatformContext::actingActor() ?? ActivityEvent::ACTOR_SYSTEM;
+        $now = now();
+
+        $written = 0;
+
+        foreach (array_chunk($rows, self::BULK_INSERT_CHUNK) as $batch) {
+            $payload = array_map(static fn (array $row): array => [
+                'shop_id' => $shop,
+                'plan_id' => $row['plan_id'] ?? null,
+                'payment_id' => $row['payment_id'] ?? null,
+                'actor' => $row['actor'] ?? $who,
+                'kind' => (string) $row['kind'],
+                // insert() bypasses the model's casts, so the JSON column is
+                // encoded here. THROW_ON_ERROR because a details bag we cannot
+                // encode is a row we must not pretend to have written.
+                'details' => json_encode($row['details'] ?? [], JSON_THROW_ON_ERROR),
+                'created_at' => $now,
+            ], $batch);
+
+            ActivityEvent::query()->insert($payload);
+            $written += count($payload);
+        }
+
+        return $written;
+    }
+
+    /**
      * Record a Timeline event. Never throws.
      *
      * ACTOR ATTRIBUTION (W2): when the caller does NOT pass an explicit actor, the
