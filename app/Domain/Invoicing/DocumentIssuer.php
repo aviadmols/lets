@@ -2,6 +2,7 @@
 
 namespace App\Domain\Invoicing;
 
+use App\Domain\Billing\ChargeLineDescription;
 use App\Domain\Billing\Contracts\DocumentDecision;
 use App\Domain\Billing\Contracts\DocumentPolicy;
 use App\Domain\Billing\Contracts\DocumentPolicyInput;
@@ -10,6 +11,7 @@ use App\Models\IssuedDocument;
 use App\Models\MerchantInvoicingSettings;
 use App\Models\PaymentLedger;
 use App\Models\Shop;
+use App\Modules\PayPlusShopifyInstallments\Enums\PaymentType;
 use App\Modules\PayPlusShopifyInstallments\Support\ResponseMasker;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Services\WooCommerce\Orders\WooCommerceOrderStrategy;
@@ -139,6 +141,7 @@ final class DocumentIssuer
                 linkedDocumentId: $linkedDocumentId
                     ?? $this->linkedDocumentIdFor($shopId, $context, $decision, $ledger, $plan),
                 remarks: $this->remarksFor($ledger, $plan),
+                description: $this->descriptionFor($context, $ledger, $plan, $itemTitle),
                 sendEmail: $settings->sendsEmailToCustomer(),
             );
 
@@ -241,6 +244,10 @@ final class DocumentIssuer
                 currency: (string) ($order['currency'] ?: config('payplus.currency', 'ILS')),
                 isPaid: true, // the plugin only reports orders in a merchant-chosen PAID status
                 remarks: $this->orderRemarks($order),
+                // The provider's "תיאור" column. The ORDER reference here, which
+                // is exactly the shape a merchant already recognises on documents
+                // their other systems issue ("הזמנה 47797").
+                description: $this->orderRemarks($order),
                 sendEmail: $settings->sendsEmailToCustomer(),
                 paymentGateway: $this->blankToNull((string) ($order['payment_gateway'] ?? '')),
                 cardLast4: $this->blankToNull((string) ($order['card_last4'] ?? '')),
@@ -339,6 +346,10 @@ final class DocumentIssuer
                 isPaid: true,
                 linkedDocumentId: $linked,
                 remarks: $this->creditRemarks($orderId, $reason),
+                // Without the merchant's free-text reason: the description is a
+                // list column, and "זיכוי להזמנה 47797" is what identifies the
+                // row. The reason stays on the document itself, via remarks.
+                description: $this->creditRemarks($orderId, null),
                 sendEmail: $settings->sendsEmailToCustomer(),
             );
 
@@ -834,6 +845,43 @@ final class DocumentIssuer
         return __('invoicing.line.'.$context->value, [
             'reference' => (string) ($plan?->public_id ?? $ledger->idempotency_key),
         ]);
+    }
+
+    /**
+     * The document's own DESCRIPTION — the provider's "תיאור" column.
+     *
+     * A third text field, and the one we never sent: `remarks` is the note printed
+     * on the document (the plan reference, for reconciliation) and the income
+     * line names what was bought, so the merchant's own document list read "—" for
+     * every document this app has ever issued.
+     *
+     * For a RECURRING cycle it is the merchant's configurable receipt line — the
+     * SAME sentence PayPlus prints on its own document, resolved through the same
+     * ChargeLineDescription. One setting, both documents: a merchant who writes
+     * "הזמנת מנוי - {plan}" should not have to discover that it governs one of
+     * their two providers.
+     *
+     * Every other context reuses the line text, which already names the product or
+     * the order. Null falls through to no field at all rather than an empty one.
+     */
+    private function descriptionFor(
+        DocumentContext $context,
+        PaymentLedger $ledger,
+        ?InstallmentPlan $plan,
+        ?string $itemTitle = null,
+    ): ?string {
+        if ($context === DocumentContext::RECURRING && $plan !== null) {
+            // The cycle this document is FOR. Read after the charge settled, so
+            // the succeeded slots are the cycles billed — the same number the
+            // merchant's {cycle} placeholder means.
+            $cycle = max(1, $plan->paidCycles());
+
+            return app(ChargeLineDescription::class)->for($plan, PaymentType::RECURRING, $cycle);
+        }
+
+        $line = trim($this->lineDescriptionFor($context, $ledger, $plan, $itemTitle));
+
+        return $line !== '' ? $line : null;
     }
 
     /** Free-text on the document: the plan reference, so it reconciles to LETS. */

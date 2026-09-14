@@ -30,6 +30,21 @@ final class IssueDocumentRequest
         public readonly ?string $linkedDocumentId = null,
         /** Free-text shown on the document (order number, plan reference). */
         public readonly ?string $remarks = null,
+        /**
+         * The document's OWN description — a THIRD text field, and not a synonym
+         * for either of the two above.
+         *
+         * Green Invoice's document list shows this one in its "תיאור" column.
+         * `remarks` is the note printed on the document; `lines[].description`
+         * names what was bought. We sent both and left this empty, so every
+         * document this app has ever issued reads "—" in the merchant's own list
+         * while documents from their other systems read "הזמנה 47797".
+         *
+         * For a subscription renewal it carries the merchant's configurable
+         * receipt line (the same sentence PayPlus prints), so ONE setting governs
+         * what the customer reads on both documents.
+         */
+        public readonly ?string $description = null,
         /** Ask the provider to email the document to the customer. */
         public readonly bool $sendEmail = false,
         /**

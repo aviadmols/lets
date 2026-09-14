@@ -38,6 +38,17 @@ final class GreenInvoiceProvider implements InvoiceProvider
     /** Green Invoice links a credit note to its original by this linkType. */
     private const LINK_TYPE_LINKED = 'linked';
 
+    /**
+     * Ceiling for the document-level `description`.
+     *
+     * Clamped rather than trusted: it is the one field on this payload whose text
+     * a MERCHANT writes (their configurable receipt line), and a provider that
+     * rejects an over-long string would fail the document — which on this path
+     * means a customer with no tax receipt. ChargeLineDescription already clamps
+     * to 120; this is the second lock, on the provider's own boundary.
+     */
+    private const MAX_DESCRIPTION = 255;
+
     /** Failure codes this provider originates (transport codes come from the client). */
     private const ERROR_TOTALS_MISMATCH = 'totals_mismatch';
 
@@ -155,6 +166,24 @@ final class GreenInvoiceProvider implements InvoiceProvider
 
         if ($request->remarks !== null && trim($request->remarks) !== '') {
             $payload['remarks'] = trim($request->remarks);
+        }
+
+        /*
+         * The document's own DESCRIPTION — the field the provider's document list
+         * shows in its "תיאור" column, and a different field from both `remarks`
+         * (the note printed on the document) and `income[].description` (what was
+         * bought).
+         *
+         * We sent the other two and left this one empty, which is why every
+         * document this app issued read "—" in the merchant's list while documents
+         * from their other systems read "הזמנה 47797".
+         *
+         * Sent only when non-empty, like remarks: an explicit empty string is not
+         * the same as an absent field to a validating API, and there is nothing to
+         * gain from telling the provider the description is blank.
+         */
+        if ($request->description !== null && trim($request->description) !== '') {
+            $payload['description'] = mb_substr(trim($request->description), 0, self::MAX_DESCRIPTION);
         }
 
         if ($type->requiresPayment()) {
