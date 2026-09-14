@@ -4,8 +4,9 @@ namespace App\Filament\Pages;
 
 use App\Domain\Installments\CardUpdateLinkSender;
 use App\Domain\Installments\CardUpdateService;
-use App\Domain\Installments\ImportedTokenRecovery;
 use App\Domain\Installments\Models\CardUpdateLink;
+use App\Domain\Installments\Models\TokenRecoveryRun;
+use App\Domain\Installments\TokenRecoveryRunner;
 use App\Domain\Lifecycle\ChargeNowService;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Filament\Resources\SubscriptionResource;
@@ -13,9 +14,7 @@ use App\Models\InstallmentPlan;
 use App\Models\MerchantBillingSettings;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
-use App\Modules\PayPlusShopifyInstallments\Enums\PaymentType;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
-use App\Modules\PayPlusShopifyInstallments\Jobs\ChargeJob;
 use App\Support\Tenant;
 use App\Support\Ui\Money;
 use Filament\Notifications\Notification;
@@ -99,14 +98,13 @@ class PaymentRecovery extends Page implements HasTable
     public const BADGE_CEILING = 99;
 
     /**
-     * How many members one "find saved cards" run may ask PayPlus about.
+     * How often the screen asks a running pass how far it has got.
      *
-     * Each is a round trip inside a web request. Unbounded, a merchant selecting
-     * six hundred rows gets a gateway timeout and no idea which of them were fixed
-     * before it died — so the run is capped, the page size is capped, and a bigger
-     * book is recovered a page at a time.
+     * Three seconds is faster than a member takes to process, so the bar always
+     * moves, and slow enough that a screen left open overnight is not a load
+     * problem.
      */
-    public const MAX_TOKEN_PROBES = 100;
+    public const RUN_POLL = '3s';
 
     public string $activeTab = self::TAB_RETRYING;
 
@@ -305,28 +303,21 @@ class PaymentRecovery extends Page implements HasTable
                  * FIND THE CARD, THEN TAKE THE MONEY — the whole recovery in one
                  * click, for a selection.
                  *
-                 * Two steps per member. First, for a token that is provably in
-                 * doubt (no PayPlus customer uid, or the last decline said
-                 * "token-not-exist"), ask PayPlus what card it holds and save it —
-                 * the same ImportedTokenRecovery as the button above. A member whose
-                 * token is not in doubt is not probed: their card works and the
-                 * issuer said no, and a lookup would spend a call to learn that.
+                 * Two steps per member, both on a worker. The lookup asks PayPlus
+                 * what card it holds and saves it; then a CHARGE is QUEUED as
+                 * ChargeJob — the exact job the scheduler dispatches, with the same
+                 * unique lock, the same tenant middleware and every orchestrator
+                 * money law intact. On success the orchestrator walks the plan back
+                 * to ACTIVE, clears the hold and advances the date; on a decline it
+                 * is held again. Results land on THIS screen as the queue drains — a
+                 * row that succeeds leaves the group.
                  *
-                 * Then a CHARGE is QUEUED — not run here. ChargeJob is the exact job
-                 * the scheduler dispatches: same unique lock, same tenant middleware,
-                 * same orchestrator with every money law intact. On success the
-                 * orchestrator walks the plan back to ACTIVE, clears the hold and
-                 * advances the date; on a decline it is held again. The results
-                 * land on THIS screen as the queue drains — a row that succeeds
-                 * leaves the group.
-                 *
-                 * Queued rather than inline because a hundred charges are a hundred
-                 * gateway round trips, and a web request that dies at the fortieth
-                 * leaves nobody able to say which sixty were billed.
+                 * A member whose token already works is still charged: their card is
+                 * fine, the ISSUER declined, and the money is still owed.
                  *
                  * A member PayPlus is STILL BILLING ITSELF is recovered but NEVER
-                 * charged here: that would take their money twice, and the red
-                 * notification names them instead.
+                 * charged here: that would take their money twice, and the report
+                 * names them instead of counting them.
                  */
                 BulkAction::make('recoverAndCharge')
                     ->label(__('recovery.action.recover_and_charge'))
@@ -598,138 +589,17 @@ class PaymentRecovery extends Page implements HasTable
     }
 
     /**
-     * Find the card, then queue the charge — for every selected member.
-     *
-     * The token is only probed when it is provably in doubt (tokenInDoubt()); a
-     * working card that the issuer declined has no better token to find, and
-     * Shirley Keren's two-record case is exactly that. Every member who ends up
-     * with a usable card gets a ChargeJob — the scheduler's own job — so the
-     * charge runs on the `charges` queue with every money law intact and the
-     * outcome lands on this screen as the queue drains.
-     *
-     * A member PayPlus is still billing itself is recovered and then NOT queued:
-     * charging them here would take their money twice. They are named in red.
+     * Find the card, then queue the charge — for every selected member, on a worker.
      *
      * @param  EloquentCollection<int, InstallmentPlan>  $records
      */
     private function recoverAndCharge(EloquentCollection $records): void
     {
-        $shop = Tenant::current();
-
-        if (! $shop instanceof Shop) {
-            return;
-        }
-
-        $recovery = app(ImportedTokenRecovery::class);
-
-        $recovered = 0;
-        $queued = 0;
-        $noCard = 0;
-        $skipped = 0;
-
-        /** @var list<string> $doubleBilling */
-        $doubleBilling = [];
-
-        foreach ($records->take(self::MAX_TOKEN_PROBES) as $plan) {
-            // A cancelled or completed plan is not a debt anybody may collect.
-            if ($plan->status->isTerminal()) {
-                $skipped++;
-
-                continue;
-            }
-
-            if ($plan->paymentMethod === null) {
-                $noCard++;
-
-                continue;
-            }
-
-            if ($this->tokenInDoubt($plan)) {
-                $outcome = $recovery->recover($plan);
-
-                if ($outcome['applied'] ?? false) {
-                    $recovered++;
-
-                    // Recovered — and PayPlus is billing them on its own. Charging
-                    // now would be the second charge, so this one stops here.
-                    if ($outcome['recurring_live'] ?? false) {
-                        $doubleBilling[] = $plan->customerLabel();
-
-                        continue;
-                    }
-                } elseif (($outcome['route'] ?? null) !== ImportedTokenRecovery::ROUTE_ALREADY_VALID) {
-                    // Nothing found, nothing valid — there is no card to ask.
-                    $noCard++;
-
-                    continue;
-                }
-            }
-
-            // The scheduler's own job: unique per plan, tenant-bound, and every
-            // orchestrator law intact. Re-read nothing here — the job loads the
-            // plan fresh, including a card the recovery just re-pointed.
-            ChargeJob::dispatch(
-                (int) $shop->getKey(),
-                (int) $plan->getKey(),
-                ($plan->isRecurring() ? PaymentType::RECURRING : PaymentType::INSTALLMENT)->value,
-            );
-            $queued++;
-        }
-
-        Notification::make()
-            ->title(__('recovery.action.recover_and_charge_done', ['queued' => $queued]))
-            ->body(__('recovery.action.recover_and_charge_report', [
-                'recovered' => $recovered,
-                'no_card' => $noCard,
-                'skipped' => $skipped,
-            ]))
-            ->success()
-            ->persistent()
-            ->send();
-
-        if ($doubleBilling !== []) {
-            Notification::make()
-                ->title(__('recovery.action.recover_tokens_double_title'))
-                ->body(__('recovery.action.recover_and_charge_double_body', [
-                    'names' => implode(', ', array_slice($doubleBilling, 0, 10)),
-                    'count' => count($doubleBilling),
-                ]))
-                ->danger()
-                ->persistent()
-                ->send();
-        }
-
-        $this->resetTable();
+        $this->startRun($records, TokenRecoveryRun::MODE_RECOVER_AND_CHARGE);
     }
 
     /**
-     * Is this plan's token provably in doubt — worth a lookup call to PayPlus?
-     *
-     * Two shapes: an imported token reference that was never vaulted (no PayPlus
-     * customer uid), and a card PayPlus itself said it does not hold. A plan in
-     * neither shape has a working card that the ISSUER declined, and swapping its
-     * token would fix nothing while destroying a good one.
-     */
-    private function tokenInDoubt(InstallmentPlan $plan): bool
-    {
-        if ($plan->paymentMethod?->payplus_customer_uid === null) {
-            return true;
-        }
-
-        // ONE definition, shared with the subscription page's button — they used
-        // to carry a copy each, which is how a lookup happens in one place and not
-        // the other. It covers the declines a stale token can cause: the token
-        // PayPlus does not hold, and a card that reads stolen / expired / blocked
-        // because we are presenting the record the member replaced.
-        return ImportedTokenRecovery::declineIsRecoverable($plan->latestPayment?->failure_message);
-    }
-
-    /**
-     * Ask PayPlus what card it holds, for every selected member.
-     *
-     * Bounded at MAX_TOKEN_PROBES because each member is a round trip to PayPlus
-     * inside a web request: unbounded, a merchant selecting six hundred rows gets a
-     * gateway timeout and no idea which of them were fixed before it died.
+     * Ask PayPlus what card it holds, for every selected member, on a worker.
      *
      * The REPORT is the feature as much as the fixing is. A merchant running this
      * over a migrated book needs to know not just "nine fixed" but which wall the
@@ -741,79 +611,131 @@ class PaymentRecovery extends Page implements HasTable
      */
     private function recoverTokens(EloquentCollection $records): void
     {
-        $recovery = app(ImportedTokenRecovery::class);
+        $this->startRun($records, TokenRecoveryRun::MODE_RECOVER);
+    }
 
-        $fixed = 0;
-        $alreadyValid = 0;
-        $notFound = 0;
-        $ambiguous = 0;
-        $noLastFour = 0;
-        $skipped = 0;
+    /**
+     * Hand a selection to the queue, and say so.
+     *
+     * THIS USED TO HAPPEN HERE, IN THE REQUEST, and that is the bug this replaces.
+     * One member costs up to thirteen round trips to PayPlus; a merchant selecting
+     * a hundred rows was asking a Livewire request to make over a thousand. It
+     * died at the proxy every time — and the cruel part was that the writes had
+     * already landed, so cards HAD been re-pointed and the only record of which
+     * ones died with the response.
+     *
+     * Now the click does three cheap things: bound the selection, write a run row,
+     * dispatch a job. The report is read off that row by a banner that polls, so a
+     * merchant who closes the tab still finds the answer when they come back.
+     *
+     * @param  EloquentCollection<int, InstallmentPlan>  $records
+     */
+    private function startRun(EloquentCollection $records, string $mode): void
+    {
+        $shop = Tenant::current();
 
-        /** @var list<string> $doubleBilling */
-        $doubleBilling = [];
-
-        foreach ($records->take(self::MAX_TOKEN_PROBES) as $plan) {
-            // No card row at all — there is nothing to re-point, and asking PayPlus
-            // about it would spend a call to learn that.
-            if ($plan->paymentMethod === null) {
-                $skipped++;
-
-                continue;
-            }
-
-            $outcome = $recovery->recover($plan);
-
-            if ($outcome['applied'] ?? false) {
-                $fixed++;
-
-                // THE ONE THING THAT MUST NOT BE A NUMBER. PayPlus billing this
-                // member on its own schedule while we now hold a working card is a
-                // double charge waiting to happen, so each one is named.
-                if ($outcome['recurring_live'] ?? false) {
-                    $doubleBilling[] = $plan->customerLabel();
-                }
-
-                continue;
-            }
-
-            match (true) {
-                ($outcome['route'] ?? null) === ImportedTokenRecovery::ROUTE_ALREADY_VALID => $alreadyValid++,
-                ($outcome['detail'] ?? null) === 'no_last_four_to_match_on' => $noLastFour++,
-                ($outcome['detail'] ?? null) === 'no_card_matched' => $ambiguous++,
-                default => $notFound++,
-            };
+        if (! $shop instanceof Shop) {
+            return;
         }
 
+        // One run at a time per shop. Two passes over overlapping selections would
+        // ask PayPlus the same questions twice and, in charge mode, race each other
+        // to queue the same charge — which the idempotency layers would catch, but
+        // a merchant reading two contradictory progress bars would not.
+        if ($this->activeRun() !== null) {
+            Notification::make()
+                ->title(__('recovery.run.already_running'))
+                ->warning()
+                ->send();
+
+            return;
+        }
+
+        $ids = $records->pluck('id')->map(fn ($id): int => (int) $id)->all();
+
+        if ($ids === []) {
+            return;
+        }
+
+        $run = app(TokenRecoveryRunner::class)->start($shop, $ids, $mode);
+
         Notification::make()
-            ->title(__('recovery.action.recover_tokens_done', ['count' => $fixed]))
-            ->body(__('recovery.action.recover_tokens_report', [
-                'valid' => $alreadyValid,
-                'ambiguous' => $ambiguous,
-                'no_last_four' => $noLastFour,
-                'not_found' => $notFound,
-                'skipped' => $skipped,
-            ]))
+            ->title(__('recovery.run.started', ['count' => number_format((int) $run->total)]))
+            ->body(__('recovery.run.started_body'))
             ->success()
-            ->persistent()
             ->send();
 
-        // A SECOND notification, on purpose. Folded into the summary above it would
-        // be read as one more statistic; this one is a customer about to be charged
-        // twice, and it stays on screen until it is dismissed.
-        if ($doubleBilling !== []) {
+        // Over the cap is not a silent truncation: the merchant selected more than
+        // one click may set in motion, and has to know the rest were not started.
+        if (count($ids) > (int) $run->total) {
             Notification::make()
-                ->title(__('recovery.action.recover_tokens_double_title'))
-                ->body(__('recovery.action.recover_tokens_double_body', [
-                    'names' => implode(', ', array_slice($doubleBilling, 0, 10)),
-                    'count' => count($doubleBilling),
+                ->title(__('recovery.run.capped', [
+                    'started' => number_format((int) $run->total),
+                    'selected' => number_format(count($ids)),
                 ]))
-                ->danger()
+                ->warning()
                 ->persistent()
                 ->send();
         }
+    }
 
-        $this->resetTable();
+    // === The running pass ===
+
+    /**
+     * The pass currently walking, if there is one.
+     *
+     * Read by the banner on every poll, so it is one indexed row by (shop,
+     * status) and nothing more.
+     */
+    public function activeRun(): ?TokenRecoveryRun
+    {
+        return TokenRecoveryRun::query()
+            ->whereIn('status', [TokenRecoveryRun::STATUS_QUEUED, TokenRecoveryRun::STATUS_RUNNING])
+            ->latest('id')
+            ->first();
+    }
+
+    /**
+     * The last pass that ENDED, while its answer is still the answer.
+     *
+     * A report that never expires becomes furniture — a merchant returning next
+     * week would read last week's numbers as today's. It stops being shown after
+     * REPORT_VISIBLE_HOURS; the row stays for the audit trail.
+     */
+    public function lastReport(): ?TokenRecoveryRun
+    {
+        return TokenRecoveryRun::query()
+            ->whereIn('status', TokenRecoveryRun::TERMINAL_STATUSES)
+            ->where('finished_at', '>=', now()->subHours(TokenRecoveryRun::REPORT_VISIBLE_HOURS))
+            ->latest('id')
+            ->first();
+    }
+
+    /** The merchant's Stop. Everything already committed stays committed. */
+    public function stopRun(): void
+    {
+        $run = $this->activeRun();
+
+        if ($run === null) {
+            return;
+        }
+
+        app(TokenRecoveryRunner::class)->cancel((int) $run->getKey());
+
+        Notification::make()
+            ->title(__('recovery.run.stopped'))
+            ->warning()
+            ->send();
+    }
+
+    /** Dismiss a finished pass's report without waiting for it to age out. */
+    public function dismissReport(): void
+    {
+        $run = $this->lastReport();
+
+        if ($run !== null) {
+            $run->forceFill(['finished_at' => now()->subHours(TokenRecoveryRun::REPORT_VISIBLE_HOURS + 1)])->save();
+        }
     }
 
     /**

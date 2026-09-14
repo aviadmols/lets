@@ -2,7 +2,10 @@
 
 namespace Tests\Feature\Billing;
 
+use App\Domain\Installments\Jobs\RunTokenRecoveryJob;
 use App\Domain\Installments\Models\CardUpdateLink;
+use App\Domain\Installments\Models\TokenRecoveryRun;
+use App\Domain\Installments\TokenRecoveryRunner;
 use App\Filament\Pages\PaymentRecovery;
 use App\Models\InstallmentPayment;
 use App\Models\InstallmentPaymentMethod;
@@ -350,6 +353,9 @@ final class PaymentRecoveryScreenTest extends TestCase
      * situation, so a migrated book's broken tokens surface one failed cycle at a
      * time. This is the same ImportedTokenRecovery run across a selection — and it
      * must still CHARGE NOTHING, which is what the gateway fake proves.
+     *
+     * The work happens on a worker (here, the sync queue driver runs it inline),
+     * and every answer is committed to the run row as it arrives.
      */
     public function test_finding_saved_cards_in_bulk_charges_nothing_and_reports_each_wall(): void
     {
@@ -397,7 +403,214 @@ final class PaymentRecoveryScreenTest extends TestCase
 
         $this->assertSame(0, $charged, 'finding a saved card must never move money');
 
+        // The pass is a row, and it reached both members. The one with no card
+        // record is skipped before a call is spent on it.
+        $run = TokenRecoveryRun::query()->latest('id')->firstOrFail();
+
+        $this->assertSame(TokenRecoveryRun::MODE_RECOVER, $run->mode);
+        $this->assertSame(TokenRecoveryRun::STATUS_COMPLETED, $run->status);
+        $this->assertSame(2, $run->total);
+        $this->assertSame(2, $run->processed);
+        $this->assertSame(1, $run->skipped);
+        $this->assertSame(0, $run->charges_queued, 'find-cards mode must queue no charge');
+
         PayPlusGatewayFactory::clearFake();
+    }
+
+    /**
+     * THE BUG THIS SCREEN SHIPPED WITH: a hundred members was over a thousand
+     * round trips to PayPlus, attempted inside the Livewire request. It died at the
+     * proxy every time — and the writes had already landed, so cards HAD been
+     * re-pointed and the only record of which ones died with the response.
+     *
+     * The click must now do three cheap things and return: bound the selection,
+     * write a run row, dispatch a job. Nothing may reach PayPlus in the request.
+     */
+    public function test_the_click_only_queues_a_pass_and_never_calls_payplus_in_the_request(): void
+    {
+        Queue::fake();
+
+        $plans = [];
+
+        for ($i = 0; $i < 25; $i++) {
+            $plan = $this->plan('bulk-'.$i, PlanStatus::PAUSED, failedAt: now());
+            $this->payment($plan, 1, PaymentStatus::FAILED);
+            $plans[] = $plan;
+        }
+
+        Livewire::test(PaymentRecovery::class)
+            ->call('setTab', PaymentRecovery::TAB_STOPPED)
+            ->callTableBulkAction('recoverTokens', $plans)
+            ->assertHasNoTableBulkActionErrors();
+
+        Queue::assertPushed(RunTokenRecoveryJob::class, 1);
+
+        $run = TokenRecoveryRun::query()->latest('id')->firstOrFail();
+
+        $this->assertSame(25, $run->total);
+        $this->assertSame(TokenRecoveryRun::STATUS_QUEUED, $run->status);
+
+        // THE ASSERTION THAT MATTERS. Not one of the twenty-five was touched while
+        // the merchant waited: every lookup, and therefore every chance of the
+        // request timing out, is on the other side of the queue.
+        $this->assertSame(0, $run->processed);
+        $this->assertSame(0, $run->cursor);
+    }
+
+    /**
+     * A killed worker costs ONE member, not the run.
+     *
+     * The cursor and the counters are committed together after each member, so a
+     * pass that dies at member three resumes at member three — it does not start
+     * over (re-asking PayPlus about everybody) and it does not skip ahead.
+     */
+    public function test_a_pass_resumes_from_where_it_committed(): void
+    {
+        Queue::fake();
+
+        $plans = [];
+
+        for ($i = 0; $i < 5; $i++) {
+            $plan = $this->plan('resume-'.$i, PlanStatus::PAUSED, failedAt: now(), withCard: false);
+            $this->payment($plan, 1, PaymentStatus::FAILED);
+            $plans[] = $plan;
+        }
+
+        $run = app(TokenRecoveryRunner::class)->start(
+            $this->shop,
+            array_map(fn (InstallmentPlan $p): int => (int) $p->getKey(), $plans),
+            TokenRecoveryRun::MODE_RECOVER,
+        );
+
+        $runner = app(TokenRecoveryRunner::class);
+
+        // A worker that only got through two before it died.
+        $finished = $runner->advance((int) $run->getKey(), maxMembers: 2);
+
+        $this->assertFalse($finished, 'a partial pass must ask to be continued');
+        $this->assertSame(2, $run->refresh()->processed);
+        $this->assertSame(2, $run->cursor);
+
+        // Its replacement picks up at three, not at one.
+        $runner->advance((int) $run->getKey());
+
+        $run->refresh();
+        $this->assertSame(5, $run->processed, 'every member is reached exactly once');
+        $this->assertSame(TokenRecoveryRun::STATUS_COMPLETED, $run->status);
+    }
+
+    /**
+     * Stop means stop, and it keeps what it found.
+     *
+     * A merchant who starts a hundred and changes their mind must not have to wait
+     * for the run to end on its own — and the members already asked about keep
+     * their answers, with the report saying plainly how many were never reached.
+     */
+    public function test_a_stopped_pass_keeps_its_results_and_admits_who_was_missed(): void
+    {
+        Queue::fake();
+
+        $plans = [];
+
+        for ($i = 0; $i < 6; $i++) {
+            $plan = $this->plan('stop-'.$i, PlanStatus::PAUSED, failedAt: now(), withCard: false);
+            $this->payment($plan, 1, PaymentStatus::FAILED);
+            $plans[] = $plan;
+        }
+
+        $runner = app(TokenRecoveryRunner::class);
+        $run = $runner->start(
+            $this->shop,
+            array_map(fn (InstallmentPlan $p): int => (int) $p->getKey(), $plans),
+            TokenRecoveryRun::MODE_RECOVER,
+        );
+
+        $runner->advance((int) $run->getKey(), maxMembers: 2);
+        $runner->cancel((int) $run->getKey());
+
+        // A worker that was already mid-flight must not resurrect it.
+        $this->assertTrue($runner->advance((int) $run->getKey()));
+
+        $run->refresh();
+        $this->assertSame(TokenRecoveryRun::STATUS_CANCELLED, $run->status);
+        $this->assertSame(2, $run->processed, 'what was found is kept');
+        $this->assertSame(4, $run->unreached(), 'and the four nobody asked about are admitted');
+    }
+
+    /** One pass at a time: two overlapping runs would ask PayPlus everything twice. */
+    public function test_a_second_pass_is_refused_while_one_is_running(): void
+    {
+        Queue::fake();
+
+        $plan = $this->plan('busy', PlanStatus::PAUSED, failedAt: now());
+        $this->payment($plan, 1, PaymentStatus::FAILED);
+
+        app(TokenRecoveryRunner::class)->start(
+            $this->shop,
+            [(int) $plan->getKey()],
+            TokenRecoveryRun::MODE_RECOVER,
+        );
+
+        Livewire::test(PaymentRecovery::class)
+            ->call('setTab', PaymentRecovery::TAB_STOPPED)
+            ->callTableBulkAction('recoverTokens', [$plan])
+            ->assertHasNoTableBulkActionErrors();
+
+        $this->assertSame(1, TokenRecoveryRun::query()->count(), 'the second click must not open a second pass');
+    }
+
+    /**
+     * The merchant can SEE the pass — which is the whole point of moving it to a
+     * worker rather than leaving it in a request that dies silently.
+     */
+    public function test_the_screen_shows_a_running_pass_and_then_its_report(): void
+    {
+        Queue::fake();
+
+        $plan = $this->plan('visible', PlanStatus::PAUSED, failedAt: now(), withCard: false);
+        $this->payment($plan, 1, PaymentStatus::FAILED);
+
+        $runner = app(TokenRecoveryRunner::class);
+        $run = $runner->start($this->shop, [(int) $plan->getKey()], TokenRecoveryRun::MODE_RECOVER);
+
+        Livewire::test(PaymentRecovery::class)
+            ->assertSee(__('recovery.run.title'))
+            ->assertSee(__('recovery.run.stop'));
+
+        $runner->advance((int) $run->getKey());
+
+        Livewire::test(PaymentRecovery::class)
+            ->assertDontSee(__('recovery.run.title'))
+            ->assertSee(__('recovery.run.report_title'));
+    }
+
+    /** RELEASE BLOCKER: another shop's pass is invisible, and cannot be advanced. */
+    public function test_a_pass_belongs_to_one_shop_only(): void
+    {
+        Queue::fake();
+
+        $other = Shop::create([
+            'woocommerce_domain' => 'other-run.example.com',
+            'name' => 'Other',
+            'status' => Shop::STATUS_ACTIVE,
+            'platform' => Shop::PLATFORM_WOOCOMMERCE,
+        ]);
+
+        $theirRun = Tenant::run($other, function () use ($other): TokenRecoveryRun {
+            $plan = $this->plan('theirs', PlanStatus::PAUSED, failedAt: now(), withCard: false);
+
+            return app(TokenRecoveryRunner::class)->start(
+                $other,
+                [(int) $plan->getKey()],
+                TokenRecoveryRun::MODE_RECOVER,
+            );
+        });
+
+        // Back on our shop: their run is not ours to see or to walk.
+        $this->assertNull(TokenRecoveryRun::query()->find($theirRun->getKey()));
+        $this->assertTrue(app(TokenRecoveryRunner::class)->advance((int) $theirRun->getKey()));
+        $this->assertSame(0, Tenant::run($other, fn (): int => (int) TokenRecoveryRun::query()
+            ->whereKey($theirRun->getKey())->value('processed')));
     }
 
     /**
@@ -457,6 +670,12 @@ final class PaymentRecoveryScreenTest extends TestCase
             ->call('setTab', PaymentRecovery::TAB_STOPPED)
             ->callTableBulkAction('recoverAndCharge', [$declined, $noCard, $cancelled, $orphan])
             ->assertHasNoTableBulkActionErrors();
+
+        // Queue::fake holds the pass, so the worker's work is done here explicitly.
+        $run = TokenRecoveryRun::query()->latest('id')->firstOrFail();
+        $this->assertSame(TokenRecoveryRun::MODE_RECOVER_AND_CHARGE, $run->mode);
+
+        app(TokenRecoveryRunner::class)->advance((int) $run->getKey());
 
         Queue::assertPushed(ChargeJob::class, 1);
         Queue::assertPushed(

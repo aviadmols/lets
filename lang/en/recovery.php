@@ -81,16 +81,11 @@ return [
         'recover_and_charge_heading' => 'Find each member\'s card and charge them?',
         'recover_and_charge_body' => 'For a member whose card is in doubt we first ask PayPlus what it holds and save it. Then a charge is queued for every member with a usable card — the same job the scheduler runs. A charge that succeeds makes the subscription active again and advances its date; one that is declined stays here. Results land on this screen within a few minutes.',
         'recover_and_charge_submit' => 'Find & charge',
-        'recover_and_charge_done' => ':queued charges queued — watch this screen.',
-        'recover_and_charge_report' => 'Cards found and saved first: :recovered. Not charged: :no_card had no card to charge, :skipped were cancelled or completed.',
-        'recover_and_charge_double_body' => ':count members were recovered but NOT charged, because PayPlus is still billing them itself — charging here would take their money twice. Cancel the recurring charge at PayPlus first for: :names',
 
         'recover_tokens' => 'Find saved cards at PayPlus',
         'recover_tokens_heading' => 'Ask PayPlus what card it holds for these members?',
         'recover_tokens_body' => 'For each one we ask PayPlus which card it has on file and save it here when the answer is unambiguous. NOTHING IS CHARGED. A member whose last 4 digits we do not know is skipped rather than matched on a guess, and more than one possible card is refused outright.',
         'recover_tokens_submit' => 'Ask PayPlus',
-        'recover_tokens_done' => ':count cards found and saved.',
-        'recover_tokens_report' => 'Of the rest: :valid already had a working card · :ambiguous had more than one possible card · :no_last_four had no last-4 digits to match on · :not_found had no card at PayPlus · :skipped had no card record at all.',
 
         'recover_tokens_double_title' => 'Warning — PayPlus is still billing some of these members itself',
         'recover_tokens_double_body' => 'Now that we hold a working card, :count of them would be charged TWICE — once by us and once by PayPlus\'s own recurring schedule. Cancel the recurring charge at PayPlus for: :names',
@@ -100,6 +95,53 @@ return [
         'send_links_body' => 'Each one gets an email with a link of ours that lasts days; the payment page behind it is created at the moment they click. Customers with no email address, or on a store with no PayPlus connection, are skipped and counted.',
         'send_links_done' => ':sent card-update links sent.',
         'send_links_skipped' => ':count were skipped — no email address, or the store cannot mint a payment page right now.',
+    ],
+
+    /*
+     * A "find saved cards" pass, which runs on a worker rather than in the page.
+     * One member is up to thirteen round trips to PayPlus, so a hundred of them is
+     * minutes of work — this copy is the merchant's only view of it.
+     */
+    'run' => [
+        'title' => 'Finding saved cards',
+        'report_title' => 'Last card search',
+
+        'mode' => [
+            'recover' => 'Looking up cards only — nothing is charged',
+            'recover_and_charge' => 'Looking up cards, then charging',
+        ],
+
+        'started' => 'Started — asking PayPlus about :count members.',
+        'started_body' => 'This runs in the background. Progress appears here, and you can leave the page.',
+        'already_running' => 'A card search is already running. Wait for it to finish, or stop it first.',
+        'capped' => 'Started :started of the :selected you selected — that is the most one run may hold. Run the rest afterwards.',
+
+        'working' => 'Each member is a lookup at PayPlus, so this takes a few minutes. Results are saved as they come in — nothing is lost if you close this page.',
+        'stop' => 'Stop',
+        'stop_help' => 'Members already checked keep their results.',
+        'stopped' => 'Stopped. Everything found so far was saved.',
+        'dismiss' => 'Dismiss',
+
+        'status' => [
+            'queued' => 'Queued',
+            'running' => 'Running',
+            'completed' => 'Finished',
+            'failed' => 'Failed',
+            'cancelled' => 'Stopped',
+        ],
+
+        'fixed' => 'Cards found',
+        'already_valid' => 'Card already worked',
+        'not_found' => 'No card at PayPlus',
+        'charges_queued' => 'Charges queued',
+
+        'report_detail' => 'Also: :ambiguous had more than one possible card and were left alone · :no_last_four had no last-4 digits to match on · :skipped had no card record, or were already cancelled.',
+
+        'report_not_probed' => ':count were charged straight away without a lookup — their card is not in doubt, the issuer simply declined it.',
+
+        'unreached_title' => ':count members were never asked about',
+        'unreached_body' => 'The run ended before reaching them. Select them again to finish the job.',
+        'errored' => 'The run stopped on an error',
     ],
 
     'empty' => [
