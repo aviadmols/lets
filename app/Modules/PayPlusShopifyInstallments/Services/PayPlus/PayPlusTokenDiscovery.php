@@ -61,6 +61,20 @@ final class PayPlusTokenDiscovery
      */
     public const MAX_CUSTOMER_RECORDS = 10;
 
+    /**
+     * Spellings PayPlus may use for "when this card was vaulted".
+     *
+     * UNVERIFIED against their documentation — their saved-cards screen shows the
+     * column ("נוסף ב") but names no field. Confirm with
+     * `payplus:probe-tokens --raw` and trim this list to the real one.
+     *
+     * @var list<string>
+     */
+    public const ADDED_AT_KEYS = [
+        'created_at', 'create_date', 'date_created', 'creation_date',
+        'added_at', 'date_added', 'insert_date', 'created',
+    ];
+
     /** Chars of a PayPlus response kept in a failure log (their body, no secrets of ours). */
     private const LOG_BODY_CHARS = 300;
 
@@ -344,6 +358,125 @@ final class PayPlusTokenDiscovery
 
         if (count($unexpired) === 1) {
             return ['card' => $unexpired[0], 'basis' => 'only_unexpired'];
+        }
+
+        return null;
+    }
+
+    /**
+     * A REPLACEMENT for a card the issuer has declared dead.
+     *
+     * Different question from every matcher above. Those ask "which of these is
+     * the card we already hold?" — the right question while the card still works.
+     * When the issuer has answered "stolen, confiscate" / "blocked" / "not valid",
+     * the card we hold is exactly the one we must get AWAY from, and the matchers
+     * would hand it straight back: its token is still listed in the vault, because
+     * a vault entry records a card, not the issuer's opinion of it.
+     *
+     * That is the whole bug this fixes. `/Token/Check` said VALID about a blocked
+     * card — correctly, by its own definition — and the recovery stopped there.
+     *
+     * Rules, in order, and it refuses rather than guesses:
+     *   only_other_card  they have exactly one other unexpired card
+     *   newest_added     several, and PayPlus told us when each was vaulted
+     *
+     * Safe in a way the other matchers are not: the card being replaced cannot be
+     * charged at all, so the worst a wrong pick costs is another decline — while
+     * doing nothing costs the subscription. It is still the same person's vault,
+     * so nobody else's card is reachable from here.
+     *
+     * @param  list<array<string, mixed>>  $tokens  pooled and deduped
+     * @return array{card: array<string, mixed>, basis: string}|null
+     */
+    public static function replacementCard(array $tokens, ?string $heldToken, ?int $expMonth, ?int $expYear): ?array
+    {
+        $held = trim((string) $heldToken);
+        $heldMmyy = ($expMonth !== null && $expYear !== null) ? self::mmyy($expMonth, $expYear) : null;
+
+        $others = array_values(array_filter($tokens, static function ($t) use ($held, $heldMmyy): bool {
+            if (! is_array($t) || ($t['token'] ?? '') === '') {
+                return false;
+            }
+
+            // The dead card itself — by its token, or by the expiry we recorded
+            // when we captured it (the token uid can differ per customer record
+            // while being the same physical card).
+            if ($held !== '' && trim((string) $t['token']) === $held) {
+                return false;
+            }
+
+            if ($heldMmyy !== null && trim((string) ($t['card_date_mmyy'] ?? '')) === $heldMmyy) {
+                return false;
+            }
+
+            // A card that has already expired is not a replacement for anything.
+            return self::isUnexpired((string) ($t['card_date_mmyy'] ?? ''));
+        }));
+
+        if ($others === []) {
+            return null;
+        }
+
+        if (count($others) === 1) {
+            return ['card' => $others[0], 'basis' => 'only_other_card'];
+        }
+
+        /*
+         * Several to choose from, so the only honest tiebreak is WHEN each was
+         * vaulted — the newest is the card the customer is actually using.
+         *
+         * Expiry is NOT a proxy for that and must never be used as one: a card
+         * added in 2024 can easily carry a later expiry than one added last
+         * month, and picking by expiry would confidently choose the older card.
+         */
+        $dated = [];
+
+        foreach ($others as $card) {
+            $at = self::addedAt($card);
+
+            if ($at === null) {
+                return null; // no dates, no defensible order — refuse
+            }
+
+            $dated[] = ['card' => $card, 'at' => $at];
+        }
+
+        usort($dated, static fn (array $a, array $b): int => $b['at'] <=> $a['at']);
+
+        // A tie on the timestamp is not an order either.
+        if (count($dated) > 1 && $dated[0]['at'] === $dated[1]['at']) {
+            return null;
+        }
+
+        return ['card' => $dated[0]['card'], 'basis' => 'newest_added'];
+    }
+
+    /**
+     * When PayPlus vaulted this card, as a timestamp.
+     *
+     * The field is read by TRYING the plausible spellings, because PayPlus's
+     * saved-cards screen shows the column ("נוסף ב") but their docs do not name
+     * it, and inventing one name would silently disable the newest-card rule.
+     * `payplus:probe-tokens --raw` prints the real keys off a live account; when
+     * none of these matches, replacementCard() refuses instead of ordering the
+     * cards wrongly.
+     *
+     * @param  array<string, mixed>  $token
+     */
+    public static function addedAt(array $token): ?int
+    {
+        foreach (self::ADDED_AT_KEYS as $key) {
+            $raw = trim((string) ($token[$key] ?? ''));
+
+            if ($raw === '') {
+                continue;
+            }
+
+            $at = strtotime($raw);
+
+            if ($at !== false) {
+                return $at;
+            }
         }
 
         return null;

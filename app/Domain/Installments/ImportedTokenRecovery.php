@@ -47,6 +47,15 @@ final class ImportedTokenRecovery
      */
     public const ROUTE_EMAIL_RELAXED = 'email_relaxed';
 
+    /**
+     * A DIFFERENT card, found after the issuer declared the one we hold dead.
+     *
+     * Kept distinct from ROUTE_EMAIL because the two are opposite questions —
+     * that one finds the card we already hold, this one deliberately gets away
+     * from it — and a report must be able to say which happened.
+     */
+    public const ROUTE_REPLACEMENT = 'replacement';
+
     /** PayPlus holds nothing we can safely attach to this member. */
     public const ROUTE_NONE = 'none';
 
@@ -94,9 +103,10 @@ final class ImportedTokenRecovery
      * action on the failed-charges screen — they used to carry a copy each, and a
      * copy is how a button appears in one place and not the other.
      *
-     * Saying yes costs one read-only lookup and nothing else: probe() checks the
-     * token we already hold FIRST, so a card that still works comes back
-     * ROUTE_ALREADY_VALID and is never swapped for another.
+     * Saying yes costs one read-only lookup and nothing else. A card that still
+     * works comes back ROUTE_ALREADY_VALID and is never swapped — except where the
+     * issuer has declared it DEAD, which is the one case where "the vault still
+     * lists it" is not a reason to keep it (see cardIsDead).
      */
     public static function declineIsRecoverable(?string $failureMessage): bool
     {
@@ -107,6 +117,49 @@ final class ImportedTokenRecovery
         }
 
         foreach (self::RECOVERABLE_DECLINES as $needle) {
+            if (str_contains($message, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Declines that mean THE CARD ITSELF IS FINISHED, not that our token is stale.
+     *
+     * A strict subset of RECOVERABLE_DECLINES: "token-not-exist" is missing on
+     * purpose, because that one says the vault entry is gone — there is no card
+     * here to declare dead, and route A would not have stopped us anyway.
+     *
+     * These three are the issuer's verdict on a real card: stolen and to be
+     * confiscated, blocked, or past its date. No amount of re-presenting it will
+     * work, so for these — and ONLY these — "the vault still lists the token" is
+     * not a reason to keep pointing at it. That belief cost a real merchant 62
+     * members in one run: every one came back ALREADY_VALID while the card behind
+     * the token was one the issuer had already killed.
+     *
+     * @var list<string>
+     */
+    public const DEAD_CARD_DECLINES = ['גנוב', 'אינו בתוקף', 'חסום'];
+
+    /**
+     * Has the issuer declared the card we hold dead?
+     *
+     * Same admitted heuristic as declineIsRecoverable — `failure_code` is 1 for
+     * every one of these, so the Hebrew text is the only signal — and it fails the
+     * same safe way: an unrecognised wording is not treated as dead, which leaves
+     * the old "trust the valid token" behaviour exactly as it was.
+     */
+    public static function cardIsDead(?string $failureMessage): bool
+    {
+        $message = trim((string) $failureMessage);
+
+        if ($message === '') {
+            return false;
+        }
+
+        foreach (self::DEAD_CARD_DECLINES as $needle) {
             if (str_contains($message, $needle)) {
                 return true;
             }
@@ -151,12 +204,28 @@ final class ImportedTokenRecovery
             return $this->outcome(self::ROUTE_NONE, detail: 'no_payment_method');
         }
 
+        $existing = (string) ($method->payplus_card_token_uid ?? '');
+
+        /*
+         * HAS THE ISSUER DECLARED THIS CARD DEAD?
+         *
+         * The answer changes what "the token is valid" is worth. `/Token/Check`
+         * reports whether the VAULT still holds the entry — it knows nothing about
+         * what the issuer thinks of the card behind it. A stolen card's token sits
+         * in the vault answering VALID forever.
+         *
+         * A real book proved it: a member's saved-cards screen showed four cards,
+         * ours among them, and every charge came back "כרטיס חסום". Route A said
+         * ALREADY_VALID and stopped — while a card the customer had vaulted months
+         * later sat two rows above it, never looked at.
+         */
+        $cardIsDead = self::cardIsDead($plan->latestPayment?->failure_message);
+
         // A — the token we already hold may simply be valid, in which case the
         // charge is failing for a different reason (wrong terminal) and swapping
         // the token would fix nothing while destroying a good one.
-        $existing = (string) ($method->payplus_card_token_uid ?? '');
-
         if (in_array(self::ROUTE_ALREADY_VALID, $routes, true)
+            && ! $cardIsDead
             && $existing !== ''
             && $probe->checkToken($existing) !== null) {
             return $this->outcome(self::ROUTE_ALREADY_VALID, detail: 'token_exists_at_payplus');
@@ -171,6 +240,14 @@ final class ImportedTokenRecovery
         if ($recurringId !== '') {
             $recurring = $probe->viewRecurring($recurringId);
             $token = (string) ($recurring['card_token'] ?? '');
+
+            // The old series may be billing the very card the issuer just killed.
+            // Handing it back as a "recovery" would report a fix and change
+            // nothing, so on a dead card this route only counts if it names a
+            // DIFFERENT one.
+            if ($cardIsDead && $token !== '' && $token === $existing) {
+                $token = '';
+            }
 
             if ($token !== '') {
                 return $this->outcome(
@@ -219,6 +296,37 @@ final class ImportedTokenRecovery
 
             // The same card re-vaulted on three records is one card.
             $tokens = PayPlusTokenDiscovery::dedupeCards($tokens);
+
+            /*
+             * THE CARD IS DEAD — so we are not looking for the card we hold, we
+             * are looking for the one that replaced it. Asked before the matchers
+             * because they would find the dead card and call it a success.
+             */
+            if ($cardIsDead) {
+                $pick = PayPlusTokenDiscovery::replacementCard(
+                    $tokens,
+                    $existing,
+                    $method->exp_month,
+                    $method->exp_year,
+                );
+
+                if ($pick !== null) {
+                    $token = (string) $pick['card']['token'];
+
+                    return $this->outcome(
+                        self::ROUTE_REPLACEMENT,
+                        token: $token,
+                        customerUid: $ownerOf[$token] ?? null,
+                        detail: $pick['basis'].(count($customers) > 1
+                            ? '_across_'.count($customers).'_records'
+                            : ''),
+                    );
+                }
+
+                return $this->outcome(self::ROUTE_NONE, detail: $tokens === []
+                    ? 'no_cards_at_payplus'
+                    : 'no_replacement_card');
+            }
 
             $match = PayPlusTokenDiscovery::matchCard(
                 $tokens,
@@ -291,7 +399,7 @@ final class ImportedTokenRecovery
     {
         $token = $outcome['token'] ?? null;
 
-        if ($token === null || $token === '' || ! in_array($outcome['route'] ?? '', [self::ROUTE_RECURRING, self::ROUTE_EMAIL, self::ROUTE_EMAIL_RELAXED], true)) {
+        if ($token === null || $token === '' || ! in_array($outcome['route'] ?? '', [self::ROUTE_RECURRING, self::ROUTE_EMAIL, self::ROUTE_EMAIL_RELAXED, self::ROUTE_REPLACEMENT], true)) {
             return false;
         }
 

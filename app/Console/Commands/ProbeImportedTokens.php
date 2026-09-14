@@ -7,6 +7,7 @@ use App\Models\InstallmentPlan;
 use App\Models\PaymentLedger;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\LedgerStatus;
+use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusTokenDiscovery;
 use App\Support\Tenant;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
@@ -41,7 +42,8 @@ final class ProbeImportedTokens extends Command
         {--date= : which day\'s failed charges to look at (default: today)}
         {--plan=* : probe these plan ids instead of a day\'s failures}
         {--terminal= : probe THIS terminal instead of the shop\'s (the old system\'s)}
-        {--limit=25 : stop after this many plans}';
+        {--limit=25 : stop after this many plans}
+        {--raw : also dump the raw saved-card rows PayPlus returns, field names included}';
 
     protected $description = 'Ask PayPlus what it holds for imported members whose charge failed. Read-only.';
 
@@ -59,6 +61,7 @@ final class ProbeImportedTokens extends Command
         ImportedTokenRecovery::ROUTE_RECURRING => 'RECOVERABLE — the old recurring still holds a live card token',
         ImportedTokenRecovery::ROUTE_EMAIL => 'RECOVERABLE — PayPlus holds a matching saved card for this email',
         ImportedTokenRecovery::ROUTE_ALREADY_VALID => 'token is VALID at PayPlus — the terminal is the problem, not the token',
+        ImportedTokenRecovery::ROUTE_REPLACEMENT => 'RECOVERABLE — a NEWER saved card, after the issuer killed the one we hold',
         ImportedTokenRecovery::ROUTE_NONE => 'nothing PayPlus can safely give us',
     ];
 
@@ -90,6 +93,10 @@ final class ProbeImportedTokens extends Command
         $unreachable = 0;
 
         foreach ($plans as $plan) {
+            if ($this->option('raw')) {
+                Tenant::run($shop, fn () => $this->dumpCards($shop, $plan, $terminal));
+            }
+
             $outcome = Tenant::run($shop, fn (): array => $recovery->probe($plan, $terminal));
 
             $route = $outcome['route'];
@@ -193,5 +200,60 @@ final class ProbeImportedTokens extends Command
         }
 
         $this->warn('No token could be recovered. The remaining route is asking each customer to re-enter their card.');
+    }
+
+    /**
+     * Print the saved-card rows PayPlus returns for this member, keys and all.
+     *
+     * Here because their saved-cards screen shows a "נוסף ב" column and their
+     * documentation names no field for it — and picking the newest card is the
+     * whole point when the issuer has killed the one we hold. Rather than guess a
+     * key and have the rule silently never fire, this prints what actually comes
+     * back so PayPlusTokenDiscovery::ADDED_AT_KEYS can be trimmed to the truth.
+     *
+     * Read-only, like everything else in this command. The token uids printed are
+     * the merchant's own vault references, already visible on their PayPlus
+     * screen, and are useless without the merchant's own API key.
+     */
+    private function dumpCards(Shop $shop, InstallmentPlan $plan, ?string $terminal): void
+    {
+        $probe = PayPlusTokenDiscovery::forShop($shop, $terminal);
+        $email = trim((string) $plan->customer_email);
+
+        $this->newLine();
+        $this->line("<options=bold>RAW · plan {$plan->getKey()} · {$email}</>");
+
+        if ($email === '') {
+            $this->warn('  no email — cannot list this member\'s cards');
+
+            return;
+        }
+
+        $customers = $probe->customersByEmail($email);
+
+        if ($customers === []) {
+            $this->warn('  PayPlus knows nobody at this email');
+
+            return;
+        }
+
+        $method = $plan->paymentMethod;
+        $held = trim((string) ($method?->payplus_card_token_uid ?? ''));
+
+        foreach ($customers as $customer) {
+            $uid = (string) ($customer['customer_uid'] ?? $customer['uid'] ?? '');
+            $cards = $probe->tokens($uid);
+
+            $this->line("  customer {$uid} · ".count($cards).' card(s)');
+
+            foreach ($cards as $card) {
+                // The full row, so an unknown "added at" key cannot hide.
+                $this->line('    '.json_encode($card, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+                if ($held !== '' && trim((string) ($card['token'] ?? '')) === $held) {
+                    $this->line('      ^ THIS IS THE ONE WE HOLD');
+                }
+            }
+        }
     }
 }
