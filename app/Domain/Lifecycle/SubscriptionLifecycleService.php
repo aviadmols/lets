@@ -55,7 +55,21 @@ final class SubscriptionLifecycleService
             // the stamp stays until the money actually lands.
             $heldByUs = $fresh->payment_failed_at !== null;
 
-            if (! $heldByUs && $fresh->next_charge_at !== null && $fresh->next_charge_at->isPast()) {
+            /*
+             * A resumed plan must end up with a clock. Two ways it can lack one:
+             * a date that elapsed while it was paused, and NO DATE AT ALL — the
+             * shape a migrated member arrives in when their file said past_due,
+             * and the shape any plan left at `failed` carries. Without the second
+             * case "Resume" produced an ACTIVE subscription the scheduler would
+             * never look at: a button that reports success and changes nothing,
+             * which is worse than one that refuses.
+             *
+             * Today, in both cases, so the scheduler picks it up promptly with ONE
+             * charge — never a backlog of the cycles that went by.
+             */
+            $needsClock = $fresh->next_charge_at === null || $fresh->next_charge_at->isPast();
+
+            if (! $heldByUs && $needsClock) {
                 $fresh->forceFill(['next_charge_at' => now()->startOfDay()])->save();
             }
 

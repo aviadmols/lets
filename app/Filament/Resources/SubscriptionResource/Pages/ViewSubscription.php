@@ -167,11 +167,23 @@ class ViewSubscription extends Page
                 ->modalDescription(__('subscriptions.action.pause.body'))
                 ->action(fn () => $this->applyLifecycle('pause')),
 
+            /*
+             * Resume — from PAUSED, and also from FAILED.
+             *
+             * failed → active is a legal transition and always has been; the button
+             * just never offered it, so a subscription we had stopped asking could
+             * only be cancelled. A merchant who has sorted the card out needs to
+             * put it back on schedule without necessarily charging it this second.
+             */
             Actions\Action::make('resume')
                 ->label(__('subscriptions.action.resume.label'))
                 ->icon('heroicon-m-play')
                 ->color('gray')
-                ->visible(fn (): bool => $this->record->status === PlanStatus::PAUSED)
+                ->visible(fn (): bool => in_array(
+                    $this->record->status,
+                    [PlanStatus::PAUSED, PlanStatus::FAILED],
+                    true,
+                ))
                 ->requiresConfirmation()
                 ->modalHeading(__('subscriptions.action.resume.heading'))
                 ->modalDescription(__('subscriptions.action.resume.body'))
@@ -1013,6 +1025,27 @@ class ViewSubscription extends Page
         // A pause the customer asked for gets no such button.
         if ($status === PlanStatus::PAUSED) {
             return $this->record->payment_failed_at !== null;
+        }
+
+        /*
+         * FAILED is chargeable BY HAND, and this button was the only thing saying
+         * otherwise.
+         *
+         * `failed` is outside PlanStatus::chargeable(), which is correct for the
+         * SCHEDULER — we stopped asking on our own. It was never a rule about the
+         * merchant: the state machine allows failed → active, the orchestrator has
+         * no status gate at all, and both its success and failure paths already
+         * walk a failed plan back up (ensureActiveThen / enterDunning). So the
+         * engine was ready and the screen simply offered no way in — a subscription
+         * at `failed` could only be cancelled, however good its card was.
+         *
+         * That dead end is where the pilot store's migrated members sat: seventeen
+         * plans the CSV importer filed as `failed` because their source file said
+         * past_due, each with a live vaulted card and a stored consent, and no
+         * button anywhere to take the money.
+         */
+        if ($status === PlanStatus::FAILED) {
+            return true;
         }
 
         return in_array($status->value, PlanStatus::chargeable(), true);
