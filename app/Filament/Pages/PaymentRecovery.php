@@ -716,7 +716,12 @@ class PaymentRecovery extends Page implements HasTable
             return true;
         }
 
-        return str_contains((string) ($plan->latestPayment?->failure_message ?? ''), 'token-not-exist');
+        // ONE definition, shared with the subscription page's button — they used
+        // to carry a copy each, which is how a lookup happens in one place and not
+        // the other. It covers the declines a stale token can cause: the token
+        // PayPlus does not hold, and a card that reads stolen / expired / blocked
+        // because we are presenting the record the member replaced.
+        return ImportedTokenRecovery::declineIsRecoverable($plan->latestPayment?->failure_message);
     }
 
     /**

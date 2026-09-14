@@ -949,25 +949,44 @@ class ViewSubscription extends Page
      * beside a scheduled attempt collapses to one charge rather than two.
      */
     /**
-     * Is this a migrated member whose token PayPlus does not recognise?
+     * Is the token we hold plausibly not the card PayPlus would use today?
      *
-     * Two marks together, so the button never offers itself beside a card that
-     * works: the payment method came from an import (a token reference but no
-     * PayPlus customer uid — a vaulted card always has one), AND a charge has
-     * actually come back saying the token does not exist.
+     * Two ways in. An imported token REFERENCE that was never properly vaulted
+     * (no PayPlus customer uid — a vaulted card always has one) is worth asking
+     * about on its own. Otherwise it takes a decline that a stale token can
+     * actually cause, which ImportedTokenRecovery defines in one place.
+     *
+     * IT USED TO REQUIRE BOTH, and the missing customer uid specifically. That was
+     * too narrow, and a real migrated book showed why: a member can have more than
+     * one record at PayPlus — one per spelling of their name — each with its own
+     * saved card. Their method is properly vaulted, their customer uid is set, and
+     * the token still points at the card they replaced, so a live card answers
+     * "not valid" or "blocked" or "stolen". Those members could not reach this
+     * button at all, and it is the only thing that would have fixed them.
+     *
+     * Widening it is safe because probe() checks the token we already hold FIRST:
+     * a card that still works comes back ROUTE_ALREADY_VALID and is never swapped.
+     * The cost of a wrong guess is one read-only lookup.
+     *
+     * Read off the LATEST attempt, like every other "is this failing?" question in
+     * this app — a token-not-exist from a year ago on a plan that has billed
+     * cleanly since is history, not a reason to offer to change its card.
      */
     private function canRecoverToken(): bool
     {
         $method = $this->record->paymentMethod;
 
-        if ($method === null || $method->payplus_customer_uid !== null) {
-            return false;
+        if ($method === null) {
+            return false; // no card row — nothing to re-point
         }
 
-        return PaymentLedger::query()
-            ->where('plan_id', $this->record->getKey())
-            ->where('failure_message', 'like', '%token-not-exist%')
-            ->exists();
+        if ($method->payplus_customer_uid === null) {
+            return true;
+        }
+
+        return ImportedTokenRecovery::declineIsRecoverable(
+            $this->record->latestPayment?->failure_message,
+        );
     }
 
     /** Ask PayPlus for this member's card and, if it answers, save it. Charges nothing. */

@@ -54,6 +54,68 @@ final class ImportedTokenRecovery
     public const KIND_RECOVERED = 'payment_method_token_recovered';
 
     /**
+     * Declines a STALE TOKEN can cause — the ones worth asking PayPlus about.
+     *
+     * The obvious one is "token does not exist". The other three are the lesson of
+     * a real migrated book: a member can have MORE THAN ONE record at PayPlus (one
+     * per spelling of their name), each with its own saved card, and the token we
+     * imported may point at the one they replaced. Then a card that is alive and
+     * well answers "not valid" / "blocked" / "stolen, confiscate" — because the
+     * card we are presenting genuinely is those things, and the current one is
+     * sitting in the next record along.
+     *
+     * Matched on PAYPLUS'S OWN HEBREW TEXT, which is a heuristic and is admitted as
+     * one: every decline in this family comes back as `failure_code = 1`, so the
+     * code cannot tell them apart and the message is the only signal there is. An
+     * unrecognised wording simply does not match, which hides a button rather than
+     * offering a wrong one — the safe direction.
+     *
+     * What is deliberately NOT here: "call the issuer" and "refused, not
+     * approved". Those are the issuer refusing a card it recognises perfectly
+     * well, and swapping a good token for another good token fixes nothing.
+     *
+     * @var list<string>
+     */
+    public const RECOVERABLE_DECLINES = [
+        // PayPlus does not hold this token at all.
+        'token-not-exist',
+        // "גנוב, החרם כרטיס"
+        'גנוב',
+        // "עסקה נדחתה: הכרטיס אינו בתוקף"
+        'אינו בתוקף',
+        // "כרטיס חסום"
+        'חסום',
+    ];
+
+    /**
+     * Could asking PayPlus plausibly fix this decline?
+     *
+     * The ONE definition, read by the subscription page's button and by the bulk
+     * action on the failed-charges screen — they used to carry a copy each, and a
+     * copy is how a button appears in one place and not the other.
+     *
+     * Saying yes costs one read-only lookup and nothing else: probe() checks the
+     * token we already hold FIRST, so a card that still works comes back
+     * ROUTE_ALREADY_VALID and is never swapped for another.
+     */
+    public static function declineIsRecoverable(?string $failureMessage): bool
+    {
+        $message = trim((string) $failureMessage);
+
+        if ($message === '') {
+            return false;
+        }
+
+        foreach (self::RECOVERABLE_DECLINES as $needle) {
+            if (str_contains($message, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * The routes probe() may try, in order. All three by default — but a bulk
      * run across a whole book pays one HTTP round-trip per route per member, and
      * a merchant whose old system was never PayPlus-native gets nothing from
