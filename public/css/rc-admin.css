@@ -933,6 +933,23 @@
     color: var(--rc-ink);
 }
 .rc-input:focus-visible { outline: none; border-color: var(--rc-blue); box-shadow: var(--rc-ring); }
+
+/* A <select> wearing .rc-input.
+   Filament's forms.css sets `select { background-image: <chevron svg> }` and lets
+   it TILE, so the control paints a ROW OF CHEVRONS across its whole width — which
+   is what the bulk-edit screen's filters looked like, and what the gift-orders and
+   newsletter-studio selects have looked like since they were written.
+   .rc-pp-select already carried this fix privately; putting it on .rc-input means
+   every select that wears the shared input class is right by default. Filament's
+   own SVG is kept (its stroke is the muted ink) — only the repeat is pinned. */
+select.rc-input {
+    background-repeat: no-repeat;
+    background-position: right var(--rc-space-3) center;
+    background-size: 16px 16px;
+    /* Room for the chevron, so a long option label cannot run under it. */
+    padding-inline-end: var(--rc-space-6);
+}
+[dir="rtl"] select.rc-input { background-position: left var(--rc-space-3) center; }
 .rc-input-suffix {
     display: flex;
     align-items: stretch;
