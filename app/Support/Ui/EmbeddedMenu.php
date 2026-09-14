@@ -19,6 +19,7 @@ use App\Filament\Pages\ManageMailSettings;
 use App\Filament\Pages\ManagePayPlusConnection;
 use App\Filament\Pages\ManageUpsellAppearance;
 use App\Filament\Pages\ObservabilityDashboard;
+use App\Filament\Pages\PaymentRecovery;
 use App\Filament\Pages\PostPurchaseOffers;
 use App\Filament\Pages\ProductDetail;
 use App\Filament\Pages\StorefrontElements;
@@ -141,6 +142,9 @@ final class EmbeddedMenu
         // allowed everywhere, and "change four thousand charge dates" is not a
         // thing to hand a shop whose owner unticked subscriptions altogether.
         BulkEditSubscriptions::class => self::AREA_SUBSCRIPTIONS,
+        // Failed charges is a subscriptions screen: it reads the retry ladder of
+        // the plans that live on that area's list.
+        PaymentRecovery::class => self::AREA_SUBSCRIPTIONS,
 
         ManageLoyalty::class => self::AREA_LOYALTY,
         LoyaltyMembers::class => self::AREA_LOYALTY,

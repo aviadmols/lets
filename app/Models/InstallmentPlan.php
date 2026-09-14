@@ -13,6 +13,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * A subscription plan — installments-until-paid OR open-ended recurring
@@ -524,6 +525,22 @@ class InstallmentPlan extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(InstallmentPayment::class, 'plan_id');
+    }
+
+    /**
+     * The plan's NEWEST charge slot — the one that says what is happening now.
+     *
+     * A relation rather than another hand-written subquery. "Is this plan
+     * failing?" is always a question about the LATEST attempt (a plan that failed
+     * once a year ago and has billed cleanly since is not failing), and the app
+     * had grown three copies of
+     * `sequence = (select max(sequence) from installment_payments …)` to ask it.
+     * This is the same question as a relation, so a screen can eager-load it
+     * instead of pulling every slot of a five-year subscription to read one.
+     */
+    public function latestPayment(): HasOne
+    {
+        return $this->hasOne(InstallmentPayment::class, 'plan_id')->latestOfMany('sequence');
     }
 
     public function paymentMethod(): BelongsTo
