@@ -56,6 +56,18 @@ final class ImportedTokenRecovery
      */
     public const ROUTE_REPLACEMENT = 'replacement';
 
+    /**
+     * A HUMAN chose this card, from that member's own vault, after the automatic
+     * rules refused to.
+     *
+     * The refusals are right to be strict — an unordered pair of cards is not a
+     * decision a machine should make with somebody's money. But a merchant looking
+     * at the same two rows in PayPlus can see which is current, and had no way to
+     * say so. This route is that way, and it is kept distinct precisely so the
+     * Timeline can show that a person decided, not an algorithm.
+     */
+    public const ROUTE_MANUAL = 'manual';
+
     /** PayPlus holds nothing we can safely attach to this member. */
     public const ROUTE_NONE = 'none';
 
@@ -399,7 +411,7 @@ final class ImportedTokenRecovery
     {
         $token = $outcome['token'] ?? null;
 
-        if ($token === null || $token === '' || ! in_array($outcome['route'] ?? '', [self::ROUTE_RECURRING, self::ROUTE_EMAIL, self::ROUTE_EMAIL_RELAXED, self::ROUTE_REPLACEMENT], true)) {
+        if ($token === null || $token === '' || ! in_array($outcome['route'] ?? '', [self::ROUTE_RECURRING, self::ROUTE_EMAIL, self::ROUTE_EMAIL_RELAXED, self::ROUTE_REPLACEMENT, self::ROUTE_MANUAL], true)) {
             return false;
         }
 
