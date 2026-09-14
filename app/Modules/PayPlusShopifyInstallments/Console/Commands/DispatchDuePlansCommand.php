@@ -2,6 +2,7 @@
 
 namespace App\Modules\PayPlusShopifyInstallments\Console\Commands;
 
+use App\Models\Concerns\TenantScope;
 use App\Models\InstallmentPlan;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentType;
@@ -59,8 +60,30 @@ final class DispatchDuePlansCommand extends Command
             // would be re-dispatched on every five-minute run — the backoff would
             // be written and never honoured, and one debt would be asked for
             // hundreds of times a day instead of once.
+            //
+            // THE SUBQUERY MUST DROP THE TENANT SCOPE, and for two years it did not.
+            // acrossAllTenants() above takes the scope off the PLAN query, but this
+            // closure builds a FRESH InstallmentPayment query, which carries its own
+            // BelongsToShop scope. This command runs with NO tenant bound, so that
+            // scope resolved to `shop_id = NULL`, matched nothing, and
+            // whereDoesntHave was therefore TRUE FOR EVERY PLAN — the hold never
+            // blocked anything.
+            //
+            // The scope failing closed is right everywhere else; inverted by
+            // whereDoesntHave it fails OPEN. What it cost, on a real migration:
+            // 109 cards were each asked seven times between 18:07 and 18:35 — a
+            // seven-DAY dunning ladder spent in twenty-eight minutes, every one of
+            // those subscribers held before they could possibly have fixed a card,
+            // and seven declines in half an hour pushed at issuers that read exactly
+            // that pattern as fraud.
+            //
+            // Scoping out here is the sanctioned bypass, in the one command that is
+            // already an audited cross-tenant scan: the subquery is bound to its
+            // parent plan by the relation, so it can only ever see that plan's own
+            // slots whatever shop they belong to.
             ->whereDoesntHave('payments', function ($q): void {
-                $q->where('status', PaymentStatus::RETRY_SCHEDULED->value)
+                $q->withoutGlobalScope(TenantScope::class)
+                    ->where('status', PaymentStatus::RETRY_SCHEDULED->value)
                     ->whereNotNull('next_retry_at')
                     ->where('next_retry_at', '>', now());
             })
