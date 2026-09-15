@@ -26,7 +26,7 @@
 </head>
 <body class="rc-campaign-page">
     <main class="rc-campaign-card">
-        <x-rc.logo class="rc-campaign-card__logo" />
+        <x-rc.shop-logo class="rc-campaign-card__logo" />
 
         @if (! empty($signedOut))
             <h1 class="rc-campaign-card__title">{{ __('campaigns.login.signed_out') }}</h1>

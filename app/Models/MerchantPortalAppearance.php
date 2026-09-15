@@ -244,6 +244,12 @@ class MerchantPortalAppearance extends Model
 
     public const DEFAULT_ACCENT = '#111827';
 
+    /**
+     * Longest logo URL accepted. Generous for a signed CDN link, short of the
+     * column width, and far short of anything that is not really a URL.
+     */
+    public const MAX_LOGO_URL = 2048;
+
     public const DEFAULT_ACCENT_TEXT = '#ffffff';
 
     /** Radius enum → the px the stylesheet actually uses. */
@@ -561,6 +567,36 @@ class MerchantPortalAppearance extends Model
     public function accentTextColor(): string
     {
         return $this->hexOr($this->accent_text_color, self::DEFAULT_ACCENT_TEXT);
+    }
+
+    /**
+     * The merchant's own logo for the pages their customers land on, or null to
+     * fall back to ours.
+     *
+     * VALIDATED ON THE WAY OUT, not only on the way in. This string is rendered
+     * into an `src` on a page a shopper is about to type card details on, so a
+     * stored value that stopped being acceptable — because the rule tightened, or
+     * because it was written before there was a rule — must not reach the page.
+     *
+     * HTTPS ONLY. A logo fetched over http on an https page is blocked as mixed
+     * content anyway, so allowing it would only produce a silently broken image
+     * on the one page that must look trustworthy.
+     */
+    public function logoUrl(): ?string
+    {
+        $url = trim((string) ($this->logo_url ?? ''));
+
+        if ($url === '' || mb_strlen($url) > self::MAX_LOGO_URL) {
+            return null;
+        }
+
+        // Rejects javascript:, data: and anything without a host — the three
+        // shapes that turn an image slot into something else.
+        if (! preg_match('#^https://[^\s/$.?\#].[^\s]*$#i', $url)) {
+            return null;
+        }
+
+        return $url;
     }
 
     public function themeMode(): string

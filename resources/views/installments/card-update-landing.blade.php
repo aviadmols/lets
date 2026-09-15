@@ -37,7 +37,7 @@
 </head>
 <body class="rc-campaign-page">
     <main class="rc-campaign-card">
-        <x-rc.logo class="rc-campaign-card__logo" />
+        <x-rc.shop-logo class="rc-campaign-card__logo" />
 
         <h1 class="rc-campaign-card__title">{{ __('card_update.landing.heading') }}</h1>
 

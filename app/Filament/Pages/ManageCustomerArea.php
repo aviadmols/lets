@@ -206,6 +206,23 @@ class ManageCustomerArea extends Page implements HasForms
                     ->columnSpanFull(),
                 // Language first: it changes every word on the page, so it is not
                 // a detail to find under the colours.
+                /*
+                 * THE MERCHANT'S LOGO, on every page their customer lands on from
+                 * a link we sent — card update, sign-in, unsubscribe.
+                 *
+                 * A URL and not an upload, because the app runs on containers
+                 * whose disk does not survive a deploy: an uploaded file would
+                 * vanish silently, and a logo that disappears from a payment page
+                 * next Tuesday is worse than one that was never set.
+                 */
+                TextInput::make('logo_url')
+                    ->label(__('account.admin.appearance.logo'))
+                    ->helperText(__('account.admin.appearance.logo_help'))
+                    ->url()
+                    ->maxLength(MerchantPortalAppearance::MAX_LOGO_URL)
+                    ->placeholder('https://')
+                    ->columnSpanFull(),
+
                 ToggleButtons::make('page_locale')
                     ->label(__('account.admin.appearance.locale'))
                     ->helperText(__('account.admin.appearance.locale_help'))
@@ -490,6 +507,10 @@ class ManageCustomerArea extends Page implements HasForms
         return [
             'accent_color' => $s->accentColor(),
             'accent_text_color' => $s->accentTextColor(),
+            // Read through the guard, so a stored value that no longer passes
+            // validation shows as empty rather than as something the page would
+            // refuse to render anyway.
+            'logo_url' => $s->logoUrl(),
             'theme_mode' => $s->themeMode(),
             'corner_radius' => $s->cornerRadius(),
             'density' => $s->density(),
@@ -554,6 +575,7 @@ class ManageCustomerArea extends Page implements HasForms
         $model->forceFill([
             'accent_color' => $keep('accent_color', $stored->accent_color),
             'accent_text_color' => $keep('accent_text_color', $stored->accent_text_color),
+            'logo_url' => $keep('logo_url', $stored->logo_url),
             'theme_mode' => $keep('theme_mode', $stored->theme_mode),
             'corner_radius' => $keep('corner_radius', $stored->corner_radius),
             'density' => $keep('density', $stored->density),

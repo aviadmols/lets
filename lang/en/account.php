@@ -333,6 +333,8 @@ return [
         ],
 
         'appearance' => [
+            'logo' => 'Your logo (image URL)',
+            'logo_help' => 'Shown on the pages your customers land on from a link — updating a card, signing in, unsubscribing. Paste the https address of your logo image; the easiest source is the logo on your own store. Leave empty to show ours.',
             'locale' => 'Language',
             'locale_help' => 'The language your customers read the area in — including the sign-in codes you send them.',
             'locale_option' => [
