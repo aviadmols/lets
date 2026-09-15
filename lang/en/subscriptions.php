@@ -174,6 +174,23 @@ return [
         | usually still there under a uid we were never given — so we ask PayPlus
         | rather than sending the customer back to a payment page.
         */
+        /*
+        | Pick the card, when the rules would not. The automatic replacement
+        | refuses whenever the choice is not forced; this is how the person who
+        | can see which card is current gets to say so.
+        */
+        'choose_card' => [
+            'label' => 'Choose a saved card',
+            'heading' => 'Which of these cards should we bill?',
+            'body' => 'PayPlus holds more than one live card for this member, and we would not pick between them on our own. These are their own saved cards, newest first where PayPlus told us when each was added. The one you choose is billed from the next charge onwards.',
+            'field' => 'Saved cards at PayPlus',
+            'submit' => 'Use this card',
+            'expires' => 'expires :date',
+            'added' => 'added :date',
+            'attached' => 'Card attached. Charge the subscription to test it.',
+            'refused' => 'That card is not one of this member\x27s saved cards. Nothing was changed.',
+        ],
+
         'recover_token' => [
             'label' => 'Find saved card',
             'heading' => 'Look up this member\'s card at PayPlus?',

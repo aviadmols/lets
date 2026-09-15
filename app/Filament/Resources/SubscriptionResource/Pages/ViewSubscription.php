@@ -9,6 +9,7 @@ use App\Domain\Installments\CardUpdateLinkSender;
 use App\Domain\Installments\CardUpdateService;
 use App\Domain\Installments\ImportedTokenRecovery;
 use App\Domain\Installments\Models\CardUpdateLink;
+use App\Domain\Installments\Models\TokenRecoveryResult;
 use App\Domain\Lifecycle\ChargeNowService;
 use App\Domain\Lifecycle\SubscriptionEditService;
 use App\Domain\Lifecycle\SubscriptionLifecycleService;
@@ -220,6 +221,37 @@ class ViewSubscription extends Page
                 ->modalDescription(__('subscriptions.action.recover_token.body'))
                 ->modalSubmitActionLabel(__('subscriptions.action.recover_token.submit'))
                 ->action(fn () => $this->recoverToken()),
+
+            /*
+             * PICK THE CARD, when the rules would not.
+             *
+             * The automatic replacement refuses whenever the choice is not forced —
+             * two live cards with no reliable "vaulted at" date is not an order, and
+             * guessing would charge a card the customer may have retired. That
+             * refusal is right, and on its own it left the merchant stuck: the
+             * person who CAN tell which card is current, by looking at the same rows
+             * in PayPlus, had no way to say so.
+             *
+             * Offered only when a lookup actually found live alternatives, so it
+             * never appears as an empty menu, and the options are exactly what
+             * PayPlus returned — never a free-text token field, because a pasted
+             * token from another customer would bill the wrong person every month.
+             */
+            Actions\Action::make('chooseCard')
+                ->label(__('subscriptions.action.choose_card.label'))
+                ->icon('heroicon-m-credit-card')
+                ->color('warning')
+                ->visible(fn (): bool => $this->cardChoices() !== [])
+                ->modalHeading(__('subscriptions.action.choose_card.heading'))
+                ->modalDescription(__('subscriptions.action.choose_card.body'))
+                ->modalSubmitActionLabel(__('subscriptions.action.choose_card.submit'))
+                ->form([
+                    Radio::make('token')
+                        ->label(__('subscriptions.action.choose_card.field'))
+                        ->options(fn (): array => $this->cardChoices())
+                        ->required(),
+                ])
+                ->action(fn (array $data) => $this->chooseCard((string) ($data['token'] ?? ''))),
 
             Actions\Action::make('chargeNow')
                 ->label(__('subscriptions.action.charge_now.label'))
@@ -987,6 +1019,88 @@ class ViewSubscription extends Page
         return ImportedTokenRecovery::declineIsRecoverable(
             $this->record->latestPayment?->failure_message,
         );
+    }
+
+    /**
+     * The live cards the last lookup found for this member, other than the one we
+     * already hold — labelled the way their PayPlus screen labels them, so the
+     * merchant is choosing between the same rows they can see there.
+     *
+     * @return array<string, string> token uid => label
+     */
+    private function cardChoices(): array
+    {
+        $result = TokenRecoveryResult::query()
+            ->where('plan_id', $this->record->getKey())
+            ->latest('id')
+            ->first();
+
+        if ($result === null) {
+            return [];
+        }
+
+        $choices = [];
+
+        foreach ($result->choosableCards() as $card) {
+            $bits = array_filter([
+                ($card['last_four'] ?? null) ? '•••• '.$card['last_four'] : null,
+                ($card['expiry'] ?? null) ? __('subscriptions.action.choose_card.expires', ['date' => $this->prettyExpiry((string) $card['expiry'])]) : null,
+                ($card['added_at'] ?? null) ? __('subscriptions.action.choose_card.added', ['date' => $card['added_at']]) : null,
+            ]);
+
+            $choices[(string) $card['token']] = implode(' · ', $bits) ?: (string) $card['token'];
+        }
+
+        return $choices;
+    }
+
+    /** PayPlus sends MMYY; a human reads MM/YY. */
+    private function prettyExpiry(string $mmyy): string
+    {
+        return preg_match('/^(\d{2})(\d{2})$/', $mmyy, $m) === 1 ? $m[1].'/'.$m[2] : $mmyy;
+    }
+
+    /**
+     * Attach the card the merchant picked.
+     *
+     * Re-read from the stored lookup rather than trusted from the form, because a
+     * submitted value is the one thing on this page that did not come from PayPlus.
+     * Anything not among that member's own live cards is refused.
+     */
+    protected function chooseCard(string $token): void
+    {
+        if ($token === '' || ! array_key_exists($token, $this->cardChoices())) {
+            Notification::make()
+                ->title(__('subscriptions.action.choose_card.refused'))
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        $result = TokenRecoveryResult::query()
+            ->where('plan_id', $this->record->getKey())
+            ->latest('id')
+            ->first();
+
+        $card = collect((array) ($result?->candidates ?? []))
+            ->firstWhere('token', $token);
+
+        $applied = app(ImportedTokenRecovery::class)->apply($this->record, [
+            'route' => ImportedTokenRecovery::ROUTE_MANUAL,
+            'token' => $token,
+            'customer_uid' => $card['customer_uid'] ?? null,
+            'recurring_live' => false,
+        ]);
+
+        $this->record->refresh();
+
+        Notification::make()
+            ->title($applied
+                ? __('subscriptions.action.choose_card.attached')
+                : __('subscriptions.action.choose_card.refused'))
+            ->status($applied ? 'success' : 'danger')
+            ->send();
     }
 
     /** Ask PayPlus for this member's card and, if it answers, save it. Charges nothing. */

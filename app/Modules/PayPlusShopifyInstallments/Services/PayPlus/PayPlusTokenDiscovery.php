@@ -489,6 +489,15 @@ final class PayPlusTokenDiscovery
             .str_pad((string) ($expYear % 100), 2, '0', STR_PAD_LEFT);
     }
 
+    /**
+     * Public reading of the same rule, for callers that must SHOW whether a card
+     * is still live rather than act on it.
+     */
+    public static function isCardUnexpired(string $mmyy): bool
+    {
+        return self::isUnexpired($mmyy);
+    }
+
     /** A card whose MMYY month has not ended yet. Malformed expiry counts as expired. */
     private static function isUnexpired(string $mmyy): bool
     {

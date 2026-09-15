@@ -3,6 +3,7 @@
 namespace App\Domain\Installments;
 
 use App\Domain\Installments\Jobs\RunTokenRecoveryJob;
+use App\Domain\Installments\Models\TokenRecoveryResult;
 use App\Domain\Installments\Models\TokenRecoveryRun;
 use App\Models\InstallmentPlan;
 use App\Models\Shop;
@@ -167,6 +168,8 @@ final class TokenRecoveryRunner
         $delta = [];
         $name = null;
         $queueCharge = false;
+        $outcome = null;
+        $bucket = TokenRecoveryResult::OUTCOME_SKIPPED;
 
         if ($plan === null) {
             // Deleted between the click and the worker. Not an error; not a fix.
@@ -206,12 +209,14 @@ final class TokenRecoveryRunner
              * IS the product and "already valid" is a real answer a merchant needs.
              */
             $delta['not_probed'] = 1;
+            $bucket = TokenRecoveryResult::OUTCOME_NOT_PROBED;
             $queueCharge = true;
         } else {
             $outcome = $this->recovery->recover($plan);
 
             if ($outcome['applied'] ?? false) {
                 $delta['fixed'] = 1;
+                $bucket = TokenRecoveryResult::OUTCOME_FIXED;
 
                 if ($outcome['recurring_live'] ?? false) {
                     // Recovered, and PayPlus is billing them on its own schedule.
@@ -222,6 +227,10 @@ final class TokenRecoveryRunner
                     $queueCharge = true;
                 }
             } else {
+                $bucket = ($outcome['route'] ?? null) === ImportedTokenRecovery::ROUTE_ALREADY_VALID
+                    ? TokenRecoveryResult::OUTCOME_ALREADY_VALID
+                    : TokenRecoveryResult::OUTCOME_NONE;
+
                 match (true) {
                     ($outcome['route'] ?? null) === ImportedTokenRecovery::ROUTE_ALREADY_VALID => $delta['already_valid'] = 1,
                     ($outcome['detail'] ?? null) === 'no_last_four_to_match_on' => $delta['no_last_four'] = 1,
@@ -247,6 +256,8 @@ final class TokenRecoveryRunner
             $delta['charges_queued'] = 1;
         }
 
+        $this->record($run, $planId, $bucket, $outcome);
+
         $this->commit((int) $run->getKey(), $cursor, $delta, $name);
     }
 
@@ -261,6 +272,37 @@ final class TokenRecoveryRunner
      * The same predicate the subscription page's button uses, so the screen and
      * the worker cannot disagree about who is worth asking about.
      */
+    /**
+     * Write what this member's lookup actually learned, and which cards it saw.
+     *
+     * Outside the counter transaction on purpose: a report row is a record, not a
+     * ledger, and failing to write one must never cost the member's committed
+     * result or stall the cursor. If it throws, the pass carries on and the run's
+     * counters stay true — the explanation is what is lost, not the work.
+     *
+     * @param  array<string, mixed>|null  $outcome
+     */
+    private function record(TokenRecoveryRun $run, int $planId, string $bucket, ?array $outcome): void
+    {
+        try {
+            $result = new TokenRecoveryResult;
+            $result->forceFill([
+                'shop_id' => (int) $run->shop_id,
+                'run_id' => (int) $run->getKey(),
+                'plan_id' => $planId,
+                'outcome' => $bucket,
+                'detail' => $outcome === null ? null : mb_substr((string) ($outcome['detail'] ?? ''), 0, 64),
+                'candidates' => $outcome['candidates'] ?? null,
+            ])->save();
+        } catch (Throwable $e) {
+            Log::warning('token_recovery.result_not_recorded', [
+                'run_id' => $run->getKey(),
+                'plan_id' => $planId,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
     /**
      * Is the card we hold a DIFFERENT one from the card that was declined?
      *

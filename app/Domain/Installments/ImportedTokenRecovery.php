@@ -283,7 +283,11 @@ final class ImportedTokenRecovery
             $customers = $probe->customersByEmail($email);
 
             if ($customers === []) {
-                return $this->outcome(self::ROUTE_NONE, detail: 'not_found_at_payplus');
+                // Not "they have no card" — WE COULD NOT FIND THEM. The distinction
+                // is the difference between a dead end and a mismatched email
+                // somebody can fix, and collapsing the two hid real recoverable
+                // members inside a "nothing found" number.
+                return $this->outcome(self::ROUTE_NONE, detail: 'customer_not_found_at_payplus');
             }
 
             if (count($customers) > PayPlusTokenDiscovery::MAX_CUSTOMER_RECORDS) {
@@ -311,6 +315,9 @@ final class ImportedTokenRecovery
             // The same card re-vaulted on three records is one card.
             $tokens = PayPlusTokenDiscovery::dedupeCards($tokens);
 
+            // Recorded whatever happens next, so a refusal can SHOW its reasoning.
+            $candidates = $this->describeCards($tokens, $existing, $ownerOf);
+
             /*
              * THE CARD IS DEAD — so we are not looking for the card we hold, we
              * are looking for the one that replaced it. Asked before the matchers
@@ -334,12 +341,21 @@ final class ImportedTokenRecovery
                         detail: $pick['basis'].(count($customers) > 1
                             ? '_across_'.count($customers).'_records'
                             : ''),
+                        candidates: $candidates,
                     );
                 }
 
-                return $this->outcome(self::ROUTE_NONE, detail: $tokens === []
-                    ? 'no_cards_at_payplus'
-                    : 'no_replacement_card');
+                /*
+                 * REFUSED — and the detail says WHICH refusal, because they mean
+                 * different things to the person reading the report. "They have
+                 * another card but it expired in 2025" is a dead end; "there are
+                 * two and we could not order them" is a choice waiting to be made.
+                 */
+                return $this->outcome(
+                    self::ROUTE_NONE,
+                    detail: $this->whyNoReplacement($candidates),
+                    candidates: $candidates,
+                );
             }
 
             $match = PayPlusTokenDiscovery::matchCard(
@@ -393,9 +409,11 @@ final class ImportedTokenRecovery
 
             // Found the person, could not tell their cards apart — the one
             // case where guessing would charge the wrong card.
-            return $this->outcome(self::ROUTE_NONE, detail: $method->card_last_four
-                ? 'no_card_matched'
-                : 'no_last_four_to_match_on');
+            return $this->outcome(
+                self::ROUTE_NONE,
+                detail: $method->card_last_four ? 'no_card_matched' : 'no_last_four_to_match_on',
+                candidates: $candidates,
+            );
         }
 
         return $this->outcome(self::ROUTE_NONE, detail: 'not_found_at_payplus');
@@ -543,6 +561,7 @@ final class ImportedTokenRecovery
         ?string $customerUid = null,
         bool $recurringLive = false,
         string $detail = '',
+        array $candidates = [],
     ): array {
         return [
             'route' => $route,
@@ -550,6 +569,82 @@ final class ImportedTokenRecovery
             'customer_uid' => $customerUid,
             'recurring_live' => $recurringLive,
             'detail' => $detail,
+            // EVERY card we looked at, not just the one chosen. A merchant who
+            // opens PayPlus and sees two rows must be able to see the same two
+            // here, with the reason each was or was not taken — otherwise
+            // "no replacement" reads as "we missed one".
+            'candidates' => $candidates,
         ];
+    }
+
+    /**
+     * WHY no replacement — named precisely, because the four reasons are four
+     * different next actions and one number hid all of them.
+     *
+     * A merchant opened PayPlus, saw two saved cards, and reasonably concluded we
+     * had missed one. We had not: their second card expired fourteen months
+     * earlier. But the report only said "no replacement", so the only way to learn
+     * that was to check by hand — which is exactly the work this screen exists to
+     * remove.
+     *
+     * @param  list<array<string, mixed>>  $candidates
+     */
+    private function whyNoReplacement(array $candidates): string
+    {
+        $others = array_values(array_filter($candidates, static fn (array $c): bool => ! ($c['held'] ?? false)));
+
+        if ($others === []) {
+            return 'only_the_dead_card'; // their vault holds nothing else
+        }
+
+        $live = array_values(array_filter($others, static fn (array $c): bool => ($c['expired'] ?? true) === false));
+
+        if ($live === []) {
+            return 'other_cards_all_expired'; // a dead end, but say so plainly
+        }
+
+        // Live alternatives exist and the rules still would not choose between
+        // them — a decision waiting for a human, not a dead end.
+        return 'several_possible_cards';
+    }
+
+    /**
+     * The cards we considered, flattened for storage and for a human to read.
+     *
+     * Deliberately NOT the raw PayPlus rows: those carry whatever fields the
+     * gateway felt like sending, and this is written to our own database and shown
+     * on a screen. Token uids are kept in full because attaching one later needs
+     * them exactly, and they are the merchant's own vault references — the same
+     * strings their PayPlus screen prints.
+     *
+     * @param  list<array<string, mixed>>  $tokens
+     * @return list<array<string, mixed>>
+     */
+    private function describeCards(array $tokens, string $heldToken, array $ownerOf): array
+    {
+        $out = [];
+
+        foreach ($tokens as $card) {
+            $token = trim((string) ($card['token'] ?? ''));
+
+            if ($token === '') {
+                continue;
+            }
+
+            $mmyy = trim((string) ($card['card_date_mmyy'] ?? ''));
+            $addedAt = PayPlusTokenDiscovery::addedAt($card);
+
+            $out[] = [
+                'token' => $token,
+                'last_four' => trim((string) ($card['last_4_digits'] ?? '')) ?: null,
+                'expiry' => $mmyy ?: null,
+                'expired' => $mmyy === '' ? null : ! PayPlusTokenDiscovery::isCardUnexpired($mmyy),
+                'added_at' => $addedAt === null ? null : date('Y-m-d', $addedAt),
+                'held' => $heldToken !== '' && $token === $heldToken,
+                'customer_uid' => $ownerOf[$token] ?? null,
+            ];
+        }
+
+        return $out;
     }
 }
