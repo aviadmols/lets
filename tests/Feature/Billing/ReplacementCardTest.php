@@ -3,7 +3,16 @@
 namespace Tests\Feature\Billing;
 
 use App\Domain\Installments\ImportedTokenRecovery;
+use App\Models\InstallmentPayment;
+use App\Models\InstallmentPaymentMethod;
+use App\Models\InstallmentPlan;
+use App\Models\Shop;
+use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
+use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
+use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusTokenDiscovery;
+use App\Support\Tenant;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
@@ -25,6 +34,14 @@ use Tests\TestCase;
  */
 final class ReplacementCardTest extends TestCase
 {
+    use RefreshDatabase;
+
+    protected function tearDown(): void
+    {
+        Tenant::clear();
+        parent::tearDown();
+    }
+
     // === The predicate ===
 
     /** The three the ISSUER kills. */
@@ -189,6 +206,147 @@ final class ReplacementCardTest extends TestCase
 
         $this->assertNull(PayPlusTokenDiscovery::addedAt(['token' => 'x']));
         $this->assertNull(PayPlusTokenDiscovery::addedAt(['token' => 'x', 'created_at' => 'not a date']));
+    }
+
+    // === What attaching a card does to the subscription ===
+
+    /**
+     * A NEW CARD ENDS THE HOLD. The merchant asked for this in one sentence: if a
+     * replacement is found, the member should move out of "stopped" and back into
+     * "waiting to be charged again" — not sit there until somebody remembers them.
+     */
+    public function test_attaching_a_card_moves_a_held_member_back_into_the_charge_queue(): void
+    {
+        $plan = $this->heldPlan();
+        $payment = $plan->latestPayment()->first();
+
+        app(ImportedTokenRecovery::class)->apply($plan, [
+            'route' => ImportedTokenRecovery::ROUTE_REPLACEMENT,
+            'token' => 'tok-fresh',
+            'customer_uid' => 'cust-1',
+            'recurring_live' => false,
+        ]);
+
+        $plan->refresh();
+
+        $this->assertSame(PlanStatus::AWAITING_PAYMENT->value, $plan->status->value);
+        $this->assertNull($plan->payment_failed_at, 'our hold is lifted');
+        $this->assertContains($plan->status->value, PlanStatus::chargeable(), 'the scheduler must be able to see it');
+
+        // The slot has to be waiting again, or the scheduler skips it and the
+        // failed-charges screen files it under no group at all.
+        $payment->refresh();
+        $this->assertSame(PaymentStatus::RETRY_SCHEDULED, $payment->status);
+        $this->assertSame(0, (int) $payment->attempt_count, 'a different card gets its own ladder');
+        $this->assertNotNull($payment->next_retry_at);
+    }
+
+    /** The debt does NOT move. It is still owed on the day it was owed. */
+    public function test_reviving_a_member_does_not_move_the_date_they_owe(): void
+    {
+        $owed = now()->subDays(4)->startOfDay();
+
+        $plan = $this->heldPlan();
+        $plan->forceFill(['next_charge_at' => $owed])->save();
+
+        app(ImportedTokenRecovery::class)->apply($plan, [
+            'route' => ImportedTokenRecovery::ROUTE_REPLACEMENT,
+            'token' => 'tok-fresh',
+            'customer_uid' => 'cust-1',
+            'recurring_live' => false,
+        ]);
+
+        $this->assertSame($owed->toDateString(), $plan->fresh()->next_charge_at->toDateString());
+    }
+
+    /**
+     * A pause the CUSTOMER asked for is not ours to lift. The stamp is what tells
+     * them apart, and finding a card is not permission to restart somebody's
+     * subscription.
+     */
+    public function test_a_customer_requested_pause_survives_a_new_card(): void
+    {
+        $plan = $this->heldPlan();
+        $plan->forceFill(['payment_failed_at' => null])->save(); // they asked to pause
+
+        app(ImportedTokenRecovery::class)->apply($plan, [
+            'route' => ImportedTokenRecovery::ROUTE_REPLACEMENT,
+            'token' => 'tok-fresh',
+            'customer_uid' => 'cust-1',
+            'recurring_live' => false,
+        ]);
+
+        $this->assertSame(PlanStatus::PAUSED->value, $plan->fresh()->status->value);
+    }
+
+    /** A cancelled subscription is not revived by finding a card. */
+    public function test_a_cancelled_member_is_not_revived(): void
+    {
+        $plan = $this->heldPlan();
+        $plan->forceFill(['status' => PlanStatus::CANCELLED->value])->save();
+
+        app(ImportedTokenRecovery::class)->apply($plan, [
+            'route' => ImportedTokenRecovery::ROUTE_REPLACEMENT,
+            'token' => 'tok-fresh',
+            'customer_uid' => 'cust-1',
+            'recurring_live' => false,
+        ]);
+
+        $this->assertSame(PlanStatus::CANCELLED->value, $plan->fresh()->status->value);
+    }
+
+    /** A member held for an unpaid cycle, with a spent ladder. */
+    private function heldPlan(): InstallmentPlan
+    {
+        $shop = Shop::create([
+            'woocommerce_domain' => 'revive-'.uniqid().'.example.com',
+            'name' => 'Revive',
+            'status' => Shop::STATUS_ACTIVE,
+            'platform' => Shop::PLATFORM_WOOCOMMERCE,
+        ]);
+
+        Tenant::set($shop);
+
+        $method = InstallmentPaymentMethod::create([
+            'payplus_card_token_uid' => 'tok-dead',
+            'payplus_customer_uid' => 'cust-1',
+            'card_brand' => 'visa',
+            'status' => InstallmentPaymentMethod::STATUS_ACTIVE,
+        ]);
+
+        $plan = new InstallmentPlan;
+        $plan->forceFill([
+            'shop_id' => $shop->getKey(),
+            'public_id' => 'PLN-'.uniqid(),
+            'customer_name' => 'Held',
+            'customer_email' => 'held@example.com',
+            'plan_kind' => PlanKind::RECURRING->value,
+            'status' => PlanStatus::PAUSED->value,
+            'payment_failed_at' => now()->subDay(),
+            'payment_method_id' => $method->getKey(),
+            'total_amount' => 0,
+            'total_charged' => 0,
+            'installment_amount' => 39,
+            'currency' => 'ILS',
+            'billing_frequency' => 'monthly',
+            'interval_count' => 1,
+            'next_charge_at' => now()->subDay(),
+        ])->save();
+
+        $payment = new InstallmentPayment;
+        $payment->forceFill([
+            'shop_id' => $shop->getKey(),
+            'plan_id' => $plan->getKey(),
+            'sequence' => 1,
+            'amount' => 39,
+            'currency' => 'ILS',
+            'status' => PaymentStatus::FAILED->value,
+            'attempt_count' => 7,
+            'failure_code' => '1',
+            'failure_message' => 'כרטיס חסום',
+        ])->save();
+
+        return $plan;
     }
 
     /** @return array<string, mixed> */

@@ -5,6 +5,8 @@ namespace App\Domain\Installments;
 use App\Models\InstallmentPaymentMethod;
 use App\Models\InstallmentPlan;
 use App\Models\Shop;
+use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
+use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusTokenDiscovery;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Support\Tenant;
@@ -446,9 +448,74 @@ final class ImportedTokenRecovery
                 planId: $plan->getKey(),
                 shopId: $shopId,
             );
+
+            $this->reviveHeldPlan($plan);
         });
 
         return true;
+    }
+
+    /**
+     * A NEW CARD ENDS THE HOLD. Put the subscription back in the queue to be
+     * charged again, instead of leaving it stopped.
+     *
+     * The hold exists because we ran out of ways to ask: the card was dead and
+     * the ladder was spent. Attaching a different card removes the reason, and
+     * leaving the plan stopped means the merchant has to remember to come back
+     * and charge each person by hand — which is exactly what they asked not to do.
+     *
+     * PAUSED → AWAITING_PAYMENT is NOT a legal transition, so this goes through
+     * ACTIVE, the same two hops the orchestrator makes when money finally lands.
+     * AWAITING_PAYMENT rather than ACTIVE is the honest resting place: the cycle
+     * is still owed and still unpaid.
+     *
+     * ONLY OUR HOLD IS LIFTED. `payment_failed_at` is the stamp that tells our
+     * pause from one the CUSTOMER asked for, and resuming somebody's subscription
+     * because we found a card would override a decision they already made.
+     */
+    private function reviveHeldPlan(InstallmentPlan $plan): void
+    {
+        $status = $plan->status instanceof PlanStatus
+            ? $plan->status
+            : PlanStatus::tryFrom((string) $plan->status);
+
+        $held = ($status === PlanStatus::PAUSED && $plan->payment_failed_at !== null)
+            || $status === PlanStatus::FAILED;
+
+        if (! $held) {
+            return;
+        }
+
+        $plan->payment_failed_at = null;
+        $plan->save();
+
+        $plan->transitionTo(PlanStatus::ACTIVE, ['action' => 'card_replaced']);
+        $plan->transitionTo(PlanStatus::AWAITING_PAYMENT, ['action' => 'card_replaced']);
+
+        /*
+         * The slot has to be WAITING again, for two independent reasons: the
+         * scheduler's due query skips a plan whose newest slot is spent, and the
+         * failed-charges screen files a live plan by its slot — so a revived plan
+         * with a dead slot would show in no group at all and be invisible.
+         *
+         * The attempt count resets because the ladder counts attempts against a
+         * CARD, and this is a different card. Seven fresh attempts are now seven
+         * days apart (the backoff fix), not the twenty-eight minutes that burned
+         * the first ladder.
+         */
+        $payment = $plan->latestPayment()->first();
+
+        $slotStatus = $payment?->status instanceof PaymentStatus
+            ? $payment->status->value
+            : (string) ($payment?->status ?? '');
+
+        if ($payment !== null && $slotStatus === PaymentStatus::FAILED->value) {
+            $payment->forceFill([
+                'status' => PaymentStatus::RETRY_SCHEDULED->value,
+                'next_retry_at' => now(),
+                'attempt_count' => 0,
+            ])->save();
+        }
     }
 
     /** Probe and, when a token came back, write it — the admin button's one call. */
