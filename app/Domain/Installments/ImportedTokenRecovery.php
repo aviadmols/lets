@@ -409,6 +409,18 @@ final class ImportedTokenRecovery
 
             // Found the person, could not tell their cards apart — the one
             // case where guessing would charge the wrong card.
+            /*
+             * PAYPLUS KNOWS THEM AND HOLDS NOTHING. Reported apart from the two
+             * matcher refusals below, which both imply we had cards and could not
+             * tell them apart. A migrated member whose exported token PayPlus
+             * never had, and who has no card vaulted either, was being filed as
+             * "could not identify the card" — sending somebody to compare a list
+             * that is empty.
+             */
+            if ($tokens === []) {
+                return $this->outcome(self::ROUTE_NONE, detail: 'no_cards_at_payplus', candidates: []);
+            }
+
             return $this->outcome(
                 self::ROUTE_NONE,
                 detail: $method->card_last_four ? 'no_card_matched' : 'no_last_four_to_match_on',
@@ -591,6 +603,10 @@ final class ImportedTokenRecovery
      */
     private function whyNoReplacement(array $candidates): string
     {
+        if ($candidates === []) {
+            return 'no_cards_at_payplus'; // nothing vaulted at all, not even ours
+        }
+
         $others = array_values(array_filter($candidates, static fn (array $c): bool => ! ($c['held'] ?? false)));
 
         if ($others === []) {

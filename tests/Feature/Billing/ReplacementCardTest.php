@@ -208,6 +208,70 @@ final class ReplacementCardTest extends TestCase
         $this->assertNull(PayPlusTokenDiscovery::addedAt(['token' => 'x', 'created_at' => 'not a date']));
     }
 
+    // === Naming the refusal ===
+
+    /**
+     * AN EMPTY VAULT IS NOT AMBIGUITY.
+     *
+     * A migrated member whose exported token PayPlus never held, and who has no
+     * card vaulted either, was filed as "could not identify the card" — which
+     * sends somebody to compare a list that is empty. The two readings lead to
+     * different work: one is "look again", the other is "ask them for a card".
+     */
+    public function test_no_cards_at_all_is_reported_as_empty_not_ambiguous(): void
+    {
+        $reason = $this->reasonFor([]);
+
+        $this->assertSame('no_cards_at_payplus', $reason);
+    }
+
+    /** Their vault holds only the card the issuer killed. */
+    public function test_only_the_dead_card_is_named_as_such(): void
+    {
+        $this->assertSame('only_the_dead_card', $this->reasonFor([
+            $this->candidate('tok-held', '0926', held: true),
+        ]));
+    }
+
+    /** There IS another card and it is past its date — a dead end worth naming. */
+    public function test_an_expired_alternative_is_named_as_expired(): void
+    {
+        $this->assertSame('other_cards_all_expired', $this->reasonFor([
+            $this->candidate('tok-held', '0926', held: true),
+            $this->candidate('tok-old', '0725'),
+        ]));
+    }
+
+    /** Live alternatives: a decision waiting for a human, not a dead end. */
+    public function test_live_alternatives_are_named_as_a_choice(): void
+    {
+        $this->assertSame('several_possible_cards', $this->reasonFor([
+            $this->candidate('tok-held', '0926', held: true),
+            $this->candidate('tok-a', '0530'),
+            $this->candidate('tok-b', '0631'),
+        ]));
+    }
+
+    /** @param  list<array<string, mixed>>  $candidates */
+    private function reasonFor(array $candidates): string
+    {
+        $method = new \ReflectionMethod(ImportedTokenRecovery::class, 'whyNoReplacement');
+        $method->setAccessible(true);
+
+        return $method->invoke(app(ImportedTokenRecovery::class), $candidates);
+    }
+
+    /** @return array<string, mixed> */
+    private function candidate(string $token, string $mmyy, bool $held = false): array
+    {
+        return [
+            'token' => $token,
+            'expiry' => $mmyy,
+            'expired' => ! PayPlusTokenDiscovery::isCardUnexpired($mmyy),
+            'held' => $held,
+        ];
+    }
+
     // === What attaching a card does to the subscription ===
 
     /**

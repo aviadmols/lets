@@ -63,6 +63,13 @@ class TokenRecoveryResult extends Model
 
     public const DETAIL_CUSTOMER_MISSING = 'customer_not_found_at_payplus';
 
+    /**
+     * PayPlus knows the member and holds NO card for them. Distinct from the
+     * matcher refusals, which mean we had cards and could not tell them apart —
+     * pointing a human at an empty list is worse than saying it is empty.
+     */
+    public const DETAIL_NO_CARDS = 'no_cards_at_payplus';
+
     protected $guarded = [];
 
     protected $casts = [
