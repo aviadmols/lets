@@ -2,22 +2,26 @@
 
 namespace App\Domain\Campaigns;
 
+use App\Domain\Campaigns\Models\GiftExportRow;
+use App\Domain\Campaigns\Models\GiftExportRun;
 use App\Domain\Campaigns\Models\GiftRecipient;
 use App\Models\Shop;
-use App\Support\Tenant;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * The qualifying list as a spreadsheet, addresses included.
+ * The gift list as a courier's sheet: name, phone, city, street, house,
+ * entrance, apartment, floor, and the note to write on the delivery.
  *
- * Same source as the orders: every address here is resolved through
- * GiftAddressResolver at export time, so the file says where each gift WOULD be
- * sent — not where it was sent once, and not a copy the SaaS keeps. That is also
- * why the export costs one store read per recipient.
+ * Two halves, because the work is slow and the file is not:
+ *   - fields() resolves ONE recipient's address from the store — a live read per
+ *     person — and is called by GiftExportRunner on a worker, a row at a time;
+ *   - file() stitches the finished rows into the CSV the merchant downloads.
  *
- * A recipient with no deliverable address is still a ROW, carrying the reason.
- * Dropping them would hand the merchant a list that quietly omits the people who
- * need attention most.
+ * Every address is resolved through GiftAddressResolver, the same chain the gift
+ * orders use, so the sheet says where each gift WOULD be sent today.
+ *
+ * A recipient with no deliverable address is still a ROW, its reason in the
+ * notes. Dropping them would hand the merchant a list that quietly omits the
+ * people who need attention most.
  */
 final class GiftListExporter
 {
@@ -29,20 +33,11 @@ final class GiftListExporter
      */
     private const BOM = "\xEF\xBB\xBF";
 
-    /**
-     * Each row costs a live store read, so the export is bounded. It is NEVER a
-     * silent truncation: the file ends with a row saying what was left out.
-     */
-    public const MAX_ROWS = 500;
+    /** The columns, in the order the courier's sheet asks for them. */
+    public const COLUMNS = ['name', 'phone', 'city', 'street', 'building', 'entrance', 'apartment', 'floor', 'note'];
 
-    /**
-     * The real bound at scale. A store read takes what it takes, so a thousand
-     * recipients cannot be counted into a safe limit ahead of time — but they can
-     * be timed. The file closes when the budget is spent and says how many rows it
-     * did not reach, which beats a request that dies at the gateway and hands the
-     * merchant nothing at all.
-     */
-    public const MAX_SECONDS = 20;
+    /** Rows read per query while stitching the file. */
+    private const FILE_CHUNK = 500;
 
     /** RFC-4180 CSV: quotes are doubled, nothing is backslash-escaped. */
     private const SEPARATOR = ',';
@@ -57,66 +52,85 @@ final class GiftListExporter
     private const ESCAPE = '';
 
     public function __construct(
-        private readonly GiftEligibility $eligibility,
         private readonly GiftAddressResolver $addresses,
     ) {}
 
     /**
-     * @param  array<int, int>  $productIds  local Product ids; empty = every product
-     * @param  array<int, string>  $emails  specific people; empty = everyone the rule reaches
+     * One recipient's line, address resolved from the store now.
+     *
+     * @param  array<string, mixed>  $row  a GiftEligibility::qualifying() row
+     * @return list<string> in COLUMNS order
      */
-    public function download(Shop $shop, int $minCycles, array $productIds = [], array $emails = []): StreamedResponse
+    public function fields(Shop $shop, array $row): array
     {
-        // Built eagerly, not inside the stream callback: the tenant binding and the
-        // store reads belong to the request, not to response-send time.
-        $csv = $this->csv($shop, $minCycles, $productIds, $emails);
-        $filename = 'gift-recipients-'.now()->format('Y-m-d').'.csv';
+        $resolved = $this->addresses->resolve($shop, $this->recipientFor($shop, $row));
+        $address = $resolved['address'];
 
-        return response()->streamDownload(
-            function () use ($csv): void {
-                echo $csv;
-            },
-            $filename,
-            ['Content-Type' => 'text/csv; charset=UTF-8'],
-        );
+        if ($address === null) {
+            // Nowhere to ship — the row stays, and says why.
+            return [
+                (string) $row['label'], '', '', '', '', '', '', '',
+                (string) __('gifts.reason.'.$resolved['reason']),
+            ];
+        }
+
+        $parts = $address->deliveryParts();
+
+        return [
+            $address->fullName() !== '' ? $address->fullName() : (string) $row['label'],
+            (string) ($address->phone ?? ''),
+            (string) ($address->city ?? ''),
+            $parts['street'],
+            $parts['building'],
+            $parts['entrance'],
+            $parts['apartment'],
+            $parts['floor'],
+            $parts['note'],
+        ];
     }
 
-    /**
-     * @param  array<int, int>  $productIds  local Product ids; empty = every product
-     * @param  array<int, string>  $emails  specific people; empty = everyone the rule reaches
-     */
-    public function csv(Shop $shop, int $minCycles, array $productIds = [], array $emails = []): string
+    /** The finished file for a completed run. Tenant-scoped reads. */
+    public function file(GiftExportRun $run): string
     {
-        return Tenant::run($shop, function () use ($shop, $minCycles, $productIds, $emails): string {
-            $rows = $this->eligibility->qualifying($minCycles, null, $productIds, $emails);
-            $total = $rows->count();
+        $handle = fopen('php://temp', 'r+');
+        fwrite($handle, self::BOM);
+        $this->put($handle, $this->headers());
 
-            $handle = fopen('php://temp', 'r+');
-            fwrite($handle, self::BOM);
-            $this->put($handle, $this->headers());
+        GiftExportRow::query()
+            ->where('run_id', $run->getKey())
+            ->orderBy('position')
+            ->lazy(self::FILE_CHUNK)
+            ->each(function (GiftExportRow $row) use ($handle): void {
+                $fields = $row->fields;
 
-            $deadline = microtime(true) + self::MAX_SECONDS;
-            $written = 0;
-
-            foreach ($rows as $row) {
-                if ($written >= self::MAX_ROWS || microtime(true) > $deadline) {
-                    break;
+                // Never happens on a completed run; if it ever does, the person
+                // is still on the sheet rather than silently missing from it.
+                if (! is_array($fields)) {
+                    $fields = [(string) (($row->recipient ?? [])['label'] ?? '')];
                 }
-                $this->put($handle, $this->line($shop, $row));
-                $written++;
-            }
 
-            $overflow = $total - $written;
-            if ($overflow > 0) {
-                $this->put($handle, [__('gifts.export.truncated', ['count' => $overflow])]);
-            }
+                $this->put($handle, array_map('strval', $fields));
+            });
 
-            rewind($handle);
-            $csv = (string) stream_get_contents($handle);
-            fclose($handle);
+        rewind($handle);
+        $csv = (string) stream_get_contents($handle);
+        fclose($handle);
 
-            return $csv;
-        });
+        return $csv;
+    }
+
+    public function filename(): string
+    {
+        return 'gift-recipients-'.now()->format('Y-m-d').'.csv';
+    }
+
+    /** @return list<string> */
+    public function headers(): array
+    {
+        return array_map(
+            static fn (string $column): string => (string) __('gifts.export.col.'.$column),
+            self::COLUMNS,
+        );
     }
 
     /**
@@ -126,60 +140,6 @@ final class GiftListExporter
     private function put($handle, array $fields): void
     {
         fputcsv($handle, $fields, self::SEPARATOR, self::ENCLOSURE, self::ESCAPE);
-    }
-
-    /** @return array<int, string> */
-    private function headers(): array
-    {
-        return [
-            __('gifts.export.col.customer'),
-            __('gifts.export.col.email'),
-            __('gifts.col.cycles'),
-            __('gifts.col.rail'),
-            __('gifts.export.col.first_name'),
-            __('gifts.export.col.last_name'),
-            __('gifts.export.col.address1'),
-            __('gifts.export.col.address2'),
-            __('gifts.export.col.city'),
-            __('gifts.export.col.zip'),
-            __('gifts.export.col.country'),
-            __('gifts.export.col.phone'),
-            __('gifts.export.col.company'),
-            __('gifts.export.col.address_source'),
-            __('gifts.export.col.note'),
-        ];
-    }
-
-    /**
-     * @param  array<string, mixed>  $row
-     * @return array<int, string>
-     */
-    private function line(Shop $shop, array $row): array
-    {
-        $resolved = $this->addresses->resolve($shop, $this->recipientFor($shop, $row));
-        $address = $resolved['address'];
-
-        $note = $address === null
-            ? __('gifts.reason.'.$resolved['reason'])
-            : ($row['already_gifted'] ? __('gifts.already_gifted') : '');
-
-        return [
-            (string) $row['label'],
-            (string) ($row['email'] ?? ''),
-            (string) $row['cycles'],
-            __('gifts.rail.'.$row['rail']),
-            (string) ($address?->firstName ?? ''),
-            (string) ($address?->lastName ?? ''),
-            (string) ($address?->address1 ?? ''),
-            (string) ($address?->address2 ?? ''),
-            (string) ($address?->city ?? ''),
-            (string) ($address?->zip ?? ''),
-            (string) ($address?->countryCode ?? ''),
-            (string) ($address?->phone ?? ''),
-            (string) ($address?->company ?? ''),
-            $resolved['source'] !== null ? __('gifts.export.source.'.$resolved['source']) : '',
-            (string) $note,
-        ];
     }
 
     /**

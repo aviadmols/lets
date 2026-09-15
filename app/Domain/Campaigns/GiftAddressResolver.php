@@ -50,6 +50,18 @@ final class GiftAddressResolver
     private const ADDRESS_FIELDS = 'firstName lastName address1 address2 city zip countryCode phone company';
 
     /**
+     * The LETS WooCommerce address fields' meta suffixes
+     * (LETS_ADDRESS_EXTRA_FIELDS in the plugin), read beside the address block.
+     */
+    private const WOO_META_BUILDING = 'building_number';
+
+    private const WOO_META_APARTMENT = 'apartment_number';
+
+    private const WOO_META_FLOOR = 'floor';
+
+    private const WOO_META_ENTRANCE = 'entrance';
+
+    /**
      * Resolve for one recipient.
      *
      * @return array{address: ?GiftShippingAddress, source: ?string, reason: ?string}
@@ -245,13 +257,48 @@ final class GiftAddressResolver
             if ($block === []) {
                 continue;
             }
-            $address = GiftShippingAddress::fromWooBlock($block);
+            $address = GiftShippingAddress::fromWooBlock($block, $this->wooExtras($payload, $key));
             if ($address->isShippable()) {
                 return $address;
             }
         }
 
         return null;
+    }
+
+    /**
+     * What a Woo payload carries BESIDE the address block: the LETS address
+     * fields as their own meta (house, apartment, floor, entrance), the note the
+     * customer typed at checkout, and the billing phone — a shipping block
+     * usually has none, and a courier needs one.
+     *
+     * The meta key differs by record: a customer profile saves
+     * `shipping_building_number`, an order `_shipping_building_number`.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array{building: ?string, apartment: ?string, floor: ?string, entrance: ?string, note: ?string, phone: ?string}
+     */
+    private function wooExtras(array $payload, string $type): array
+    {
+        $meta = [];
+        foreach ((array) ($payload['meta_data'] ?? []) as $entry) {
+            if (is_array($entry) && isset($entry['key']) && is_scalar($entry['value'] ?? null)) {
+                $meta[(string) $entry['key']] = (string) $entry['value'];
+            }
+        }
+
+        $read = static fn (string $suffix): ?string => $meta['_'.$type.'_'.$suffix]
+            ?? $meta[$type.'_'.$suffix]
+            ?? null;
+
+        return [
+            'building' => $read(self::WOO_META_BUILDING),
+            'apartment' => $read(self::WOO_META_APARTMENT),
+            'floor' => $read(self::WOO_META_FLOOR),
+            'entrance' => $read(self::WOO_META_ENTRANCE),
+            'note' => is_scalar($payload['customer_note'] ?? null) ? (string) $payload['customer_note'] : null,
+            'phone' => is_scalar(($payload['billing'] ?? [])['phone'] ?? null) ? (string) $payload['billing']['phone'] : null,
+        ];
     }
 
     /** A Shopify GID from a stored numeric id or an already-formed gid. */

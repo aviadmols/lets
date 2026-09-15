@@ -260,11 +260,66 @@
                             </button>
                         @endif
                         {{-- Reads only: the file is for shipping by hand, and building
-                             it enrols nobody. --}}
-                        <button type="button" class="rc-cta rc-cta--ghost" wire:click="exportList">
-                            {{ __('gifts.action.export') }}
+                             it enrols nobody. The click only queues it, so the
+                             answer is immediate — and shut while one is running. --}}
+                        @php $exportBusy = $this->exportRun() !== null && ! $this->exportRun()->isFinished(); @endphp
+                        <button type="button" class="rc-cta rc-cta--ghost" wire:click="exportList"
+                                wire:target="exportList" wire:loading.attr="disabled" @disabled($exportBusy)>
+                            <span wire:loading.remove wire:target="exportList">
+                                {{ $exportBusy ? __('gifts.export_run.busy') : __('gifts.action.export') }}
+                            </span>
+                            <span wire:loading wire:target="exportList">{{ __('gifts.export_run.starting') }}</span>
                         </button>
                     </div>
+                @endif
+            </div>
+        @endif
+
+        {{-- 2b. The export, while a worker builds it and once it is ready.
+             Outside the preview on purpose: after a reload the preview is gone,
+             but an export that is running — or a file waiting — is not. Polls
+             only while it runs; the poll that sees it finish hands the file over. --}}
+        @php $exportRun = $this->exportRun(); @endphp
+        @if($exportRun !== null)
+            <div class="rc-section"
+                 @if(! $exportRun->isFinished()) wire:poll.{{ \App\Filament\Pages\GiftOrders::EXPORT_POLL }}="refreshExport" @endif>
+                <div class="rc-section__title">{{ __('gifts.export_run.title') }}</div>
+
+                @if(! $exportRun->isFinished())
+                    <div class="rc-progress">
+                        <div class="rc-progress__track">
+                            <div class="rc-progress__fill rc-progress__fill--{{ $exportRun->progressStep() }}"></div>
+                        </div>
+                        <div class="rc-progress__meta">
+                            <span class="rc-ltr">
+                                @if((int) $exportRun->total > 0)
+                                    {{ number_format($exportRun->processed) }} / {{ number_format($exportRun->total) }}
+                                @else
+                                    …
+                                @endif
+                            </span>
+                            <span class="rc-ltr">{{ $exportRun->progressStep() }}%</span>
+                        </div>
+                    </div>
+                    <p class="rc-muted">
+                        {{ (int) $exportRun->total > 0 ? __('gifts.export_run.working') : __('gifts.export_run.counting') }}
+                    </p>
+                @elseif($exportRun->isCompleted())
+                    <p class="rc-muted">
+                        {{ __('gifts.export_run.ready', [
+                            'count' => number_format($exportRun->total),
+                            'time' => optional($exportRun->finished_at)->format('H:i') ?? '',
+                        ]) }}
+                    </p>
+                    <div class="rc-row">
+                        <button type="button" class="rc-cta rc-cta--primary" wire:click="downloadExport"
+                                wire:target="downloadExport" wire:loading.attr="disabled">
+                            <span wire:loading.remove wire:target="downloadExport">{{ __('gifts.export_run.download') }}</span>
+                            <span wire:loading wire:target="downloadExport">{{ __('gifts.export_run.preparing') }}</span>
+                        </button>
+                    </div>
+                @else
+                    <p class="rc-muted">{{ __('gifts.export_run.failed') }}</p>
                 @endif
             </div>
         @endif

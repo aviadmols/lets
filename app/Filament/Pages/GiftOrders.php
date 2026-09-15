@@ -4,9 +4,11 @@ namespace App\Filament\Pages;
 
 use App\Domain\Campaigns\GiftCampaignGenerator;
 use App\Domain\Campaigns\GiftEligibility;
+use App\Domain\Campaigns\GiftExportRunner;
 use App\Domain\Campaigns\GiftListExporter;
 use App\Domain\Campaigns\Jobs\GiftOrderJob;
 use App\Domain\Campaigns\Models\GiftCampaign;
+use App\Domain\Campaigns\Models\GiftExportRun;
 use App\Domain\Campaigns\Models\GiftRecipient;
 use App\Filament\Concerns\PicksProducts;
 use App\Filament\Concerns\ShopScopedScreen;
@@ -64,6 +66,9 @@ class GiftOrders extends Page
      */
     public const ATTENTION_ROWS = 50;
 
+    /** How often the screen asks a running export how far it got. */
+    public const EXPORT_POLL = '2s';
+
     /** The recipient states a merchant may have to do something about. */
     public const ATTENTION = [
         GiftRecipient::STATUS_FAILED,
@@ -120,6 +125,19 @@ class GiftOrders extends Page
     /** Set once the merchant has previewed THIS rule — Generate stays shut until then. */
     public bool $previewed = false;
 
+    // --- Export state ---
+    /** The export this screen shows: the one just started, or the shop's latest. */
+    public ?int $exportRunId = null;
+
+    /**
+     * True while THIS screen is waiting on an export it started — the difference
+     * between "it just finished, download it" and "a finished one from earlier".
+     */
+    public bool $exportWatching = false;
+
+    /** Per-request memo of exportRun(); never serialised to the browser. */
+    private ?GiftExportRun $exportMemo = null;
+
     /**
      * Per-render memos. Livewire re-renders on every interaction, and both of these
      * are aggregate queries over every recipient — recomputing them per campaign
@@ -150,6 +168,12 @@ class GiftOrders extends Page
     public function mount(): void
     {
         $this->shippingLabel = __('gifts.default_shipping_label');
+
+        // An export started before a reload is still this merchant's: show its
+        // progress, or its file, rather than a screen that forgot it.
+        $latest = app(GiftExportRunner::class)->latest();
+        $this->exportRunId = $latest?->getKey();
+        $this->exportWatching = $latest !== null && ! $latest->isFinished();
     }
 
     // === Product picker ===
@@ -345,9 +369,13 @@ class GiftOrders extends Page
     // === Export ===
 
     /**
-     * The qualifying list as a spreadsheet, with each recipient's address as it
+     * The qualifying list as a courier's sheet, each recipient's address as it
      * stands right now. Reads only — nobody is enrolled and no order is created,
      * so a merchant can ship the gifts by hand if they prefer.
+     *
+     * Every line is a live store read, so the click only QUEUES the export; a
+     * worker builds it while this screen shows the progress, and the file
+     * downloads when it is ready.
      */
     public function exportList(): ?StreamedResponse
     {
@@ -356,9 +384,85 @@ class GiftOrders extends Page
             return null;
         }
 
+        $runner = app(GiftExportRunner::class);
+        $current = $runner->latest();
+
+        // One at a time: a second click must not delete the lines the first
+        // export is still writing.
+        if ($current !== null && ! $current->isFinished()) {
+            Notification::make()->title(__('gifts.export_run.already_running'))->warning()->send();
+
+            return null;
+        }
+
         // The same rule the preview above it is showing — a file that disagreed
         // with the list on screen would be worse than no file.
-        return app(GiftListExporter::class)->download($shop, $this->minCycles, $this->sourceProductIds, $this->sourceEmailList());
+        $run = $runner->start($shop, $this->minCycles, $this->sourceProductIds, $this->sourceEmailList());
+
+        $this->exportRunId = (int) $run->getKey();
+        $this->exportWatching = true;
+        $this->exportMemo = null;
+
+        // A sync queue (tests, local) has already finished it — hand the file
+        // over now, the same moment the poll would have.
+        return $run->isFinished() ? $this->refreshExport() : null;
+    }
+
+    /** The export this screen is showing, if any. Memoized per request. */
+    public function exportRun(): ?GiftExportRun
+    {
+        if ($this->exportRunId === null) {
+            return null;
+        }
+
+        return $this->exportMemo ??= GiftExportRun::query()->find($this->exportRunId);
+    }
+
+    /**
+     * The poll while an export runs. The moment it completes on THIS screen, the
+     * file downloads by itself — the merchant pressed export, not "export and
+     * then come back and press download".
+     */
+    public function refreshExport(): ?StreamedResponse
+    {
+        $this->exportMemo = null;
+        $run = $this->exportRun();
+
+        if ($run === null || ! $run->isFinished() || ! $this->exportWatching) {
+            return null;
+        }
+
+        $this->exportWatching = false;
+
+        if (! $run->isCompleted()) {
+            $this->fail(__('gifts.export_run.failed'));
+
+            return null;
+        }
+
+        return $this->downloadExport();
+    }
+
+    /** The finished file. Built from this shop's rows only (tenant-scoped). */
+    public function downloadExport(): ?StreamedResponse
+    {
+        $run = $this->exportRun();
+        if ($run === null || ! $run->isCompleted()) {
+            return null;
+        }
+
+        $exporter = app(GiftListExporter::class);
+        // Built eagerly, inside the request that holds the tenant binding — not
+        // in the stream callback, which runs when the response is sent.
+        $csv = $exporter->file($run);
+
+        return response()->streamDownload(
+            static function () use ($csv): void {
+                echo $csv;
+            },
+            $exporter->filename(),
+            ['Content-Type' => 'text/csv; charset=UTF-8'],
+        );
     }
 
     // === Save ===

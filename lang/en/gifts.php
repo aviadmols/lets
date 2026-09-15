@@ -67,30 +67,40 @@ return [
         'export' => 'Export list with addresses (CSV)',
     ],
 
-    // The spreadsheet. Addresses are read from the store as the file is built, so
-    // it says where each gift would go today.
+    // The spreadsheet, in a courier sheet's shape. Addresses are read from the
+    // store as the file is built, so it says where each gift would go today.
     'export' => [
         'col' => [
-            'customer' => 'Customer',
-            'email' => 'Email',
-            'first_name' => 'First name',
-            'last_name' => 'Last name',
+            'name' => 'Name',
+            'phone' => 'Phone',
+            'city' => 'City',
+            'street' => 'Street',
+            'building' => 'House',
+            'entrance' => 'Entrance',
+            'apartment' => 'Apartment',
+            'floor' => 'Floor',
+            'note' => 'Notes to write on the delivery',
+            // Labels of the address form on the customer screen.
             'address1' => 'Street address',
             'address2' => 'Address line 2',
-            'city' => 'City',
             'zip' => 'Postal code',
             'country' => 'Country',
-            'phone' => 'Phone',
-            'company' => 'Company',
-            'address_source' => 'Address taken from',
-            'note' => 'Note',
         ],
-        'source' => [
-            'customer_profile' => 'Customer profile',
-            'plan_contact' => 'The address stored on the subscription in LETS',
-            'origin_order' => 'The order they subscribed with',
-        ],
-        'truncated' => ':count more recipients were left out of this file.',
+    ],
+
+    // The export runs in the background: every line is a store read, and a real
+    // list is minutes of work.
+    'export_run' => [
+        'title' => 'List export',
+        'starting' => 'Starting…',
+        'busy' => 'Export running…',
+        'counting' => 'Gathering who qualifies…',
+        'working' => 'Reading addresses from your store. Keep working — the file downloads by itself when it is ready.',
+        'ready' => 'The file is ready: :count recipients (finished at :time).',
+        'download' => 'Download the file',
+        'preparing' => 'Preparing the file…',
+        'failed' => 'The export stopped before it finished. Please export again.',
+        'already_running' => 'An export is already running. The file downloads when it finishes.',
     ],
 
     'editing' => 'Editing the saved campaign “:title”. Saving updates it; sending creates the orders.',

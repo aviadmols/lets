@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Campaigns;
 
+use App\Domain\Campaigns\GiftExportRunner;
 use App\Domain\Campaigns\Jobs\GiftOrderJob;
+use App\Domain\Campaigns\Jobs\RunGiftExportJob;
 use App\Domain\Campaigns\Models\GiftCampaign;
 use App\Domain\Campaigns\Models\GiftRecipient;
 use App\Filament\Pages\GiftOrders;
@@ -264,6 +266,8 @@ final class GiftOrdersPageTest extends TestCase
         Http::fake(['*' => Http::response([], 200)]);
         $this->subscriber('Dana', succeeded: 4);
 
+        // The sync queue finishes the export inside the click, so the file comes
+        // straight back — the same moment the poll would hand it over.
         $response = Livewire::test(GiftOrders::class)
             ->set('minCycles', 3)
             ->instance()
@@ -272,6 +276,58 @@ final class GiftOrdersPageTest extends TestCase
         $this->assertNotNull($response);
         $this->assertStringContainsString('text/csv', (string) $response->headers->get('Content-Type'));
         $this->assertStringContainsString('gift-recipients-', (string) $response->headers->get('Content-Disposition'));
+    }
+
+    public function test_the_click_only_queues_and_the_poll_downloads_when_it_is_done(): void
+    {
+        Http::fake(['*' => Http::response([], 200)]);
+        $this->subscriber('Dana', succeeded: 4);
+        Queue::fake();
+
+        $page = Livewire::test(GiftOrders::class)
+            ->set('minCycles', 3)
+            ->call('preview')
+            ->call('exportList')
+            // Immediate answer: nothing downloaded yet, a run on screen, the
+            // button shut while it works.
+            ->assertNoFileDownloaded()
+            ->assertSet('exportWatching', true)
+            ->assertSee(__('gifts.export_run.title'))
+            ->assertSee(__('gifts.export_run.busy'));
+
+        Queue::assertPushed(RunGiftExportJob::class, 1);
+
+        // A second click while it runs does not start another one.
+        $page->call('exportList');
+        Queue::assertPushed(RunGiftExportJob::class, 1);
+
+        // Still working: the poll hands nothing over.
+        $page->call('refreshExport')->assertNoFileDownloaded();
+
+        // The worker finishes...
+        $runId = (int) $page->get('exportRunId');
+        app(GiftExportRunner::class)->advance($this->shop, $runId);
+
+        // ...and the next poll downloads the file by itself, once.
+        $page->call('refreshExport')
+            ->assertFileDownloaded()
+            ->assertSet('exportWatching', false)
+            ->assertSee(__('gifts.export_run.download'));
+    }
+
+    public function test_a_finished_export_survives_a_reload(): void
+    {
+        Http::fake(['*' => Http::response([], 200)]);
+        $this->subscriber('Dana', succeeded: 4);
+
+        Livewire::test(GiftOrders::class)->set('minCycles', 3)->call('exportList');
+
+        // A new visit: the file is still there to download, not re-downloaded.
+        Livewire::test(GiftOrders::class)
+            ->assertSet('exportWatching', false)
+            ->assertSee(__('gifts.export_run.download'))
+            ->call('downloadExport')
+            ->assertFileDownloaded();
     }
 
     public function test_saving_keeps_the_rule_without_creating_anything(): void

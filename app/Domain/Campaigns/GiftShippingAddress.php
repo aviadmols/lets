@@ -30,6 +30,32 @@ final readonly class GiftShippingAddress
     /** Prefix for the apartment line — address_2 on a Woo block. */
     private const APARTMENT_PREFIX = 'דירה ';
 
+    /**
+     * A building number at the END of a street line — "הרצל 12", "הרצל 12א",
+     * "הרצל 12/3". Only used when the store did not keep the number in a field
+     * of its own; a line that does not end in one keeps the whole line as the
+     * street rather than guessing.
+     */
+    private const TRAILING_BUILDING = '/^(.*\S)\s+(\d+[א-תa-zA-Z]?(?:\/\d+)?)$/u';
+
+    /**
+     * The labels the LETS address fields fold into address_2 on an order
+     * ("דירה 3, קומה 2, כניסה א"), per part, in both languages the plugin writes.
+     */
+    private const ADDRESS2_LABELS = [
+        'apartment' => 'דירה|apt\.?|apartment',
+        'floor' => 'קומה|floor',
+        'entrance' => 'כניסה|entrance',
+    ];
+
+    /**
+     * Separators left at either end of address_2 once its parts are lifted out.
+     * A regex, not trim(): trim() works on BYTES, and "·" is two of them.
+     */
+    private const EDGE_SEPARATORS = '/^[\s,·\-]+|[\s,·\-]+$/u';
+
+    private const NOTE_SEPARATOR = ' · ';
+
     public function __construct(
         public ?string $firstName = null,
         public ?string $lastName = null,
@@ -40,14 +66,24 @@ final readonly class GiftShippingAddress
         public ?string $countryCode = null,
         public ?string $phone = null,
         public ?string $company = null,
+        // The Israeli parts, when the store kept them in fields of their own
+        // (the LETS address fields do). Null = fold them out of the lines.
+        public ?string $building = null,
+        public ?string $apartment = null,
+        public ?string $floor = null,
+        public ?string $entrance = null,
+        // What the customer asked to have written on the delivery.
+        public ?string $note = null,
     ) {}
 
     /**
      * Build from a WooCommerce `billing` or `shipping` block.
      *
      * @param  array<string, mixed>  $block
+     * @param  array{building?: ?string, apartment?: ?string, floor?: ?string, entrance?: ?string, note?: ?string, phone?: ?string}  $extras
+     *                                                                                                                                        the granular parts read beside the block, and a phone to fall back on
      */
-    public static function fromWooBlock(array $block): self
+    public static function fromWooBlock(array $block, array $extras = []): self
     {
         return new self(
             firstName: self::clean($block['first_name'] ?? null),
@@ -57,8 +93,13 @@ final readonly class GiftShippingAddress
             city: self::clean($block['city'] ?? null),
             zip: self::clean($block['postcode'] ?? null),
             countryCode: self::clean($block['country'] ?? null),
-            phone: self::clean($block['phone'] ?? null),
+            phone: self::clean($block['phone'] ?? null) ?? self::clean($extras['phone'] ?? null),
             company: self::clean($block['company'] ?? null),
+            building: self::clean($extras['building'] ?? null),
+            apartment: self::clean($extras['apartment'] ?? null),
+            floor: self::clean($extras['floor'] ?? null),
+            entrance: self::clean($extras['entrance'] ?? null),
+            note: self::clean($extras['note'] ?? null),
         );
     }
 
@@ -115,9 +156,70 @@ final readonly class GiftShippingAddress
             zip: self::clean($stored['zip_code'] ?? null),
             countryCode: self::clean($stored['country'] ?? null),
             phone: self::clean($plan->customer_phone),
+            building: self::clean($stored['building_number'] ?? null),
+            apartment: self::clean($apartment),
         );
 
         return $address->isShippable() ? $address : null;
+    }
+
+    /**
+     * The address in the shape an Israeli courier's sheet asks for: street, house,
+     * entrance, apartment, floor, and the note to write on the delivery.
+     *
+     * The granular fields win when the store kept them. Otherwise the parts are
+     * folded out of the two lines — the building number off the end of the street
+     * line, the labelled parts out of address_2 — and whatever address_2 says
+     * that is NOT one of those parts goes into the note, where a courier will
+     * still read it, rather than being dropped.
+     *
+     * @return array{street: string, building: string, entrance: string, apartment: string, floor: string, note: string}
+     */
+    public function deliveryParts(): array
+    {
+        $street = (string) $this->address1;
+        $building = $this->building;
+
+        if ($building !== null) {
+            // An order's address_1 is "street building" — keep the street alone.
+            $suffix = ' '.$building;
+            if ($street !== $building && str_ends_with($street, $suffix)) {
+                $street = substr($street, 0, -strlen($suffix));
+            }
+        } elseif (preg_match(self::TRAILING_BUILDING, $street, $match) === 1) {
+            [$street, $building] = [$match[1], $match[2]];
+        }
+
+        $parts = ['apartment' => $this->apartment, 'floor' => $this->floor, 'entrance' => $this->entrance];
+        $rest = (string) $this->address2;
+
+        foreach (self::ADDRESS2_LABELS as $part => $labels) {
+            $pattern = '/(?:^|[,·])\s*(?:'.$labels.')\s*:?\s*([^,·]+)/iu';
+            if (preg_match($pattern, $rest, $match) === 1) {
+                $parts[$part] ??= trim($match[1]);
+                $rest = (string) preg_replace($pattern, '', $rest, 1);
+            }
+        }
+
+        $rest = (string) preg_replace(self::EDGE_SEPARATORS, '', $rest);
+
+        return [
+            'street' => trim($street),
+            'building' => (string) $building,
+            'entrance' => (string) $parts['entrance'],
+            'apartment' => (string) $parts['apartment'],
+            'floor' => (string) $parts['floor'],
+            'note' => implode(self::NOTE_SEPARATOR, array_filter(
+                [$rest, $this->note],
+                static fn (?string $value): bool => $value !== null && $value !== '',
+            )),
+        ];
+    }
+
+    /** The name to put on the package. */
+    public function fullName(): string
+    {
+        return trim(($this->firstName ?? '').' '.($this->lastName ?? ''));
     }
 
     /** Is there enough here to actually ship a package? */
