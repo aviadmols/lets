@@ -1159,7 +1159,12 @@ final class ChargeOrchestrator
         //     `payment_already_succeeded`, and the subscription would quietly
         //     stop billing forever. (A genuine repeat of one cycle never reaches
         //     here — Ledger::hasSucceeded short-circuits it on the key.)
+        //   - REFUNDED: the money went back and the slot is final in its own
+        //     machine. Reusing it charged the card and then threw on the
+        //     refunded → succeeded transition — money moved, nothing recorded.
+        //     A cycle charged again after a refund opens a fresh slot.
         $closed = $candidate->status === PaymentStatus::SUCCEEDED
+            || $candidate->status === PaymentStatus::REFUNDED
             || ($candidate->status === PaymentStatus::FAILED && $candidate->next_retry_at === null);
 
         if (! $closed) {
@@ -1230,12 +1235,14 @@ final class ChargeOrchestrator
         if ($plan->plan_kind === PlanKind::RECURRING) {
             $cycle = ($plan->next_charge_at ? CarbonImmutable::parse($plan->next_charge_at) : CarbonImmutable::now())->format('Y-m-d');
 
-            return IdempotencyKey::recurring($shopId, (int) $plan->getKey(), $cycle);
+            // A cycle whose key was spent by a refund is charged under a fresh
+            // one (Ledger::rechargeKeyFor); every other key comes back as is.
+            return Ledger::rechargeKeyFor($shopId, IdempotencyKey::recurring($shopId, (int) $plan->getKey(), $cycle));
         }
 
         $sequence = $this->nextSequenceFor($plan, $type);
 
-        return IdempotencyKey::installment($shopId, (int) $plan->getKey(), $sequence);
+        return Ledger::rechargeKeyFor($shopId, IdempotencyKey::installment($shopId, (int) $plan->getKey(), $sequence));
     }
 
     /**
@@ -1281,7 +1288,31 @@ final class ChargeOrchestrator
 
     private function advanceNextChargeAt(InstallmentPlan $plan): CarbonImmutable
     {
-        $base = $plan->next_charge_at ? CarbonImmutable::parse($plan->next_charge_at) : CarbonImmutable::now();
+        $scheduled = $plan->next_charge_at ? CarbonImmutable::parse($plan->next_charge_at) : CarbonImmutable::now();
+
+        // THE ONE PLACE the merchant's renewal anchor is read.
+        //
+        //   cycle        the next date is a cycle after the one just settled,
+        //                however late it settled: a held plan collects every
+        //                cycle it missed, one a day, and keeps its anniversary.
+        //   charge_date  a cycle from TODAY when today is past the schedule:
+        //                months the customer got nothing for are not collected,
+        //                and the anniversary moves to the day the card worked.
+        //
+        // "Today" is the calendar day, and only when it is PAST the schedule. A
+        // charge on time — including one the scheduler makes inside its one-hour
+        // early window, at 23:05 the night before — keeps the schedule; anchored
+        // on the charge timestamp instead, every renewal would land an hour
+        // earlier than the last and the date would creep backwards.
+        $base = $scheduled;
+
+        if (MerchantBillingSettings::current()->renewsFromChargeDate()) {
+            $today = CarbonImmutable::now()->startOfDay();
+
+            if ($today->greaterThan($scheduled)) {
+                $base = $today;
+            }
+        }
 
         return $this->oneCycleAfter($plan, $base);
     }

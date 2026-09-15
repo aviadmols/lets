@@ -105,6 +105,7 @@ class ManageBillingSettings extends Page implements HasForms
             'lock_fulfillment_until_paid' => $settings->lockFulfillmentUntilPaid(),
 
             'recurring_creates_order' => $settings->recurringCreatesOrder(),
+            'renewal_anchor' => $settings->renewalAnchor(),
             // The RAW column, not the accessor: an untouched setting must show an
             // empty box with the default as its placeholder, so the merchant can
             // see they have not overridden anything. Filling the box with the
@@ -302,6 +303,24 @@ class ManageBillingSettings extends Page implements HasForms
                     ->helperText(__('billing.settings.recurring.creates_order_help'))
                     ->columnSpanFull(),
 
+                // What a renewal counts from when a charge lands late — the
+                // difference between collecting every month a dead card missed
+                // and resuming from the day it worked.
+                // A Radio, like the rail picker: each option carries its own
+                // explanation, and this is a choice a merchant reads twice.
+                Radio::make('renewal_anchor')
+                    ->label(__('billing.settings.recurring.anchor'))
+                    ->helperText(__('billing.settings.recurring.anchor_help'))
+                    ->options([
+                        MerchantBillingSettings::ANCHOR_CYCLE => __('billing.settings.recurring.anchor_option.cycle'),
+                        MerchantBillingSettings::ANCHOR_CHARGE_DATE => __('billing.settings.recurring.anchor_option.charge_date'),
+                    ])
+                    ->descriptions([
+                        MerchantBillingSettings::ANCHOR_CYCLE => __('billing.settings.recurring.anchor_option.cycle_help'),
+                        MerchantBillingSettings::ANCHOR_CHARGE_DATE => __('billing.settings.recurring.anchor_option.charge_date_help'),
+                    ])
+                    ->columnSpanFull(),
+
                 TextInput::make('recurring_charge_description')
                     ->label(__('billing.settings.recurring.description'))
                     // The placeholder list is BUILT from the substitution's own
@@ -489,6 +508,9 @@ class ManageBillingSettings extends Page implements HasForms
 
         $settings->recurring_creates_order = (bool) ($input['recurring_creates_order']
             ?? MerchantBillingSettings::DEFAULT_RECURRING_CREATES_ORDER);
+        $settings->renewal_anchor = in_array($input['renewal_anchor'] ?? null, MerchantBillingSettings::RENEWAL_ANCHORS, true)
+            ? $input['renewal_anchor']
+            : MerchantBillingSettings::DEFAULT_RENEWAL_ANCHOR;
         // Blank means "use the default", stored as NULL — never as the rendered
         // default text, which would freeze today's wording into the row and stop
         // a future improvement to it from ever reaching this shop.

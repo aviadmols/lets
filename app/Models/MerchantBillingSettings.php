@@ -112,6 +112,28 @@ class MerchantBillingSettings extends Model
     public const MAX_CHARGE_DESCRIPTION = 120;
 
     /**
+     * WHAT A RENEWAL COUNTS FROM once a charge lands late.
+     *
+     * `cycle`: every cycle on the schedule is owed. A plan whose card was dead
+     * for three months collects all three once it is fixed, one a day, and keeps
+     * its anniversary. Today's behaviour, so the default.
+     *
+     * `charge_date`: the customer pays for the cycle being charged and the next
+     * one is a cycle from TODAY. Months they got nothing for are not collected;
+     * the anniversary moves to the day the card worked. What Recharge does.
+     *
+     * Read at ONE place — ChargeOrchestrator::advanceNextChargeAt — so no other
+     * path can compute a renewal date the other way.
+     */
+    public const ANCHOR_CYCLE = 'cycle';
+
+    public const ANCHOR_CHARGE_DATE = 'charge_date';
+
+    public const RENEWAL_ANCHORS = [self::ANCHOR_CYCLE, self::ANCHOR_CHARGE_DATE];
+
+    public const DEFAULT_RENEWAL_ANCHOR = self::ANCHOR_CYCLE;
+
+    /**
      * Live charging. TRUE by default — a shop that never opens the screen charges
      * exactly as it always did. Turned off, no saved token is charged for this
      * shop by ANY path, while plans stay active and their dates stay readable.
@@ -289,6 +311,19 @@ class MerchantBillingSettings extends Model
         $stored = trim((string) ($this->recurring_charge_description ?? ''));
 
         return $stored !== '' ? $stored : __('billing.settings.recurring.description_default');
+    }
+
+    /** What a late renewal counts from. A value not in RENEWAL_ANCHORS reads as the default. */
+    public function renewalAnchor(): string
+    {
+        $stored = (string) ($this->renewal_anchor ?? '');
+
+        return in_array($stored, self::RENEWAL_ANCHORS, true) ? $stored : self::DEFAULT_RENEWAL_ANCHOR;
+    }
+
+    public function renewsFromChargeDate(): bool
+    {
+        return $this->renewalAnchor() === self::ANCHOR_CHARGE_DATE;
     }
 
     public function allowsCustomerPause(): bool

@@ -20,6 +20,47 @@ use Illuminate\Support\Facades\Log;
  */
 final class Ledger
 {
+    // === CONSTANTS ===
+    /**
+     * Appended to a cycle's key when that key was SPENT BY A REFUND — see
+     * rechargeKeyFor(). `…:retake2` is the second charge of one cycle.
+     */
+    public const RETAKE_SUFFIX = ':retake';
+
+    /** More refunds of ONE cycle than this is not billing, it is a loop. */
+    private const MAX_RETAKES = 12;
+
+    /**
+     * The key a NEW charge of this cycle may use, when the cycle's own key is
+     * already spent by a refund.
+     *
+     * A refunded row is final in the ledger machine and (shop, key) is unique,
+     * so a cycle charged again after a refund — a merchant refunding a mistaken
+     * early charge and putting the date back, a cycle refunded and re-billed —
+     * needs a key of its own, or the charge would reach PayPlus and then have no
+     * legal row to land on. Each refund spends one suffix: `:retake2`, `:retake3`.
+     *
+     * A key whose row is anything else (succeeded, pending, failed, retrying)
+     * comes back unchanged: those are the idempotent short-circuits doing their
+     * job, and nothing here may weaken them.
+     */
+    public static function rechargeKeyFor(int $shopId, string $key): string
+    {
+        $candidate = $key;
+
+        for ($n = 2; $n <= self::MAX_RETAKES + 1; $n++) {
+            $row = self::find($shopId, $candidate);
+
+            if ($row === null || (string) $row->status !== LedgerStatus::REFUNDED->value) {
+                return $candidate;
+            }
+
+            $candidate = $key.self::RETAKE_SUFFIX.$n;
+        }
+
+        return $candidate;
+    }
+
     /**
      * Has a SUCCEEDED ledger row already been recorded for this idempotency key?
      * Queried WITHOUT the global scope concern — shop_id is passed explicitly and

@@ -145,6 +145,16 @@ return [
             'creates_order' => 'Create an order for each renewal',
             'creates_order_help' => 'On, every renewal opens a paid order in your store — the picking slip for a shop that ships a box. Off, the renewal still charges the card, still records the payment and still issues the customer\'s invoice, but no order is created: right for a membership or a service nobody packs. Invoices for those renewals appear in the customer\'s own account area instead of hanging off an order.',
 
+            // What the next renewal counts from when a charge succeeds late — after a dead card.
+            'anchor' => 'Charging after a delay',
+            'anchor_help' => 'What happens when a charge succeeds late — for example after a customer replaced a card that was declined for a few months.',
+            'anchor_option' => [
+                'cycle' => 'Per cycle',
+                'cycle_help' => 'Every cycle on the schedule is owed. A subscriber whose card failed for three months pays for all three — one charge a day — and keeps their billing day.',
+                'charge_date' => 'By date',
+                'charge_date_help' => 'The customer pays for the current cycle, and the next charge counts from today. Months with no service are not collected, and the billing day moves to the day the card worked.',
+            ],
+
             'description' => 'What the customer\'s receipt says',
             'description_help' => 'The product line PayPlus prints on the receipt it issues for a renewal. Leave it empty to use the default. Placeholders: :placeholders',
             'description_default' => 'Subscription — {plan}',
