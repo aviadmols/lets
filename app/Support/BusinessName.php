@@ -11,6 +11,9 @@ use App\Models\Shop;
  * (through ResolvesBusinessName, which delegates here) and the admin's email
  * preview, which must show the name the customer actually received.
  *
+ * Ladder: the merchant's own `business_name` (Settings → Customer area) → the
+ * installer-written `name` → the Shopify handle → a neutral fallback.
+ *
  * Multi-tenant: read from the given shop, never from global config — a worker that
  * just handled shop B must not sign shop A's mail.
  */
@@ -26,9 +29,13 @@ final class BusinessName
             return (string) config('app.name', self::FALLBACK);
         }
 
-        $name = trim((string) ($shop->name ?? ''));
-        if ($name !== '') {
-            return $name;
+        // The name the merchant typed wins over the one an installer wrote —
+        // which, for a store connected by domain, is just the domain.
+        foreach ([$shop->business_name ?? null, $shop->name ?? null] as $candidate) {
+            $name = trim((string) $candidate);
+            if ($name !== '') {
+                return $name;
+            }
         }
 
         $domain = trim((string) ($shop->shopify_domain ?? ''));

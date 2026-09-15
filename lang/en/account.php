@@ -333,6 +333,8 @@ return [
         ],
 
         'appearance' => [
+            'business_name' => 'Business name',
+            'business_name_help' => 'The name your customers see: on the card-update page, as the sender of your emails, and at the start of text messages. Leave empty to use the name shown in the box.',
             'logo' => 'Your logo (image URL)',
             'logo_help' => 'Shown on the pages your customers land on from a link — updating a card, signing in, unsubscribing. Paste the https address of your logo image; the easiest source is the logo on your own store. Leave empty to show ours.',
             'locale' => 'Language',
@@ -412,6 +414,9 @@ return [
             'help' => 'Exactly what your customers see — same stylesheet, same renderer.',
         ],
 
+        // The button and the notice are two keys: a button labelled "saved"
+        // reads as a status, and a merchant waits for a save that never runs.
+        'save' => 'Save',
         'saved' => 'Customer area saved.',
     ],
 

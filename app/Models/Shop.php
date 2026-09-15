@@ -40,6 +40,13 @@ class Shop extends Model
 
     public const PLATFORMS = [self::PLATFORM_SHOPIFY, self::PLATFORM_WOOCOMMERCE];
 
+    /**
+     * The merchant's own business name (`business_name`) — what their customers
+     * read. Kept apart from `name`, which the installers write. Read it through
+     * App\Support\BusinessName, never directly.
+     */
+    public const MAX_BUSINESS_NAME = 120;
+
     /** Statuses for which background charge dispatch + Shopify API calls are allowed. */
     public const LIVE_STATUSES = [self::STATUS_INSTALLED, self::STATUS_ACTIVE];
 

@@ -6,6 +6,7 @@ use App\Filament\Concerns\ShopScopedScreen;
 use App\Models\MerchantPortalAppearance;
 use App\Models\MerchantSmsSettings;
 use App\Models\Shop;
+use App\Support\BusinessName;
 use App\Support\Tenant;
 use Filament\Forms\Components\ColorPicker;
 use Filament\Forms\Components\Hidden;
@@ -78,6 +79,7 @@ class ManageCustomerArea extends Page implements HasForms
         $this->form->fill(array_merge(
             $this->stateFrom(MerchantPortalAppearance::current()),
             $this->smsStateFrom(MerchantSmsSettings::current()),
+            ['business_name' => Tenant::current()?->business_name],
         ));
     }
 
@@ -111,6 +113,14 @@ class ManageCustomerArea extends Page implements HasForms
                     ])))
                     ->columnSpanFull(),
             ]);
+    }
+
+    /** What customers read when the business-name field is left blank. */
+    private function nameWithoutOverride(): string
+    {
+        $shop = Tenant::current();
+
+        return $shop === null ? '' : BusinessName::for((clone $shop)->forceFill(['business_name' => null]));
     }
 
     /** Is the bound tenant a Shopify shop? (Settings are otherwise shared.) */
@@ -204,8 +214,20 @@ class ManageCustomerArea extends Page implements HasForms
                     ->content(__('account.admin.appearance.shopify_note_body'))
                     ->visible(fn (): bool => $this->isShopifyTenant())
                     ->columnSpanFull(),
-                // Language first: it changes every word on the page, so it is not
-                // a detail to find under the colours.
+                /*
+                 * THE NAME the customer reads — "for {name}, an up-to-date card
+                 * is needed", the From of the mail, the SMS opening. Stored on
+                 * the shop (not this row) because mail and SMS read it from
+                 * workers that hold a shop, not a portal appearance. The
+                 * placeholder is what they read today, so blank is not a mystery.
+                 */
+                TextInput::make('business_name')
+                    ->label(__('account.admin.appearance.business_name'))
+                    ->helperText(__('account.admin.appearance.business_name_help'))
+                    ->placeholder(fn (): string => $this->nameWithoutOverride())
+                    ->maxLength(Shop::MAX_BUSINESS_NAME)
+                    ->columnSpanFull(),
+
                 /*
                  * THE MERCHANT'S LOGO, on every page their customer lands on from
                  * a link we sent — card update, sign-in, unsubscribe.
@@ -219,10 +241,17 @@ class ManageCustomerArea extends Page implements HasForms
                     ->label(__('account.admin.appearance.logo'))
                     ->helperText(__('account.admin.appearance.logo_help'))
                     ->url()
+                    // The model reads anything but https back as "no logo", so
+                    // an http address has to be refused HERE — accepted, it was
+                    // saved as nothing under a "saved" notice.
+                    ->startsWith('https://')
+                    ->validationMessages(['starts_with' => __('account.admin.banners.https_only')])
                     ->maxLength(MerchantPortalAppearance::MAX_LOGO_URL)
                     ->placeholder('https://')
                     ->columnSpanFull(),
 
+                // Language first among the page controls: it changes every word
+                // on the page, so it is not a detail to find under the colours.
                 ToggleButtons::make('page_locale')
                     ->label(__('account.admin.appearance.locale'))
                     ->helperText(__('account.admin.appearance.locale_help'))
@@ -428,6 +457,15 @@ class ManageCustomerArea extends Page implements HasForms
             $settings->{$column} = $value;
         }
         $settings->save();
+
+        // Written onto the TENANT row only — the bound shop, never an id from
+        // the form. Absent (not presented) leaves it alone, like the fields below.
+        if (array_key_exists('business_name', $input)) {
+            $name = $this->blankToNull($input['business_name']);
+            Tenant::current()?->forceFill([
+                'business_name' => $name === null ? null : mb_substr($name, 0, Shop::MAX_BUSINESS_NAME),
+            ])->save();
+        }
 
         // The 019 fields live behind the code-sign-in toggle, and Filament does not
         // submit a hidden field at all. Writing them from an input that never

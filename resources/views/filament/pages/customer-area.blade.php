@@ -50,7 +50,7 @@
             {{ $this->form }}
 
             <div class="rc-row">
-                <x-rc.cta type="submit" variant="primary">{{ __('account.admin.saved') }}</x-rc.cta>
+                <x-rc.cta type="submit" variant="primary">{{ __('account.admin.save') }}</x-rc.cta>
                 <a class="rc-cta rc-cta--ghost" href="{{ \App\Filament\Pages\StorefrontElements::getUrl() }}">
                     {{ __('loyalty.admin.embed_cta') }}
                 </a>

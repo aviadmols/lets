@@ -6,6 +6,7 @@ use App\Models\MerchantMailSettings;
 use App\Models\PlatformMailSettings;
 use App\Models\Shop;
 use App\Models\ShopSenderDomain;
+use App\Support\BusinessName;
 
 /**
  * WHICH relay one shop's mail leaves through, and WHAT From it carries.
@@ -72,7 +73,7 @@ final class MailTransport
                 'from' => $settings->from_address
                     ? [
                         'address' => (string) $settings->from_address,
-                        'name' => (string) ($settings->from_name ?: $shop->name),
+                        'name' => (string) ($settings->from_name ?: BusinessName::for($shop)),
                     ]
                     : null,
             ];
@@ -154,7 +155,7 @@ final class MailTransport
         ?MerchantMailSettings $settings,
         PlatformMailSettings $platform,
     ): ?array {
-        $name = (string) ($settings?->from_name ?: $shop->name);
+        $name = (string) ($settings?->from_name ?: BusinessName::for($shop));
         $domain = ShopSenderDomain::forShop((int) $shop->getKey());
 
         if ($domain !== null && $domain->isUsable()) {

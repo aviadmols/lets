@@ -562,7 +562,11 @@
 .rc-campaign-card__logo {
     display: block;
     margin: 0 auto var(--rc-space-5);
-    height: 2rem;
+    height: 6rem;
+    /* A merchant's logo is often wide: at a fixed height it must shrink to the
+       card on a phone rather than spill out of it or stretch. */
+    max-width: 100%;
+    object-fit: contain;
 }
 
 .rc-campaign-card__title {

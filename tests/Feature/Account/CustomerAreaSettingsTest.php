@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Support\BusinessName;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -228,6 +229,53 @@ final class CustomerAreaSettingsTest extends TestCase
             MerchantPortalAppearance::CHANNEL_SMS,
             MerchantPortalAppearance::current()->refresh()->loginCodeChannel(),
         );
+    }
+
+    /**
+     * The logo and the business name, saved from the screen and read back by
+     * the card-update page — the round trip a merchant reported as "I updated
+     * it and nothing changed".
+     */
+    public function test_the_screen_saves_the_logo_and_the_business_name(): void
+    {
+        Livewire::test(ManageCustomerArea::class)
+            ->set('data.logo_url', 'https://area.example/logo.png')
+            ->set('data.business_name', '  Sella Meir  ')
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $this->assertSame('https://area.example/logo.png', MerchantPortalAppearance::current()->refresh()->logoUrl());
+        $this->assertSame('Sella Meir', $this->shop->refresh()->business_name);
+        $this->assertSame('Sella Meir', BusinessName::for($this->shop));
+        // The installer's column is not the merchant's to overwrite.
+        $this->assertSame('Area', $this->shop->name);
+    }
+
+    /** Blank hands the name back to what the installer wrote. */
+    public function test_a_blank_business_name_falls_back_to_the_shop_name(): void
+    {
+        $this->shop->forceFill(['business_name' => 'Old'])->save();
+
+        Livewire::test(ManageCustomerArea::class)
+            ->assertSet('data.business_name', 'Old')
+            ->set('data.business_name', '   ')
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $this->assertNull($this->shop->refresh()->business_name);
+        $this->assertSame('Area', BusinessName::for($this->shop));
+    }
+
+    /**
+     * The model reads an http logo as "no logo". Accepted by the form, it was
+     * stored as nothing under a green "saved" notice — so the form refuses it.
+     */
+    public function test_the_form_rejects_a_non_https_logo_instead_of_dropping_it_silently(): void
+    {
+        Livewire::test(ManageCustomerArea::class)
+            ->set('data.logo_url', 'http://area.example/logo.png')
+            ->call('save')
+            ->assertHasFormErrors(['logo_url']);
     }
 
     public function test_the_form_rejects_a_non_https_banner_before_it_is_stored(): void
