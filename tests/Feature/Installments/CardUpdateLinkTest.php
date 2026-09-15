@@ -511,6 +511,112 @@ final class CardUpdateLinkTest extends TestCase
         });
     }
 
+    /**
+     * THE LINK IS REVEALED ON THE PAGE. It used to close the modal and leave
+     * nothing behind — Filament will not mount a hidden action, so the second
+     * modal never opened and the merchant watched the window shut on the one
+     * string they were there for.
+     */
+    public function test_the_page_reveals_the_link_and_a_whatsapp_message(): void
+    {
+        $shop = $this->shop();
+        $this->fakeGateway();
+
+        Tenant::run($shop, function () use ($shop): void {
+            $plan = $this->plan($shop);
+            $plan->forceFill(['customer_phone' => '054-462-6386'])->save();
+            $this->actingAs(User::factory()->forShop($shop)->create());
+
+            $component = Livewire::test(ViewSubscription::class, ['plan' => $plan->getKey()])
+                ->callAction('sendCardUpdateLink', [
+                    'channel' => CardUpdateLink::CHANNEL_COPY,
+                    'ttl_days' => CardUpdateLink::DEFAULT_TTL_DAYS,
+                ]);
+
+            $url = $component->get('cardLinkUrl');
+            $message = $component->get('cardLinkMessage');
+
+            $this->assertNotSame('', $url);
+            $component->assertSee($url);
+
+            // A short generic line, carrying the link.
+            $this->assertStringContainsString($url, $message);
+
+            // wa.me wants 97254…, not 054… — and the message travels encoded.
+            $wa = $component->instance()->whatsappUrl();
+            $this->assertStringStartsWith('https://wa.me/972544626386?text=', (string) $wa);
+            $this->assertStringContainsString(rawurlencode($message), (string) $wa);
+        });
+    }
+
+    /** An edited message is what the button carries — not the default. */
+    public function test_the_whatsapp_link_carries_the_edited_message(): void
+    {
+        $shop = $this->shop();
+        $this->fakeGateway();
+
+        Tenant::run($shop, function () use ($shop): void {
+            $plan = $this->plan($shop);
+            $plan->forceFill(['customer_phone' => '+972 54 462 6386'])->save();
+            $this->actingAs(User::factory()->forShop($shop)->create());
+
+            $component = Livewire::test(ViewSubscription::class, ['plan' => $plan->getKey()])
+                ->callAction('sendCardUpdateLink', [
+                    'channel' => CardUpdateLink::CHANNEL_COPY,
+                    'ttl_days' => CardUpdateLink::DEFAULT_TTL_DAYS,
+                ])
+                ->set('cardLinkMessage', 'היי דנה, אפשר לעדכן כאן');
+
+            $this->assertStringContainsString(
+                rawurlencode('היי דנה, אפשר לעדכן כאן'),
+                (string) $component->instance()->whatsappUrl(),
+            );
+        });
+    }
+
+    /** No phone on file: no WhatsApp button, rather than one that opens on nothing. */
+    public function test_no_phone_means_no_whatsapp_link(): void
+    {
+        $shop = $this->shop();
+        $this->fakeGateway();
+
+        Tenant::run($shop, function () use ($shop): void {
+            $plan = $this->plan($shop);
+            $plan->forceFill(['customer_phone' => null])->save();
+            $this->actingAs(User::factory()->forShop($shop)->create());
+
+            $component = Livewire::test(ViewSubscription::class, ['plan' => $plan->getKey()])
+                ->callAction('sendCardUpdateLink', [
+                    'channel' => CardUpdateLink::CHANNEL_COPY,
+                    'ttl_days' => CardUpdateLink::DEFAULT_TTL_DAYS,
+                ]);
+
+            $this->assertNull($component->instance()->whatsappUrl());
+            $component->assertSee(__('card_update.share.no_phone'));
+        });
+    }
+
+    /** Dismiss puts it away — it was shown once, and that was the contract. */
+    public function test_dismissing_clears_the_revealed_link(): void
+    {
+        $shop = $this->shop();
+        $this->fakeGateway();
+
+        Tenant::run($shop, function () use ($shop): void {
+            $plan = $this->plan($shop);
+            $this->actingAs(User::factory()->forShop($shop)->create());
+
+            Livewire::test(ViewSubscription::class, ['plan' => $plan->getKey()])
+                ->callAction('sendCardUpdateLink', [
+                    'channel' => CardUpdateLink::CHANNEL_COPY,
+                    'ttl_days' => CardUpdateLink::DEFAULT_TTL_DAYS,
+                ])
+                ->call('dismissCardLink')
+                ->assertSet('cardLinkUrl', '')
+                ->assertSet('cardLinkMessage', '');
+        });
+    }
+
     private function shop(string $platform = Shop::PLATFORM_WOOCOMMERCE): Shop
     {
         $shop = Shop::create([

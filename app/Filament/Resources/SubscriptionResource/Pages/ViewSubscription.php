@@ -29,6 +29,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Services\ChargeOutcome;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Support\EmailPreviewRenderer;
+use App\Support\PhoneNumber;
 use App\Support\Tenant;
 use App\Support\Ui\EventPresenter;
 use App\Support\Ui\Money;
@@ -78,6 +79,9 @@ class ViewSubscription extends Page
      */
     public const MAX_INTERVAL = 12;
 
+    /** Israel. wa.me wants the country code with no plus and no leading zero. */
+    public const PHONE_COUNTRY_PREFIX = '972';
+
     /** A timeline note is a remark, not a document. */
     public const MAX_NOTE_LENGTH = 2000;
 
@@ -110,6 +114,15 @@ class ViewSubscription extends Page
     public string $cardLinkSentTo = '';
 
     public bool $cardLinkFailedToSend = false;
+
+    /**
+     * The WhatsApp message, editable on the page before it is sent.
+     *
+     * Prefilled with a short generic line and the link. Editable because the
+     * merchant knows their customer and we do not — and because a message written
+     * for everybody reads like one.
+     */
+    public string $cardLinkMessage = '';
 
     /**
      * The route param is `{plan}` (see SubscriptionResource::getPages()) and NOT `{record}` — that
@@ -227,10 +240,6 @@ class ViewSubscription extends Page
                 ->action(fn (array $data) => $this->applyLifecycle('cancel', $data['reason'] ?? null)),
 
             $this->sendCardUpdateLinkAction(),
-
-            // Never clicked directly — mounted in place of the form above once a
-            // link exists, so the URL lands in a field instead of a toast.
-            $this->showCardUpdateLinkAction()->hidden(),
 
             // A migrated member whose exported token PayPlus does not recognise.
             // Shown only when that is actually this plan's situation, so it never
@@ -505,6 +514,45 @@ class ViewSubscription extends Page
             ->action(fn (array $data) => $this->sendCardUpdateLink($data));
     }
 
+    /**
+     * The wa.me link that opens WhatsApp with the message already typed.
+     *
+     * wa.me wants the number in INTERNATIONAL form with no plus and no zero, so an
+     * Israeli `054…` has to become `97254…`. PhoneNumber::canonical folds every
+     * spelling a merchant might have on the order (`+972`, `00972`, spaces,
+     * dashes) to one local number first; only the country prefix is added here.
+     *
+     * Returns null when there is no usable number — the button is then not shown,
+     * rather than opening WhatsApp on nothing.
+     */
+    public function whatsappUrl(): ?string
+    {
+        $local = PhoneNumber::canonical((string) ($this->record->customer_phone ?? ''));
+
+        if ($local === null || $this->cardLinkUrl === '') {
+            return null;
+        }
+
+        $international = str_starts_with($local, '0')
+            ? self::PHONE_COUNTRY_PREFIX.substr($local, 1)
+            : $local;
+
+        // The message is merchant-edited free text, so it is encoded as a query
+        // value and never interpolated into markup.
+        return 'https://wa.me/'.$international.'?text='.rawurlencode($this->cardLinkMessage);
+    }
+
+    /** Put the just-minted link away. It was shown once; that was the contract. */
+    public function dismissCardLink(): void
+    {
+        $this->cardLinkUrl = '';
+        $this->cardLinkDirectUrl = '';
+        $this->cardLinkMessage = '';
+        $this->cardLinkChannel = '';
+        $this->cardLinkSentTo = '';
+        $this->cardLinkFailedToSend = false;
+    }
+
     /** Kill every link on this plan that could still be clicked. */
     public function revokeCardUpdateLinksAction(): Actions\Action
     {
@@ -632,46 +680,15 @@ class ViewSubscription extends Page
             ? (string) (app(CardUpdateService::class)->mintPage($shop, $this->record) ?? '')
             : '';
 
-        $this->replaceMountedAction('showCardUpdateLink');
-    }
-
-    /**
-     * The link, in a field you can actually copy from.
-     *
-     * Replaces the modal the merchant just submitted (Filament's
-     * replaceMountedAction), so the flow reads as one step with a result rather
-     * than a form that vanishes and a toast that appears somewhere else.
-     */
-    public function showCardUpdateLinkAction(): Actions\Action
-    {
-        return Actions\Action::make('showCardUpdateLink')
-            ->modalHeading(fn (): string => match (true) {
-                $this->cardLinkFailedToSend => __('card_update.error.send_failed'),
-                $this->cardLinkChannel === CardUpdateLink::CHANNEL_EMAIL => __('card_update.notify.emailed', ['to' => $this->cardLinkSentTo]),
-                $this->cardLinkChannel === CardUpdateLink::CHANNEL_SMS => __('card_update.notify.texted', ['to' => $this->cardLinkSentTo]),
-                default => __('card_update.notify.created'),
-            })
-            ->modalDescription(__('card_update.status.copy_hint'))
-            ->form(fn (): array => array_values(array_filter([
-                TextInput::make('url')
-                    ->label(__('card_update.status.link_label'))
-                    ->default($this->cardLinkUrl)
-                    ->readOnly()
-                    ->helperText(__('card_update.status.durable_hint'))
-                    // Selects itself on focus, because the only thing anybody does
-                    // with this field is copy all of it.
-                    ->extraInputAttributes(['onfocus' => 'this.select()']),
-
-                $this->cardLinkDirectUrl === '' ? null : TextInput::make('direct')
-                    ->label(__('card_update.status.direct_label'))
-                    ->default($this->cardLinkDirectUrl)
-                    ->readOnly()
-                    ->helperText(__('card_update.status.direct_hint'))
-                    ->extraInputAttributes(['onfocus' => 'this.select()']),
-            ])))
-            // Nothing to submit: it is a result, not a question.
-            ->modalSubmitAction(false)
-            ->modalCancelActionLabel(__('card_update.status.done'));
+        // Revealed ON THE PAGE, not in a second modal. Filament closes the form
+        // modal on a successful action, and a replacement modal is one more thing
+        // to dismiss before the merchant can reach the link — which is the whole
+        // reason they are here. The panel sits above the link history, where the
+        // rest of this subscription's card story already lives.
+        $this->cardLinkMessage = __('card_update.share.default_message', [
+            'shop' => (string) (Tenant::current()?->name ?? ''),
+            'url' => $this->cardLinkUrl,
+        ]);
     }
 
     public function addNoteAction(): Actions\Action

@@ -81,6 +81,18 @@ return [
         'copy_hint' => 'Copy it now — it is not shown again.',
     ],
 
+    /*
+    | Sharing the link yourself. The message is editable because the merchant
+    | knows their customer, and a line written for everybody reads like one.
+    */
+    'share' => [
+        'message_label' => 'The message that will be sent',
+        'message_hint' => 'Edit it before sending. The button opens YOUR WhatsApp with this message ready — all that is left is to press send.',
+        'default_message' => 'Hi, the card we have on file for your subscription was declined. You can update it here: :url',
+        'whatsapp' => 'Send on WhatsApp',
+        'no_phone' => 'No phone number on file for this customer, so there is no WhatsApp to open. Copy the link and send it another way.',
+    ],
+
     'channel' => [
         'copy' => 'copied',
         'email' => 'emailed',

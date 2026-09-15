@@ -13,6 +13,60 @@
     TOKENS: component classes only (.rc-section/.rc-kv/.rc-row/.rc-muted/.rc-ltr).
     ZERO inline CSS. Every value is precomputed on the page; this renders.
 --}}
+{{-- THE LINK JUST MINTED, on the page rather than in a toast or a second modal.
+     It is revealed once — the row keeps only a hash — so it gets a real field
+     that selects itself, and the WhatsApp message beside it is editable, because
+     the merchant knows their customer and a line written for everybody reads
+     like one. --}}
+@if($this->cardLinkUrl !== '')
+    <div class="rc-section">
+        <div class="rc-row rc-row--between">
+            <span class="rc-section__title">{{ __('card_update.notify.created') }}</span>
+            <x-rc.cta variant="ghost" wire:click="dismissCardLink">
+                {{ __('card_update.status.done') }}
+            </x-rc.cta>
+        </div>
+
+        <p class="rc-muted">{{ __('card_update.status.copy_hint') }}</p>
+
+        <label class="rc-field">
+            <span class="rc-field__label">{{ __('card_update.status.link_label') }}</span>
+            <input type="text" class="rc-input rc-ltr" readonly onfocus="this.select()"
+                   value="{{ $this->cardLinkUrl }}">
+            <span class="rc-field__hint">{{ __('card_update.status.durable_hint') }}</span>
+        </label>
+
+        @if($this->cardLinkDirectUrl !== '')
+            <label class="rc-field">
+                <span class="rc-field__label">{{ __('card_update.status.direct_label') }}</span>
+                <input type="text" class="rc-input rc-ltr" readonly onfocus="this.select()"
+                       value="{{ $this->cardLinkDirectUrl }}">
+                <span class="rc-field__hint">{{ __('card_update.status.direct_hint') }}</span>
+            </label>
+        @endif
+
+        {{-- WhatsApp. The message is bound live so the button always carries what
+             the merchant is reading, and it opens THEIR WhatsApp with the text
+             already typed — one tap to send, nothing to paste. --}}
+        <label class="rc-field">
+            <span class="rc-field__label">{{ __('card_update.share.message_label') }}</span>
+            <textarea class="rc-input" rows="4" wire:model.live="cardLinkMessage"></textarea>
+            <span class="rc-field__hint">{{ __('card_update.share.message_hint') }}</span>
+        </label>
+
+        <div class="rc-form__actions">
+            @if($this->whatsappUrl())
+                <a class="rc-cta rc-cta--primary" href="{{ $this->whatsappUrl() }}"
+                   target="_blank" rel="noopener noreferrer">
+                    {{ __('card_update.share.whatsapp') }}
+                </a>
+            @else
+                <span class="rc-muted">{{ __('card_update.share.no_phone') }}</span>
+            @endif
+        </div>
+    </div>
+@endif
+
 @if($this->cardUpdateAvailable())
     @php $links = $this->cardUpdateLinks(); @endphp
 
