@@ -92,6 +92,26 @@ class ViewSubscription extends Page
     public InstallmentPlan $record;
 
     /**
+     * The card-update link just minted, held only long enough to show it.
+     *
+     * NOT #[Locked]: these are written by the action and read back by the modal
+     * that replaces it, which is a normal Livewire round trip. Nothing acts on
+     * them — they are displayed and forgotten — and the link they carry was
+     * already handed to the merchant, so a tampered value costs a wrong string in
+     * a read-only field and nothing else.
+     */
+    public string $cardLinkUrl = '';
+
+    /** The PayPlus page minted for immediate use. Short-lived by nature. */
+    public string $cardLinkDirectUrl = '';
+
+    public string $cardLinkChannel = '';
+
+    public string $cardLinkSentTo = '';
+
+    public bool $cardLinkFailedToSend = false;
+
+    /**
      * The route param is `{plan}` (see SubscriptionResource::getPages()) and NOT `{record}` — that
      * name collision is what broke this page for EVERY plan since it was written.
      *
@@ -207,6 +227,10 @@ class ViewSubscription extends Page
                 ->action(fn (array $data) => $this->applyLifecycle('cancel', $data['reason'] ?? null)),
 
             $this->sendCardUpdateLinkAction(),
+
+            // Never clicked directly — mounted in place of the form above once a
+            // link exists, so the URL lands in a field instead of a toast.
+            $this->showCardUpdateLinkAction()->hidden(),
 
             // A migrated member whose exported token PayPlus does not recognise.
             // Shown only when that is actually this plan's situation, so it never
@@ -575,31 +599,79 @@ class ViewSubscription extends Page
             return;
         }
 
-        // The URL is shown ONCE — the row keeps only its hash.
-        $body = __('card_update.status.link_label').': '.$result['url']
-            ."\n".__('card_update.status.copy_hint');
+        /*
+         * THE URL GOES IN A MODAL, NOT A NOTIFICATION.
+         *
+         * It is shown ONCE — the row keeps only a hash — and a notification is the
+         * worst possible place for a string somebody has to copy exactly: they
+         * stack, they are narrow enough to wrap a link mid-token, and a merchant
+         * generating two links gets two toasts they then have to tell apart.
+         *
+         * A modal holds it in a real field, selectable, one at a time.
+         */
+        $this->cardLinkUrl = (string) $result['url'];
+        $this->cardLinkSentTo = (string) ($result['sent_to'] ?? '');
+        $this->cardLinkChannel = $channel;
+        $this->cardLinkFailedToSend = ! ($result['ok'] ?? false);
 
-        if (! ($result['ok'] ?? false)) {
-            Notification::make()
-                ->title(__('card_update.error.send_failed'))
-                ->body($body)
-                ->warning()
-                ->persistent()
-                ->send();
+        /*
+         * A DIRECT PAYPLUS PAGE, only for a link the merchant is sending by hand.
+         *
+         * Minted here rather than at click time, which is the whole trade: our own
+         * link lasts days because the PayPlus page behind it is created when the
+         * customer opens it, and a PayPlus page minted now EXPIRES ON PAYPLUS'S
+         * SIDE whether anybody used it or not. So this one is offered for the case
+         * it actually fits — reading a link down the phone, pasting it into a chat
+         * that will be read in the next minutes — and the copy says plainly that
+         * it is the short-lived one.
+         *
+         * Not minted for email or SMS: those are opened hours later, which is
+         * precisely when a pre-minted page is already dead.
+         */
+        $this->cardLinkDirectUrl = $channel === CardUpdateLink::CHANNEL_COPY
+            ? (string) (app(CardUpdateService::class)->mintPage($shop, $this->record) ?? '')
+            : '';
 
-            return;
-        }
+        $this->replaceMountedAction('showCardUpdateLink');
+    }
 
-        Notification::make()
-            ->title(match ($channel) {
-                CardUpdateLink::CHANNEL_EMAIL => __('card_update.notify.emailed', ['to' => (string) ($result['sent_to'] ?? '')]),
-                CardUpdateLink::CHANNEL_SMS => __('card_update.notify.texted', ['to' => (string) ($result['sent_to'] ?? '')]),
+    /**
+     * The link, in a field you can actually copy from.
+     *
+     * Replaces the modal the merchant just submitted (Filament's
+     * replaceMountedAction), so the flow reads as one step with a result rather
+     * than a form that vanishes and a toast that appears somewhere else.
+     */
+    public function showCardUpdateLinkAction(): Actions\Action
+    {
+        return Actions\Action::make('showCardUpdateLink')
+            ->modalHeading(fn (): string => match (true) {
+                $this->cardLinkFailedToSend => __('card_update.error.send_failed'),
+                $this->cardLinkChannel === CardUpdateLink::CHANNEL_EMAIL => __('card_update.notify.emailed', ['to' => $this->cardLinkSentTo]),
+                $this->cardLinkChannel === CardUpdateLink::CHANNEL_SMS => __('card_update.notify.texted', ['to' => $this->cardLinkSentTo]),
                 default => __('card_update.notify.created'),
             })
-            ->body($body)
-            ->success()
-            ->persistent()
-            ->send();
+            ->modalDescription(__('card_update.status.copy_hint'))
+            ->form(fn (): array => array_values(array_filter([
+                TextInput::make('url')
+                    ->label(__('card_update.status.link_label'))
+                    ->default($this->cardLinkUrl)
+                    ->readOnly()
+                    ->helperText(__('card_update.status.durable_hint'))
+                    // Selects itself on focus, because the only thing anybody does
+                    // with this field is copy all of it.
+                    ->extraInputAttributes(['onfocus' => 'this.select()']),
+
+                $this->cardLinkDirectUrl === '' ? null : TextInput::make('direct')
+                    ->label(__('card_update.status.direct_label'))
+                    ->default($this->cardLinkDirectUrl)
+                    ->readOnly()
+                    ->helperText(__('card_update.status.direct_hint'))
+                    ->extraInputAttributes(['onfocus' => 'this.select()']),
+            ])))
+            // Nothing to submit: it is a result, not a question.
+            ->modalSubmitAction(false)
+            ->modalCancelActionLabel(__('card_update.status.done'));
     }
 
     public function addNoteAction(): Actions\Action

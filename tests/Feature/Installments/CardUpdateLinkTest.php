@@ -6,10 +6,12 @@ use App\Domain\Installments\CardUpdateLinks;
 use App\Domain\Installments\CardUpdateLinkSender;
 use App\Domain\Installments\CardUpdateService;
 use App\Domain\Installments\Models\CardUpdateLink;
+use App\Filament\Resources\SubscriptionResource\Pages\ViewSubscription;
 use App\Mail\CardUpdateLinkMail;
 use App\Models\InstallmentPlan;
 use App\Models\MerchantSmsSettings;
 use App\Models\Shop;
+use App\Models\User;
 use App\Modules\PayPlusShopifyInstallments\Contracts\PayPlusGatewayInterface;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
@@ -23,6 +25,7 @@ use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Mail;
+use Livewire\Livewire;
 use Tests\TestCase;
 
 /**
@@ -449,6 +452,64 @@ final class CardUpdateLinkTest extends TestCase
     }
 
     // === Fixtures ===
+
+    /**
+     * THE LINK BELONGS IN A FIELD, NOT A TOAST.
+     *
+     * It is shown once — the row keeps only a hash — and a notification is the
+     * worst place for a string that must be copied exactly: they stack, they wrap
+     * a URL mid-token, and two links become two toasts to tell apart. The modal
+     * that replaces the form holds it in a real input.
+     */
+    public function test_the_minted_link_is_shown_in_a_modal_field(): void
+    {
+        $shop = $this->shop();
+        $this->fakeGateway();
+
+        Tenant::run($shop, function () use ($shop): void {
+            $plan = $this->plan($shop);
+            $this->actingAs(User::factory()->forShop($shop)->create());
+
+            $component = Livewire::test(ViewSubscription::class, ['plan' => $plan->getKey()])
+                ->callAction('sendCardUpdateLink', [
+                    'channel' => CardUpdateLink::CHANNEL_COPY,
+                    'ttl_days' => CardUpdateLink::DEFAULT_TTL_DAYS,
+                ]);
+
+            $url = $component->get('cardLinkUrl');
+
+            $this->assertNotSame('', $url, 'the link must reach the modal');
+            $this->assertStringContainsString('/c/card', $url);
+
+            // Sent by hand, so the short-lived PayPlus page is offered too.
+            $this->assertSame('https://payplus.example/page/abc', $component->get('cardLinkDirectUrl'));
+        });
+    }
+
+    /**
+     * A link that will be OPENED LATER gets no pre-minted PayPlus page. One minted
+     * now is expired by the time the mail is read — the exact bug our own
+     * redirect exists to avoid.
+     */
+    public function test_an_emailed_link_is_not_given_a_pre_minted_payplus_page(): void
+    {
+        $shop = $this->shop();
+        $this->fakeGateway();
+
+        Tenant::run($shop, function () use ($shop): void {
+            $plan = $this->plan($shop);
+            $this->actingAs(User::factory()->forShop($shop)->create());
+
+            $component = Livewire::test(ViewSubscription::class, ['plan' => $plan->getKey()])
+                ->callAction('sendCardUpdateLink', [
+                    'channel' => CardUpdateLink::CHANNEL_EMAIL,
+                    'ttl_days' => CardUpdateLink::DEFAULT_TTL_DAYS,
+                ]);
+
+            $this->assertNotSame('', $component->get('cardLinkUrl'));
+            $this->assertSame('', $component->get('cardLinkDirectUrl'));
+        });
+    }
 
     private function shop(string $platform = Shop::PLATFORM_WOOCOMMERCE): Shop
     {

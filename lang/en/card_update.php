@@ -74,6 +74,10 @@ return [
         'line' => ':state · :channel · :when',
         'empty' => 'No card-update link has been sent for this subscription.',
         'link_label' => 'The link',
+        'durable_hint' => 'Our link. Lasts days, and the PayPlus payment page is created the moment the customer clicks — this is the one to email or message.',
+        'direct_label' => 'PayPlus payment page (direct)',
+        'direct_hint' => 'Opens the payment page immediately with no hop through us — but it expires on PayPlus\x27s side whether anybody opened it or not. For use now: reading it down the phone, pasting into a chat that will be read in minutes. Not for somebody who will open it tomorrow.',
+        'done' => 'Done',
         'copy_hint' => 'Copy it now — it is not shown again.',
     ],
 
