@@ -584,6 +584,74 @@ final class PaymentRecoveryScreenTest extends TestCase
             ->assertSee(__('recovery.run.report_title'));
     }
 
+    /**
+     * A CARD ALREADY REPLACED IS STILL CHARGED — the bug a live run exposed.
+     *
+     * The merchant found new cards for four members in one pass, then pressed
+     * "find and charge" in the next. That pass went looking for a SECOND
+     * replacement, found none, and read "nothing found" as "no card to charge" —
+     * refusing to bill the very card it had attached a minute earlier. Four cards
+     * fixed, nobody charged, no money moved.
+     *
+     * The old decline describes a card that is no longer attached, so it is not
+     * evidence about the one that is.
+     */
+    public function test_a_card_replaced_since_the_decline_is_charged_without_another_lookup(): void
+    {
+        Queue::fake();
+
+        $plan = $this->plan('replaced', PlanStatus::PAUSED, failedAt: now());
+        $plan->paymentMethod->forceFill(['payplus_customer_uid' => 'cust-x'])->save();
+        $this->payment($plan, 1, PaymentStatus::FAILED, failureMessage: 'כרטיס חסום');
+
+        // A previous pass re-pointed the card AFTER that decline.
+        $this->travel(5)->minutes();
+        $plan->paymentMethod->forceFill(['payplus_card_token_uid' => 'tok-brand-new'])->save();
+
+        $run = app(TokenRecoveryRunner::class)->start(
+            $this->shop,
+            [(int) $plan->getKey()],
+            TokenRecoveryRun::MODE_RECOVER_AND_CHARGE,
+        );
+
+        app(TokenRecoveryRunner::class)->advance((int) $run->getKey());
+
+        Queue::assertPushed(
+            ChargeJob::class,
+            fn (ChargeJob $job): bool => $job->planId === (int) $plan->getKey(),
+        );
+
+        $this->assertSame(1, $run->refresh()->charges_queued);
+        $this->assertSame(1, $run->not_probed, 'a fresh card needs no second lookup');
+    }
+
+    /**
+     * The opposite, and it must stay: a card the issuer killed, NOT replaced since,
+     * is not charged again. Eight identical declines is enough.
+     */
+    public function test_a_dead_card_that_was_never_replaced_is_not_charged_again(): void
+    {
+        Queue::fake();
+
+        $plan = $this->plan('still-dead', PlanStatus::PAUSED, failedAt: now());
+        $plan->paymentMethod->forceFill(['payplus_customer_uid' => 'cust-y'])->save();
+
+        // The decline comes AFTER the card was last touched — nothing has changed.
+        $this->travel(5)->minutes();
+        $this->payment($plan, 1, PaymentStatus::FAILED, failureMessage: 'כרטיס חסום');
+
+        $run = app(TokenRecoveryRunner::class)->start(
+            $this->shop,
+            [(int) $plan->getKey()],
+            TokenRecoveryRun::MODE_RECOVER_AND_CHARGE,
+        );
+
+        app(TokenRecoveryRunner::class)->advance((int) $run->getKey());
+
+        Queue::assertNotPushed(ChargeJob::class);
+        $this->assertSame(0, $run->refresh()->charges_queued);
+    }
+
     /** RELEASE BLOCKER: another shop's pass is invisible, and cannot be advanced. */
     public function test_a_pass_belongs_to_one_shop_only(): void
     {
@@ -759,6 +827,7 @@ final class PaymentRecoveryScreenTest extends TestCase
         ?Carbon $nextRetry = null,
         int $attempts = 1,
         float $amount = 39.0,
+        ?string $failureMessage = null,
     ): InstallmentPayment {
         $payment = new InstallmentPayment;
         $payment->forceFill([
@@ -770,6 +839,8 @@ final class PaymentRecoveryScreenTest extends TestCase
             'status' => $status->value,
             'attempt_count' => $attempts,
             'next_retry_at' => $nextRetry,
+            'failure_code' => $failureMessage === null ? null : '1',
+            'failure_message' => $failureMessage,
         ])->save();
 
         return $payment;

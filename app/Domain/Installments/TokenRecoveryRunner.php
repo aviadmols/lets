@@ -178,17 +178,29 @@ final class TokenRecoveryRunner
             // No card row — there is nothing to re-point, and asking PayPlus about
             // it would spend a call to learn that.
             $delta['skipped'] = 1;
-        } elseif ($run->chargesMoney() && ! $this->tokenInDoubt($plan)) {
+        } elseif ($run->chargesMoney()
+            && (! $this->tokenInDoubt($plan) || $this->cardChangedSinceTheDecline($plan))) {
             /*
-             * NOT PROBED, AND CHARGED ANYWAY.
+             * NOT PROBED, AND CHARGED ANYWAY. Two ways to land here.
              *
-             * Their token is not in doubt: it is vaulted and their last decline was
-             * the issuer refusing a card it recognises. A lookup would spend a call
-             * to be told the token is fine, and — the part that matters — a lookup
-             * that CANNOT RUN (a shop with no PayPlus discovery configured, a
-             * gateway that is down) returns "nothing found", which would then stop
-             * a charge that was always going to be made on the card we already
-             * hold. The money is still owed, so it is asked for.
+             * ONE — the token is not in doubt: it is vaulted and the last decline
+             * was the issuer refusing a card it recognises. A lookup would spend a
+             * call to be told the token is fine, and — the part that matters — a
+             * lookup that CANNOT RUN (a shop with no PayPlus discovery configured,
+             * a gateway that is down) returns "nothing found", which would then
+             * stop a charge that was always going to be made on the card we
+             * already hold. The money is still owed, so it is asked for.
+             *
+             * TWO — THE CARD HAS ALREADY BEEN REPLACED since that decline, and this
+             * is the bug this branch was widened to kill. A merchant found the new
+             * cards in one pass and pressed "find and charge" in the next; the
+             * probe went looking for a SECOND replacement, found none, and the run
+             * read "nothing found" as "no card to charge" — refusing to bill the
+             * very card it had just attached a minute earlier. Four members were
+             * fixed and nobody was charged.
+             *
+             * The old decline describes a card that is no longer there, so it is
+             * not evidence about this one. Charge it.
              *
              * Find-cards mode probes everyone regardless, because there the report
              * IS the product and "already valid" is a real answer a merchant needs.
@@ -249,6 +261,44 @@ final class TokenRecoveryRunner
      * The same predicate the subscription page's button uses, so the screen and
      * the worker cannot disagree about who is worth asking about.
      */
+    /**
+     * Is the card we hold a DIFFERENT one from the card that was declined?
+     *
+     * The decline message is the only evidence we have about a card, and it goes
+     * stale the moment the card is swapped — for a member whose token was
+     * re-pointed yesterday, "כרטיס חסום" describes an instrument that is no longer
+     * attached to anything. Treating it as current is what made a run fix four
+     * members' cards and then charge none of them.
+     *
+     * Compared by timestamp rather than by remembering which token was declined,
+     * because the ledger records the attempt and the method records the card, and
+     * their two clocks already answer the question: a card touched more recently
+     * than the last attempt cannot be the card that attempt was refused on.
+     *
+     * The imprecision is admitted and bounded: an unrelated edit to the card row
+     * (a backfilled last-4, say) also moves that timestamp, and the cost is one
+     * charge attempt that gets declined — the same outcome as not trying, minus a
+     * subscription left unbilled because we were too clever.
+     */
+    private function cardChangedSinceTheDecline(InstallmentPlan $plan): bool
+    {
+        $cardTouched = $plan->paymentMethod?->updated_at;
+
+        if ($cardTouched === null) {
+            return false;
+        }
+
+        $lastAttempt = $plan->latestPayment?->updated_at;
+
+        // Never charged here at all (a migrated member imported in arrears) — so
+        // there is no decline for this card to be newer than.
+        if ($lastAttempt === null) {
+            return true;
+        }
+
+        return $cardTouched->greaterThan($lastAttempt);
+    }
+
     private function tokenInDoubt(InstallmentPlan $plan): bool
     {
         if ($plan->paymentMethod?->payplus_customer_uid === null) {

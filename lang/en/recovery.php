@@ -137,7 +137,7 @@ return [
 
         'report_detail' => 'Also: :ambiguous had more than one possible card and were left alone · :no_last_four had no last-4 digits to match on · :skipped had no card record, or were already cancelled.',
 
-        'report_not_probed' => ':count were charged straight away without a lookup — their card is not in doubt, the issuer simply declined it.',
+        'report_not_probed' => ':count were charged straight away without a lookup — either their card is not in doubt and the issuer simply declined it, or it had already been replaced since that decline.',
 
         'unreached_title' => ':count members were never asked about',
         'unreached_body' => 'The run ended before reaching them. Select them again to finish the job.',
