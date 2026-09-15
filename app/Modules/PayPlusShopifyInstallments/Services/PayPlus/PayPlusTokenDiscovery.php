@@ -429,26 +429,58 @@ final class PayPlusTokenDiscovery
          * added in 2024 can easily carry a later expiry than one added last
          * month, and picking by expiry would confidently choose the older card.
          */
-        $dated = [];
+        $newest = self::newestOf($others);
 
-        foreach ($others as $card) {
-            $at = self::addedAt($card);
+        return $newest === null ? null : ['card' => $newest['card'], 'basis' => $newest['basis']];
+    }
 
-            if ($at === null) {
-                return null; // no dates, no defensible order — refuse
-            }
-
-            $dated[] = ['card' => $card, 'at' => $at];
-        }
-
-        usort($dated, static fn (array $a, array $b): int => $b['at'] <=> $a['at']);
-
-        // A tie on the timestamp is not an order either.
-        if (count($dated) > 1 && $dated[0]['at'] === $dated[1]['at']) {
+    /**
+     * The newest of a set of cards — by vaulted-at date when PayPlus gave us one,
+     * and otherwise BY LIST ORDER.
+     *
+     * The order fallback is an assumption, stated here rather than hidden: PayPlus
+     * returns the newest card first, which is how their own saved-cards screen
+     * reads in every account we have looked at. It is used only when the dates are
+     * missing, and the basis travels with the answer (`list_order` rather than
+     * `newest_added`) so a report can always say which evidence the pick rested on.
+     *
+     * Refusing instead — the previous behaviour — was the safer-looking choice and
+     * the wrong one in practice: it left a merchant with a list of cards, no
+     * recommendation, and a subscription nobody was billing. A wrong pick here
+     * costs one decline on a card that was already failing.
+     *
+     * @param  list<array<string, mixed>>  $cards
+     * @return array{card: array<string, mixed>, basis: string}|null
+     */
+    private static function newestOf(array $cards): ?array
+    {
+        if ($cards === []) {
             return null;
         }
 
-        return ['card' => $dated[0]['card'], 'basis' => 'newest_added'];
+        $dated = [];
+
+        foreach ($cards as $card) {
+            $at = self::addedAt($card);
+
+            if ($at !== null) {
+                $dated[] = ['card' => $card, 'at' => $at];
+            }
+        }
+
+        // Dates for every candidate is the only case where they can be ordered
+        // by date at all; a partial set would rank the undated ones as oldest,
+        // which is a claim the data does not support.
+        if (count($dated) === count($cards)) {
+            usort($dated, static fn (array $a, array $b): int => $b['at'] <=> $a['at']);
+
+            // A tie is not an order, so fall through to the list's own.
+            if (count($dated) === 1 || $dated[0]['at'] !== $dated[1]['at']) {
+                return ['card' => $dated[0]['card'], 'basis' => 'newest_added'];
+            }
+        }
+
+        return ['card' => $cards[0], 'basis' => 'list_order'];
     }
 
     /**
@@ -498,10 +530,29 @@ final class PayPlusTokenDiscovery
             }
         }
 
-        // We could not date our own card, so "newer" has no meaning. Refuse
-        // rather than reach for whatever looks recent.
-        if ($heldAt === null || $others === []) {
+        if ($others === []) {
             return null;
+        }
+
+        /*
+         * NO DATE ON OUR OWN CARD — fall back to POSITION, which still carries a
+         * real answer.
+         *
+         * PayPlus returns the newest card first (their saved-cards screen reads
+         * that way in every account we have seen), so the list itself ranks them.
+         * The safety that survives without any date is the useful one: if OUR
+         * card is already at the top, it IS the newest and there is nothing to
+         * move to — so a missing date can never walk a subscription backwards
+         * onto an older card.
+         */
+        if ($heldAt === null) {
+            $heldIndex = self::indexOfHeld($tokens, $held, $heldMmyy);
+
+            if ($heldIndex === 0) {
+                return null; // ours is the newest already
+            }
+
+            return ['card' => $others[0], 'basis' => 'list_order'];
         }
 
         $newer = [];
@@ -526,6 +577,33 @@ final class PayPlusTokenDiscovery
         }
 
         return ['card' => $newer[0]['card'], 'basis' => 'newer_than_held'];
+    }
+
+    /**
+     * Where our own card sits in the list PayPlus returned, or null when it is not
+     * in there at all (it can live on another of the customer's records).
+     *
+     * Position zero means ours is the newest, which is the one conclusion that
+     * holds even when no card in the list carries a date.
+     *
+     * @param  list<array<string, mixed>>  $tokens
+     */
+    private static function indexOfHeld(array $tokens, string $held, ?string $heldMmyy): ?int
+    {
+        foreach (array_values($tokens) as $i => $card) {
+            if (! is_array($card)) {
+                continue;
+            }
+
+            $token = trim((string) ($card['token'] ?? ''));
+            $mmyy = trim((string) ($card['card_date_mmyy'] ?? ''));
+
+            if (($held !== '' && $token === $held) || ($heldMmyy !== null && $mmyy === $heldMmyy)) {
+                return $i;
+            }
+        }
+
+        return null;
     }
 
     /**

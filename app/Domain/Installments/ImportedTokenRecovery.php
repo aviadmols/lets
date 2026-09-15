@@ -6,7 +6,9 @@ use App\Models\InstallmentPaymentMethod;
 use App\Models\InstallmentPlan;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
+use App\Modules\PayPlusShopifyInstallments\Enums\PaymentType;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Modules\PayPlusShopifyInstallments\Jobs\ChargeJob;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusTokenDiscovery;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Support\Tenant;
@@ -561,7 +563,7 @@ final class ImportedTokenRecovery
                 shopId: $shopId,
             );
 
-            $this->reviveHeldPlan($plan);
+            $this->reviveHeldPlan($plan, chargeNow: ! ($outcome['recurring_live'] ?? false));
         });
 
         return true;
@@ -585,7 +587,7 @@ final class ImportedTokenRecovery
      * pause from one the CUSTOMER asked for, and resuming somebody's subscription
      * because we found a card would override a decision they already made.
      */
-    private function reviveHeldPlan(InstallmentPlan $plan): void
+    private function reviveHeldPlan(InstallmentPlan $plan, bool $chargeNow = true): void
     {
         $status = $plan->status instanceof PlanStatus
             ? $plan->status
@@ -628,6 +630,36 @@ final class ImportedTokenRecovery
                 'attempt_count' => 0,
             ])->save();
         }
+
+        if (! $chargeNow) {
+            // PayPlus is still billing this member on its own schedule. The card
+            // is fixed and the plan is live again, but asking for the money here
+            // would take it twice — the merchant is told to cancel the recurring
+            // at PayPlus first, and the scheduler will pick it up after that.
+            return;
+        }
+
+        /*
+         * A NEW CARD MEANS A CHARGE ATTEMPT, NOW.
+         *
+         * Leaving it to the scheduler was technically enough — the plan is
+         * chargeable and its slot is waiting — but "technically enough" is how a
+         * merchant ends up watching a screen for five minutes wondering whether
+         * anything happened, which is exactly what they did.
+         *
+         * afterCommit, because the job loads the plan fresh: dispatched inside
+         * this transaction it could start before the new token is visible and
+         * charge the card we just replaced.
+         *
+         * Safe to be eager: ChargeJob is the scheduler's own job and carries all
+         * four idempotency layers, so this and the bulk runner's dispatch collapse
+         * into one charge rather than two.
+         */
+        ChargeJob::dispatch(
+            (int) $plan->shop_id,
+            (int) $plan->getKey(),
+            ($plan->isRecurring() ? PaymentType::RECURRING : PaymentType::INSTALLMENT)->value,
+        )->afterCommit();
     }
 
     /** Probe and, when a token came back, write it — the admin button's one call. */

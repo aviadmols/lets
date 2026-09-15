@@ -10,9 +10,11 @@ use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Modules\PayPlusShopifyInstallments\Jobs\ChargeJob;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusTokenDiscovery;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 /**
@@ -148,11 +150,16 @@ final class ReplacementCardTest extends TestCase
     }
 
     /**
-     * WITHOUT DATES IT REFUSES. If PayPlus stops sending the vaulted-at field (or
-     * we never learned its real name), two candidates have no defensible order and
-     * guessing would charge a card the customer may have retired.
+     * WITHOUT DATES IT TAKES THE FIRST, and says so.
+     *
+     * Refusing was the safer-looking choice and the wrong one: it left the
+     * merchant a list of cards, no recommendation, and a subscription nobody was
+     * billing. PayPlus returns the newest card first — their own saved-cards
+     * screen reads that way — and the basis records that the pick rested on order
+     * rather than on a date. A wrong pick costs one decline on a card that was
+     * already dead.
      */
-    public function test_several_candidates_with_no_dates_are_refused(): void
+    public function test_several_candidates_with_no_dates_take_the_first(): void
     {
         $pick = PayPlusTokenDiscovery::replacementCard(
             [$this->card('tok-a', '0530'), $this->card('tok-b', '0631')],
@@ -161,11 +168,30 @@ final class ReplacementCardTest extends TestCase
             expYear: 2027,
         );
 
-        $this->assertNull($pick, 'no order, no pick');
+        $this->assertNotNull($pick);
+        $this->assertSame('tok-a', $pick['card']['token']);
+        $this->assertSame('list_order', $pick['basis'], 'weaker evidence must be labelled');
     }
 
-    /** A tie on the timestamp is not an order either. */
-    public function test_candidates_vaulted_at_the_same_moment_are_refused(): void
+    /** A date on some but not all cannot rank them — order decides instead. */
+    public function test_partially_dated_candidates_fall_back_to_order(): void
+    {
+        $pick = PayPlusTokenDiscovery::replacementCard(
+            [
+                $this->card('tok-a', '0530'),
+                $this->card('tok-b', '0631', '2026-06-01 00:00:00'),
+            ],
+            heldToken: 'tok-ours',
+            expMonth: 1,
+            expYear: 2027,
+        );
+
+        $this->assertNotNull($pick);
+        $this->assertSame('list_order', $pick['basis']);
+    }
+
+    /** A tie on the timestamp is not an order — the list's own order decides. */
+    public function test_candidates_vaulted_at_the_same_moment_fall_back_to_order(): void
     {
         $pick = PayPlusTokenDiscovery::replacementCard(
             [
@@ -177,7 +203,9 @@ final class ReplacementCardTest extends TestCase
             expYear: 2027,
         );
 
-        $this->assertNull($pick);
+        $this->assertNotNull($pick);
+        $this->assertSame('tok-a', $pick['card']['token']);
+        $this->assertSame('list_order', $pick['basis']);
     }
 
     /** Every other card has expired: there is nothing here to move to. */
@@ -249,16 +277,37 @@ final class ReplacementCardTest extends TestCase
     }
 
     /**
-     * WITHOUT A DATE ON OUR OWN CARD, "newer" has no meaning. Refused rather than
-     * reaching for whatever looks recent — that would swap a working card for an
-     * older one and produce a decline the customer never had.
+     * WITHOUT DATES IT USES POSITION — the merchant asked never to be made to
+     * choose, and the list itself ranks them: PayPlus returns the newest first.
      */
-    public function test_an_undatable_held_card_refuses(): void
+    public function test_an_undatable_held_card_falls_back_to_position(): void
     {
         $pick = PayPlusTokenDiscovery::newerCard(
             [
-                $this->card('tok-ours', '1128'), // no vaulted-at
-                $this->card('tok-other', '0830', '2026-08-31 00:00:00'),
+                $this->card('tok-newer', '0830'),
+                $this->card('tok-ours', '1128'), // ours is second, so something is newer
+            ],
+            heldToken: 'tok-ours',
+            expMonth: 11,
+            expYear: 2028,
+        );
+
+        $this->assertNotNull($pick);
+        $this->assertSame('tok-newer', $pick['card']['token']);
+        $this->assertSame('list_order', $pick['basis']);
+    }
+
+    /**
+     * THE SAFETY THAT SURVIVES WITH NO DATES AT ALL. Ours is already at the top of
+     * the list, so it IS the newest — and a missing date must never walk a
+     * subscription backwards onto an older card.
+     */
+    public function test_our_card_being_first_means_nothing_is_newer(): void
+    {
+        $pick = PayPlusTokenDiscovery::newerCard(
+            [
+                $this->card('tok-ours', '1128'),
+                $this->card('tok-older', '0830'),
             ],
             heldToken: 'tok-ours',
             expMonth: 11,
@@ -379,6 +428,55 @@ final class ReplacementCardTest extends TestCase
         $this->assertSame(PaymentStatus::RETRY_SCHEDULED, $payment->status);
         $this->assertSame(0, (int) $payment->attempt_count, 'a different card gets its own ladder');
         $this->assertNotNull($payment->next_retry_at);
+    }
+
+    /**
+     * A NEW CARD MEANS A CHARGE ATTEMPT, NOW.
+     *
+     * Leaving it to the scheduler was technically enough — the plan is chargeable
+     * and its slot is waiting — but that is how a merchant ends up watching a
+     * screen wondering whether anything happened, which is what they did.
+     */
+    public function test_attaching_a_card_queues_a_charge(): void
+    {
+        Queue::fake();
+
+        $plan = $this->heldPlan();
+
+        app(ImportedTokenRecovery::class)->apply($plan, [
+            'route' => ImportedTokenRecovery::ROUTE_REPLACEMENT,
+            'token' => 'tok-fresh',
+            'customer_uid' => 'cust-1',
+            'recurring_live' => false,
+        ]);
+
+        Queue::assertPushed(
+            ChargeJob::class,
+            fn (ChargeJob $job): bool => $job->planId === (int) $plan->getKey(),
+        );
+    }
+
+    /**
+     * EXCEPT when PayPlus is still billing them itself. The card is fixed and the
+     * plan is live again, but asking here would take the money twice.
+     */
+    public function test_a_member_payplus_still_bills_is_not_charged_here(): void
+    {
+        Queue::fake();
+
+        $plan = $this->heldPlan();
+
+        app(ImportedTokenRecovery::class)->apply($plan, [
+            'route' => ImportedTokenRecovery::ROUTE_REPLACEMENT,
+            'token' => 'tok-fresh',
+            'customer_uid' => 'cust-1',
+            'recurring_live' => true,
+        ]);
+
+        Queue::assertNotPushed(ChargeJob::class);
+
+        // The card IS still fixed and the hold IS still lifted.
+        $this->assertSame(PlanStatus::AWAITING_PAYMENT->value, $plan->fresh()->status->value);
     }
 
     /** The debt does NOT move. It is still owed on the day it was owed. */
