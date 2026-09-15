@@ -29,41 +29,8 @@
 
         <p class="rc-muted">{{ __('card_update.status.copy_hint') }}</p>
 
-        <label class="rc-field">
-            <span class="rc-field__label">{{ __('card_update.status.link_label') }}</span>
-            <input type="text" class="rc-input rc-ltr" readonly onfocus="this.select()"
-                   value="{{ $this->cardLinkUrl }}">
-            <span class="rc-field__hint">{{ __('card_update.status.durable_hint') }}</span>
-        </label>
-
-        @if($this->cardLinkDirectUrl !== '')
-            <label class="rc-field">
-                <span class="rc-field__label">{{ __('card_update.status.direct_label') }}</span>
-                <input type="text" class="rc-input rc-ltr" readonly onfocus="this.select()"
-                       value="{{ $this->cardLinkDirectUrl }}">
-                <span class="rc-field__hint">{{ __('card_update.status.direct_hint') }}</span>
-            </label>
-        @endif
-
-        {{-- WhatsApp. The message is bound live so the button always carries what
-             the merchant is reading, and it opens THEIR WhatsApp with the text
-             already typed — one tap to send, nothing to paste. --}}
-        <label class="rc-field">
-            <span class="rc-field__label">{{ __('card_update.share.message_label') }}</span>
-            <textarea class="rc-input" rows="4" wire:model.live="cardLinkMessage"></textarea>
-            <span class="rc-field__hint">{{ __('card_update.share.message_hint') }}</span>
-        </label>
-
-        <div class="rc-form__actions">
-            @if($this->whatsappUrl())
-                <a class="rc-cta rc-cta--primary" href="{{ $this->whatsappUrl() }}"
-                   target="_blank" rel="noopener noreferrer">
-                    {{ __('card_update.share.whatsapp') }}
-                </a>
-            @else
-                <span class="rc-muted">{{ __('card_update.share.no_phone') }}</span>
-            @endif
-        </div>
+        {{-- The same partial the modal renders, so the two can never drift. --}}
+        @include("filament.resources.subscription.card-link-result")
     </div>
 @endif
 

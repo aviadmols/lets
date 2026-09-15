@@ -22,6 +22,7 @@ use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Forms\Components\ToggleButtons;
@@ -168,6 +169,10 @@ class ManageMailSettings extends Page implements HasForms
         foreach (self::TEMPLATES as $template) {
             $state[$template.'_subject'] = $settings->customSubject($template)
                 ?? $this->defaultSubject($template, $settings->emailLocale());
+            if ($template === MerchantMailSettings::TEMPLATE_CARD_UPDATE) {
+                $state['card_update_whatsapp'] = $settings->card_update_whatsapp;
+            }
+
             $state[$template.'_body'] = $settings->customBody($template)
                 ?? $this->defaultBody($template, $settings->emailLocale());
         }
@@ -301,6 +306,24 @@ class ManageMailSettings extends Page implements HasForms
                 HtmlCodeEditor::make($template.'_body')
                     ->label(__('mail.field.body'))
                     ->helperText(__('mail.field.body_hint')),
+
+                /*
+                 * THE WHATSAPP LINE, on the card-update template only — it is the
+                 * one message a merchant also sends by hand, from the
+                 * subscription screen, when a phone call is faster than an email.
+                 *
+                 * Same placeholders, same strtr substitution, same "blank means
+                 * use ours" rule as the body above it. Left empty, the shipped
+                 * wording is used, which is how the copy keeps improving for
+                 * every shop that never opened this field.
+                 */
+                Textarea::make('card_update_whatsapp')
+                    ->label(__('mail.field.whatsapp'))
+                    ->helperText(__('mail.field.whatsapp_hint'))
+                    ->placeholder(fn (): string => (string) __('card_update.share.default_message'))
+                    ->rows(3)
+                    ->maxLength(MerchantMailSettings::MAX_WHATSAPP_LENGTH)
+                    ->visible(fn (): bool => $template === MerchantMailSettings::TEMPLATE_CARD_UPDATE),
 
                 Actions::make([
                     Action::make($template.'_restore')
@@ -538,6 +561,13 @@ class ManageMailSettings extends Page implements HasForms
                 $input[$template.'_subject'] ?? null,
                 $this->defaultSubject($template, $locale),
             );
+            if ($template === MerchantMailSettings::TEMPLATE_CARD_UPDATE) {
+                $settings->card_update_whatsapp = $this->customOrNull(
+                    $input['card_update_whatsapp'] ?? null,
+                    (string) __('card_update.share.default_message'),
+                );
+            }
+
             $settings->{$template.'_body'} = $this->customOrNull(
                 $input[$template.'_body'] ?? null,
                 $this->defaultBody($template, $locale),

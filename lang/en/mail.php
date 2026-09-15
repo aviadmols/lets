@@ -23,6 +23,8 @@ return [
         'subject' => 'Subject',
         'body' => 'Email body (HTML)',
         'subject_hint' => 'Leave blank to use the default subject.',
+        'whatsapp' => 'WhatsApp message (sent by hand)',
+        'whatsapp_hint' => 'The message that comes prefilled when you send a card-update link over WhatsApp from a subscription. You can use {shop}, {url} and {customer}. Leave empty to use ours.',
         'body_hint' => 'Leave blank to use the default email. Placeholders are replaced as plain text — Blade/PHP is never executed.',
         'placeholders' => 'Available placeholders',
     ],

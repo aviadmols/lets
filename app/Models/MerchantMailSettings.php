@@ -63,6 +63,20 @@ class MerchantMailSettings extends Model
      */
     public const TEMPLATE_CARD_UPDATE = 'card_update';
 
+    /**
+     * Placeholders the WhatsApp card-update line accepts.
+     *
+     * Substituted with strtr() and NOTHING else — this is merchant-typed text, and
+     * a template engine let loose on merchant input is remote code execution. Same
+     * rule as every email body in this model.
+     *
+     * @var list<string>
+     */
+    public const WHATSAPP_PLACEHOLDERS = ['{shop}', '{url}', '{customer}'];
+
+    /** A WhatsApp message is one or two lines, not a document. */
+    public const MAX_WHATSAPP_LENGTH = 700;
+
     /** Canonical template keys (drive the migration columns + the settings UI). */
     public const TEMPLATES = [
         self::TEMPLATE_FIRST_PAYMENT_WELCOME,
@@ -144,6 +158,42 @@ class MerchantMailSettings extends Model
             // a per-row secret, not a cross-shop one, so APP_KEY is fine here).
             'smtp_password' => 'encrypted',
         ];
+    }
+
+    /**
+     * The WhatsApp line for a card-update link, as the merchant wrote it — or the
+     * shipped default when they never touched it.
+     *
+     * Null means "use ours" rather than "send nothing", so the wording keeps
+     * improving for every shop that has not written their own.
+     */
+    public function cardUpdateWhatsappTemplate(): string
+    {
+        $custom = trim((string) ($this->card_update_whatsapp ?? ''));
+
+        return $custom !== '' ? $custom : (string) __('card_update.share.default_message');
+    }
+
+    /**
+     * The message with the placeholders filled in.
+     *
+     * strtr() and NOTHING else. This is merchant-typed text, and every other
+     * merchant-edited body in this model obeys the same rule for the same reason:
+     * handing merchant input to a template engine is remote code execution.
+     * Unknown tokens are left standing rather than blanked, so a typo shows itself
+     * instead of silently deleting half a sentence.
+     *
+     * @param  array<string, string>  $values  placeholder (with braces) => value
+     */
+    public function renderCardUpdateWhatsapp(array $values): string
+    {
+        $clean = [];
+
+        foreach (self::WHATSAPP_PLACEHOLDERS as $token) {
+            $clean[$token] = (string) ($values[$token] ?? '');
+        }
+
+        return mb_substr(trim(strtr($this->cardUpdateWhatsappTemplate(), $clean)), 0, self::MAX_WHATSAPP_LENGTH);
     }
 
     /**

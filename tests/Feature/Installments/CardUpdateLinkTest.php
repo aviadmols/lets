@@ -9,6 +9,7 @@ use App\Domain\Installments\Models\CardUpdateLink;
 use App\Filament\Resources\SubscriptionResource\Pages\ViewSubscription;
 use App\Mail\CardUpdateLinkMail;
 use App\Models\InstallmentPlan;
+use App\Models\MerchantMailSettings;
 use App\Models\MerchantSmsSettings;
 use App\Models\Shop;
 use App\Models\User;
@@ -614,6 +615,65 @@ final class CardUpdateLinkTest extends TestCase
                 ->call('dismissCardLink')
                 ->assertSet('cardLinkUrl', '')
                 ->assertSet('cardLinkMessage', '');
+        });
+    }
+
+    /**
+     * THE MERCHANT'S OWN WORDING WINS, and it is substituted with strtr — never a
+     * template engine, because this is text somebody typed into a settings screen
+     * and handing that to Blade is remote code execution.
+     */
+    public function test_the_merchants_own_whatsapp_wording_is_used(): void
+    {
+        $shop = $this->shop();
+        $this->fakeGateway();
+
+        Tenant::run($shop, function () use ($shop): void {
+            $plan = $this->plan($shop);
+            $this->actingAs(User::factory()->forShop($shop)->create());
+
+            MerchantMailSettings::current()->forceFill([
+                'card_update_whatsapp' => '{customer}, {shop} כאן. קישור: {url}',
+            ])->save();
+
+            $message = Livewire::test(ViewSubscription::class, ['plan' => $plan->getKey()])
+                ->callAction('sendCardUpdateLink', [
+                    'channel' => CardUpdateLink::CHANNEL_COPY,
+                    'ttl_days' => CardUpdateLink::DEFAULT_TTL_DAYS,
+                ])
+                ->get('cardLinkMessage');
+
+            $this->assertStringContainsString($shop->name, $message);
+            $this->assertStringContainsString($plan->customerLabel(), $message);
+            $this->assertStringContainsString('/c/card', $message);
+            $this->assertStringNotContainsString('{url}', $message, 'placeholders must be filled');
+        });
+    }
+
+    /** Blank means "use ours", so the shipped wording keeps improving for them. */
+    public function test_a_blank_setting_falls_back_to_the_shipped_wording(): void
+    {
+        $shop = $this->shop();
+        $this->fakeGateway();
+
+        Tenant::run($shop, function () use ($shop): void {
+            $plan = $this->plan($shop);
+            $this->actingAs(User::factory()->forShop($shop)->create());
+
+            MerchantMailSettings::current()->forceFill(['card_update_whatsapp' => null])->save();
+
+            $message = Livewire::test(ViewSubscription::class, ['plan' => $plan->getKey()])
+                ->callAction('sendCardUpdateLink', [
+                    'channel' => CardUpdateLink::CHANNEL_COPY,
+                    'ttl_days' => CardUpdateLink::DEFAULT_TTL_DAYS,
+                ])
+                ->get('cardLinkMessage');
+
+            // Ours opens with the shop name and carries the link.
+            $this->assertStringContainsString($shop->name, $message);
+            $this->assertStringContainsString('/c/card', $message);
+            // And says nothing about anything being declined.
+            $this->assertStringNotContainsString('נדחה', $message);
         });
     }
 

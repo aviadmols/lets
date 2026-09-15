@@ -95,7 +95,7 @@ return [
         | shop name opens it, because somebody receiving a payment link wants to
         | know who it is from before anything else.
         */
-        'default_message' => 'Hi, this is :shop. To keep your subscription running you can update your card details here — it only takes a moment: :url',
+        'default_message' => 'Hi, this is {shop}. To keep your subscription running you can update your card details here — it only takes a moment: {url}',
         'whatsapp' => 'Send on WhatsApp',
         'no_phone' => 'No phone number on file for this customer, so there is no WhatsApp to open. Copy the link and send it another way.',
     ],

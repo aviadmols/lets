@@ -542,6 +542,35 @@ class ViewSubscription extends Page
         return 'https://wa.me/'.$international.'?text='.rawurlencode($this->cardLinkMessage);
     }
 
+    /**
+     * The link, IN THE MODAL as well as on the page.
+     *
+     * Mounted in place of the form the merchant just submitted, so the flow reads
+     * as one step with a result. It is resolved by Filament through the
+     * {name}Action() convention and is deliberately NOT registered as a header
+     * action: my first attempt registered it with ->hidden(), and Filament will
+     * not mount a hidden action — which is exactly why the window used to close
+     * on nothing.
+     *
+     * The page panel stays too. They answer different moments: the modal is for
+     * the merchant who is still in the flow, the panel for the one who dismissed
+     * it and came back, or who scrolled away and needs the link again.
+     */
+    public function showCardUpdateLinkAction(): Actions\Action
+    {
+        return Actions\Action::make('showCardUpdateLink')
+            ->modalHeading(fn (): string => match (true) {
+                $this->cardLinkFailedToSend => __('card_update.error.send_failed'),
+                $this->cardLinkChannel === CardUpdateLink::CHANNEL_EMAIL => __('card_update.notify.emailed', ['to' => $this->cardLinkSentTo]),
+                $this->cardLinkChannel === CardUpdateLink::CHANNEL_SMS => __('card_update.notify.texted', ['to' => $this->cardLinkSentTo]),
+                default => __('card_update.notify.created'),
+            })
+            ->modalDescription(__('card_update.status.copy_hint'))
+            ->modalContent(fn (): View => view('filament.resources.subscription.card-link-result'))
+            ->modalSubmitAction(false)
+            ->modalCancelActionLabel(__('card_update.status.done'));
+    }
+
     /** Put the just-minted link away. It was shown once; that was the contract. */
     public function dismissCardLink(): void
     {
@@ -685,10 +714,16 @@ class ViewSubscription extends Page
         // to dismiss before the merchant can reach the link — which is the whole
         // reason they are here. The panel sits above the link history, where the
         // rest of this subscription's card story already lives.
-        $this->cardLinkMessage = __('card_update.share.default_message', [
-            'shop' => (string) (Tenant::current()?->name ?? ''),
-            'url' => $this->cardLinkUrl,
+        // The merchant's own wording when they wrote one, ours when they did not —
+        // and substituted with strtr, never a template engine, because this is
+        // text somebody typed into a settings screen.
+        $this->cardLinkMessage = MerchantMailSettings::current()->renderCardUpdateWhatsapp([
+            '{shop}' => (string) (Tenant::current()?->name ?? ''),
+            '{url}' => $this->cardLinkUrl,
+            '{customer}' => $this->record->customerLabel(),
         ]);
+
+        $this->replaceMountedAction('showCardUpdateLink');
     }
 
     public function addNoteAction(): Actions\Action
