@@ -208,6 +208,82 @@ final class ReplacementCardTest extends TestCase
         $this->assertNull(PayPlusTokenDiscovery::addedAt(['token' => 'x', 'created_at' => 'not a date']));
     }
 
+    // === A newer card than ours ===
+
+    /**
+     * THE REAL CASE. We hold a Visa vaulted 2025-12-10; the customer added a
+     * Mastercard on 2026-08-31. Both tokens valid, and every charge refused —
+     * because ours is the old one. "Is our token valid?" answered yes and stopped.
+     */
+    public function test_it_finds_a_card_the_customer_vaulted_after_ours(): void
+    {
+        $pick = PayPlusTokenDiscovery::newerCard(
+            [
+                $this->card('tok-2756', '1128', '2025-12-10 00:00:00'), // ours
+                $this->card('tok-0798', '0830', '2026-08-31 00:00:00'),
+            ],
+            heldToken: 'tok-2756',
+            expMonth: 11,
+            expYear: 2028,
+        );
+
+        $this->assertNotNull($pick);
+        $this->assertSame('tok-0798', $pick['card']['token']);
+        $this->assertSame('newer_than_held', $pick['basis']);
+    }
+
+    /** Only moves FORWARD. An older card is not an upgrade. */
+    public function test_an_older_card_is_never_taken(): void
+    {
+        $pick = PayPlusTokenDiscovery::newerCard(
+            [
+                $this->card('tok-ours', '1128', '2026-08-31 00:00:00'),
+                $this->card('tok-old', '0830', '2024-01-01 00:00:00'),
+            ],
+            heldToken: 'tok-ours',
+            expMonth: 11,
+            expYear: 2028,
+        );
+
+        $this->assertNull($pick, 'a card vaulted before ours is not newer');
+    }
+
+    /**
+     * WITHOUT A DATE ON OUR OWN CARD, "newer" has no meaning. Refused rather than
+     * reaching for whatever looks recent — that would swap a working card for an
+     * older one and produce a decline the customer never had.
+     */
+    public function test_an_undatable_held_card_refuses(): void
+    {
+        $pick = PayPlusTokenDiscovery::newerCard(
+            [
+                $this->card('tok-ours', '1128'), // no vaulted-at
+                $this->card('tok-other', '0830', '2026-08-31 00:00:00'),
+            ],
+            heldToken: 'tok-ours',
+            expMonth: 11,
+            expYear: 2028,
+        );
+
+        $this->assertNull($pick);
+    }
+
+    /** A newer card that has already expired is not somewhere to move to. */
+    public function test_a_newer_but_expired_card_is_skipped(): void
+    {
+        $pick = PayPlusTokenDiscovery::newerCard(
+            [
+                $this->card('tok-ours', '1128', '2025-12-10 00:00:00'),
+                $this->card('tok-dead', '0125', '2026-08-31 00:00:00'),
+            ],
+            heldToken: 'tok-ours',
+            expMonth: 11,
+            expYear: 2028,
+        );
+
+        $this->assertNull($pick);
+    }
+
     // === Naming the refusal ===
 
     /**

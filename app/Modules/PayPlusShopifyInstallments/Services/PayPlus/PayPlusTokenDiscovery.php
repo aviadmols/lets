@@ -452,6 +452,83 @@ final class PayPlusTokenDiscovery
     }
 
     /**
+     * A card this customer vaulted AFTER the one we are holding.
+     *
+     * The question a merchant asks by hand, and the one the code was not asking.
+     * "Is our token valid?" stops at the first yes; a real book showed what that
+     * costs — a member whose Visa from December 2025 was perfectly valid and
+     * perfectly refused, while a Mastercard they added in August 2026 sat in the
+     * same vault, never looked at. Both tokens valid. Ours simply the old one.
+     *
+     * Different from replacementCard(), which is for a card the ISSUER has killed
+     * and will take any live alternative. This one is stricter: it moves only
+     * FORWARD IN TIME, and only when PayPlus told us both dates. Without them
+     * there is no "newer", and a guess here would swap a working card for an
+     * older one — a decline the customer never had before.
+     *
+     * @param  list<array<string, mixed>>  $tokens  pooled and deduped
+     * @return array{card: array<string, mixed>, basis: string}|null
+     */
+    public static function newerCard(array $tokens, ?string $heldToken, ?int $expMonth, ?int $expYear): ?array
+    {
+        $held = trim((string) $heldToken);
+        $heldMmyy = ($expMonth !== null && $expYear !== null) ? self::mmyy($expMonth, $expYear) : null;
+
+        $heldAt = null;
+        $others = [];
+
+        foreach ($tokens as $card) {
+            if (! is_array($card) || ($card['token'] ?? '') === '') {
+                continue;
+            }
+
+            $token = trim((string) $card['token']);
+            $mmyy = trim((string) ($card['card_date_mmyy'] ?? ''));
+
+            // OUR card, by its token or by the expiry we recorded for it — the
+            // same physical card can be vaulted under another uid.
+            if (($held !== '' && $token === $held) || ($heldMmyy !== null && $mmyy === $heldMmyy)) {
+                $heldAt ??= self::addedAt($card);
+
+                continue;
+            }
+
+            if (self::isUnexpired($mmyy)) {
+                $others[] = $card;
+            }
+        }
+
+        // We could not date our own card, so "newer" has no meaning. Refuse
+        // rather than reach for whatever looks recent.
+        if ($heldAt === null || $others === []) {
+            return null;
+        }
+
+        $newer = [];
+
+        foreach ($others as $card) {
+            $at = self::addedAt($card);
+
+            if ($at !== null && $at > $heldAt) {
+                $newer[] = ['card' => $card, 'at' => $at];
+            }
+        }
+
+        if ($newer === []) {
+            return null;
+        }
+
+        usort($newer, static fn (array $a, array $b): int => $b['at'] <=> $a['at']);
+
+        // Two cards vaulted at the same instant are not an order.
+        if (count($newer) > 1 && $newer[0]['at'] === $newer[1]['at']) {
+            return null;
+        }
+
+        return ['card' => $newer[0]['card'], 'basis' => 'newer_than_held'];
+    }
+
+    /**
      * When PayPlus vaulted this card, as a timestamp.
      *
      * The field is read by TRYING the plausible spellings, because PayPlus's

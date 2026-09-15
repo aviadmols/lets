@@ -235,13 +235,28 @@ final class ImportedTokenRecovery
          */
         $cardIsDead = self::cardIsDead($plan->latestPayment?->failure_message);
 
-        // A — the token we already hold may simply be valid, in which case the
-        // charge is failing for a different reason (wrong terminal) and swapping
-        // the token would fix nothing while destroying a good one.
-        if (in_array(self::ROUTE_ALREADY_VALID, $routes, true)
-            && ! $cardIsDead
+        /*
+         * A — is the token we hold valid? ASKED, BUT NO LONGER ANSWERED FIRST.
+         *
+         * It used to return here, and that was the wrong question to stop on. A
+         * merchant found a member we had filed as "the card is fine, the issuer
+         * refused": we were holding a Visa vaulted in December 2025, and PayPlus
+         * had a Mastercard the same customer added in August 2026 that we had
+         * never looked at. Both tokens were valid. Ours was simply the old one.
+         *
+         * "Is our token valid" and "what card is this customer using now" are
+         * different questions, and only the second one recovers anybody. So the
+         * answer is kept and the lookup continues; ALREADY_VALID is returned at
+         * the END, once we know there is nothing newer to move to.
+         */
+        $heldTokenIsValid = in_array(self::ROUTE_ALREADY_VALID, $routes, true)
             && $existing !== ''
-            && $probe->checkToken($existing) !== null) {
+            && $probe->checkToken($existing) !== null;
+
+        // A card that works, on a plan where nothing has failed, is not a
+        // question — and hunting through the vault for it would spend calls on
+        // every healthy member a caller ever probes.
+        if ($heldTokenIsValid && ! $cardIsDead && ! $this->lastChargeFailed($plan)) {
             return $this->outcome(self::ROUTE_ALREADY_VALID, detail: 'token_exists_at_payplus');
         }
 
@@ -358,6 +373,45 @@ final class ImportedTokenRecovery
                 );
             }
 
+            /*
+             * HAS THIS CUSTOMER VAULTED A NEWER CARD THAN OURS?
+             *
+             * Asked for every member whose charge is failing, whatever the gateway
+             * said. "Refused, not approved" is the issuer's verdict on the card we
+             * presented, and it tells us nothing about the one the customer added
+             * since — which is the card they are actually using.
+             *
+             * Ordered by when PayPlus vaulted each, never by expiry: a card added
+             * in 2024 can carry a later expiry than one added last month.
+             */
+            $newer = PayPlusTokenDiscovery::newerCard(
+                $tokens,
+                $existing,
+                $method->exp_month,
+                $method->exp_year,
+            );
+
+            if ($newer !== null) {
+                $token = (string) $newer['card']['token'];
+
+                return $this->outcome(
+                    self::ROUTE_REPLACEMENT,
+                    token: $token,
+                    customerUid: $ownerOf[$token] ?? null,
+                    detail: $newer['basis'],
+                    candidates: $candidates,
+                );
+            }
+
+            // Our token is valid and nothing newer exists — now it is the truth.
+            if ($heldTokenIsValid) {
+                return $this->outcome(
+                    self::ROUTE_ALREADY_VALID,
+                    detail: 'token_exists_at_payplus',
+                    candidates: $candidates,
+                );
+            }
+
             $match = PayPlusTokenDiscovery::matchCard(
                 $tokens,
                 $method->card_last_four,
@@ -428,7 +482,35 @@ final class ImportedTokenRecovery
             );
         }
 
+        if ($heldTokenIsValid) {
+            return $this->outcome(self::ROUTE_ALREADY_VALID, detail: 'token_exists_at_payplus');
+        }
+
         return $this->outcome(self::ROUTE_NONE, detail: 'not_found_at_payplus');
+    }
+
+    /**
+     * Did this plan's last charge attempt fail?
+     *
+     * The gate on hunting past a valid token. A healthy plan is not a question,
+     * and probing every one would spend a vault listing per member for nothing.
+     */
+    private function lastChargeFailed(InstallmentPlan $plan): bool
+    {
+        $payment = $plan->latestPayment;
+
+        if ($payment === null) {
+            // A migrated member imported in arrears, never charged here. Nothing
+            // has failed, but nothing has worked either — worth looking.
+            return $plan->payment_failed_at !== null
+                || $plan->status === PlanStatus::FAILED;
+        }
+
+        $status = $payment->status instanceof PaymentStatus
+            ? $payment->status->value
+            : (string) $payment->status;
+
+        return in_array($status, [PaymentStatus::FAILED->value, PaymentStatus::RETRY_SCHEDULED->value], true);
     }
 
     /**
