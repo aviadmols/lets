@@ -48,6 +48,7 @@ return [
         'card_update_link_sent' => 'A card-update link was created',
         'charge_repeat_blocked' => 'Charge stopped — this subscription was already charged in the last 24 hours',
         'charge_repeat_approved' => 'A second charge within 24 hours — explicitly approved by an admin',
+        'cycles_forgiven' => 'Missed cycles were not collected — per the store\'s setting; the next charge stays on the usual day',
         'card_update_failed' => 'The customer tried to update their card — it was declined',
         'card_update_not_saved' => 'The customer completed the PayPlus page, but the card was not saved to the subscription',
         'account_action' => 'The customer used a self-service action',

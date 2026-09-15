@@ -3,6 +3,7 @@
 namespace Tests\Feature\Billing;
 
 use App\Filament\Pages\ManageBillingSettings;
+use App\Models\ActivityEvent;
 use App\Models\CustomerConsent;
 use App\Models\InstallmentPaymentMethod;
 use App\Models\InstallmentPlan;
@@ -16,6 +17,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Services\ChargeOrchestrator;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\GatewayResult;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
+use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -135,6 +137,71 @@ final class RenewalAnchorTest extends TestCase
         });
     }
 
+    /**
+     * Per cycle WITHOUT collecting what was missed: the anniversary is kept and
+     * the months the card was dead are forgiven — and said on the plan.
+     */
+    public function test_skip_missed_keeps_the_billing_day_and_forgives_the_missed_cycles(): void
+    {
+        [$shop, $plan] = $this->plan('anchor-skip.example.com');
+
+        Tenant::run($shop, function () use ($plan): void {
+            MerchantBillingSettings::current()->forceFill(['renewal_anchor' => MerchantBillingSettings::ANCHOR_SKIP_MISSED])->save();
+
+            $this->travelTo(CarbonImmutable::parse(self::LATE_NOW));
+            $this->assertTrue(app(ChargeOrchestrator::class)->charge($plan->id, PaymentType::RECURRING)->isSucceeded());
+
+            // Still the 14th — the first 14th after today. February and March are gone.
+            $this->assertSame('2026-04-14 00:00', $plan->fresh()->next_charge_at->format('Y-m-d H:i'));
+
+            $forgiven = ActivityEvent::query()
+                ->where('plan_id', $plan->id)
+                ->where('kind', Timeline::KIND_CYCLES_FORGIVEN)
+                ->sole();
+            $this->assertSame(2, (int) $forgiven->details['skipped']);
+            $this->assertSame('2026-01-14', $forgiven->details['from']);
+            $this->assertSame('2026-04-14', $forgiven->details['to']);
+        });
+    }
+
+    /** On time, nothing is forgiven and nothing is said: the ordinary next cycle. */
+    public function test_skip_missed_on_time_is_just_the_next_cycle(): void
+    {
+        [$shop, $plan] = $this->plan('anchor-skip-ontime.example.com');
+
+        Tenant::run($shop, function () use ($plan): void {
+            MerchantBillingSettings::current()->forceFill(['renewal_anchor' => MerchantBillingSettings::ANCHOR_SKIP_MISSED])->save();
+
+            // The night before, inside the scheduler's early window.
+            $this->travelTo(CarbonImmutable::parse(self::OWED)->subMinutes(30));
+            $this->assertTrue(app(ChargeOrchestrator::class)->charge($plan->id, PaymentType::RECURRING)->isSucceeded());
+
+            $this->assertSame('2026-02-14 00:00', $plan->fresh()->next_charge_at->format('Y-m-d H:i'));
+            $this->assertSame(0, ActivityEvent::query()->where('plan_id', $plan->id)->where('kind', Timeline::KIND_CYCLES_FORGIVEN)->count());
+        });
+    }
+
+    /**
+     * Counted from the scheduled date, not stepped month by month: a plan on the
+     * 31st that walked through February one step at a time would land on the
+     * 28th and stay there for the rest of its life.
+     */
+    public function test_skip_missed_does_not_let_a_31st_drift_through_february(): void
+    {
+        [$shop, $plan] = $this->plan('anchor-skip-31.example.com');
+
+        Tenant::run($shop, function () use ($plan): void {
+            MerchantBillingSettings::current()->forceFill(['renewal_anchor' => MerchantBillingSettings::ANCHOR_SKIP_MISSED])->save();
+            $plan->forceFill(['next_charge_at' => '2026-01-31 00:00:00'])->save();
+
+            // Fixed in April: Feb (28th), Mar (31st) walked over.
+            $this->travelTo(CarbonImmutable::parse('2026-04-02 09:00:00'));
+            $this->assertTrue(app(ChargeOrchestrator::class)->charge($plan->id, PaymentType::RECURRING)->isSucceeded());
+
+            $this->assertSame('2026-04-30', $plan->fresh()->next_charge_at->format('Y-m-d'), 'April has no 31st; May would be the 31st again');
+        });
+    }
+
     /** A stored value that is not one of the two reads as the default, never as a crash. */
     public function test_an_unknown_stored_anchor_reads_as_the_default(): void
     {
@@ -163,6 +230,13 @@ final class RenewalAnchorTest extends TestCase
                 ->assertHasNoFormErrors();
 
             $this->assertTrue(MerchantBillingSettings::current()->fresh()->renewsFromChargeDate());
+
+            Livewire::test(ManageBillingSettings::class)
+                ->set('data.renewal_anchor', MerchantBillingSettings::ANCHOR_SKIP_MISSED)
+                ->call('save')
+                ->assertHasNoFormErrors();
+
+            $this->assertTrue(MerchantBillingSettings::current()->fresh()->skipsMissedCycles());
         });
     }
 

@@ -313,10 +313,12 @@ class ManageBillingSettings extends Page implements HasForms
                     ->helperText(__('billing.settings.recurring.anchor_help'))
                     ->options([
                         MerchantBillingSettings::ANCHOR_CYCLE => __('billing.settings.recurring.anchor_option.cycle'),
+                        MerchantBillingSettings::ANCHOR_SKIP_MISSED => __('billing.settings.recurring.anchor_option.skip_missed'),
                         MerchantBillingSettings::ANCHOR_CHARGE_DATE => __('billing.settings.recurring.anchor_option.charge_date'),
                     ])
                     ->descriptions([
                         MerchantBillingSettings::ANCHOR_CYCLE => __('billing.settings.recurring.anchor_option.cycle_help'),
+                        MerchantBillingSettings::ANCHOR_SKIP_MISSED => __('billing.settings.recurring.anchor_option.skip_missed_help'),
                         MerchantBillingSettings::ANCHOR_CHARGE_DATE => __('billing.settings.recurring.anchor_option.charge_date_help'),
                     ])
                     ->columnSpanFull(),

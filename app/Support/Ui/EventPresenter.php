@@ -109,6 +109,9 @@ final class EventPresenter
         // stand out in exactly the scan someone runs when a customer says
         // "you charged me twice".
         'charge_repeat_approved' => ['warning', 'timeline.kind.charge_repeat_approved'],
+        // GRAY: missed cycles left uncollected because the merchant set it so —
+        // a deliberate outcome, never a failure to hunt for.
+        'cycles_forgiven' => ['gray', 'timeline.kind.cycles_forgiven'],
         // FAILURE: the customer tried, and their bank refused the card.
         'card_update_failed' => ['failure', 'timeline.kind.card_update_failed'],
         // FAILURE: PayPlus accepted the card and it still is not on the plan.

@@ -85,6 +85,13 @@ final class ChargeOrchestrator
      */
     public const SKIP_CHARGED_RECENTLY = 'charged_recently';
 
+    /**
+     * How far the `skip_missed` renewal anchor may walk a schedule forward in
+     * one go. A decade of monthly cycles; past that it is not a subscription
+     * that was late, it is a loop.
+     */
+    private const MAX_FORGIVEN_CYCLES = 120;
+
     /** Daily charge attempts before the plan is held on its unpaid cycle. @see config/payplus.php */
     private const MAX_ATTEMPTS_FALLBACK = 7;
 
@@ -1289,12 +1296,17 @@ final class ChargeOrchestrator
     private function advanceNextChargeAt(InstallmentPlan $plan): CarbonImmutable
     {
         $scheduled = $plan->next_charge_at ? CarbonImmutable::parse($plan->next_charge_at) : CarbonImmutable::now();
+        $settings = MerchantBillingSettings::current();
 
         // THE ONE PLACE the merchant's renewal anchor is read.
         //
         //   cycle        the next date is a cycle after the one just settled,
         //                however late it settled: a held plan collects every
         //                cycle it missed, one a day, and keeps its anniversary.
+        //   skip_missed  the schedule is kept — same day of the month — but the
+        //                cycles that passed while the card was dead are not
+        //                collected: the next date is the first occurrence of
+        //                the schedule still ahead of now.
         //   charge_date  a cycle from TODAY when today is past the schedule:
         //                months the customer got nothing for are not collected,
         //                and the anniversary moves to the day the card worked.
@@ -1304,9 +1316,13 @@ final class ChargeOrchestrator
         // early window, at 23:05 the night before — keeps the schedule; anchored
         // on the charge timestamp instead, every renewal would land an hour
         // earlier than the last and the date would creep backwards.
+        if ($settings->skipsMissedCycles()) {
+            return $this->nextOccurrenceAfterNow($plan, $scheduled);
+        }
+
         $base = $scheduled;
 
-        if (MerchantBillingSettings::current()->renewsFromChargeDate()) {
+        if ($settings->renewsFromChargeDate()) {
             $today = CarbonImmutable::now()->startOfDay();
 
             if ($today->greaterThan($scheduled)) {
@@ -1317,18 +1333,59 @@ final class ChargeOrchestrator
         return $this->oneCycleAfter($plan, $base);
     }
 
+    /**
+     * The first date on the plan's own schedule that is still ahead of now.
+     *
+     * Counted in whole cycles FROM THE SCHEDULED DATE, never step by step: a
+     * plan billed on the 31st that walked month by month through February
+     * would arrive at the 28th and stay there. The cycles walked over are said
+     * on the plan — a merchant reading "why was March not charged?" finds the
+     * answer where they ask it.
+     */
+    private function nextOccurrenceAfterNow(InstallmentPlan $plan, CarbonImmutable $scheduled): CarbonImmutable
+    {
+        $now = CarbonImmutable::now();
+        $cycles = 1;
+        $next = $this->cyclesAfter($plan, $scheduled, $cycles);
+
+        while ($next->lessThanOrEqualTo($now) && $cycles < self::MAX_FORGIVEN_CYCLES) {
+            $next = $this->cyclesAfter($plan, $scheduled, ++$cycles);
+        }
+
+        if ($cycles > 1) {
+            Timeline::record(
+                kind: Timeline::KIND_CYCLES_FORGIVEN,
+                details: [
+                    'skipped' => $cycles - 1,
+                    'from' => $scheduled->toDateString(),
+                    'to' => $next->toDateString(),
+                ],
+                planId: $plan->getKey(),
+                shopId: $plan->shop_id,
+            );
+        }
+
+        return $next;
+    }
+
     /** One cadence step after $from — the plan's own frequency, or monthly. */
     private function oneCycleAfter(InstallmentPlan $plan, CarbonImmutable $from): CarbonImmutable
     {
+        return $this->cyclesAfter($plan, $from, 1);
+    }
+
+    /** $count cadence steps after $from, computed from $from in one move (no drift). */
+    private function cyclesAfter(InstallmentPlan $plan, CarbonImmutable $from, int $count): CarbonImmutable
+    {
         if ($plan->billing_frequency !== null) {
             return CarbonImmutable::parse(
-                $plan->billing_frequency->addTo($from, (int) ($plan->interval_count ?: 1))
+                $plan->billing_frequency->addTo($from, (int) ($plan->interval_count ?: 1) * $count)
             );
         }
 
         // No cadence configured (pure installments without a fixed schedule):
         // default to monthly so the scheduler keeps moving.
-        return $from->addMonthNoOverflow();
+        return $from->addMonthsNoOverflow($count);
     }
 
     /**

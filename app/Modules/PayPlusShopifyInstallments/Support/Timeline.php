@@ -88,6 +88,12 @@ final class Timeline
     public const KIND_CHARGE_REPEAT_APPROVED = 'charge_repeat_approved';
 
     /**
+     * Cycles that passed while a card was dead and were NOT collected, because
+     * the shop's renewal anchor is `skip_missed`. details: {skipped, from, to}.
+     */
+    public const KIND_CYCLES_FORGIVEN = 'cycles_forgiven';
+
+    /**
      * We asked PayPlus for money and never learned the answer — a worker killed
      * mid-charge. The card may have been charged. We do NOT ask again: this
      * cycle waits for a person to look, exactly as an unresolved document does.

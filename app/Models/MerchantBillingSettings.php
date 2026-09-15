@@ -118,6 +118,11 @@ class MerchantBillingSettings extends Model
      * for three months collects all three once it is fixed, one a day, and keeps
      * its anniversary. Today's behaviour, so the default.
      *
+     * `skip_missed`: the schedule is kept — same day of the month, sequence
+     * intact — but the cycles that passed while the card was dead are not
+     * collected. The customer pays for the current cycle and the next date is
+     * the first occurrence of the schedule still ahead of today.
+     *
      * `charge_date`: the customer pays for the cycle being charged and the next
      * one is a cycle from TODAY. Months they got nothing for are not collected;
      * the anniversary moves to the day the card worked. What Recharge does.
@@ -127,9 +132,11 @@ class MerchantBillingSettings extends Model
      */
     public const ANCHOR_CYCLE = 'cycle';
 
+    public const ANCHOR_SKIP_MISSED = 'skip_missed';
+
     public const ANCHOR_CHARGE_DATE = 'charge_date';
 
-    public const RENEWAL_ANCHORS = [self::ANCHOR_CYCLE, self::ANCHOR_CHARGE_DATE];
+    public const RENEWAL_ANCHORS = [self::ANCHOR_CYCLE, self::ANCHOR_SKIP_MISSED, self::ANCHOR_CHARGE_DATE];
 
     public const DEFAULT_RENEWAL_ANCHOR = self::ANCHOR_CYCLE;
 
@@ -324,6 +331,11 @@ class MerchantBillingSettings extends Model
     public function renewsFromChargeDate(): bool
     {
         return $this->renewalAnchor() === self::ANCHOR_CHARGE_DATE;
+    }
+
+    public function skipsMissedCycles(): bool
+    {
+        return $this->renewalAnchor() === self::ANCHOR_SKIP_MISSED;
     }
 
     public function allowsCustomerPause(): bool

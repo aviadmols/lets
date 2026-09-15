@@ -149,8 +149,10 @@ return [
             'anchor' => 'Charging after a delay',
             'anchor_help' => 'What happens when a charge succeeds late — for example after a customer replaced a card that was declined for a few months.',
             'anchor_option' => [
-                'cycle' => 'Per cycle',
+                'cycle' => 'Per cycle — missed cycles are collected',
                 'cycle_help' => 'Every cycle on the schedule is owed. A subscriber whose card failed for three months pays for all three — one charge a day — and keeps their billing day.',
+                'skip_missed' => 'Per cycle — missed cycles are not collected',
+                'skip_missed_help' => 'The customer pays for the current cycle only. Cycles that passed while the card failed are not collected, and the billing day — the same day of the month — is kept.',
                 'charge_date' => 'By date',
                 'charge_date_help' => 'The customer pays for the current cycle, and the next charge counts from today. Months with no service are not collected, and the billing day moves to the day the card worked.',
             ],
