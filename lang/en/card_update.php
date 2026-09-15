@@ -88,7 +88,14 @@ return [
     'share' => [
         'message_label' => 'The message that will be sent',
         'message_hint' => 'Edit it before sending. The button opens YOUR WhatsApp with this message ready — all that is left is to press send.',
-        'default_message' => 'Hi, the card we have on file for your subscription was declined. You can update it here: :url',
+        /*
+        | Deliberately no "declined", "failed" or "problem". The customer did
+        | nothing wrong, and the first message a shop sends them about money should
+        | not read like a telling-off — it should read like a small request. The
+        | shop name opens it, because somebody receiving a payment link wants to
+        | know who it is from before anything else.
+        */
+        'default_message' => 'Hi, this is :shop. To keep your subscription running you can update your card details here — it only takes a moment: :url',
         'whatsapp' => 'Send on WhatsApp',
         'no_phone' => 'No phone number on file for this customer, so there is no WhatsApp to open. Copy the link and send it another way.',
     ],
