@@ -2,6 +2,7 @@
 
 namespace App\Modules\PayPlusShopifyInstallments\Console\Commands;
 
+use App\Domain\Billing\RepeatChargeGuard;
 use App\Models\Concerns\TenantScope;
 use App\Models\InstallmentPlan;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
@@ -86,6 +87,13 @@ final class DispatchDuePlansCommand extends Command
                     ->where('status', PaymentStatus::RETRY_SCHEDULED->value)
                     ->whereNotNull('next_retry_at')
                     ->where('next_retry_at', '>', now());
+            })
+            // Charged in the last day → not queued at all. The orchestrator is the
+            // wall (RepeatChargeGuard); this keeps a still-"due" plan — two owed
+            // installments, say — from being queued every five minutes only to
+            // be refused, and a Timeline filling with the refusals.
+            ->whereDoesntHave('payments', function ($q): void {
+                RepeatChargeGuard::chargedWithinWindow($q->withoutGlobalScope(TenantScope::class));
             })
             ->orderBy('id')
             ->chunkById($chunk, function ($plans) use (&$dispatched, &$held, $paused): void {

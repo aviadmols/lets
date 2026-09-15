@@ -8,6 +8,7 @@ use App\Domain\Billing\Contracts\DocumentPolicyInput;
 use App\Domain\Billing\CycleAmountResolver;
 use App\Domain\Billing\IdempotencyKey;
 use App\Domain\Billing\Ledger;
+use App\Domain\Billing\RepeatChargeGuard;
 use App\Domain\Invoicing\DocumentContext;
 use App\Domain\Invoicing\Jobs\IssueDocumentJob;
 use App\Domain\Mail\MailPolicy;
@@ -77,6 +78,13 @@ use Illuminate\Support\Facades\Mail;
 final class ChargeOrchestrator
 {
     // === CONSTANTS ===
+    /**
+     * The skip reason when the plan already moved money in the repeat window
+     * (RepeatChargeGuard). Public: the admin screens branch on it to offer the
+     * explicit approval instead of a generic "nothing to charge".
+     */
+    public const SKIP_CHARGED_RECENTLY = 'charged_recently';
+
     /** Daily charge attempts before the plan is held on its unpaid cycle. @see config/payplus.php */
     private const MAX_ATTEMPTS_FALLBACK = 7;
 
@@ -140,10 +148,10 @@ final class ChargeOrchestrator
      * restores exactly the serialisation the lock used to give, without holding
      * a database transaction open across somebody else's network.
      */
-    public function charge(int $planId, PaymentType $type): ChargeOutcome
+    public function charge(int $planId, PaymentType $type, bool $repeatApproved = false): ChargeOutcome
     {
         // === PHASE A — decide, and commit the pending ledger row ===
-        $prepared = DB::transaction(fn (): ChargeOutcome|array => $this->prepare($planId, $type));
+        $prepared = DB::transaction(fn (): ChargeOutcome|array => $this->prepare($planId, $type, $repeatApproved));
 
         if ($prepared instanceof ChargeOutcome) {
             // A settled answer needs no money. Manual mode still owes an email,
@@ -209,7 +217,7 @@ final class ChargeOrchestrator
      *
      * @return ChargeOutcome|array{plan: InstallmentPlan, payment: InstallmentPayment, ledger: PaymentLedger, key: string, amount: float}
      */
-    private function prepare(int $planId, PaymentType $type): ChargeOutcome|array
+    private function prepare(int $planId, PaymentType $type, bool $repeatApproved = false): ChargeOutcome|array
     {
         // Row lock: two simultaneous triggers serialise here. BelongsToShop
         // scopes the lookup to the bound tenant.
@@ -259,6 +267,48 @@ final class ChargeOrchestrator
             $this->flagForReconcile($pending, $plan, $type, $key);
 
             return ChargeOutcome::skipped('needs_reconcile', $key);
+        }
+
+        // ONE CHARGE PER SUBSCRIPTION PER DAY (RepeatChargeGuard). The key above
+        // is built from the next charge date, which a success moves forward, so
+        // a second request straight after a success carries a DIFFERENT key and
+        // sails past every check above — that is how 17 subscribers were charged
+        // for next month within seconds of this month. Asked of the plan's own
+        // money, not of the key: an automatic path stops here always, a person
+        // only when they did not explicitly approve a second charge.
+        $recent = app(RepeatChargeGuard::class)->recentChargeOf($plan);
+
+        if ($recent !== null && ! $repeatApproved) {
+            Timeline::record(
+                kind: Timeline::KIND_CHARGE_REPEAT_BLOCKED,
+                details: [
+                    'type' => $type->value,
+                    'key' => $key,
+                    'last_charged_at' => $recent['at']->toIso8601String(),
+                    'last_amount' => $recent['amount'],
+                    'in_flight' => $recent['in_flight'],
+                ],
+                planId: $plan->getKey(),
+                shopId: $shopId,
+            );
+
+            return ChargeOutcome::skipped(self::SKIP_CHARGED_RECENTLY, $key);
+        }
+
+        if ($recent !== null) {
+            // Approved by a person — said on the plan, with who, because this is
+            // the one charge in the module that is a second one on purpose.
+            Timeline::record(
+                kind: Timeline::KIND_CHARGE_REPEAT_APPROVED,
+                details: [
+                    'type' => $type->value,
+                    'key' => $key,
+                    'last_charged_at' => $recent['at']->toIso8601String(),
+                    'last_amount' => $recent['amount'],
+                ],
+                planId: $plan->getKey(),
+                shopId: $shopId,
+            );
         }
 
         // THE LIVE-CHARGING SWITCH. A merchant mid-migration wants their plans

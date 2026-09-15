@@ -102,6 +102,13 @@ final class EventPresenter
         'payment_method_token_recovered' => ['success', 'timeline.kind.payment_method_token_recovered'],
         'card_update_started' => ['info', 'timeline.kind.card_update_started'],
         'card_update_link_sent' => ['info', 'timeline.kind.card_update_link_sent'],
+        // WARNING: a charge stood down because this subscription was already
+        // charged today — the wall that stops a double charge, made visible.
+        'charge_repeat_blocked' => ['warning', 'timeline.kind.charge_repeat_blocked'],
+        // WARNING, not success: a second charge in one day, on purpose. It must
+        // stand out in exactly the scan someone runs when a customer says
+        // "you charged me twice".
+        'charge_repeat_approved' => ['warning', 'timeline.kind.charge_repeat_approved'],
         // FAILURE: the customer tried, and their bank refused the card.
         'card_update_failed' => ['failure', 'timeline.kind.card_update_failed'],
         // FAILURE: PayPlus accepted the card and it still is not on the plan.

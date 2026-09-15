@@ -213,6 +213,12 @@ return [
             'failed' => 'Charge failed.',
             'failed_retry' => 'Charge failed — a retry is scheduled.',
             'skipped' => 'Nothing to charge right now (already paid or awaiting consent).',
+            // Already charged in the last 24 hours — another charge only on explicit approval.
+            'repeat_heading' => 'This subscription was already charged in the last 24 hours',
+            'repeat_body' => 'It was charged :last on :when. Charging now takes :amount from the customer again — usually for the next cycle, in advance. Approve only if that is really what you mean.',
+            'repeat_body_in_flight' => 'A charge of :last was sent for this subscription on :when and its outcome is not known yet. Charging again now may charge the customer twice. Check PayPlus before you approve.',
+            'repeat_confirm' => 'I approve charging this subscription again today',
+            'repeat_blocked' => 'Nothing was charged: this subscription was already charged in the last 24 hours. To charge again, open the subscription and approve a second charge explicitly.',
         ],
 
         /*

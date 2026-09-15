@@ -9,6 +9,7 @@ use App\Domain\Installments\Models\CardUpdateLink;
 use App\Filament\Resources\SubscriptionResource\Pages\ViewSubscription;
 use App\Mail\CardUpdateLinkMail;
 use App\Models\ActivityEvent;
+use App\Models\InstallmentPayment;
 use App\Models\InstallmentPaymentMethod;
 use App\Models\InstallmentPlan;
 use App\Models\MerchantMailSettings;
@@ -17,6 +18,8 @@ use App\Models\Shop;
 use App\Models\User;
 use App\Modules\PayPlusShopifyInstallments\Contracts\PayPlusGatewayInterface;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
+use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
+use App\Modules\PayPlusShopifyInstallments\Enums\PaymentType;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Jobs\ChargeJob;
@@ -277,6 +280,50 @@ final class CardUpdateLinkTest extends TestCase
             ChargeJob::class,
             static fn (ChargeJob $job): bool => $job->shopId === (int) $shop->getKey()
                 && $job->planId === (int) $plan->getKey(),
+        );
+    }
+
+    /**
+     * NOT ONLY HELD PLANS. A customer who fixes their card quickly is usually
+     * still inside the retry ladder — the cycle due, its slot waiting for
+     * tomorrow's attempt, nothing "held" yet. That is where plan 1282 was, and a
+     * new card there used to charge nothing until the ladder came round again.
+     */
+    public function test_a_new_card_on_a_plan_still_being_retried_is_charged_for_the_due_cycle(): void
+    {
+        $shop = $this->shop();
+        $this->fakeGateway();
+        Bus::fake([ChargeJob::class]);
+
+        [$plan, $link] = Tenant::run($shop, function () use ($shop): array {
+            $plan = $this->plan($shop);
+            $plan->forceFill(['next_charge_at' => now()->subDay()->startOfDay()])->save();
+            $plan->transitionTo(PlanStatus::AWAITING_PAYMENT);
+
+            $slot = new InstallmentPayment;
+            $slot->forceFill([
+                'shop_id' => $shop->getKey(),
+                'plan_id' => $plan->getKey(),
+                'payment_type' => PaymentType::RECURRING->value,
+                'sequence' => 1,
+                'amount' => 100,
+                'currency' => 'ILS',
+                'status' => PaymentStatus::RETRY_SCHEDULED->value,
+                'attempt_count' => 1,
+                'next_retry_at' => now()->addDay(),
+            ])->save();
+
+            return [$plan->fresh(), app(CardUpdateLinks::class)->mint($shop, $plan)['link']];
+        });
+
+        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $this->payplusBody($plan, $link, [
+            'token' => 'tok-fixed-quickly',
+            'four_digits' => '4318',
+        ]))->assertOk()->assertJson(['updated' => true]);
+
+        Bus::assertDispatched(
+            ChargeJob::class,
+            static fn (ChargeJob $job): bool => $job->planId === (int) $plan->getKey(),
         );
     }
 

@@ -46,6 +46,8 @@ return [
         'payment_method_token_recovered' => 'Saved card found at PayPlus and attached',
         'card_update_started' => 'The customer opened the card-update page',
         'card_update_link_sent' => 'A card-update link was created',
+        'charge_repeat_blocked' => 'Charge stopped — this subscription was already charged in the last 24 hours',
+        'charge_repeat_approved' => 'A second charge within 24 hours — explicitly approved by an admin',
         'card_update_failed' => 'The customer tried to update their card — it was declined',
         'card_update_not_saved' => 'The customer completed the PayPlus page, but the card was not saved to the subscription',
         'account_action' => 'The customer used a self-service action',

@@ -16,6 +16,7 @@ use App\Models\MerchantBillingSettings;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Modules\PayPlusShopifyInstallments\Services\ChargeOrchestrator;
 use App\Support\Tenant;
 use App\Support\Ui\Money;
 use Filament\Notifications\Notification;
@@ -592,6 +593,16 @@ class PaymentRecovery extends Page implements HasTable
     private function chargeNow(InstallmentPlan $plan): void
     {
         $outcome = app(ChargeNowService::class)->chargeNow($plan);
+
+        // Already charged in the last day. This table offers no approval on
+        // purpose: a second charge is decided on the subscription itself, where
+        // the earlier charge is in front of whoever approves it.
+        if ($outcome->reason === ChargeOrchestrator::SKIP_CHARGED_RECENTLY) {
+            Notification::make()->title(__('subscriptions.action.charge_now.repeat_blocked'))->warning()->send();
+            $this->resetTable();
+
+            return;
+        }
 
         if ($outcome->isSucceeded()) {
             Notification::make()->title(__('subscriptions.action.charge_now.success'))->success()->send();

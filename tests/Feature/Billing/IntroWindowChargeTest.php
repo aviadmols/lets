@@ -98,11 +98,16 @@ final class IntroWindowChargeTest extends TestCase
         $this->assertTrue($orchestrator->charge($plan->id, PaymentType::RECURRING)->isSucceeded());
         $this->assertSame(self::STEADY, end($this->chargedAmounts));
 
+        // Each later cycle is charged ON ITS DATE. Charging three cycles in the
+        // same second is exactly the double charge RepeatChargeGuard refuses, so
+        // the clock moves to every due date the way a month really passes.
         // Charge #3 — first past the window: the regular price + the step-up event.
+        $this->travelTo($plan->fresh()->next_charge_at->copy()->addMinute());
         $this->assertTrue($orchestrator->charge($plan->fresh()->id, PaymentType::RECURRING)->isSucceeded());
         $this->assertSame(self::REGULAR, end($this->chargedAmounts));
 
         // Charge #4 — still regular, and NO second step-up event.
+        $this->travelTo($plan->fresh()->next_charge_at->copy()->addMinute());
         $this->assertTrue($orchestrator->charge($plan->fresh()->id, PaymentType::RECURRING)->isSucceeded());
         $this->assertSame(self::REGULAR, end($this->chargedAmounts));
 

@@ -78,6 +78,16 @@ final class Timeline
     public const KIND_CHARGE_IN_FLIGHT = 'charge_in_flight';
 
     /**
+     * A charge refused because this subscription already moved money in the
+     * last day (RepeatChargeGuard) and nobody approved a second one.
+     * details: {type, key, last_charged_at, last_amount, in_flight}.
+     */
+    public const KIND_CHARGE_REPEAT_BLOCKED = 'charge_repeat_blocked';
+
+    /** A second charge within the day, explicitly approved by a person. Same details. */
+    public const KIND_CHARGE_REPEAT_APPROVED = 'charge_repeat_approved';
+
+    /**
      * We asked PayPlus for money and never learned the answer — a worker killed
      * mid-charge. The card may have been charged. We do NOT ask again: this
      * cycle waits for a person to look, exactly as an unresolved document does.

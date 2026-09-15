@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\SubscriptionResource\Pages;
 
 use App\Domain\Billing\CycleAmountResolver;
+use App\Domain\Billing\RepeatChargeGuard;
 use App\Domain\Billing\StuckChargeResolver;
 use App\Domain\Installments\CardUpdateLinks;
 use App\Domain\Installments\CardUpdateLinkSender;
@@ -26,6 +27,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentType;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Modules\PayPlusShopifyInstallments\Services\ChargeOrchestrator;
 use App\Modules\PayPlusShopifyInstallments\Services\ChargeOutcome;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Support\EmailPreviewRenderer;
@@ -33,7 +35,9 @@ use App\Support\PhoneNumber;
 use App\Support\Tenant;
 use App\Support\Ui\EventPresenter;
 use App\Support\Ui\Money;
+use Carbon\CarbonInterface;
 use Filament\Actions;
+use Filament\Forms\Components\Checkbox;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Repeater;
@@ -306,11 +310,19 @@ class ViewSubscription extends Page
                 ->color('primary')
                 ->visible(fn (): bool => $this->canChargeNow())
                 ->requiresConfirmation()
-                ->modalHeading(__('subscriptions.action.charge_now.heading'))
-                ->modalDescription(fn (): string => __('subscriptions.action.charge_now.body', [
-                    'amount' => Money::format((float) $this->record->installment_amount, $this->record->currency ?: Money::DEFAULT_CURRENCY),
-                ]))
-                ->action(fn () => $this->chargeNow()),
+                // Already charged in the last day: the same button, but the modal
+                // says so, names the earlier charge, and will not submit until the
+                // admin ticks an explicit approval. Nothing else can pass it.
+                ->modalHeading(fn (): string => $this->recentCharge() === null
+                    ? __('subscriptions.action.charge_now.heading')
+                    : __('subscriptions.action.charge_now.repeat_heading'))
+                ->modalDescription(fn (): string => $this->chargeNowDescription())
+                ->form(fn (): array => $this->recentCharge() === null ? [] : [
+                    Checkbox::make('approve_repeat')
+                        ->label(__('subscriptions.action.charge_now.repeat_confirm'))
+                        ->accepted(),
+                ])
+                ->action(fn (array $data) => $this->chargeNow((bool) ($data['approve_repeat'] ?? false))),
 
             // A charge whose outcome nobody learned. The pipeline refuses to ask
             // again — it cannot know whether the card was charged — so it waits
@@ -1408,14 +1420,46 @@ class ViewSubscription extends Page
             ->send();
     }
 
+    /**
+     * The money this subscription moved in the repeat window, or null — what
+     * decides whether "charge now" needs an explicit approval.
+     *
+     * @return array{at: CarbonInterface, amount: float, in_flight: bool}|null
+     */
+    public function recentCharge(): ?array
+    {
+        return app(RepeatChargeGuard::class)->recentChargeOf($this->record);
+    }
+
+    private function chargeNowDescription(): string
+    {
+        $currency = $this->record->currency ?: Money::DEFAULT_CURRENCY;
+        $amount = Money::format((float) $this->record->installment_amount, $currency);
+        $recent = $this->recentCharge();
+
+        if ($recent === null) {
+            return __('subscriptions.action.charge_now.body', ['amount' => $amount]);
+        }
+
+        return __($recent['in_flight']
+            ? 'subscriptions.action.charge_now.repeat_body_in_flight'
+            : 'subscriptions.action.charge_now.repeat_body', [
+                'when' => $recent['at']->format('d/m/Y H:i'),
+                'last' => Money::format($recent['amount'], $currency),
+                'amount' => $amount,
+            ]);
+    }
+
     /** Out-of-schedule charge via ChargeNowService (the orchestrator) + a result notice. */
-    protected function chargeNow(): void
+    protected function chargeNow(bool $repeatApproved = false): void
     {
         try {
-            $outcome = app(ChargeNowService::class)->chargeNow($this->record);
+            $outcome = app(ChargeNowService::class)->chargeNow($this->record, $repeatApproved);
             $this->record->refresh();
 
-            if ($outcome->isSucceeded()) {
+            if ($outcome->reason === ChargeOrchestrator::SKIP_CHARGED_RECENTLY) {
+                Notification::make()->title(__('subscriptions.action.charge_now.repeat_blocked'))->warning()->send();
+            } elseif ($outcome->isSucceeded()) {
                 Notification::make()->title(__('subscriptions.action.charge_now.success'))->success()->send();
             } elseif ($outcome->result === ChargeOutcome::RESULT_FAILED) {
                 Notification::make()

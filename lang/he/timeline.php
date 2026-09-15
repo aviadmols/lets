@@ -46,6 +46,8 @@ return [
         'payment_method_token_recovered' => 'נמצא כרטיס שמור ב-PayPlus ושויך למנוי',
         'card_update_started' => 'הלקוח פתח את דף עדכון הכרטיס',
         'card_update_link_sent' => 'נוצר קישור לעדכון כרטיס',
+        'charge_repeat_blocked' => 'חיוב נעצר — המנוי כבר חויב ביממה האחרונה',
+        'charge_repeat_approved' => 'חיוב נוסף באותה יממה — באישור מפורש של מנהל',
         'card_update_failed' => 'הלקוח ניסה לעדכן כרטיס — הכרטיס נדחה',
         'card_update_not_saved' => 'הלקוח השלים את דף PayPlus, אבל הכרטיס לא נשמר על המנוי',
         'account_action' => 'הלקוח ביצע פעולה באזור האישי',
