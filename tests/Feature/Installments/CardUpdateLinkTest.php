@@ -8,6 +8,8 @@ use App\Domain\Installments\CardUpdateService;
 use App\Domain\Installments\Models\CardUpdateLink;
 use App\Filament\Resources\SubscriptionResource\Pages\ViewSubscription;
 use App\Mail\CardUpdateLinkMail;
+use App\Models\ActivityEvent;
+use App\Models\InstallmentPaymentMethod;
 use App\Models\InstallmentPlan;
 use App\Models\MerchantMailSettings;
 use App\Models\MerchantSmsSettings;
@@ -20,11 +22,13 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Jobs\ChargeJob;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\GatewayResult;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
+use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Services\Sms\SmsSender;
 use App\Services\Sms\SmsSenderFactory;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -675,6 +679,188 @@ final class CardUpdateLinkTest extends TestCase
             // And says nothing about anything being declined.
             $this->assertStringNotContainsString('נדחה', $message);
         });
+    }
+
+    // === Did the update actually happen? ===
+
+    /**
+     * THE SHAPE PAYPLUS REALLY SENDS. The token and the card sit inside
+     * `data.card_information`, beside `data.customer_uid` — and no path we read
+     * looked there, so a customer who completed the page (production, 15/09
+     * 11:32, status 000) vaulted nothing and the merchant saw nothing.
+     */
+    public function test_payplus_real_callback_shape_updates_the_card_and_the_screen_says_so(): void
+    {
+        $shop = $this->shop();
+        $this->fakeGateway();
+        [$plan, $link] = $this->planWithLink($shop);
+
+        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $this->payplusBody($plan, $link, [
+            'token' => 'tok-real-shape',
+            'four_digits' => '2316',
+            'expiry_month' => '11',
+            'expiry_year' => '30',
+            'brand_name' => 'Mastercard',
+        ]))->assertOk()->assertJson(['updated' => true]);
+
+        $this->assertSame('completed', $link->fresh()->state());
+
+        Tenant::run($shop, function () use ($shop, $plan): void {
+            $method = $plan->fresh()->paymentMethod;
+            $this->assertSame('tok-real-shape', $method->payplus_card_token_uid);
+            $this->assertSame('2316', $method->card_last_four);
+            // "30" is 2030, not the year 30 — or every card reads as expired.
+            $this->assertSame(2030, (int) $method->exp_year);
+
+            $this->actingAs(User::factory()->forShop($shop)->create());
+            Livewire::test(ViewSubscription::class, ['plan' => $plan->getKey()])
+                ->assertSee(__('card_update.outcome.updated_title'))
+                ->assertSee('2316');
+        });
+    }
+
+    /** A callback with no token still has the page id — PayPlus's own record has the card. */
+    public function test_a_callback_without_a_token_asks_payplus_for_the_page(): void
+    {
+        $shop = $this->shop();
+        $this->fakeGateway();
+        [$plan, $link] = $this->planWithLink($shop);
+
+        Http::fake(['*PaymentPages/ipn*' => Http::response([
+            'results' => ['status' => 'success'],
+            'data' => [
+                'transaction' => ['status_code' => '000'],
+                'customer_uid' => 'cust-1',
+                'card_information' => ['token' => 'tok-from-ipn', 'four_digits' => '7777'],
+            ],
+        ])]);
+
+        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $this->payplusBody($plan, $link, []))
+            ->assertOk()
+            ->assertJson(['updated' => true]);
+
+        Tenant::run($shop, function () use ($plan): void {
+            $this->assertSame('tok-from-ipn', $plan->fresh()->paymentMethod?->payplus_card_token_uid);
+        });
+    }
+
+    /** PayPlus said yes and no card came back from anywhere: the plan SAYS so, in red. */
+    public function test_a_success_that_brings_no_card_is_said_on_the_plan(): void
+    {
+        $shop = $this->shop();
+        $this->fakeGateway();
+        [$plan, $link] = $this->planWithLink($shop);
+
+        Http::fake(['*' => Http::response(['results' => ['status' => 'success'], 'data' => ['transaction' => ['status_code' => '000']]])]);
+
+        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $this->payplusBody($plan, $link, []))
+            ->assertOk()
+            ->assertJson(['updated' => false]);
+
+        $this->assertNull($link->fresh()->completed_at, 'nothing was updated, so the link is not "card updated"');
+
+        Tenant::run($shop, function () use ($shop, $plan): void {
+            $this->assertNull($plan->fresh()->payment_method_id);
+            $this->assertDatabaseHas('activity_events', [
+                'plan_id' => $plan->getKey(),
+                'kind' => Timeline::KIND_CARD_UPDATE_NOT_SAVED,
+            ]);
+
+            $this->actingAs(User::factory()->forShop($shop)->create());
+            Livewire::test(ViewSubscription::class, ['plan' => $plan->getKey()])
+                ->assertSee(__('card_update.outcome.not_saved_title'))
+                ->assertDontSee(__('card_update.outcome.updated_title'));
+        });
+    }
+
+    /**
+     * THE WRONG-PERSON CASE. The merchant sent a link to the wrong customer and
+     * revoked it — but the PayPlus page it opened can still be completed, with
+     * the wrong customer's card. That card must never be billed for this plan.
+     */
+    public function test_a_link_revoked_before_the_page_came_back_attaches_nothing(): void
+    {
+        $shop = $this->shop();
+        $this->fakeGateway();
+        [$plan, $link] = $this->planWithLink($shop);
+
+        Tenant::run($shop, fn () => $link->fresh()->revoke());
+
+        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $this->payplusBody($plan, $link, [
+            'token' => 'tok-strangers-card',
+            'four_digits' => '9999',
+        ]))->assertOk()->assertJson(['updated' => false]);
+
+        Tenant::run($shop, function () use ($plan): void {
+            $this->assertNull($plan->fresh()->payment_method_id);
+            $this->assertSame(0, InstallmentPaymentMethod::query()->count());
+
+            $event = ActivityEvent::query()
+                ->where('plan_id', $plan->getKey())
+                ->where('kind', Timeline::KIND_CARD_UPDATE_NOT_SAVED)
+                ->sole();
+            $this->assertSame(CardUpdateService::NOT_SAVED_LINK_REVOKED, $event->details['reason']);
+        });
+    }
+
+    public function test_a_declined_card_is_said_on_the_plan(): void
+    {
+        $shop = $this->shop();
+        $this->fakeGateway();
+        [$plan, $link] = $this->planWithLink($shop);
+
+        $body = $this->payplusBody($plan, $link, ['token' => 'tok-x']);
+        $body['transaction']['status_code'] = '003';
+
+        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $body)
+            ->assertOk()
+            ->assertJson(['updated' => false]);
+
+        Tenant::run($shop, function () use ($shop, $plan): void {
+            $this->assertNull($plan->fresh()->payment_method_id);
+            $this->assertDatabaseHas('activity_events', [
+                'plan_id' => $plan->getKey(),
+                'kind' => Timeline::KIND_CARD_UPDATE_FAILED,
+            ]);
+
+            $this->actingAs(User::factory()->forShop($shop)->create());
+            Livewire::test(ViewSubscription::class, ['plan' => $plan->getKey()])
+                ->assertSee(__('card_update.outcome.failed_title'));
+        });
+    }
+
+    /** @return array{0: InstallmentPlan, 1: CardUpdateLink} */
+    private function planWithLink(Shop $shop): array
+    {
+        return Tenant::run($shop, function () use ($shop): array {
+            $plan = $this->plan($shop);
+
+            return [$plan, app(CardUpdateLinks::class)->mint($shop, $plan)['link']];
+        });
+    }
+
+    /**
+     * The body PayPlus posts to refURL_callback: the transaction on top, the
+     * customer and the card under `data`.
+     *
+     * @param  array<string, string>  $card  empty = a callback carrying no card block
+     * @return array<string, mixed>
+     */
+    private function payplusBody(InstallmentPlan $plan, CardUpdateLink $link, array $card): array
+    {
+        return [
+            'transaction_type' => 'Charge',
+            'transaction' => [
+                'uid' => 'txn-1',
+                'payment_page_request_uid' => 'pr-1',
+                'status_code' => '000',
+                'more_info' => CardUpdateService::moreInfoFor($plan, $link),
+            ],
+            'data' => array_filter([
+                'customer_uid' => 'cust-1',
+                'card_information' => $card !== [] ? $card : null,
+            ]),
+        ];
     }
 
     private function shop(string $platform = Shop::PLATFORM_WOOCOMMERCE): Shop

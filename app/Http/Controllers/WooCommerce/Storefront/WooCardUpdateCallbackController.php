@@ -84,10 +84,8 @@ final class WooCardUpdateCallbackController
             'status_code' => $statusCode,
         ]);
 
-        // Only OUR marker, and only a success. A failure callback is acknowledged
-        // (PayPlus stops retrying) and vaults nothing.
-        if (! str_starts_with($moreInfo, CardUpdateService::MORE_INFO_PREFIX)
-            || ! in_array($statusCode, self::SUCCESS_CODES, true)) {
+        // Only OUR marker. Anything else is acknowledged and ignored.
+        if (! str_starts_with($moreInfo, CardUpdateService::MORE_INFO_PREFIX)) {
             return response()->json(['ok' => true, 'updated' => false]);
         }
 
@@ -95,6 +93,16 @@ final class WooCardUpdateCallbackController
         // of the durable link the page was minted from — so the merchant's status
         // line closes the RIGHT link when they sent more than one reminder.
         ['public_id' => $planPublicId, 'link_id' => $linkId] = CardUpdateService::parseMoreInfo($moreInfo);
+
+        // A refused card is acknowledged (PayPlus stops retrying), vaults nothing,
+        // and is SAID on the plan — "they tried and the bank refused" is a
+        // different call to make than "they never opened it".
+        if (! in_array($statusCode, self::SUCCESS_CODES, true)) {
+            Tenant::run($shop, fn () => app(CardUpdateService::class)
+                ->recordFailedAttempt($shop, $planPublicId, $linkId, $statusCode));
+
+            return response()->json(['ok' => true, 'updated' => false]);
+        }
 
         $method = Tenant::run($shop, fn () => app(CardUpdateService::class)
             ->applyCallback($shop, $planPublicId, $payload, $linkId));

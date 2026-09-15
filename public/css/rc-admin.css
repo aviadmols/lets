@@ -1284,6 +1284,8 @@ a.rc-railed:hover { background: var(--rc-blue-bg); }
 /* The same banner when it carries a warning somebody must act on — a member
    PayPlus is still billing itself, who would be charged twice. */
 .rc-banner--danger { background: var(--rc-red-bg); border-color: var(--rc-red); }
+/* And when it reports something that went right — a customer's card is on the plan. */
+.rc-banner--success { background: var(--rc-green-bg); border-color: var(--rc-green); }
 .rc-banner__text { display: flex; flex-direction: column; gap: var(--rc-space-1); }
 .rc-banner__title { font: var(--rc-type-subh); color: var(--rc-ink); }
 .rc-banner__body { font: var(--rc-type-body); color: var(--rc-ink-muted); }

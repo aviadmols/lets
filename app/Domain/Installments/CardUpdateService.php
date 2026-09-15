@@ -13,6 +13,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PaymentType;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Jobs\ChargeJob;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
+use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusPageStatus;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Services\PayPlus\PayPlusPageOptions;
 use App\Services\WooCommerce\Orders\WooDepositTokenResolver;
@@ -64,6 +65,29 @@ final class CardUpdateService
 
     /** Plans in these states are done charging; a new card changes nothing. */
     public const TERMINAL = [PlanStatus::COMPLETED, PlanStatus::CANCELLED];
+
+    /**
+     * Why a SUCCESSFUL PayPlus page did not become the plan's card. Each is a line
+     * on the plan's Timeline — before these existed, all three were a log line
+     * nobody reads, and a customer who did everything right looked like one who
+     * never tried.
+     */
+    public const NOT_SAVED_NO_TOKEN = 'no_token';
+
+    /** The merchant revoked the link before the page came back — see applyCallback(). */
+    public const NOT_SAVED_LINK_REVOKED = 'link_revoked';
+
+    /** Where the page request id sits in the callback, for the IPN fallback. */
+    private const PAGE_REQUEST_PATHS = [
+        'transaction.payment_page_request_uid',
+        'data.transaction.payment_page_request_uid',
+        'payment_page_request_uid',
+        'transaction.page_request_uid',
+        'page_request_uid',
+    ];
+
+    /** How deep the no-token log maps the callback's keys (names only, never values). */
+    private const SHAPE_DEPTH = 3;
 
     public function __construct(private readonly WooDepositTokenResolver $tokens) {}
 
@@ -159,12 +183,32 @@ final class CardUpdateService
             return null;
         }
 
-        $token = $this->tokens->resolveFromOrder($shop, [WooDepositTokenResolver::WRAP_KEY => $payload]);
-        if ($token === null || ($token['payplus_card_token_uid'] ?? null) === null) {
+        /*
+         * A LINK THE MERCHANT REVOKED does not attach a card. Revoking is what a
+         * merchant does after "I sent that to the wrong person" — and the page it
+         * led to may still be completed afterwards, by that wrong person, with
+         * THEIR card. Attaching it would bill a stranger for this subscription.
+         */
+        $link = $linkId !== null
+            ? CardUpdateLink::query()->whereKey($linkId)->where('plan_id', $plan->getKey())->first()
+            : null;
+
+        if ($link !== null && $link->revoked_at !== null && $link->completed_at === null) {
+            $this->recordNotSaved($shop, $plan, self::NOT_SAVED_LINK_REVOKED, $linkId);
+
+            return null;
+        }
+
+        $token = $this->resolveToken($shop, $payload);
+        if ($token === null) {
             Log::warning('installments.card_update.no_token_in_callback', [
                 'shop_id' => $shop->getKey(),
                 'plan_id' => $plan->getKey(),
+                // Key names only, so the next real callback shows where the token
+                // lives without a single value reaching the log.
+                'shape' => self::shape($payload),
             ]);
+            $this->recordNotSaved($shop, $plan, self::NOT_SAVED_NO_TOKEN, $linkId);
 
             return null;
         }
@@ -220,6 +264,95 @@ final class CardUpdateService
         }
 
         return $method;
+    }
+
+    /**
+     * The customer reached PayPlus and the card was REFUSED there. Worth a line:
+     * "they tried and the bank said no" is a different phone call from "they
+     * never opened it".
+     */
+    public function recordFailedAttempt(Shop $shop, string $planPublicId, ?int $linkId, string $statusCode): void
+    {
+        $plan = InstallmentPlan::query()->where('public_id', $planPublicId)->first();
+        if ($plan === null) {
+            return;
+        }
+
+        Timeline::record(
+            kind: Timeline::KIND_CARD_UPDATE_FAILED,
+            details: array_filter(['link_id' => $linkId, 'status_code' => $statusCode]),
+            planId: (int) $plan->getKey(),
+            actor: ActivityEvent::ACTOR_CUSTOMER,
+            shopId: (int) $shop->getKey(),
+        );
+    }
+
+    /**
+     * The new card, from the callback — or, when the callback carried none, from
+     * PayPlus's own record of the page (the IPN), which returns the full
+     * transaction. Null only when neither holds a token.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>|null
+     */
+    private function resolveToken(Shop $shop, array $payload): ?array
+    {
+        $token = $this->tokens->resolveFromOrder($shop, [WooDepositTokenResolver::WRAP_KEY => $payload]);
+        if (($token['payplus_card_token_uid'] ?? null) !== null) {
+            return $token;
+        }
+
+        $pageRequestUid = '';
+        foreach (self::PAGE_REQUEST_PATHS as $path) {
+            $value = data_get($payload, $path);
+            if (is_string($value) && $value !== '') {
+                $pageRequestUid = $value;
+                break;
+            }
+        }
+
+        if ($pageRequestUid === '') {
+            return null;
+        }
+
+        $status = PayPlusPageStatus::for($shop)->status($pageRequestUid);
+        if (! $status['approved']) {
+            return null;
+        }
+
+        $pulled = $this->tokens->resolveFromOrder($shop, [WooDepositTokenResolver::WRAP_KEY => $status['body']]);
+
+        return ($pulled['payplus_card_token_uid'] ?? null) !== null ? $pulled : null;
+    }
+
+    /** The page succeeded at PayPlus and the card is NOT on the plan — said on the plan. */
+    private function recordNotSaved(Shop $shop, InstallmentPlan $plan, string $reason, ?int $linkId): void
+    {
+        Timeline::record(
+            kind: Timeline::KIND_CARD_UPDATE_NOT_SAVED,
+            details: array_filter(['reason' => $reason, 'link_id' => $linkId]),
+            planId: (int) $plan->getKey(),
+            actor: ActivityEvent::ACTOR_SYSTEM,
+            shopId: (int) $shop->getKey(),
+        );
+    }
+
+    /**
+     * The payload's key names, nested, with every value dropped.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public static function shape(array $payload, int $depth = self::SHAPE_DEPTH): array
+    {
+        $out = [];
+        foreach ($payload as $key => $value) {
+            $out[(string) $key] = is_array($value) && $depth > 1 && ! array_is_list($value)
+                ? self::shape($value, $depth - 1)
+                : get_debug_type($value);
+        }
+
+        return $out;
     }
 
     /**

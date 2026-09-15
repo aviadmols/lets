@@ -75,6 +75,14 @@ final class WooDepositTokenResolver implements DepositTokenResolver
         'card_token',
         'transaction.card_token',
         'data.transaction.card_token',
+        // PayPlus's page callback and IPN carry the new token INSIDE the card
+        // block — the one shape the list above never read, which is why a
+        // successful card update (status 000, customer_uid present) vaulted
+        // nothing: production log 2026-09-15 11:32, plan 1282.
+        'data.card_information.token',
+        'card_information.token',
+        'transaction.card_information.token',
+        'data.data.card_information.token',
     ];
 
     /** Candidate paths for the PayPlus customer reference (charge can use this alone). */
@@ -91,6 +99,8 @@ final class WooDepositTokenResolver implements DepositTokenResolver
         'transaction.four_digits',
         'data.four_digits',
         'last_four',
+        'data.card_information.four_digits',
+        'card_information.four_digits',
     ];
 
     /** Candidate paths for the card brand (display only). */
@@ -99,6 +109,8 @@ final class WooDepositTokenResolver implements DepositTokenResolver
         'transaction.brand_name',
         'data.brand_name',
         'card_brand',
+        'data.card_information.brand_name',
+        'card_information.brand_name',
     ];
 
     /** Candidate paths for the card expiry month (display only). */
@@ -106,6 +118,8 @@ final class WooDepositTokenResolver implements DepositTokenResolver
         'expiry_month',
         'transaction.expiry_month',
         'data.expiry_month',
+        'data.card_information.expiry_month',
+        'card_information.expiry_month',
     ];
 
     /** Candidate paths for the card expiry year (display only). */
@@ -113,7 +127,18 @@ final class WooDepositTokenResolver implements DepositTokenResolver
         'expiry_year',
         'transaction.expiry_year',
         'data.expiry_year',
+        'data.card_information.expiry_year',
+        'card_information.expiry_year',
     ];
+
+    /**
+     * PayPlus sends a two-digit year ("30") as often as four. Below this it is a
+     * year of this century; stored bare, "30" reads as the year 30 and every
+     * card looks expired.
+     */
+    private const TWO_DIGIT_YEAR = 100;
+
+    private const CENTURY = 2000;
 
     /**
      * @param  array<string, mixed>  $orderPayload  the WC deposit-callback activation
@@ -157,7 +182,7 @@ final class WooDepositTokenResolver implements DepositTokenResolver
                 'card_brand' => $this->firstString($base, self::BRAND_PATHS) ?: null,
                 'card_last_four' => $this->firstString($base, self::LAST_FOUR_PATHS) ?: null,
                 'exp_month' => $this->firstInt($base, self::EXP_MONTH_PATHS),
-                'exp_year' => $this->firstInt($base, self::EXP_YEAR_PATHS),
+                'exp_year' => $this->year($this->firstInt($base, self::EXP_YEAR_PATHS)),
             ];
         }
 
@@ -213,5 +238,14 @@ final class WooDepositTokenResolver implements DepositTokenResolver
         }
 
         return null;
+    }
+
+    private function year(?int $year): ?int
+    {
+        if ($year === null) {
+            return null;
+        }
+
+        return $year < self::TWO_DIGIT_YEAR ? self::CENTURY + $year : $year;
     }
 }

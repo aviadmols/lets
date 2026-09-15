@@ -73,6 +73,20 @@ class ViewSubscription extends Page
     public const CARD_LINK_FEED_LIMIT = 5;
 
     /**
+     * How long the outcome of the customer's last card update stays at the top of
+     * the page. Long enough to be seen by a merchant who checks back tomorrow;
+     * after that it is history, and the Timeline keeps it.
+     */
+    public const CARD_OUTCOME_DAYS = 14;
+
+    /** The Timeline kinds that ARE an outcome of a card update, newest wins. */
+    public const CARD_OUTCOME_KINDS = [
+        Timeline::KIND_CARD_UPDATED,
+        Timeline::KIND_CARD_UPDATE_NOT_SAVED,
+        Timeline::KIND_CARD_UPDATE_FAILED,
+    ];
+
+    /**
      * The largest interval a cadence may carry. Twelve of anything is a year of
      * months or a dozen years; past that it is a typo, and a typo in a billing
      * interval is a customer who is never charged again.
@@ -609,6 +623,55 @@ class ViewSubscription extends Page
         $shop = Tenant::current();
 
         return $shop instanceof Shop && CardUpdateService::availableFor($shop, $this->record);
+    }
+
+    /**
+     * What happened the last time the customer went through a card update — the
+     * banner at the top of the card section. Null when nothing happened recently.
+     *
+     * Read off the Timeline, where the callback writes it, so the banner can say
+     * only what really happened: "updated" means the card is on the plan, not
+     * that somebody opened a page.
+     *
+     * @return array{tone: string, title: string, body: string}|null
+     */
+    public function cardUpdateOutcome(): ?array
+    {
+        $event = ActivityEvent::query()
+            ->where('plan_id', $this->record->getKey())
+            ->whereIn('kind', self::CARD_OUTCOME_KINDS)
+            ->where('created_at', '>=', now()->subDays(self::CARD_OUTCOME_DAYS))
+            ->latest('id')
+            ->first();
+
+        if ($event === null) {
+            return null;
+        }
+
+        $details = (array) ($event->details ?? []);
+        $when = $event->created_at?->format('d/m/Y H:i') ?? '';
+
+        return match ((string) $event->kind) {
+            Timeline::KIND_CARD_UPDATED => [
+                'tone' => 'success',
+                'title' => __('card_update.outcome.updated_title'),
+                'body' => filled($details['last_four'] ?? null)
+                    ? __('card_update.outcome.updated_body_card', ['when' => $when, 'last_four' => $details['last_four']])
+                    : __('card_update.outcome.updated_body', ['when' => $when]),
+            ],
+            Timeline::KIND_CARD_UPDATE_NOT_SAVED => [
+                'tone' => 'danger',
+                'title' => __('card_update.outcome.not_saved_title'),
+                'body' => __('card_update.outcome.not_saved_body.'.(($details['reason'] ?? '') === CardUpdateService::NOT_SAVED_LINK_REVOKED
+                    ? CardUpdateService::NOT_SAVED_LINK_REVOKED
+                    : CardUpdateService::NOT_SAVED_NO_TOKEN), ['when' => $when]),
+            ],
+            default => [
+                'tone' => 'danger',
+                'title' => __('card_update.outcome.failed_title'),
+                'body' => __('card_update.outcome.failed_body', ['when' => $when]),
+            ],
+        };
     }
 
     /**

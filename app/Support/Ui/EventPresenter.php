@@ -101,6 +101,11 @@ final class EventPresenter
         // card they are billed on changed, which is worth a line of its own.
         'payment_method_token_recovered' => ['success', 'timeline.kind.payment_method_token_recovered'],
         'card_update_started' => ['info', 'timeline.kind.card_update_started'],
+        'card_update_link_sent' => ['info', 'timeline.kind.card_update_link_sent'],
+        // FAILURE: the customer tried, and their bank refused the card.
+        'card_update_failed' => ['failure', 'timeline.kind.card_update_failed'],
+        // FAILURE: PayPlus accepted the card and it still is not on the plan.
+        'card_update_not_saved' => ['failure', 'timeline.kind.card_update_not_saved'],
         // The success twin of account_action_failed: the shopper asked, and it
         // happened. The summary names the verb (details.action → timeline.action.*).
         'account_action' => ['info', 'timeline.kind.account_action'],

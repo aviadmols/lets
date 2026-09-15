@@ -207,6 +207,20 @@ final class Timeline
     public const KIND_CARD_UPDATE_STARTED = 'card_update_started';
 
     /**
+     * The customer reached the PayPlus page and the card was REFUSED there.
+     * details: {link_id, status_code}.
+     */
+    public const KIND_CARD_UPDATE_FAILED = 'card_update_failed';
+
+    /**
+     * PayPlus said the page SUCCEEDED, and the card still did not become the
+     * plan's — no token came back, or the link had been revoked first. Its own
+     * red line because, before it, this outcome was a log entry and the plan
+     * looked exactly like one whose customer never tried. details: {reason, link_id}.
+     */
+    public const KIND_CARD_UPDATE_NOT_SAVED = 'card_update_not_saved';
+
+    /**
      * A merchant put a card-update link in front of a customer — copied, emailed
      * or texted. Its own kind, because the three-step story (sent → opened →
      * updated) is what a merchant chasing a failing card actually reads, and the

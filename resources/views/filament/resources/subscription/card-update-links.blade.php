@@ -10,9 +10,23 @@
     was shown once when it was created. Revoking is offered instead, which is the
     thing a merchant actually needs after "I sent that to the wrong person".
 
-    TOKENS: component classes only (.rc-section/.rc-kv/.rc-row/.rc-muted/.rc-ltr).
+    TOKENS: component classes only (.rc-section/.rc-kv/.rc-row/.rc-muted/.rc-ltr/
+    .rc-banner/.rc-banner--success/.rc-banner--danger).
     ZERO inline CSS. Every value is precomputed on the page; this renders.
 --}}
+{{-- THE OUTCOME of the customer's last card update, before anything else in the
+     section. Green only when the card is actually on the plan; red when PayPlus
+     took the card and it still is not, or the bank refused it. --}}
+@php $cardOutcome = $this->cardUpdateOutcome(); @endphp
+@if($cardOutcome !== null)
+    <div class="rc-banner rc-banner--{{ $cardOutcome['tone'] }}">
+        <div class="rc-banner__text">
+            <span class="rc-banner__title">{{ $cardOutcome['title'] }}</span>
+            <span class="rc-banner__body">{{ $cardOutcome['body'] }}</span>
+        </div>
+    </div>
+@endif
+
 {{-- THE LINK JUST MINTED, on the page rather than in a toast or a second modal.
      It is revealed once — the row keeps only a hash — so it gets a real field
      that selects itself, and the WhatsApp message beside it is editable, because

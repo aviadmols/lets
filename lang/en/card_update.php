@@ -100,6 +100,24 @@ return [
         'no_phone' => 'No phone number on file for this customer, so there is no WhatsApp to open. Copy the link and send it another way.',
     ],
 
+    /*
+    | The outcome of the last update, at the top of the card section on the
+    | subscription screen. Green only when the card really is on the plan — not
+    | when somebody opened a page.
+    */
+    'outcome' => [
+        'updated_title' => 'Card updated successfully',
+        'updated_body' => 'The customer updated their card on :when. The next charges will use the new card.',
+        'updated_body_card' => 'The customer updated their card on :when — a card ending in :last_four. The next charges will use the new card.',
+        'not_saved_title' => 'The card update was not saved',
+        'not_saved_body' => [
+            'no_token' => 'On :when the customer completed the PayPlus page, but PayPlus returned no card to save. The previous card is still on the subscription — check PayPlus or send a new link.',
+            'link_revoked' => 'On :when someone completed the payment page from a link you had already revoked. The card was not attached, because a revoked link may be in the wrong person\'s hands.',
+        ],
+        'failed_title' => 'The card update attempt failed',
+        'failed_body' => 'On :when the customer tried to update their card and PayPlus declined it. The previous card is still on the subscription.',
+    ],
+
     'channel' => [
         'copy' => 'copied',
         'email' => 'emailed',
