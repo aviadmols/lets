@@ -35,6 +35,7 @@ return [
         'reason' => 'Why it failed',
         'attempts' => 'Attempts',
         'next_attempt' => 'Next attempt',
+        'lookup' => 'Card at PayPlus',
     ],
 
     'card' => [
@@ -95,6 +96,25 @@ return [
         'send_links_body' => 'Each one gets an email with a link of ours that lasts days; the payment page behind it is created at the moment they click. Customers with no email address, or on a store with no PayPlus connection, are skipped and counted.',
         'send_links_done' => ':sent card-update links sent.',
         'send_links_skipped' => ':count were skipped — no email address, or the store cannot mint a payment page right now.',
+    ],
+
+    /*
+     | WHAT THE CARD LOOKUP FOUND — not why the charge failed. The two are a
+     | column apart and were being read as one: a merchant saw "stolen", opened
+     | PayPlus, found two saved cards and assumed we had missed one. We had not —
+     | their second card had expired. This column is that answer.
+     */
+    'lookup' => [
+        'never' => '—',
+        'fixed' => 'New card attached',
+        'several' => ':count cards — choose one',
+        'expired' => 'Another card, expired',
+        'only_dead' => 'No other card',
+        'no_cards' => 'No card at PayPlus',
+        'customer_missing' => 'Customer not found — check the email',
+        'token_valid' => 'Card is fine — issuer refused',
+        'unmatched' => 'Could not identify the card',
+        'nothing' => 'Nothing found',
     ],
 
     /*

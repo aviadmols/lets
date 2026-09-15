@@ -5,6 +5,7 @@ namespace App\Filament\Pages;
 use App\Domain\Installments\CardUpdateLinkSender;
 use App\Domain\Installments\CardUpdateService;
 use App\Domain\Installments\Models\CardUpdateLink;
+use App\Domain\Installments\Models\TokenRecoveryResult;
 use App\Domain\Installments\Models\TokenRecoveryRun;
 use App\Domain\Installments\TokenRecoveryRunner;
 use App\Domain\Lifecycle\ChargeNowService;
@@ -179,7 +180,7 @@ class PaymentRecovery extends Page implements HasTable
                 // The latest slot carries every fact this screen shows — amount,
                 // attempts, reason, next retry — so it is eager-loaded rather than
                 // read per row, and `product` for the same reason the list does it.
-                ->with(['latestPayment', 'product', 'paymentMethod']))
+                ->with(['latestPayment', 'product', 'paymentMethod', 'latestTokenRecoveryResult']))
             ->columns([
                 TextColumn::make('customer_name')
                     ->label(__('subscriptions.list.col.customer'))
@@ -223,6 +224,28 @@ class PaymentRecovery extends Page implements HasTable
                     ->state(fn (InstallmentPlan $record): string => $this->reasonLabel($record))
                     ->wrap()
                     ->tooltip(fn (InstallmentPlan $record): ?string => $record->latestPayment?->failure_message),
+
+                /*
+                 * WHAT THE CARD LOOKUP FOUND — a different question from the
+                 * column before it, and the one that says what to DO.
+                 *
+                 * "Why it failed" is the gateway's verdict on the card we hold.
+                 * This is what PayPlus holds INSTEAD, and the two were being read
+                 * as one thing: a merchant saw "stolen, confiscate", opened
+                 * PayPlus, found two saved cards, and concluded we had missed one.
+                 * We had not — their second card had expired. That answer existed
+                 * and simply was not on the screen.
+                 *
+                 * The row that matters most is "several possible cards": those are
+                 * a decision waiting, not a dead end, and each one is money that
+                 * can be collected today by choosing from the subscription page.
+                 */
+                TextColumn::make('lookup')
+                    ->label(__('recovery.col.lookup'))
+                    ->state(fn (InstallmentPlan $record): string => $this->lookupLabel($record))
+                    ->badge()
+                    ->color(fn (InstallmentPlan $record): string => $this->lookupColor($record))
+                    ->wrap(),
 
                 TextColumn::make('attempts')
                     ->label(__('recovery.col.attempts'))
@@ -677,6 +700,68 @@ class PaymentRecovery extends Page implements HasTable
                 ->persistent()
                 ->send();
         }
+    }
+
+    /**
+     * What the last card lookup found for this member, in one scannable phrase.
+     *
+     * Blank-by-default on purpose: a member nobody has looked up yet reads as a
+     * dash, not as "nothing found". Claiming an answer we never asked for would be
+     * the worst thing this column could do.
+     */
+    private function lookupLabel(InstallmentPlan $record): string
+    {
+        $result = $record->latestTokenRecoveryResult;
+
+        if ($result === null) {
+            return __('recovery.lookup.never');
+        }
+
+        if ((string) $result->outcome === TokenRecoveryResult::OUTCOME_FIXED) {
+            return __('recovery.lookup.fixed');
+        }
+
+        $detail = (string) ($result->detail ?? '');
+
+        // A choice is worth naming with its size — "2 cards" tells a merchant
+        // whether this is a glance or a decision.
+        if ($detail === TokenRecoveryResult::DETAIL_SEVERAL) {
+            return __('recovery.lookup.several', ['count' => count($result->choosableCards())]);
+        }
+
+        return match ($detail) {
+            TokenRecoveryResult::DETAIL_ALL_EXPIRED => __('recovery.lookup.expired'),
+            TokenRecoveryResult::DETAIL_ONLY_DEAD => __('recovery.lookup.only_dead'),
+            TokenRecoveryResult::DETAIL_NO_CARDS => __('recovery.lookup.no_cards'),
+            TokenRecoveryResult::DETAIL_CUSTOMER_MISSING => __('recovery.lookup.customer_missing'),
+            'token_exists_at_payplus' => __('recovery.lookup.token_valid'),
+            'no_card_matched', 'no_last_four_to_match_on' => __('recovery.lookup.unmatched'),
+            default => __('recovery.lookup.nothing'),
+        };
+    }
+
+    /**
+     * Colour carries the ONE distinction that matters at a glance: is there
+     * something to do here?
+     *
+     * Warning means a human decision is waiting — those are the rows worth a
+     * click. Everything else is grey, because "no card to find" and "the issuer
+     * refused" both end at the same card-update link and neither rewards
+     * attention.
+     */
+    private function lookupColor(InstallmentPlan $record): string
+    {
+        $result = $record->latestTokenRecoveryResult;
+
+        if ($result === null) {
+            return 'gray';
+        }
+
+        if ((string) $result->outcome === TokenRecoveryResult::OUTCOME_FIXED) {
+            return 'success';
+        }
+
+        return (string) $result->detail === TokenRecoveryResult::DETAIL_SEVERAL ? 'warning' : 'gray';
     }
 
     // === The running pass ===

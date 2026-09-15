@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Domain\Installments\Models\TokenRecoveryResult;
 use App\Models\Concerns\BelongsToShop;
 use App\Modules\PayPlusShopifyInstallments\Concerns\HasGuardedStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
@@ -541,6 +542,19 @@ class InstallmentPlan extends Model
     public function latestPayment(): HasOne
     {
         return $this->hasOne(InstallmentPayment::class, 'plan_id')->latestOfMany('sequence');
+    }
+
+    /**
+     * What the most recent "find saved cards" lookup learned about this member —
+     * the reason, and every card PayPlus returned.
+     *
+     * A relation rather than a query per row, because the failed-charges screen
+     * shows it for up to a hundred rows at a time and the whole point of that
+     * column is that a merchant can scan it.
+     */
+    public function latestTokenRecoveryResult(): HasOne
+    {
+        return $this->hasOne(TokenRecoveryResult::class, 'plan_id')->latestOfMany();
     }
 
     public function paymentMethod(): BelongsTo

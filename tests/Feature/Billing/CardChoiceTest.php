@@ -4,6 +4,7 @@ namespace Tests\Feature\Billing;
 
 use App\Domain\Installments\Models\TokenRecoveryResult;
 use App\Domain\Installments\Models\TokenRecoveryRun;
+use App\Filament\Pages\PaymentRecovery;
 use App\Filament\Resources\SubscriptionResource\Pages\ViewSubscription;
 use App\Models\InstallmentPaymentMethod;
 use App\Models\InstallmentPlan;
@@ -198,6 +199,44 @@ final class CardChoiceTest extends TestCase
         $plan->refresh();
         $this->assertSame(PlanStatus::AWAITING_PAYMENT->value, $plan->status->value);
         $this->assertNull($plan->payment_failed_at);
+    }
+
+    // === The failed-charges screen ===
+
+    /**
+     * THE COLUMN THE MERCHANT ASKED FOR. "Why it failed" is the gateway's verdict
+     * on the card we hold; this says what PayPlus holds INSTEAD, which is the
+     * column that tells them what to do — and which row is worth a click.
+     */
+    public function test_the_failed_charges_screen_shows_what_the_lookup_found(): void
+    {
+        $choose = $this->plan(PlanStatus::PAUSED, failedAt: now()->subDay());
+        $this->resultFor($choose, TokenRecoveryResult::DETAIL_SEVERAL, [
+            $this->card('tok-held', '0729', held: true),
+            $this->card('tok-a', '0530'),
+            $this->card('tok-b', '0631'),
+        ]);
+
+        $expired = $this->plan(PlanStatus::PAUSED, failedAt: now()->subDay());
+        $this->resultFor($expired, TokenRecoveryResult::DETAIL_ALL_EXPIRED, [
+            $this->card('tok-held2', '0926', held: true),
+            $this->card('tok-gone', '0725'),
+        ]);
+
+        Livewire::test(PaymentRecovery::class)
+            ->call('setTab', PaymentRecovery::TAB_STOPPED)
+            ->assertSee(__('recovery.lookup.several', ['count' => 2]))
+            ->assertSee(__('recovery.lookup.expired'));
+    }
+
+    /** A member nobody looked up reads as a dash, never as "nothing found". */
+    public function test_a_member_never_looked_up_claims_no_answer(): void
+    {
+        $this->plan(PlanStatus::PAUSED, failedAt: now()->subDay());
+
+        Livewire::test(PaymentRecovery::class)
+            ->call('setTab', PaymentRecovery::TAB_STOPPED)
+            ->assertDontSee(__('recovery.lookup.nothing'));
     }
 
     // === The model's own reading ===
