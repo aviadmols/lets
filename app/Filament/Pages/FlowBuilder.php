@@ -238,6 +238,7 @@ class FlowBuilder extends Page
         $this->offers = $flow->offers
             ->map(function (UpsellFlowOffer $offer) use ($branches, $flow): array {
                 $branch = $branches->get($offer->id);
+                $issue = $this->offerIssue($offer);
 
                 return [
                     'id' => $offer->id,
@@ -256,7 +257,8 @@ class FlowBuilder extends Page
                     // The concrete next-offer targets — the canvas draws an arrow to each.
                     'accept_next_id' => $branch?->on_accept_next_offer_id !== null ? (int) $branch->on_accept_next_offer_id : null,
                     'decline_next_id' => $branch?->on_decline_next_offer_id !== null ? (int) $branch->on_decline_next_offer_id : null,
-                    'valid' => $this->offerIsValid($offer),
+                    'valid' => $issue === null,
+                    'issue' => $issue,
                     'product_id' => $offer->productNumericId(),
                 ];
             })->all();
@@ -329,12 +331,16 @@ class FlowBuilder extends Page
      * post-purchase context cannot evaluate) and Shopify has two merchant steps
      * we cannot perform. This surfaces all of it in one list.
      *
+     * Shopify only: every check is about Shopify's post-purchase page. A WooCommerce
+     * merchant was told to run `shopify app deploy`; their card needs none of it, and
+     * the issues banner already names what their offer lacks.
+     *
      * @return list<array{key: string, status: string, detail: ?string}>
      */
     public function diagnostic(): array
     {
         $shop = Tenant::current();
-        if (! $shop instanceof Shop) {
+        if (! $shop instanceof Shop || $shop->platform !== Shop::PLATFORM_SHOPIFY) {
             return [];
         }
 
@@ -374,8 +380,8 @@ class FlowBuilder extends Page
             $issues[] = __('upsell.admin.builder.error.no_offer');
         }
         foreach ($this->offers as $offer) {
-            if (! $offer['valid']) {
-                $issues[] = __('upsell.admin.builder.error.missing_copy', ['offer' => $offer['title']]);
+            if ($offer['issue'] !== null) {
+                $issues[] = $offer['issue'];
             }
         }
 
@@ -1342,14 +1348,27 @@ class FlowBuilder extends Page
         return $next?->offer_title ?? __('upsell.admin.builder.node.next_offer');
     }
 
-    private function offerIsValid(UpsellFlowOffer $offer): bool
+    /**
+     * Why this offer cannot go live, naming WHAT is missing — or null when it can. One
+     * message for every cause read "needs a headline and a button label" to a merchant
+     * whose headline was filled and whose bundle had no price.
+     */
+    private function offerIssue(UpsellFlowOffer $offer): ?string
     {
-        $sellsSomething = $offer->product_selection_mode === UpsellFlowOffer::PRODUCT_BUNDLE
-            ? $offer->bundleIsSellable()
-            : ! empty($offer->offer_product_gid) && (float) $offer->base_price > 0;
+        $replace = ['offer' => $offer->offer_title ?: __('upsell.offer_default_title')];
 
-        return $sellsSomething
-            && ! empty($offer->headline)
-            && ! empty($offer->accept_cta);
+        if ($offer->product_selection_mode === UpsellFlowOffer::PRODUCT_BUNDLE) {
+            if (! $offer->bundleIsSellable()) {
+                return __('upsell.admin.builder.error.bundle_incomplete', $replace);
+            }
+        } elseif (empty($offer->offer_product_gid) || (float) $offer->base_price <= 0) {
+            return __('upsell.admin.builder.error.missing_product', $replace);
+        }
+
+        if (empty($offer->headline) || empty($offer->accept_cta)) {
+            return __('upsell.admin.builder.error.missing_copy', $replace);
+        }
+
+        return null;
     }
 }

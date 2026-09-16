@@ -297,7 +297,7 @@ class PostPurchaseOffers extends Page
         // Empty/needs-product offer: the gid columns are NOT NULL with no default,
         // so seed them blank — the merchant fills product/price/copy via the offer
         // drawer. The empty gid + zero price make the node render as "invalid"
-        // (offerIsValid()), which is the correct "needs product" prompt.
+        // (FlowBuilder::offerIssue()), which names it: "needs a product and a price".
         UpsellFlowOffer::create([
             'flow_id' => $flow->id,
             'offer_product_gid' => '',

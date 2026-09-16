@@ -148,7 +148,10 @@ final class PostPurchaseOffersPageTest extends TestCase
         ]);
 
         $component = Livewire::test(FlowBuilder::class, ['flow' => $flow->id]);
-        $this->assertNotEmpty($component->instance()->validationIssues());
+        $this->assertSame(
+            [__('upsell.admin.builder.error.missing_copy', ['offer' => 'No copy offer'])],
+            $component->instance()->validationIssues(),
+        );
         $this->assertFalse($component->instance()->isActivatable());
     }
 

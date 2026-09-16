@@ -343,10 +343,11 @@ return [
             'bundle_price' => 'Price for the whole bundle',
             'bundle_columns' => 'Products per slide',
             'bundle_columns_hint' => 'Products that do not fit on one slide appear in a slider.',
-            'bundle_incomplete' => 'Saved, but the bundle is not ready yet: it needs products, a price, and a quantity no larger than the number of products.',
+            'bundle_incomplete' => 'Saved, but the bundle is not ready yet. Fill in "How many the customer picks" (no more than the products listed) and "Price for the whole bundle".',
             'partial_paid_info' => 'Partially paid orders are automatically removed. You can change this from the',
             'partial_paid_link' => 'store\'s settings',
             'view_post_purchase' => 'View post-purchase',
+            'preview_unavailable' => 'Save the offer with a product, or a complete bundle, to preview it.',
         ],
 
         // The searchable product picker shared by the offer + trigger drawers.
@@ -484,6 +485,8 @@ return [
                 'no_trigger' => 'Add a trigger so this flow knows when to show.',
                 'no_offer' => 'Add at least one offer.',
                 'missing_copy' => '":offer" needs a headline and a button label.',
+                'missing_product' => '":offer" needs a product and a price.',
+                'bundle_incomplete' => '":offer" is not a complete bundle yet: it needs products, how many the customer picks (no more than the products listed), and a price for the whole bundle.',
                 'dangling_branch' => 'This branch does not lead anywhere.',
             ],
         ],

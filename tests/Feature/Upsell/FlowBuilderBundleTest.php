@@ -107,7 +107,58 @@ final class FlowBuilderBundleTest extends TestCase
 
         $this->assertSame(UpsellFlowOffer::PRODUCT_BUNDLE, $offer->product_selection_mode);
         $this->assertFalse($offer->isBundle());
-        $this->assertNotEmpty($component->instance()->validationIssues(), 'the flow cannot go live on a bundle that cannot be sold');
+
+        // The headline and button ARE filled: the reason given must be the bundle, never the copy.
+        $this->assertSame(
+            [__('upsell.admin.builder.error.bundle_incomplete', ['offer' => 'Books'])],
+            $component->instance()->validationIssues(),
+        );
+
+        // Nothing to preview yet, and the drawer says why instead of showing a dead button.
+        $component->call('openOfferConfig', $offerId)
+            ->assertSee(__('upsell.admin.configure.preview_unavailable'));
+        $this->assertNull($component->instance()->previewUrl());
+
+        // Every check in the diagnostic is about Shopify's post-purchase page.
+        $this->assertSame([], $component->instance()->diagnostic());
+    }
+
+    public function test_a_finished_bundle_can_be_previewed(): void
+    {
+        $shop = $this->signIn(Shop::PLATFORM_WOOCOMMERCE);
+        $a = $this->book('Atlas', '301');
+        $b = $this->book('Borders', '302');
+        $flow = $this->flow($shop);
+        $offerId = $flow->offers()->first()->id;
+
+        $component = Livewire::test(FlowBuilder::class, ['flow' => $flow->id])
+            ->call('openOfferConfig', $offerId)
+            ->set('productSelectionMode', UpsellFlowOffer::PRODUCT_BUNDLE)
+            ->call('addBundleProduct', $a->id)
+            ->call('addBundleProduct', $b->id)
+            ->set('bundleQuantity', '2')
+            ->set('bundlePrice', '80')
+            ->call('saveOfferConfig')
+            ->call('openOfferConfig', $offerId)
+            ->assertDontSee(__('upsell.admin.configure.preview_unavailable'));
+
+        $this->assertSame([], $component->instance()->validationIssues());
+        $this->assertNotNull($component->instance()->previewUrl());
+    }
+
+    public function test_an_offer_with_no_product_is_told_it_needs_one(): void
+    {
+        $shop = $this->signIn(Shop::PLATFORM_SHOPIFY);
+        $flow = $this->flow($shop); // headline + button filled, no product, no price
+
+        $component = Livewire::test(FlowBuilder::class, ['flow' => $flow->id])
+            ->assertSee(__('upsell.admin.builder.error.missing_product', ['offer' => 'Books']));
+
+        $this->assertSame(
+            [__('upsell.admin.builder.error.missing_product', ['offer' => 'Books'])],
+            $component->instance()->validationIssues(),
+        );
+        $this->assertNotSame([], $component->instance()->diagnostic(), 'a Shopify shop still gets its checklist');
     }
 
     public function test_a_bundle_whose_product_left_the_catalogue_is_flagged_on_the_canvas(): void

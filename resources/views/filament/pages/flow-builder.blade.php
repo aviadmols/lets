@@ -306,7 +306,7 @@
                         </div>
 
                         @if(! $offer['valid'])
-                            <div class="rc-fb-node__reason">{{ __('upsell.admin.builder.error.missing_copy', ['offer' => $offer['title']]) }}</div>
+                            <div class="rc-fb-node__reason">{{ $offer['issue'] }}</div>
                         @endif
                     </button>
 
@@ -611,6 +611,8 @@
                                 {{ __('upsell.admin.configure.view_post_purchase') }}
                             </a>
                         @else
+                            {{-- Said, not left to a greyed button: the preview draws the SAVED offer. --}}
+                            <p class="rc-muted rc-drawer__foot-hint">{{ __('upsell.admin.configure.preview_unavailable') }}</p>
                             <button type="button" class="rc-cta rc-cta--ghost" disabled>
                                 <x-filament::icon icon="heroicon-o-eye" class="rc-cta__icon" />
                                 {{ __('upsell.admin.configure.view_post_purchase') }}

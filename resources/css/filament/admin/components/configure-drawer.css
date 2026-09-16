@@ -122,6 +122,8 @@
     border-block-start: 1px solid var(--rc-border);
     background: var(--rc-card);
 }
+/* Why the preview is off — takes the free space so the buttons keep their end. */
+.rc-drawer__foot-hint { flex: 1 1 auto; margin: 0; }
 
 /* ---------------------------------------------- Shared form primitives --- */
 
