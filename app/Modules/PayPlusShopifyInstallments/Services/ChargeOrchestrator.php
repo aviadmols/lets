@@ -561,14 +561,10 @@ final class ChargeOrchestrator
 
             // The debt is paid — dunning is over and the subscription is plainly
             // healthy again. Recorded, so "when did they come back?" is answerable.
-            if ($plan->status === PlanStatus::AWAITING_PAYMENT) {
-                $plan->transitionTo(PlanStatus::ACTIVE, ['action' => 'payment_recovered']);
-            }
+            $this->returnToActiveAfterPayment($plan);
         } else {
             // Installments, not final — the slice landed, so dunning is over.
-            if ($plan->status === PlanStatus::AWAITING_PAYMENT) {
-                $plan->transitionTo(PlanStatus::ACTIVE, ['action' => 'payment_recovered']);
-            }
+            $this->returnToActiveAfterPayment($plan);
 
             $this->releaseUnpaidHold($plan);
 
@@ -1501,6 +1497,34 @@ final class ChargeOrchestrator
         }
     }
 
+    /**
+     * Money landed, so a plan that was not active FOR WANT OF MONEY is active again.
+     *
+     * Two statuses mean exactly that. AWAITING_PAYMENT is still being chased.
+     * FAILED is one nobody is chasing any more — collection gave up on it, or the
+     * CSV importer filed it there because the member's source file said past_due.
+     *
+     * FAILED was missing, and it cost a real subscriber (plan 995, 16/09): his new
+     * card was charged, the plan stayed `failed`, the Failed charges screen kept
+     * listing him as stopped — and because `failed` is not in
+     * PlanStatus::chargeable(), the scheduler would never have billed him again. A
+     * customer who fixed his card and paid would have lapsed a month later.
+     *
+     * PAUSED is deliberately not here. A pause can be the customer's own decision,
+     * and money moving is not permission to override it; releaseUnpaidHold() lifts
+     * only the pause that OUR stamp says is ours.
+     */
+    private function returnToActiveAfterPayment(InstallmentPlan $plan): void
+    {
+        $current = $plan->status instanceof PlanStatus
+            ? $plan->status
+            : PlanStatus::from((string) $plan->status);
+
+        if (in_array($current, [PlanStatus::AWAITING_PAYMENT, PlanStatus::FAILED], true)) {
+            $plan->transitionTo(PlanStatus::ACTIVE, ['action' => 'payment_recovered']);
+        }
+    }
+
     /** Bring a plan to ACTIVE first if needed, then transition to the target. */
     private function ensureActiveThen(InstallmentPlan $plan, PlanStatus $target): void
     {
@@ -1515,8 +1539,11 @@ final class ChargeOrchestrator
             return;
         }
 
-        // draft/awaiting_first_payment/awaiting_payment must reach active first.
-        if (in_array($current, [PlanStatus::DRAFT, PlanStatus::AWAITING_FIRST_PAYMENT, PlanStatus::AWAITING_PAYMENT], true)) {
+        // draft/awaiting_first_payment/awaiting_payment/failed must reach active first.
+        // FAILED was missing, and failed → completed is not an edge: the final slice of
+        // a failed installments plan threw IllegalTransitionException AFTER PayPlus
+        // had taken the money, rolling back the record of it.
+        if (in_array($current, [PlanStatus::DRAFT, PlanStatus::AWAITING_FIRST_PAYMENT, PlanStatus::AWAITING_PAYMENT, PlanStatus::FAILED], true)) {
             if ($current === PlanStatus::DRAFT) {
                 $plan->transitionTo(PlanStatus::AWAITING_FIRST_PAYMENT);
             }

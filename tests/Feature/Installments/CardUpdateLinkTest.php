@@ -327,6 +327,69 @@ final class CardUpdateLinkTest extends TestCase
         );
     }
 
+    /**
+     * NOT ONLY PLANS WE STOPPED OURSELVES. The CSV importer files a member whose
+     * source said past_due straight at `failed` — no charge date, no slot, no hold
+     * stamp — and neither test above could see one. Plan 995 (16/09) saved a new
+     * card here and nothing was charged until an admin pressed the button.
+     */
+    public function test_a_new_card_on_an_imported_past_due_plan_is_charged(): void
+    {
+        $shop = $this->shop();
+        $this->fakeGateway();
+        Bus::fake([ChargeJob::class]);
+
+        [$plan, $link] = Tenant::run($shop, function () use ($shop): array {
+            $plan = $this->plan($shop);
+            $plan->forceFill([
+                'status' => PlanStatus::FAILED->value,
+                'next_charge_at' => null,
+                'payment_failed_at' => null,
+            ])->save();
+
+            return [$plan->fresh(), app(CardUpdateLinks::class)->mint($shop, $plan)['link']];
+        });
+
+        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $this->payplusBody($plan, $link, [
+            'token' => 'tok-past-due',
+            'four_digits' => '9125',
+        ]))->assertOk()->assertJson(['updated' => true]);
+
+        Bus::assertDispatched(
+            ChargeJob::class,
+            static fn (ChargeJob $job): bool => $job->planId === (int) $plan->getKey(),
+        );
+    }
+
+    /**
+     * A `failed` plan whose next cycle is still AHEAD was paid up to it. Charging
+     * on a new card would bill that cycle a month early — and the one-charge-a-day
+     * guard cannot see a month.
+     */
+    public function test_a_new_card_on_a_failed_plan_paid_up_to_a_future_cycle_charges_nothing_early(): void
+    {
+        $shop = $this->shop();
+        $this->fakeGateway();
+        Bus::fake([ChargeJob::class]);
+
+        [$plan, $link] = Tenant::run($shop, function () use ($shop): array {
+            $plan = $this->plan($shop);
+            $plan->forceFill([
+                'status' => PlanStatus::FAILED->value,
+                'next_charge_at' => now()->addWeeks(3)->startOfDay(),
+            ])->save();
+
+            return [$plan->fresh(), app(CardUpdateLinks::class)->mint($shop, $plan)['link']];
+        });
+
+        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $this->payplusBody($plan, $link, [
+            'token' => 'tok-paid-up',
+            'four_digits' => '9125',
+        ]))->assertOk()->assertJson(['updated' => true]);
+
+        Bus::assertNotDispatched(ChargeJob::class);
+    }
+
     public function test_a_new_card_on_a_healthy_plan_charges_nothing_early(): void
     {
         $shop = $this->shop();

@@ -22,10 +22,10 @@ use Tests\TestCase;
  * It was one. `failed` sits outside PlanStatus::chargeable(), which is right for
  * the SCHEDULER — we stopped asking on our own — and the detail page had turned
  * that into a rule about the MERCHANT too: no "Charge now", no "Resume", nothing
- * but "Cancel". Meanwhile the state machine allowed failed → active, the
- * orchestrator has no status gate at all, and both its success and failure paths
- * already walk a failed plan back up. The engine was ready; the screen offered no
- * way in.
+ * but "Cancel". Meanwhile the state machine allowed failed → active and the
+ * orchestrator has no status gate at all. Its FAILURE path did walk a failed plan
+ * back up; its SUCCESS path did not, and nothing here charged one to find out —
+ * until plan 995 was paid and stayed `failed` (see PaidFailedPlanTest).
  *
  * Found on the pilot store, on a real subscriber: seventeen migrated members the
  * CSV importer filed as `failed` because their source file said past_due — each

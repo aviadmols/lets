@@ -364,12 +364,17 @@ final class CardUpdateService
      * Every plan now billing on this card that owes a cycle — the one the
      * customer updated, and any sibling repoint() carried along.
      *
-     * OWES means one of two things, and it used to mean only the first:
+     * OWES means one of three things, and it used to mean only the first:
      *   - HELD: collection gave up and paused it on the unpaid cycle;
      *   - STILL BEING CHASED: the cycle is due and its slot is failed or waiting
      *     for tomorrow's retry. That is the usual state of a customer who fixes
      *     their card quickly — and they were left unbilled until the retry
-     *     ladder came round again, a day later, or not at all.
+     *     ladder came round again, a day later, or not at all;
+     *   - STOPPED: the plan is `failed` and nothing is asking it for money. The
+     *     CSV importer files a member whose source said past_due exactly there,
+     *     with no charge date, no slot and no hold stamp — invisible to both
+     *     tests above. Plan 995 (16/09): the customer saved a new card, nothing
+     *     was charged, and an admin had to press the button an hour later.
      *
      * A plan whose next cycle is simply in the future owes nothing, and is not
      * charged early.
@@ -386,6 +391,14 @@ final class CardUpdateService
             ->filter(static function (InstallmentPlan $plan): bool {
                 if ($plan->payment_failed_at !== null) {
                     return true;
+                }
+
+                // STOPPED — unless its next cycle is still ahead, which means it was
+                // already paid up to then and charging now would bill that cycle
+                // early: the exact double-charge the RepeatChargeGuard exists for,
+                // but a month apart, where the guard's day cannot see it.
+                if ($plan->status === PlanStatus::FAILED) {
+                    return $plan->next_charge_at === null || $plan->next_charge_at->lte(now());
                 }
 
                 $due = $plan->next_charge_at !== null && $plan->next_charge_at->lte(now());
