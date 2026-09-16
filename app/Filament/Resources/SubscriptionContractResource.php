@@ -130,10 +130,16 @@ class SubscriptionContractResource extends Resource
                 Tables\Columns\TextColumn::make('status')
                     ->label(__('subscriptions.detail.col.status'))
                     ->badge()
+                    // A contract held for its customer reads "Awaiting activation", not the
+                    // "Paused" Shopify holds it at.
+                    ->state(fn (SubscriptionContract $record): string => $record->awaitsActivation()
+                        ? Pages\ViewSubscriptionContract::STATUS_AWAITING_ACTIVATION
+                        : (string) $record->status)
                     ->formatStateUsing(fn (string $state): string => __('shopify_subscriptions.status.'.$state))
                     ->color(fn (string $state): string => match ($state) {
                         SubscriptionContract::STATUS_ACTIVE => 'success',
                         SubscriptionContract::STATUS_FAILED => 'danger',
+                        Pages\ViewSubscriptionContract::STATUS_AWAITING_ACTIVATION => 'info',
                         default => 'gray',
                     }),
 
@@ -171,14 +177,15 @@ class SubscriptionContractResource extends Resource
                 Tables\Actions\Action::make('pause')
                     ->label(__('shopify_subscriptions.action.pause'))
                     ->icon('heroicon-m-pause')
-                    ->visible(fn (SubscriptionContract $r): bool => $r->status === SubscriptionContract::STATUS_ACTIVE)
+                    ->visible(fn (SubscriptionContract $r): bool => $r->status === SubscriptionContract::STATUS_ACTIVE && ! $r->awaitsActivation())
                     ->requiresConfirmation()
                     ->action(fn (SubscriptionContract $r) => self::verb('pause', $r)),
 
+                // A held contract is started from its page (activateNow), never resumed here.
                 Tables\Actions\Action::make('resume')
                     ->label(__('shopify_subscriptions.action.resume'))
                     ->icon('heroicon-m-play')
-                    ->visible(fn (SubscriptionContract $r): bool => $r->status === SubscriptionContract::STATUS_PAUSED)
+                    ->visible(fn (SubscriptionContract $r): bool => $r->status === SubscriptionContract::STATUS_PAUSED && ! $r->awaitsActivation())
                     ->requiresConfirmation()
                     ->action(fn (SubscriptionContract $r) => self::verb('resume', $r)),
 

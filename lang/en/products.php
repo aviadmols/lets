@@ -210,7 +210,6 @@ return [
         'expire_label' => 'Expire after a number of charges',
         'activation_label' => 'Customer activates the subscription with a link',
         'activation_help' => 'The first cycle is paid at checkout, but the subscription waits at "awaiting activation" until the customer confirms the link we email them. The next charge is one cycle from the day they activate.',
-        'activation_unavailable_shopify_rail' => 'Not available when Shopify Payments bills this plan. For now, activation links work only on plans billed through PayPlus.',
         'expire_count_label' => 'Number of charges',
         'commitment_label' => 'Minimum term before the customer can leave',
         'commitment_help' => 'Until these charges are paid, the customer cannot pause or cancel from their own account. You still can, from here. Changing it later applies to new subscriptions only.',

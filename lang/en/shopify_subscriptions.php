@@ -14,6 +14,7 @@ return [
         'CANCELLED' => 'Cancelled',
         'EXPIRED' => 'Expired',
         'FAILED' => 'Payment issue',
+        'AWAITING_ACTIVATION' => 'Awaiting activation',
     ],
 
     'col' => [
@@ -120,5 +121,6 @@ return [
         'bad_date' => 'Pick a future date.',
         'not_billable' => 'Only an active subscription can be charged.',
         'already_requested' => 'This cycle already has a billing attempt — check Billing attempts below.',
+        'awaiting_activation' => 'This subscription is waiting for its customer to start it. Use "Activate now" to start it for them.',
     ],
 ];

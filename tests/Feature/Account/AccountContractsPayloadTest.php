@@ -105,6 +105,24 @@ final class AccountContractsPayloadTest extends TestCase
         $this->assertSame([], $contracts[1]['actions'], 'Shopify cannot reactivate a cancelled contract.');
     }
 
+    public function test_a_contract_waiting_for_activation_reads_so_and_offers_no_everyday_verbs(): void
+    {
+        $shop = $this->shop();
+        $held = $this->contract($shop, gidTail: '9001', customerGid: self::OWNER_GID, status: SubscriptionContract::STATUS_PAUSED);
+        $held->forceFill(['awaiting_activation_at' => now(), 'activation_nonce' => str_repeat('a', 40)])->save();
+
+        $model = $this->present($shop);
+        $contract = $model['contracts'][0];
+
+        // The plan vocabulary's status, whose label the copy bag already carries — not "Paused".
+        $this->assertSame(PlanStatus::AWAITING_ACTIVATION->value, $contract['status']);
+        $this->assertArrayHasKey('status_'.PlanStatus::AWAITING_ACTIVATION->value, $model['copy']);
+        // Its first date is the day it starts, not the one Shopify set at checkout.
+        $this->assertNull($contract['next_billing_date']);
+        // Resuming would bill on the checkout's date; it is started from the emailed link.
+        $this->assertSame(['cancel', 'card_update'], $contract['actions']);
+    }
+
     public function test_a_failed_contract_wears_the_attention_tone_and_keeps_the_exits_open(): void
     {
         $shop = $this->shop();

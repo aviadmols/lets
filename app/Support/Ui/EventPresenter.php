@@ -97,6 +97,11 @@ final class EventPresenter
         // SUCCESS: a failing card replaced by the customer themselves is the
         // best outcome a dunning cycle has.
         'card_updated' => ['success', 'timeline.kind.card_updated'],
+        // Activation links (PlanActivation / ContractActivation — one set of kinds for both rails).
+        'subscription_awaiting_activation' => ['info', 'timeline.kind.subscription_awaiting_activation'],
+        'subscription_activated' => ['success', 'timeline.kind.subscription_activated'],
+        'activation_link_sent' => ['info', 'timeline.kind.activation_link_sent'],
+        'activation_link_revoked' => ['gray', 'timeline.kind.activation_link_revoked'],
         // A migrated member's token was found at PayPlus and swapped in — the
         // card they are billed on changed, which is worth a line of its own.
         'payment_method_token_recovered' => ['success', 'timeline.kind.payment_method_token_recovered'],

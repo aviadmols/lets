@@ -170,9 +170,8 @@
                 <div class="rc-ov-status">
                     <span class="rc-muted">{{ __('subscriptions.detail.col.status') }}</span>
                     <x-rc.badge
-                        :label="'shopify_subscriptions.status.' . $record->status"
-                        :tone="$record->status === \App\Models\SubscriptionContract::STATUS_ACTIVE ? 'green'
-                            : ($record->status === \App\Models\SubscriptionContract::STATUS_FAILED ? 'red' : 'gray')"
+                        :label="'shopify_subscriptions.status.' . $this->statusKey()"
+                        :tone="$this->statusTone()"
                         dot />
                 </div>
                 <div class="rc-kv">

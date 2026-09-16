@@ -54,6 +54,14 @@ OAuth install, also encrypted. **No shop can ever touch another shop's account.*
 (the customer confirmed the signed activation link, or the merchant did; next charge =
 one cycle from that day) · `awaiting_activation → cancelled`
 
+**Shopify Payments contracts** mirror Shopify's own statuses and have no state machine of
+ours — but the same activation hold exists there as LETS state on the mirror row
+(`ContractActivation`): a contract Shopify CREATES from a selling plan whose product plan
+has `requires_activation` gets `awaiting_activation_at` (unbillable: `isBillable()` and the
+due-cycle scanner both refuse it) and is paused at Shopify. The link moves the next billing
+date to one cycle from that day, resumes it, and only then sets `activated_at`. An update
+webhook never holds a contract.
+
 **PaymentLedgerStatus:** `pending → succeeded` · `pending → failed` ·
 `succeeded → refunded` · `failed → retry_scheduled` · `retry_scheduled → succeeded`
 · `retry_scheduled → failed`

@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\SubscriptionContractResource\Pages;
 
 use App\Domain\ShopifySubscriptions\ContractActionService;
+use App\Domain\ShopifySubscriptions\ContractActivation;
 use App\Domain\ShopifySubscriptions\ContractBackfill;
 use App\Filament\Resources\SubscriptionContractResource;
 use App\Models\ActivityEvent;
@@ -12,6 +13,7 @@ use App\Support\Tenant;
 use App\Support\Ui\Money;
 use Filament\Actions;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
@@ -41,6 +43,9 @@ class ViewSubscriptionContract extends Page
 
     /** Projected upcoming cycles shown on the schedule tab. */
     public const UPCOMING_COUNT = 4;
+
+    /** The badge key for a contract held for its customer (shopify_subscriptions.status.*). */
+    public const STATUS_AWAITING_ACTIVATION = 'AWAITING_ACTIVATION';
 
     /**
      * #[Locked] — the record may NEVER be re-pointed from the browser. Livewire
@@ -395,8 +400,9 @@ class ViewSubscriptionContract extends Page
      */
     public function upcomingCycles(int $count = self::UPCOMING_COUNT): array
     {
+        // A held contract has no schedule yet: its first date is the day it is started.
         $next = $this->record->next_billing_date;
-        if ($next === null) {
+        if ($next === null || $this->record->awaitsActivation()) {
             return [];
         }
 
@@ -466,16 +472,89 @@ class ViewSubscriptionContract extends Page
         ];
     }
 
+    /** The badge's status: Shopify's word, or ours while the customer has not started it. */
+    public function statusKey(): string
+    {
+        return $this->record->awaitsActivation() ? self::STATUS_AWAITING_ACTIVATION : (string) $this->record->status;
+    }
+
+    public function statusTone(): string
+    {
+        return match ($this->statusKey()) {
+            SubscriptionContract::STATUS_ACTIVE => 'green',
+            SubscriptionContract::STATUS_FAILED => 'red',
+            self::STATUS_AWAITING_ACTIVATION => 'teal',
+            default => 'gray',
+        };
+    }
+
     /** @return array<int, Actions\Action> */
     private function contractActions(): array
     {
         return [
+            /*
+             * Paid, and waiting for its customer to start it. The merchant can start it for
+             * them, hand them the link again, or kill the links already sent — the PayPlus
+             * page's three actions, in the same words.
+             */
+            Actions\Action::make('activateNow')
+                ->label(__('subscriptions.action.activate_now.label'))
+                ->icon('heroicon-m-play-circle')
+                ->color('primary')
+                ->visible(fn (): bool => $this->record->awaitsActivation())
+                ->requiresConfirmation()
+                ->modalHeading(__('subscriptions.action.activate_now.heading'))
+                ->modalDescription(__('subscriptions.action.activate_now.body'))
+                ->action(fn () => $this->activateNow()),
+
+            Actions\Action::make('activationLink')
+                ->label(__('subscriptions.action.activation_link.label'))
+                ->icon('heroicon-m-link')
+                ->color('gray')
+                ->visible(fn (): bool => $this->record->awaitsActivation())
+                ->modalHeading(__('subscriptions.action.activation_link.heading'))
+                ->modalDescription(__('subscriptions.action.activation_link.body'))
+                ->fillForm(fn (): array => ['url' => app(ContractActivation::class)->url($this->record)])
+                ->form([
+                    TextInput::make('url')
+                        ->label(__('subscriptions.action.activation_link.url'))
+                        ->readOnly(),
+                ])
+                ->modalSubmitActionLabel(fn (): string => __('subscriptions.action.activation_link.send', [
+                    'email' => (string) ($this->record->customer_email ?: '—'),
+                ]))
+                ->modalCancelActionLabel(__('subscriptions.action.activation_link.close'))
+                ->action(function (): void {
+                    $shop = Tenant::current();
+                    $sent = $shop instanceof Shop && app(ContractActivation::class)->send($shop, $this->record);
+
+                    $notification = Notification::make()->title($sent
+                        ? __('subscriptions.action.activation_link.sent', ['email' => (string) $this->record->customer_email])
+                        : __('subscriptions.action.activation_link.not_sent'));
+
+                    ($sent ? $notification->success() : $notification->danger())->send();
+                }),
+
+            Actions\Action::make('revokeActivationLink')
+                ->label(__('subscriptions.action.revoke_activation_link.label'))
+                ->icon('heroicon-m-no-symbol')
+                ->color('danger')
+                ->visible(fn (): bool => $this->record->awaitsActivation())
+                ->requiresConfirmation()
+                ->modalHeading(__('subscriptions.action.revoke_activation_link.heading'))
+                ->modalDescription(__('subscriptions.action.revoke_activation_link.body'))
+                ->action(function (): void {
+                    app(ContractActivation::class)->revoke($this->record);
+
+                    Notification::make()->title(__('subscriptions.action.revoke_activation_link.done'))->success()->send();
+                }),
+
             // Bill the next payment RIGHT NOW — same job + same dedup walls as the
             // scheduled scanner; the payment outcome arrives via Shopify's webhook.
             Actions\Action::make('chargeNow')
                 ->label(__('shopify_subscriptions.action.charge_now'))
                 ->icon('heroicon-m-bolt')
-                ->visible(fn (): bool => $this->record->status === SubscriptionContract::STATUS_ACTIVE)
+                ->visible(fn (): bool => $this->record->isBillable())
                 ->requiresConfirmation()
                 ->modalDescription(__('shopify_subscriptions.action.charge_now_body'))
                 ->action(fn () => $this->chargeNow()),
@@ -484,14 +563,16 @@ class ViewSubscriptionContract extends Page
                 ->label(__('shopify_subscriptions.action.pause'))
                 ->icon('heroicon-m-pause')
                 ->color('gray')
-                ->visible(fn (): bool => $this->record->status === SubscriptionContract::STATUS_ACTIVE)
+                ->visible(fn (): bool => $this->record->status === SubscriptionContract::STATUS_ACTIVE && ! $this->record->awaitsActivation())
                 ->requiresConfirmation()
                 ->action(fn () => $this->verb('pause')),
 
+            // Not for a contract held for activation: resuming it would bill on the checkout's
+            // date. Starting it is activateNow above.
             Actions\Action::make('resume')
                 ->label(__('shopify_subscriptions.action.resume'))
                 ->icon('heroicon-m-play')
-                ->visible(fn (): bool => $this->record->status === SubscriptionContract::STATUS_PAUSED)
+                ->visible(fn (): bool => $this->record->status === SubscriptionContract::STATUS_PAUSED && ! $this->record->awaitsActivation())
                 ->requiresConfirmation()
                 ->action(fn () => $this->verb('resume')),
 
@@ -502,7 +583,7 @@ class ViewSubscriptionContract extends Page
                 ->label(__('shopify_subscriptions.action.skip'))
                 ->icon('heroicon-m-forward')
                 ->color('gray')
-                ->visible(fn (): bool => $this->record->status === SubscriptionContract::STATUS_ACTIVE
+                ->visible(fn (): bool => $this->record->isBillable()
                     && $this->record->next_billing_date !== null)
                 ->requiresConfirmation()
                 ->modalDescription(__('shopify_subscriptions.action.skip_body'))
@@ -512,7 +593,7 @@ class ViewSubscriptionContract extends Page
                 ->label(__('shopify_subscriptions.action.reschedule'))
                 ->icon('heroicon-m-calendar-days')
                 ->color('gray')
-                ->visible(fn (): bool => $this->record->status === SubscriptionContract::STATUS_ACTIVE)
+                ->visible(fn (): bool => $this->record->isBillable())
                 ->form([
                     DatePicker::make('date')
                         ->label(__('shopify_subscriptions.action.reschedule_date'))
@@ -542,6 +623,33 @@ class ViewSubscriptionContract extends Page
                 ->color('gray')
                 ->action(fn () => $this->sync()),
         ];
+    }
+
+    /** Start a held contract for its customer — exactly what their link's button does. */
+    private function activateNow(): void
+    {
+        $shop = Tenant::current();
+        if (! $shop instanceof Shop) {
+            return;
+        }
+
+        $result = app(ContractActivation::class)->activate($shop, $this->record);
+        $this->record = $result['contract'];
+
+        if ($result['ok']) {
+            Notification::make()
+                ->title(__('subscriptions.action.activate_now.done', ['date' => $this->record->next_billing_date?->format('d/m/Y') ?? '—']))
+                ->success()
+                ->send();
+
+            return;
+        }
+
+        Notification::make()
+            ->title(__('shopify_subscriptions.action.failed'))
+            ->body(__('shopify_subscriptions.reason.'.($result['reason'] ?? 'transport')))
+            ->danger()
+            ->send();
     }
 
     /**

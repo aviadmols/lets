@@ -1312,22 +1312,26 @@ final class AccountPresenter
         $status = strtoupper((string) $contract->status);
         $lines = $this->contractLines($contract);
         $firstTitle = $lines[0]['title'] ?? '';
+        // Held for its customer: the PLAN vocabulary's awaiting_activation, whose label the copy
+        // bag already carries — so the card reads "Awaiting activation", not Shopify's "Paused".
+        $held = $contract->awaitsActivation();
 
         return [
             'gid' => (string) $contract->shopify_gid,
             'title' => $firstTitle !== '' ? $firstTitle : __('account.ui.contract_title'),
-            'status' => $status,
-            'tone' => self::CONTRACT_TONES[$status] ?? self::TONE_ATTENTION,
+            'status' => $held ? PlanStatus::AWAITING_ACTIVATION->value : $status,
+            'tone' => $held ? self::TONE_ATTENTION : (self::CONTRACT_TONES[$status] ?? self::TONE_ATTENTION),
             'cadence' => self::cadence(
                 self::CONTRACT_INTERVAL_FREQUENCY[strtoupper((string) $contract->interval)] ?? null,
                 (int) $contract->interval_count,
             ),
-            'next_billing_date' => $contract->next_billing_date?->toDateString(),
+            // Not the date Shopify set at checkout: a held contract's first date is the day it starts.
+            'next_billing_date' => $held ? null : $contract->next_billing_date?->toDateString(),
             'amount' => $contract->amount !== null ? round((float) $contract->amount, 2) : null,
             'currency' => (string) ($contract->currency ?: ''),
             'currency_symbol' => self::currencySymbol($contract->currency),
             'lines' => $lines,
-            'actions' => $this->contractActions($status),
+            'actions' => $this->contractActions($status, $held),
         ];
     }
 
@@ -1364,15 +1368,17 @@ final class AccountPresenter
      *
      * @return list<string>
      */
-    private function contractActions(string $status): array
+    private function contractActions(string $status, bool $held = false): array
     {
         if (in_array($status, self::CONTRACT_TERMINAL_STATUSES, true)) {
             return [];
         }
 
         $settings = MerchantBillingSettings::current();
-        $active = $status === SubscriptionContract::STATUS_ACTIVE;
-        $paused = $status === SubscriptionContract::STATUS_PAUSED;
+        // A held contract is started from its emailed link. Until then it has no date to skip
+        // or move, and nothing to pause or resume — only leaving and the card remain.
+        $active = ! $held && $status === SubscriptionContract::STATUS_ACTIVE;
+        $paused = ! $held && $status === SubscriptionContract::STATUS_PAUSED;
 
         return array_values(array_filter([
             $active && $settings->allowsCustomerSkip() ? CustomerSubscriptionActions::ACTION_SKIP : null,

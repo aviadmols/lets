@@ -738,10 +738,9 @@ class ProductDetail extends Page
             'discount_cycles' => $isSub ? $discountCycles : null,
             'charge_day_of_month' => $isSub ? $chargeDay : null,
             'expire_after_charges' => $isSub && $this->expireEnabled ? max(1, (int) $this->expireAfterCharges) : null,
-            // Only where LETS owns the charge date. On the Shopify Payments rail the
-            // contract bills itself, so a "wait for activation" switch would be a promise
-            // nothing keeps.
-            'requires_activation' => $isSub && $railForMode !== Shop::RAIL_SHOPIFY_PAYMENTS && $this->requiresActivation,
+            // Both rails keep it: PayPlus holds the plan (PlanActivation), Shopify Payments
+            // holds the contract its checkout creates (ContractActivation).
+            'requires_activation' => $isSub && $this->requiresActivation,
             // min_cycles_before_exit ∈ {null} ∪ [1..120]. Subscriptions only: a
             // one-time purchase has nothing to stay committed to. Bounded like
             // its neighbours, so a typo cannot tie somebody in for a decade.
@@ -804,17 +803,6 @@ class ProductDetail extends Page
             : ($this->shop()?->subscriptionRail() ?? Shop::RAIL_PAYPLUS);
 
         return $rail === Shop::RAIL_SHOPIFY_PAYMENTS;
-    }
-
-    /**
-     * Is "the customer activates it with a link" unavailable for the drawer's CURRENT rail?
-     * The same rail rule as keep-first, asked separately because it is a separate promise:
-     * savePlanConfig drops the switch on Shopify Payments, so the drawer must not let a
-     * merchant tick it there and read "saved".
-     */
-    public function drawerActivationBlocked(): bool
-    {
-        return $this->drawerKeepFirstBlocked();
     }
 
     public function planPriceSummary(): string

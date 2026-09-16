@@ -78,6 +78,9 @@ final class ContractMirror
                 // share one.
                 'product_id' => (string) data_get($edge, 'node.productId', '') ?: null,
                 'variant_id' => (string) data_get($edge, 'node.variantId', '') ?: null,
+                // WHICH of our plans sold it — how a new contract finds out that its
+                // plan asks the customer to start it (ContractActivation::required).
+                'selling_plan_id' => (string) data_get($edge, 'node.sellingPlanId', '') ?: null,
                 // The product's image, for the personal-area card. Nullable and
                 // ABSENT from rows mirrored before this field existed — every
                 // reader must render a line without it (a card with no picture,

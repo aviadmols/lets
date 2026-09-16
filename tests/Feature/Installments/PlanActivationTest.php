@@ -229,7 +229,7 @@ final class PlanActivationTest extends TestCase
         $this->assertSame('2026-10-17', $fresh->next_charge_at->toDateString());
     }
 
-    public function test_the_product_plan_drawer_turns_activation_on_but_not_on_the_shopify_payments_rail(): void
+    public function test_the_product_plan_drawer_turns_activation_on_for_either_rail(): void
     {
         [$shop] = $this->shopWithToken();
         $this->signIn($shop);
@@ -237,23 +237,22 @@ final class PlanActivationTest extends TestCase
 
         Livewire::test(ProductDetail::class, ['product' => $template->product_id])
             ->call('openPlanConfig', $template->id)
-            ->assertDontSeeHtml('wire:model="requiresActivation" disabled')
-            ->assertDontSee(__('products.plan_drawer.activation_unavailable_shopify_rail'))
             ->set('requiresActivation', true)
             ->call('savePlanConfig');
 
         $this->assertTrue((bool) $template->fresh()->requires_activation);
 
-        // On Shopify Payments the switch is not kept — so it cannot be ticked, and the drawer says why.
+        // Shopify Payments keeps it too: the contract its checkout creates is held (ContractActivation).
+        $template->forceFill(['requires_activation' => false])->save();
+
         Livewire::test(ProductDetail::class, ['product' => $template->product_id])
             ->call('openPlanConfig', $template->id)
             ->set('billingRail', ProductSubscriptionPlan::RAIL_SHOPIFY_PAYMENTS)
-            ->assertSeeHtml('wire:model="requiresActivation" disabled')
-            ->assertSee(__('products.plan_drawer.activation_unavailable_shopify_rail'))
+            ->assertDontSeeHtml('wire:model="requiresActivation" disabled')
             ->set('requiresActivation', true)
             ->call('savePlanConfig');
 
-        $this->assertFalse((bool) $template->fresh()->requires_activation);
+        $this->assertTrue((bool) $template->fresh()->requires_activation);
     }
 
     // === Fixtures ===

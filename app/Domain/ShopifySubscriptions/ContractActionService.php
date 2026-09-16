@@ -3,6 +3,7 @@
 namespace App\Domain\ShopifySubscriptions;
 
 use App\Domain\ShopifySubscriptions\Jobs\BillingAttemptJob;
+use App\Models\ActivityEvent;
 use App\Models\Shop;
 use App\Models\SubscriptionBillingAttempt;
 use App\Models\SubscriptionContract;
@@ -45,6 +46,7 @@ final class ContractActionService
     public const ERR_BAD_DATE = 'bad_date';
     public const ERR_NOT_BILLABLE = 'not_billable';
     public const ERR_ALREADY_REQUESTED = 'already_requested';
+    public const ERR_AWAITING_ACTIVATION = 'awaiting_activation';
 
     private const MUTATIONS = [
         'pause' => 'subscriptionContractPause',
@@ -57,13 +59,57 @@ final class ContractActionService
     /** @return array{ok: bool, reason: ?string, contract: ?SubscriptionContract} */
     public function pause(Shop $shop, SubscriptionContract $contract, string $actor): array
     {
+        if ($contract->awaitsActivation()) {
+            return $this->awaitingActivation();
+        }
+
         return $this->statusMutation($shop, $contract, 'pause', self::KIND_PAUSED, $actor);
     }
 
-    /** @return array{ok: bool, reason: ?string, contract: ?SubscriptionContract} */
+    /**
+     * Resume a paused contract. Never one held for activation: resuming it would bill on the
+     * date Shopify set at checkout instead of one cycle from the day its customer starts it.
+     *
+     * @return array{ok: bool, reason: ?string, contract: ?SubscriptionContract}
+     */
     public function resume(Shop $shop, SubscriptionContract $contract, string $actor): array
     {
+        if ($contract->awaitsActivation()) {
+            return $this->awaitingActivation();
+        }
+
         return $this->statusMutation($shop, $contract, 'resume', self::KIND_RESUMED, $actor);
+    }
+
+    // === Activation (ContractActivation is the only caller) ===
+
+    /**
+     * Pause a contract that is being held for its customer. No Timeline row of its own —
+     * the hold records itself — and no guard, because the hold is already in place.
+     *
+     * @return array{ok: bool, reason: ?string, contract: ?SubscriptionContract}
+     */
+    public function pauseForActivation(Shop $shop, SubscriptionContract $contract): array
+    {
+        return $this->statusMutation($shop, $contract, 'pause', null, ActivityEvent::ACTOR_SYSTEM);
+    }
+
+    /**
+     * Start a held contract at Shopify: the next charge date first, then running again.
+     * Unguarded on purpose — ContractActivation lifts the hold only once both have landed,
+     * so a failure between the two leaves nothing billable and can simply be retried.
+     *
+     * @return array{ok: bool, reason: ?string, contract: ?SubscriptionContract}
+     */
+    public function startForActivation(Shop $shop, SubscriptionContract $contract, Carbon $next): array
+    {
+        $dated = $this->setNextBillingDate($shop, $contract, $next);
+
+        if (! $dated['ok'] || (string) $dated['contract']->status !== SubscriptionContract::STATUS_PAUSED) {
+            return $dated;
+        }
+
+        return $this->statusMutation($shop, $dated['contract'], 'resume', null, ActivityEvent::ACTOR_SYSTEM);
     }
 
     /** @return array{ok: bool, reason: ?string, contract: ?SubscriptionContract} */
@@ -142,11 +188,44 @@ final class ContractActionService
      */
     public function reschedule(Shop $shop, SubscriptionContract $contract, Carbon $date, string $actor, bool $skipped = false): array
     {
+        // Its first date is the day its customer starts it — nobody may pick one before.
+        if ($contract->awaitsActivation()) {
+            return $this->awaitingActivation();
+        }
+
         // A past date would make the scanner bill immediately — refuse.
         if ($date->isPast()) {
             return ['ok' => false, 'reason' => self::ERR_BAD_DATE, 'contract' => null];
         }
 
+        $result = $this->setNextBillingDate($shop, $contract, $date);
+
+        if (! $result['ok']) {
+            return $result;
+        }
+
+        Timeline::record(
+            kind: self::KIND_RESCHEDULED,
+            details: [
+                'contract_gid' => (string) $contract->shopify_gid,
+                'next_billing_date' => $date->toDateString(),
+                'skipped_delivery' => $skipped,
+            ],
+            actor: $actor,
+            shopId: (int) $shop->getKey(),
+        );
+
+        return $result;
+    }
+
+    /**
+     * Move the next billing date at Shopify and mirror the answer. No guard, no Timeline:
+     * reschedule() and startForActivation() each decide both.
+     *
+     * @return array{ok: bool, reason: ?string, contract: ?SubscriptionContract}
+     */
+    private function setNextBillingDate(Shop $shop, SubscriptionContract $contract, Carbon $date): array
+    {
         $result = $this->graphql($shop, <<<'GQL'
         mutation contractSetNextBillingDate($contractId: ID!, $date: DateTime!) {
           subscriptionContractSetNextBillingDate(contractId: $contractId, date: $date) {
@@ -164,20 +243,7 @@ final class ContractActionService
             return ['ok' => false, 'reason' => $result['reason'], 'contract' => null];
         }
 
-        $fresh = $this->mirror->fromGraphQl($shop, $result['contract']);
-
-        Timeline::record(
-            kind: self::KIND_RESCHEDULED,
-            details: [
-                'contract_gid' => (string) $contract->shopify_gid,
-                'next_billing_date' => $date->toDateString(),
-                'skipped_delivery' => $skipped,
-            ],
-            actor: $actor,
-            shopId: (int) $shop->getKey(),
-        );
-
-        return ['ok' => true, 'reason' => null, 'contract' => $fresh];
+        return ['ok' => true, 'reason' => null, 'contract' => $this->mirror->fromGraphQl($shop, $result['contract'])];
     }
 
     // === Product-line edits (Shopify's draft → mutate → commit flow) =========
@@ -287,6 +353,12 @@ final class ContractActionService
 
     // === Internals ===
 
+    /** @return array{ok: false, reason: string, contract: null} */
+    private function awaitingActivation(): array
+    {
+        return ['ok' => false, 'reason' => self::ERR_AWAITING_ACTIVATION, 'contract' => null];
+    }
+
     /**
      * The shared draft → mutate → commit wrapper. On commit the mirror is
      * re-read IN FULL (refresh) — the commit answer alone doesn't carry lines.
@@ -386,7 +458,7 @@ final class ContractActionService
         Shop $shop,
         SubscriptionContract $contract,
         string $verb,
-        string $timelineKind,
+        ?string $timelineKind,
         string $actor,
     ): array {
         $mutation = self::MUTATIONS[$verb];
@@ -409,12 +481,14 @@ final class ContractActionService
 
         $fresh = $this->mirror->fromGraphQl($shop, $result['contract']);
 
-        Timeline::record(
-            kind: $timelineKind,
-            details: ['contract_gid' => (string) $contract->shopify_gid],
-            actor: $actor,
-            shopId: (int) $shop->getKey(),
-        );
+        if ($timelineKind !== null) {
+            Timeline::record(
+                kind: $timelineKind,
+                details: ['contract_gid' => (string) $contract->shopify_gid],
+                actor: $actor,
+                shopId: (int) $shop->getKey(),
+            );
+        }
 
         return ['ok' => true, 'reason' => null, 'contract' => $fresh];
     }
@@ -458,7 +532,7 @@ final class ContractActionService
     }
 
     /** One billing interval forward, in Shopify's interval vocabulary. */
-    private function addInterval(Carbon $from, string $interval, int $count): Carbon
+    public static function addInterval(Carbon $from, string $interval, int $count): Carbon
     {
         $count = max(1, $count);
 

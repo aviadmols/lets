@@ -4,6 +4,7 @@ namespace App\Mail\Support;
 
 use App\Models\InstallmentPayment;
 use App\Models\InstallmentPlan;
+use App\Models\SubscriptionContract;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use Illuminate\Support\Carbon;
@@ -118,6 +119,35 @@ final class TemplateRenderer
             'next_charge_date' => self::date($plan->next_charge_at),
             'portal_url' => (string) ($portalUrl ?? ''),
             'invoice_url' => (string) ($invoiceUrl ?? ''),
+        ];
+    }
+
+    /**
+     * The same variable bag for a Shopify Payments contract, so one merchant-edited email
+     * (the activation link) reads the same on both rails. Keys a contract has no answer for
+     * are present and empty — a merchant's {installment_progress} must vanish, not print.
+     *
+     * @return array<string, scalar|null>
+     */
+    public static function contractVars(SubscriptionContract $contract, string $businessName): array
+    {
+        $firstLine = (array) (((array) ($contract->lines ?? []))[0] ?? []);
+
+        return [
+            'customer_name' => self::nonEmpty($contract->customer_name, self::FALLBACK_CUSTOMER),
+            'customer_email' => (string) ($contract->customer_email ?? ''),
+            'business_name' => $businessName,
+            'product_title' => self::nonEmpty((string) ($firstLine['title'] ?? ''), self::FALLBACK_PRODUCT),
+            'amount' => self::money((float) ($contract->amount ?? 0)),
+            'currency' => (string) ($contract->currency ?? ''),
+            'plan_id' => '',
+            'installment_count' => '',
+            'installment_sequence' => '',
+            'installment_progress' => '',
+            'installment_total_note' => '',
+            'next_charge_date' => self::date($contract->next_billing_date),
+            'portal_url' => '',
+            'invoice_url' => '',
         ];
     }
 

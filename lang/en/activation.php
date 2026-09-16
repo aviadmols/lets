@@ -17,5 +17,6 @@ return [
         'next_charge' => 'Next charge: :date',
         'lead_generic' => 'Your subscription from :shop is paid and waiting for you. It starts the moment you press the button — and your next charge is counted from today.',
         'active_lead_generic' => 'Your subscription from :shop has started.',
+        'failed' => 'We could not start it just now. Nothing was charged — please try again in a few minutes.',
     ],
 ];

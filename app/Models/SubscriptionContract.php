@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToShop;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -44,8 +45,11 @@ class SubscriptionContract extends Model
         self::STATUS_EXPIRED, self::STATUS_FAILED,
     ];
 
-    /** Only these are eligible for a billing attempt. */
+    /** Only these are eligible for a billing attempt — and never while awaiting activation. */
     public const BILLABLE_STATUSES = [self::STATUS_ACTIVE];
+
+    /** Statuses after which a contract cannot be started or billed again. */
+    public const TERMINAL_STATUSES = [self::STATUS_CANCELLED, self::STATUS_EXPIRED];
 
     /**
      * Shopify's `interval` vocabulary → our BillingFrequency values, for the
@@ -62,7 +66,10 @@ class SubscriptionContract extends Model
         'YEAR' => 'yearly',
     ];
 
-    /** shop_id is stamped by BelongsToShop; the mirror is written only by ContractMirror. */
+    /**
+     * shop_id is stamped by BelongsToShop. Shopify's fields are written only by ContractMirror;
+     * the three activation columns are LETS state, written only by ContractActivation.
+     */
     protected $guarded = ['id', 'shop_id'];
 
     protected function casts(): array
@@ -73,6 +80,8 @@ class SubscriptionContract extends Model
             'interval_count' => 'integer',
             'next_billing_date' => 'datetime',
             'synced_at' => 'datetime',
+            'awaiting_activation_at' => 'datetime',
+            'activated_at' => 'datetime',
         ];
     }
 
@@ -81,9 +90,30 @@ class SubscriptionContract extends Model
         return $this->hasMany(SubscriptionBillingAttempt::class, 'subscription_contract_id');
     }
 
+    /**
+     * Billable = Shopify says ACTIVE and the customer is not still to start it. The hold is
+     * checked here, not only by the scanner, so "charge now" and a queued attempt obey it too.
+     */
     public function isBillable(): bool
     {
-        return in_array((string) $this->status, self::BILLABLE_STATUSES, true);
+        return in_array((string) $this->status, self::BILLABLE_STATUSES, true) && ! $this->awaitsActivation();
+    }
+
+    /**
+     * Held for its customer: paid at checkout, not started (ContractActivation). A cancelled
+     * contract is not waiting for anything.
+     */
+    public function awaitsActivation(): bool
+    {
+        return $this->awaiting_activation_at !== null
+            && $this->activated_at === null
+            && ! in_array((string) $this->status, self::TERMINAL_STATUSES, true);
+    }
+
+    /** The scanner's half of the hold: contracts never held, or already started. */
+    public function scopeNotAwaitingActivation(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $q): Builder => $q->whereNull('awaiting_activation_at')->orWhereNotNull('activated_at'));
     }
 
     /** The numeric tail of the GID — what Shopify's REST-ish surfaces call the id. */

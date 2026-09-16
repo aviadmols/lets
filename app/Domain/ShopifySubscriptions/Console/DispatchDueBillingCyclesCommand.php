@@ -42,6 +42,9 @@ final class DispatchDueBillingCyclesCommand extends Command
             ->whereIn('status', SubscriptionContract::BILLABLE_STATUSES)
             ->whereNotNull('next_billing_date')
             ->where('next_billing_date', '<=', now())
+            // A contract its customer has not started yet carries the date Shopify gave
+            // it at checkout — which is not a charge date until they activate.
+            ->notAwaitingActivation()
             // Only shops whose merchant CHOSE the Shopify-Payments rail bill here
             // (Settings → Billing). A shop back on PayPlus keeps its mirror but
             // gets no app-driven billing attempts.

@@ -14,7 +14,8 @@
       .rc-campaign-card__actions .rc-campaign-btn
     Zero inline CSS, as everywhere outside the email templates.
 
-    Props: $shopName, $productTitle, $awaiting, $activateUrl, $nextChargeDate, $dir.
+    Props: $shopName, $productTitle, $awaiting, $activateUrl, $nextChargeDate, $dir, and
+    optional $failed (the Shopify Payments rail: the store could not take the change yet).
 --}}
 <!doctype html>
 <html lang="{{ app()->getLocale() }}" dir="{{ $dir }}">
@@ -42,6 +43,10 @@
                     {{ __('activation.page.lead_generic', ['shop' => $shopName]) }}
                 @endif
             </p>
+
+            @if(! empty($failed))
+                <p class="rc-campaign-card__hint">{{ __('activation.page.failed') }}</p>
+            @endif
 
             <form class="rc-campaign-card__actions" method="POST" action="{{ $activateUrl }}">
                 @csrf

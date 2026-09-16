@@ -2,6 +2,7 @@
 
 namespace App\Services\Shopify\Webhooks;
 
+use App\Domain\ShopifySubscriptions\ContractActivation;
 use App\Domain\ShopifySubscriptions\ContractBackfill;
 use App\Domain\ShopifySubscriptions\ContractMirror;
 use App\Models\Shop;
@@ -35,6 +36,7 @@ final class SubscriptionWebhookHandler implements WebhookHandler
     public function __construct(
         private readonly ContractMirror $mirror,
         private readonly ContractBackfill $backfill,
+        private readonly ContractActivation $activation,
     ) {}
 
     public function handle(WebhookEvent $event): void
@@ -49,7 +51,20 @@ final class SubscriptionWebhookHandler implements WebhookHandler
 
         if (str_starts_with($topic, 'subscription_contracts/')) {
             $contract = $this->mirror->fromWebhook($shop, $payload);
-            $this->enrich($shop, $payload, $contract);
+            $full = $this->enrich($shop, $payload, $contract);
+
+            // A NEW contract from a plan whose customer starts it is held here, before any
+            // cycle can come due. Only on create: an update never holds a running contract.
+            if ($topic === ContractActivation::TOPIC_CREATE) {
+                if ($full !== null) {
+                    $this->activation->holdIfRequired($shop, $full);
+                } elseif (ContractActivation::shopUsesActivation($shop)) {
+                    // Its plan is in the lines the read-back failed to fetch. Deciding blind
+                    // could let a held subscription run, so the queue asks again (the row is
+                    // written, and a replay is idempotent) instead of marking this processed.
+                    throw new \RuntimeException('shopify_subscriptions.contract_create_unread');
+                }
+            }
 
             return;
         }
@@ -72,22 +87,27 @@ final class SubscriptionWebhookHandler implements WebhookHandler
      * ContractBackfill can fill it in later.
      *
      * @param  array<string, mixed>  $payload
+     * @return SubscriptionContract|null the fully read contract, or null when the read failed
      */
-    private function enrich(Shop $shop, array $payload, ?SubscriptionContract $contract): void
+    private function enrich(Shop $shop, array $payload, ?SubscriptionContract $contract): ?SubscriptionContract
     {
         $gid = (string) ($payload['admin_graphql_api_id'] ?? '');
         if ($gid === '' && $contract !== null) {
             $gid = (string) $contract->shopify_gid;
         }
         if ($gid === '') {
-            return;
+            return null;
         }
 
-        if ($this->backfill->refresh($shop, $gid) === null) {
+        $full = $this->backfill->refresh($shop, $gid);
+
+        if ($full === null) {
             Log::info('shopify_subscriptions.contract_not_enriched', [
                 'shop_id' => $shop->getKey(), 'gid' => $gid,
             ]);
         }
+
+        return $full;
     }
 
     /**
