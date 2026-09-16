@@ -365,6 +365,11 @@ window.LetsUpsell = (function () {
     var c = vm.content || {};
     var a = vm.appearance || {};
     var elements = resolveElements(a.elements);
+    // An offer with a window always shows its clock — even when the shop's stored element
+    // list predates the timer and has no entry for it at all.
+    if (Number(c.timer_seconds) > 0 && !elements.some(function (e) { return e.key === 'timer'; })) {
+      elements.unshift({ key: 'timer', enabled: true });
+    }
 
     var nodes = [];        // ordered { key, node }
     var head = null;       // lazy .lets-ppu__head

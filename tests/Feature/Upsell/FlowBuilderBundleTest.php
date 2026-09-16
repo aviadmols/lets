@@ -110,6 +110,33 @@ final class FlowBuilderBundleTest extends TestCase
         $this->assertNotEmpty($component->instance()->validationIssues(), 'the flow cannot go live on a bundle that cannot be sold');
     }
 
+    public function test_a_bundle_whose_product_left_the_catalogue_is_flagged_on_the_canvas(): void
+    {
+        $shop = $this->signIn(Shop::PLATFORM_WOOCOMMERCE);
+        $a = $this->book('Atlas', '301');
+        $b = $this->book('Borders', '302');
+        $flow = $this->flow($shop);
+        $offerId = $flow->offers()->first()->id;
+
+        Livewire::test(FlowBuilder::class, ['flow' => $flow->id])
+            ->call('openOfferConfig', $offerId)
+            ->set('productSelectionMode', UpsellFlowOffer::PRODUCT_BUNDLE)
+            ->call('addBundleProduct', $a->id)
+            ->call('addBundleProduct', $b->id)
+            ->set('bundleQuantity', '2')
+            ->set('bundlePrice', '80')
+            ->call('saveOfferConfig');
+
+        $this->assertEmpty(Livewire::test(FlowBuilder::class, ['flow' => $flow->id])->instance()->validationIssues());
+
+        $b->delete();
+
+        $this->assertNotEmpty(
+            Livewire::test(FlowBuilder::class, ['flow' => $flow->id])->instance()->validationIssues(),
+            'a bundle nobody can complete must not read as ready',
+        );
+    }
+
     public function test_a_shopify_shop_is_not_offered_a_bundle_and_cannot_save_one(): void
     {
         $shop = $this->signIn(Shop::PLATFORM_SHOPIFY);

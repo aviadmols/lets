@@ -54,6 +54,12 @@ final class UpsellResolver
                 continue; // a flow with no offer can't be shown
             }
 
+            // A bundle short of products (one was removed from the catalogue since it was
+            // built) is a picker the shopper can never finish. Not shown.
+            if ($offer->product_selection_mode === UpsellFlowOffer::PRODUCT_BUNDLE && ! $offer->bundleIsSellable()) {
+                continue;
+            }
+
             // This order's add-on window has closed: the offer is over, and reloading the
             // thank-you page must not bring it (or another flow's offer) back.
             if ($offer->windowSecondsLeft($context->parentOrderId) === 0) {

@@ -97,7 +97,7 @@ final class PostPurchaseController extends Controller
             // labels the merchant actually configured are discarded in transit.
             $appearance = MerchantUpsellAppearance::current();
             $presentation = $this->presenter->present(
-                $this->card->forOffer($offer, $appearance, self::PLATFORM),
+                $this->card->forOffer($offer, $appearance, self::PLATFORM, $this->verifier->referenceId($claims)),
                 $appearance,
             );
 

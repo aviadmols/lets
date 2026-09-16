@@ -150,6 +150,18 @@ class UpsellFlowOffer extends Model
             && (float) $this->bundle_price > 0;
     }
 
+    /**
+     * A bundle the shopper can actually COMPLETE: configured (isBundle) AND enough of its
+     * products still in the catalogue to pick the quantity from. isBundle() counts the
+     * stored ids and stays cheap for the money path; this asks the catalogue, and is what
+     * decides whether the card is shown at all — a picker with fewer products than the
+     * pick needs is an offer nobody can take.
+     */
+    public function bundleIsSellable(): bool
+    {
+        return $this->isBundle() && $this->bundleProducts()->count() >= (int) $this->bundle_quantity;
+    }
+
     /** @return list<int> the listed Product ids: positive, distinct, in the merchant's order */
     public function bundleProductIds(): array
     {

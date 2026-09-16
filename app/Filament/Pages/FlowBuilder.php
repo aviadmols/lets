@@ -1345,7 +1345,7 @@ class FlowBuilder extends Page
     private function offerIsValid(UpsellFlowOffer $offer): bool
     {
         $sellsSomething = $offer->product_selection_mode === UpsellFlowOffer::PRODUCT_BUNDLE
-            ? $offer->isBundle()
+            ? $offer->bundleIsSellable()
             : ! empty($offer->offer_product_gid) && (float) $offer->base_price > 0;
 
         return $sellsSomething

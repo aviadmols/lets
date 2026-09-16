@@ -179,6 +179,22 @@ final class WooCommerceUpsellBundleTest extends TestCase
         }
     }
 
+    public function test_a_bundle_short_of_a_product_is_not_shown_and_cannot_be_bought(): void
+    {
+        [$shop, $key, $secret, $offer, $books] = $this->bundleShop();
+
+        // One of the three listed books left the catalogue: a pick of three is impossible.
+        Tenant::run($shop, fn () => $books['B']->delete());
+
+        $this->fetchOffer($key, $secret)->assertOk()->assertJsonPath('offer', null);
+
+        $this->accept($key, $secret, $offer, [$books['A']->id, $books['B']->id, $books['C']->id])
+            ->assertStatus(422)
+            ->assertJsonPath('result', 'invalid_selection');
+
+        $this->assertSame(0, $this->payplusCalls);
+    }
+
     public function test_an_unfinished_bundle_never_charges_the_single_product_price(): void
     {
         [$shop, $key, $secret, $offer, $books] = $this->bundleShop();
