@@ -28,6 +28,15 @@ final class ContractBackfillTest extends TestCase
 {
     use RefreshDatabase;
 
+    // === CONSTANTS ===
+    /** SubscriptionLine's fields, Admin GraphQL 2026-04 (shopify.dev/docs/api/admin-graphql/2026-04/objects/SubscriptionLine). */
+    private const SUBSCRIPTION_LINE_FIELDS = [
+        'concatenatedOriginContract', 'currentPrice', 'customAttributes', 'discountAllocations',
+        'id', 'lineDiscountedPrice', 'pricingPolicy', 'productId', 'quantity', 'requiresShipping',
+        'sellingPlanId', 'sellingPlanName', 'sku', 'taxable', 'title', 'variantId', 'variantImage',
+        'variantTitle',
+    ];
+
     protected function tearDown(): void
     {
         ShopifyClientFactory::clearFake();
@@ -192,6 +201,45 @@ final class ContractBackfillTest extends TestCase
         $this->assertNotNull($mirrored->next_billing_date, 'Without this the contract is never billed.');
         $this->assertSame('49.90', (string) $mirrored->amount);
         $this->assertNotNull($mirrored->lines);
+    }
+
+    /**
+     * The fake client answers ANY query, so a field Shopify does not have passes
+     * every other test here — and in production fails the whole read. This is
+     * how `image` (not a SubscriptionLine field) left new contracts unbillable.
+     */
+    public function test_every_line_field_asked_for_exists_on_shopify_subscription_line(): void
+    {
+        $shop = $this->shop();
+        $node = $this->contract('1', 'ACTIVE');
+        $node['lines']['edges'][0]['node']['variantImage'] = ['url' => 'https://cdn.example/hat.png', 'altText' => null];
+
+        $recorder = new RecordingShopifyClient();
+        $recorder->graphqlResponses = [['data' => ['subscriptionContract' => $node]]];
+        ShopifyClientFactory::fake(fn (): RecordingShopifyClient => $recorder);
+
+        $mirrored = Tenant::run($shop, fn () => app(ContractBackfill::class)
+            ->refresh($shop, 'gid://shopify/SubscriptionContract/1'));
+
+        $this->assertSame('https://cdn.example/hat.png', $mirrored?->lines[0]['image_url'] ?? null);
+
+        // The line node's own selection: from `node {` to its matching `}`.
+        $query = $recorder->graphqlCalls[0]['query'];
+        preg_match('/lines\(first: \$lines\)\s*\{\s*edges\s*\{\s*node\s*\{/', $query, $open, PREG_OFFSET_CAPTURE);
+        $start = isset($open[0]) ? $open[0][1] + strlen($open[0][0]) : strlen($query);
+        $selection = '';
+        for ($i = $start, $depth = 1; $i < strlen($query) && $depth > 0; $i++) {
+            $depth += ['{' => 1, '}' => -1][$query[$i]] ?? 0;
+            $selection .= $depth > 0 ? $query[$i] : '';
+        }
+        // Drop nested sub-selections ({ amount }, { url altText }) so only the line's own fields remain.
+        while (preg_match('/\{[^{}]*\}/', $selection)) {
+            $selection = (string) preg_replace('/\{[^{}]*\}/', '', $selection);
+        }
+        $fields = preg_split('/\s+/', trim($selection), -1, PREG_SPLIT_NO_EMPTY);
+
+        $this->assertNotEmpty($fields, 'The lines selection was not found in the query.');
+        $this->assertSame([], array_values(array_diff($fields, self::SUBSCRIPTION_LINE_FIELDS)));
     }
 
     public function test_a_failed_read_back_keeps_the_sparse_row(): void

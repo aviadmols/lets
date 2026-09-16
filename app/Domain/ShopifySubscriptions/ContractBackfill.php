@@ -88,6 +88,12 @@ final class ContractBackfill
      * The one node shape, shared by the paged read and the single-contract one.
      * Line `id` is the SubscriptionLine gid — what the product-edit draft
      * mutations (subscriptionDraftLineUpdate/Remove) key on.
+     *
+     * ONE unknown field fails the WHOLE read — contract, date, price and all. The
+     * line picture is `variantImage`; SubscriptionLine has no `image`, and asking
+     * for it left every webhook-created contract with no next billing date (so it
+     * never billed) from 2026-08-26 to 2026-09-16. ContractBackfillTest pins every
+     * line field against Shopify's own list.
      */
     private const NODE_FIELDS = <<<'GQL'
     id
@@ -99,7 +105,7 @@ final class ContractBackfill
     %CUSTOMER%
     %PAYMENT%
     lines(first: $lines) {
-      edges { node { id title quantity currentPrice { amount } productId variantId image { url altText } } }
+      edges { node { id title quantity currentPrice { amount } productId variantId variantImage { url altText } } }
     }
     GQL;
 

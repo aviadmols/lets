@@ -82,7 +82,7 @@ final class ContractMirror
                 // ABSENT from rows mirrored before this field existed — every
                 // reader must render a line without it (a card with no picture,
                 // never a broken one).
-                'image_url' => (string) data_get($edge, 'node.image.url', '') ?: null,
+                'image_url' => (string) data_get($edge, 'node.variantImage.url', '') ?: null,
             ],
             (array) data_get($node, 'lines.edges', []),
         );
