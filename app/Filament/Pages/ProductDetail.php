@@ -806,6 +806,17 @@ class ProductDetail extends Page
         return $rail === Shop::RAIL_SHOPIFY_PAYMENTS;
     }
 
+    /**
+     * Is "the customer activates it with a link" unavailable for the drawer's CURRENT rail?
+     * The same rail rule as keep-first, asked separately because it is a separate promise:
+     * savePlanConfig drops the switch on Shopify Payments, so the drawer must not let a
+     * merchant tick it there and read "saved".
+     */
+    public function drawerActivationBlocked(): bool
+    {
+        return $this->drawerKeepFirstBlocked();
+    }
+
     public function planPriceSummary(): string
     {
         $base = $this->primaryPrice();

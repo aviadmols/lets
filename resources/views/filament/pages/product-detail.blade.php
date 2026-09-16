@@ -462,10 +462,14 @@
                                                  checkout, held at "awaiting activation", next charge one cycle
                                                  from the day they activate (PlanActivation). --}}
                                             <label class="rc-check">
-                                                <input type="checkbox" wire:model="requiresActivation">
+                                                <input type="checkbox" wire:model="requiresActivation" @disabled($this->drawerActivationBlocked())>
                                                 <span class="rc-check__body">
                                                     <span class="rc-check__title">{{ __('products.plan_drawer.activation_label') }}</span>
-                                                    <span class="rc-drawer__subtitle">{{ __('products.plan_drawer.activation_help') }}</span>
+                                                    <span class="rc-drawer__subtitle">
+                                                        {{ $this->drawerActivationBlocked()
+                                                            ? __('products.plan_drawer.activation_unavailable_shopify_rail')
+                                                            : __('products.plan_drawer.activation_help') }}
+                                                    </span>
                                                 </span>
                                             </label>
 

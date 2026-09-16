@@ -237,14 +237,19 @@ final class PlanActivationTest extends TestCase
 
         Livewire::test(ProductDetail::class, ['product' => $template->product_id])
             ->call('openPlanConfig', $template->id)
+            ->assertDontSeeHtml('wire:model="requiresActivation" disabled')
+            ->assertDontSee(__('products.plan_drawer.activation_unavailable_shopify_rail'))
             ->set('requiresActivation', true)
             ->call('savePlanConfig');
 
         $this->assertTrue((bool) $template->fresh()->requires_activation);
 
+        // On Shopify Payments the switch is not kept — so it cannot be ticked, and the drawer says why.
         Livewire::test(ProductDetail::class, ['product' => $template->product_id])
             ->call('openPlanConfig', $template->id)
             ->set('billingRail', ProductSubscriptionPlan::RAIL_SHOPIFY_PAYMENTS)
+            ->assertSeeHtml('wire:model="requiresActivation" disabled')
+            ->assertSee(__('products.plan_drawer.activation_unavailable_shopify_rail'))
             ->set('requiresActivation', true)
             ->call('savePlanConfig');
 
