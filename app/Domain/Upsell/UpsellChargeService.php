@@ -15,6 +15,7 @@ use App\Models\CustomerConsent;
 use App\Models\InstallmentPaymentMethod;
 use App\Models\MerchantBillingSettings;
 use App\Models\PaymentLedger;
+use App\Models\Product;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\LedgerStatus;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\GatewayResult;
@@ -108,6 +109,21 @@ final class UpsellChargeService
             // next step (not an error).
             if (Ledger::hasSucceeded($shopId, $key)) {
                 return UpsellChargeResult::already($key, $this->nextOfferOnAccept($req));
+            }
+
+            // The add-on window, on the offer's own clock. AFTER the short-circuit above on
+            // purpose: a double-click that already charged answers "already accepted"
+            // however late its second click lands.
+            if ($offer->windowClosed($req->parentOrderId, UpsellFlowOffer::WINDOW_ACCEPT_GRACE_SECONDS)) {
+                return UpsellChargeResult::expired($key);
+            }
+
+            // A bundle charges only for exactly the pick it allows. A bundle-mode offer the
+            // merchant has not finished configuring accepts nothing — it never falls back
+            // to charging a single product's price.
+            if ($offer->product_selection_mode === UpsellFlowOffer::PRODUCT_BUNDLE
+                && ! $offer->acceptsSelection($req->selectedProductIds)) {
+                return UpsellChargeResult::invalidSelection($key);
             }
 
             // Resolve the saved vault token for THIS customer (tenant-scoped).
@@ -269,19 +285,39 @@ final class UpsellChargeService
             }
 
             $items = (array) ($hold->added_items ?? []);
-            $items[] = [
-                'name' => (string) ($offer->resolveProduct()?->title ?: $offer->offer_title ?: ''),
-                'quantity' => 1,
-                'price' => round($amount, 2),
-                'currency' => $currency,
-                'customer_email' => $req->customerEmail ?? '',
-                'customer_name' => '',
-            ];
+            foreach ($this->addedItems($offer, $req, $amount) as [$name, $price]) {
+                $items[] = [
+                    'name' => $name,
+                    'quantity' => 1,
+                    'price' => $price,
+                    'currency' => $currency,
+                    'customer_email' => $req->customerEmail ?? '',
+                    'customer_name' => '',
+                ];
+            }
 
             $hold->forceFill(['added_items' => $items])->save();
         } catch (Throwable $e) {
             Log::warning('upsell.hold.addition_failed', ['shop_id' => $shopId, 'message' => $e->getMessage()]);
         }
+    }
+
+    /**
+     * What the shopper added, one entry per product: [name, the share of the charge].
+     * A bundle lists every product picked, their shares adding up to the bundle price.
+     *
+     * @return list<array{0: string, 1: float}>
+     */
+    private function addedItems(UpsellFlowOffer $offer, AcceptUpsellRequest $req, float $amount): array
+    {
+        if (! $offer->isBundle()) {
+            return [[(string) ($offer->resolveProduct()?->title ?: $offer->offer_title ?: ''), round($amount, 2)]];
+        }
+
+        $products = $offer->selectedBundleProducts($req->selectedProductIds);
+        $totals = $offer->bundleLineTotals($products->count());
+
+        return $products->map(fn (Product $p, int $i): array => [(string) $p->title, $totals[$i]])->all();
     }
 
     // === Success / failure ===
@@ -352,8 +388,9 @@ final class UpsellChargeService
             // An upsell has no PLAN, and the plan is where the issuer normally finds
             // the product name — so without this the customer's tax receipt printed
             // the idempotency key. The offer knows what was sold; say so.
-            itemTitle: $offer->resolveProduct()?->title
-                ?: ($offer->offer_title ?: null),
+            itemTitle: $offer->isBundle()
+                ? implode(' · ', array_column($this->addedItems($offer, $req, $amount), 0))
+                : ($offer->resolveProduct()?->title ?: ($offer->offer_title ?: null)),
         );
 
         return UpsellChargeResult::charged($ledger->idempotency_key, $result->transactionUid, $this->nextOfferOnAccept($req));

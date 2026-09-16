@@ -118,6 +118,8 @@ function lets_payplus_rest_upsell_accept(WP_REST_Request $request)
         'parent_order' => $facts['parent_order'],
         'customer' => $facts['customer'],
         'email' => $facts['email'],
+        // A bundle's pick, as ids and nothing else. The SaaS decides whether it is valid.
+        'product_ids' => array_values(array_map('absint', (array) $request->get_param('product_ids'))),
     );
 
     $result = lets_payplus_signed_post('/api/woocommerce/upsell/accept', $body);
@@ -246,6 +248,7 @@ add_action('woocommerce_thankyou', function ($order_id) {
             'error' => __('We could not add that. Please try again.', 'lets-payplus'),
             // Specific reason when the card wasn't saved at checkout (create_token off).
             'no_card' => __('Your saved card isn’t available for one-click add-ons, so we couldn’t add this. Your order is unchanged.', 'lets-payplus'),
+            'expired' => __('This offer has ended. Your order is unchanged.', 'lets-payplus'),
         ),
     ));
 

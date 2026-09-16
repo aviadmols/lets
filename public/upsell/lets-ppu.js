@@ -19,6 +19,15 @@
  *
  * MONEY LAW: money is display-only text baked into the view-model by the server.
  * previewHandlers never POST, never charge, never record.
+ *
+ * BUNDLE: when content.bundle is present the card is a picker — product tiles in a
+ * slider, and the accept button opens only once exactly bundle.quantity are chosen.
+ * onAccept(vm, selectedIds) receives the pick; the server checks it and charges the
+ * bundle price. A tile's price is reference text, never the charge.
+ *
+ * WINDOW: content.timer_seconds is what is LEFT of the offer's window. At zero the card
+ * leaves (handlers.onExpire, when given, decides instead) — the server refuses a late
+ * accept on the same clock.
  * ===================================================================== */
 window.LetsUpsell = (function () {
   'use strict';
@@ -31,6 +40,7 @@ window.LetsUpsell = (function () {
   ];
   var LOCKED = { price: true, cta: true, disclosure: true };
   var HEAD = { eyebrow: true, badge: true, timer: true };
+  var AFTER_BUNDLE = { trust: true, cta: true, decline: true, disclosure: true };
   // Mirrors the server MerchantUpsellAppearance::DEFAULT_ELEMENTS exactly (badge + timer OFF) so an
   // empty/garbage element list resolves identically on both sides.
   var DEFAULT_ELEMENTS = [
@@ -50,6 +60,12 @@ window.LetsUpsell = (function () {
   var LOCK_SVG = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">'
     + '<rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" stroke-width="1.7"/>'
     + '<path d="M8 11V8a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>';
+
+  var ARROW_SVG = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">'
+    + '<path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  // Below these card widths a slide holds fewer products than the merchant chose.
+  var NARROW_TWO = 520;
+  var NARROW_ONE = 360;
 
   // Module state: the last render, so applyAppearance can re-style without a reload.
   var _last = null;   // { mount, vm, handlers, opts }
@@ -131,7 +147,7 @@ window.LetsUpsell = (function () {
     _timer = setInterval(function () {
       left -= 1;
       if (left <= 60) { wrap.classList.add('is-urgent'); }
-      if (left <= 0) { clearInterval(_timer); _timer = null; wrap.style.display = 'none'; return; }
+      if (left <= 0) { clearInterval(_timer); _timer = null; wrap.style.display = 'none'; expire(state); return; }
       digits.textContent = fmt(left);
     }, 1000);
     return wrap;
@@ -139,6 +155,12 @@ window.LetsUpsell = (function () {
 
   // ------------------------------------------------------------- body elements
   function buildElement(key, c, state, handlers) {
+    // A bundle draws its own tiles (see build()); the single product's image, name, price
+    // and saving have nothing to say about a pick.
+    if (c.bundle && (key === 'image' || key === 'product_name' || key === 'price' || key === 'save')) {
+      return null;
+    }
+
     switch (key) {
       case 'image':
         if (!nonEmpty(c.product_image)) { return null; }
@@ -199,6 +221,145 @@ window.LetsUpsell = (function () {
     return null;
   }
 
+  // ------------------------------------------------------------- bundle picker
+  function effectiveColumns(columns, width) {
+    var cols = Math.max(1, Math.min(4, parseInt(columns, 10) || 1));
+    if (width && width < NARROW_ONE) { return 1; }
+    if (width && width < NARROW_TWO) { return Math.min(cols, 2); }
+    return cols;
+  }
+
+  function buildTile(p, b, state) {
+    var tile = elt('div', 'lets-ppu__tile');
+    if (nonEmpty(p.image)) {
+      var img = elt('img', 'lets-ppu__tile-img');
+      img.src = p.image;
+      img.alt = p.title || '';
+      img.loading = 'lazy';
+      tile.appendChild(img);
+    }
+    var info = elt('div', 'lets-ppu__tile-info');
+    info.appendChild(elt('div', 'lets-ppu__tile-name', p.title));
+    if (nonEmpty(p.price_display)) { info.appendChild(elt('div', 'lets-ppu__tile-price', p.price_display)); }
+    var pick = elt('button', 'lets-ppu__tile-pick', b.select_label);
+    pick.type = 'button';
+    pick.setAttribute('aria-pressed', 'false');
+    pick.addEventListener('click', function () { togglePick(state, p.id, tile, pick); });
+    info.appendChild(pick);
+    tile.appendChild(info);
+    return tile;
+  }
+
+  function togglePick(state, id, tile, pick) {
+    var b = state.bundle;
+    if (state.busy || !b) { return; }
+    var at = state.selected.indexOf(id);
+    if (at >= 0) {
+      state.selected.splice(at, 1);
+    } else if (state.selected.length < b.quantity) {
+      state.selected.push(id);
+    } else {
+      return; // full — un-pick one first
+    }
+    var on = state.selected.indexOf(id) >= 0;
+    tile.classList.toggle('is-picked', on);
+    pick.setAttribute('aria-pressed', on ? 'true' : 'false');
+    pick.textContent = on ? b.selected_label : b.select_label;
+    syncBundle(state);
+  }
+
+  /** The progress line, the "full" state, and the accept button that opens only at full. */
+  function syncBundle(state) {
+    var b = state.bundle;
+    if (!b) { return; }
+    var full = state.selected.length === b.quantity;
+    if (state.progress) {
+      state.progress.textContent = String(b.progress || '')
+        .replace(':selected', String(state.selected.length))
+        .replace(':count', String(b.quantity));
+    }
+    if (state.root) { state.root.classList.toggle('is-full', full); }
+    if (state.accept && !state.busy) { state.accept.disabled = !full; }
+  }
+
+  /**
+   * Tiles grouped into slides of N columns in a native snap-scrolling track, so swipe works
+   * with no code of its own. Each slide is exactly the track's width, which makes the
+   * "i / n" counter exact. N follows the card's width: it is re-grouped when that changes.
+   */
+  function buildBundle(b, state) {
+    state.bundle = b;
+    state.selected = [];
+
+    var wrap = elt('div', 'lets-ppu__bundle');
+    if (nonEmpty(b.title)) { wrap.appendChild(elt('div', 'lets-ppu__bundle-title', b.title)); }
+
+    var track = elt('div', 'lets-ppu__slides');
+    var pager = elt('div', 'lets-ppu__pager');
+    var prev = elt('button', 'lets-ppu__pager-btn lets-ppu__pager-btn--prev');
+    var next = elt('button', 'lets-ppu__pager-btn lets-ppu__pager-btn--next');
+    var counter = elt('span', 'lets-ppu__pager-count');
+    prev.type = 'button';
+    next.type = 'button';
+    prev.innerHTML = ARROW_SVG;
+    next.innerHTML = ARROW_SVG;
+    prev.setAttribute('aria-label', b.prev_label || '');
+    next.setAttribute('aria-label', b.next_label || '');
+    pager.appendChild(prev);
+    pager.appendChild(counter);
+    pager.appendChild(next);
+
+    state.progress = elt('div', 'lets-ppu__bundle-progress');
+    wrap.appendChild(track);
+    wrap.appendChild(pager);
+    wrap.appendChild(state.progress);
+
+    var tiles = (b.products || []).map(function (p) { return buildTile(p, b, state); });
+    var perSlide = 0;
+
+    function slides() { return track.children.length; }
+    function current() {
+      var w = track.clientWidth || 1;
+      return Math.min(slides(), Math.round(Math.abs(track.scrollLeft) / w) + 1);
+    }
+    function sync() {
+      var n = slides();
+      var i = current();
+      pager.hidden = n <= 1;
+      counter.textContent = i + ' / ' + n;
+      prev.disabled = i <= 1;
+      next.disabled = i >= n;
+    }
+    function layout() {
+      var cols = effectiveColumns(b.columns, track.clientWidth || wrap.clientWidth);
+      if (cols !== perSlide) {
+        perSlide = cols;
+        track.setAttribute('data-cols', String(cols));
+        track.innerHTML = '';
+        for (var i = 0; i < tiles.length; i += cols) {
+          var slide = elt('div', 'lets-ppu__slide');
+          tiles.slice(i, i + cols).forEach(function (t) { slide.appendChild(t); });
+          track.appendChild(slide);
+        }
+        track.scrollLeft = 0;
+      }
+      sync();
+    }
+    function go(step) {
+      var rtl = window.getComputedStyle(track).direction === 'rtl';
+      track.scrollBy({ left: step * track.clientWidth * (rtl ? -1 : 1), behavior: 'smooth' });
+    }
+
+    prev.addEventListener('click', function () { go(-1); });
+    next.addEventListener('click', function () { go(1); });
+    track.addEventListener('scroll', function () { window.requestAnimationFrame(sync); }, { passive: true });
+    if (window.ResizeObserver) { new ResizeObserver(layout).observe(track); }
+    layout();                 // a first grouping, so the card has height before it mounts
+    setTimeout(layout, 0);    // and the real one, once the card has a width
+
+    return wrap;
+  }
+
   // ------------------------------------------------------------- assembly
   function build(root, vm, handlers, state) {
     var c = vm.content || {};
@@ -209,7 +370,9 @@ window.LetsUpsell = (function () {
     var head = null;       // lazy .lets-ppu__head
 
     elements.forEach(function (e) {
-      if (!e.enabled) { return; }
+      // An offer with a window always shows its clock: the offer will vanish when it ends,
+      // and it must not do that without warning.
+      if (!e.enabled && !(e.key === 'timer' && Number(c.timer_seconds) > 0)) { return; }
       if (HEAD[e.key]) {
         var child = buildHeadChild(e.key, c, state);
         if (!child) { return; }
@@ -221,7 +384,17 @@ window.LetsUpsell = (function () {
       if (node) { nodes.push({ key: e.key, node: node }); }
     });
 
-    var mediaSide = a.layout === 'media_side';
+    // The picker goes after the merchant's copy and before the trust line and the buttons —
+    // wherever those sit in the element order, and whichever of them are switched off.
+    if (c.bundle) {
+      var at = nodes.length;
+      for (var i = 0; i < nodes.length; i++) {
+        if (AFTER_BUNDLE[nodes[i].key]) { at = i; break; }
+      }
+      nodes.splice(at, 0, { key: 'bundle', node: buildBundle(c.bundle, state) });
+    }
+
+    var mediaSide = a.layout === 'media_side' && !c.bundle;
     var hasMedia = nodes.some(function (n) { return n.key === 'image'; });
 
     if (mediaSide && hasMedia) {
@@ -243,6 +416,10 @@ window.LetsUpsell = (function () {
     var decline = root.querySelector('.lets-ppu__decline');
     var errorNode = root.querySelector('.lets-ppu__error');
 
+    state.root = root;
+    state.accept = accept;
+    syncBundle(state);
+
     if (accept) {
       accept.addEventListener('click', function () { onAccept(root, vm, handlers, state, accept, errorNode); });
     }
@@ -253,6 +430,7 @@ window.LetsUpsell = (function () {
 
   function onAccept(root, vm, handlers, state, btn, errorNode) {
     if (state.busy) { return; }
+    if (state.bundle && state.selected.length !== state.bundle.quantity) { return; }
     state.busy = true;
     var c = vm.content || {};
     if (errorNode) { errorNode.hidden = true; }
@@ -265,7 +443,7 @@ window.LetsUpsell = (function () {
     }
 
     var fn = (handlers && handlers.onAccept) ? handlers.onAccept : function () { return Promise.resolve(true); };
-    Promise.resolve(fn(vm)).then(function (ok) {
+    Promise.resolve(fn(vm, state.bundle ? state.selected.slice() : [])).then(function (ok) {
       if (ok === false) { throw new Error('not_charged'); }
       if (_timer) { clearInterval(_timer); _timer = null; }
       showDone(root, vm);
@@ -277,7 +455,20 @@ window.LetsUpsell = (function () {
       if (sp) { sp.remove(); }
       if (label) { label.textContent = c.accept_cta; }
       if (errorNode) { errorNode.textContent = c.error_text || 'Something went wrong.'; errorNode.hidden = false; }
+      syncBundle(state);
     });
+  }
+
+  /** The window ran out. A charge already on its way is left to finish. */
+  function expire(state) {
+    if (state.busy) { return; }
+    var h = _last ? _last.handlers : null;
+    if (h && typeof h.onExpire === 'function') { h.onExpire(); return; }
+    var root = state.root;
+    if (!root) { return; }
+    root.classList.add('is-declining');
+    var mount = _last ? _last.mount : root.parentNode;
+    setTimeout(function () { if (mount) { mount.hidden = true; } }, 320);
   }
 
   function onDecline(root, vm, handlers, state) {
@@ -314,10 +505,13 @@ window.LetsUpsell = (function () {
     vm.content = vm.content || {};
     vm.appearance = vm.appearance || {};
 
-    var state = { busy: false };
+    var state = { busy: false, selected: [] };
     var root = elt('div', 'lets-ppu');
     if (opts.animate === false) { root.style.animation = 'none'; }
     setTokens(root, vm.appearance);
+    if (vm.content.bundle) {
+      root.setAttribute('data-bundle-cols', String(Math.max(1, Math.min(4, parseInt(vm.content.bundle.columns, 10) || 1))));
+    }
     build(root, vm, handlers, state);
     wire(root, vm, handlers, state);
 
@@ -360,7 +554,8 @@ window.LetsUpsell = (function () {
 
   var previewHandlers = {
     onAccept: function () { return Promise.resolve(true); },
-    onDecline: function () { return Promise.resolve(); }
+    onDecline: function () { return Promise.resolve(); },
+    onExpire: function () { /* the admin preview stays on screen */ }
   };
 
   return {

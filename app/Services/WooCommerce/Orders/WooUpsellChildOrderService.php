@@ -3,6 +3,7 @@
 namespace App\Services\WooCommerce\Orders;
 
 use App\Domain\Upsell\Models\UpsellFlowOffer;
+use App\Models\Product;
 use App\Models\Shop;
 use App\Services\WooCommerce\WooClientFactory;
 use Illuminate\Support\Facades\Log;
@@ -49,7 +50,10 @@ final class WooUpsellChildOrderService
         float $amount,
         string $currency,
         ?string $customerEmail,
+        array $productIds = [],
     ): ?string {
+        $lines = $this->lineItems($offer, $amount, $productIds);
+
         if (! $shop->hasWooConnection()) {
             // Decoupled: the engine still charged + recorded; we just can't record the WC order for
             // an unconnected store. Safe no-op — but NEVER silent (the money moved).
@@ -62,7 +66,7 @@ final class WooUpsellChildOrderService
 
         // PREFERRED: add the item to the shopper's existing order.
         if (trim($parentOrderId) !== '') {
-            $attached = $this->addToParentOrder($shop, $offer, $parentOrderId, $amount);
+            $attached = $this->addToParentOrder($shop, $offer, $parentOrderId, $amount, $lines);
             if ($attached !== null) {
                 Log::info('woocommerce.upsell.attached_to_parent', [
                     'shop_id' => $shop->getKey(), 'order_id' => $attached, 'offer_id' => $offer->getKey(),
@@ -85,7 +89,7 @@ final class WooUpsellChildOrderService
         }
 
         // FALLBACK: a linked, paid child order so the charge is never lost.
-        return $this->createChildOrder($shop, $offer, $parentOrderId, $amount, $currency, $customerEmail);
+        return $this->createChildOrder($shop, $offer, $parentOrderId, $currency, $customerEmail, $lines);
     }
 
     /**
@@ -94,7 +98,7 @@ final class WooUpsellChildOrderService
      * is ADDED; existing lines are untouched. Also drops a merchant-visible note documenting the
      * separate token charge. Returns the parent order id, or null on failure (→ child fallback).
      */
-    private function addToParentOrder(Shop $shop, UpsellFlowOffer $offer, string $parentOrderId, float $amount): ?string
+    private function addToParentOrder(Shop $shop, UpsellFlowOffer $offer, string $parentOrderId, float $amount, array $lines): ?string
     {
         try {
             $client = WooClientFactory::for($shop);
@@ -103,7 +107,7 @@ final class WooUpsellChildOrderService
                 // New line item (no `id`) → WooCommerce adds it + recalculates the order total.
                 // `total` pins the server-computed charged price; the product's own price becomes the
                 // subtotal, so any offer discount shows just like a normal discounted line.
-                'line_items' => [$this->lineItem($offer, $amount)],
+                'line_items' => $lines,
                 'meta_data' => [
                     ['key' => self::META_UPSELL_OFFER_ID, 'value' => (string) $offer->getKey()],
                 ],
@@ -119,7 +123,7 @@ final class WooUpsellChildOrderService
                 $parentOrderId,
                 sprintf(
                     'LETS one-click upsell added: %s — %s charged to the saved card (no card re-entry).',
-                    (string) ($offer->offer_title ?? __('upsell.offer_default_title')),
+                    implode(' · ', array_column($lines, 'name')),
                     number_format(round($amount, 2), 2, '.', ''),
                 ),
                 false,
@@ -144,9 +148,9 @@ final class WooUpsellChildOrderService
         Shop $shop,
         UpsellFlowOffer $offer,
         string $parentOrderId,
-        float $amount,
         string $currency,
         ?string $customerEmail,
+        array $lines,
     ): ?string {
         try {
             $order = WooClientFactory::for($shop)->createOrder([
@@ -156,7 +160,7 @@ final class WooUpsellChildOrderService
                 'billing' => array_filter([
                     'email' => (string) ($customerEmail ?? ''),
                 ], static fn ($v): bool => $v !== ''),
-                'line_items' => [$this->lineItem($offer, $amount)],
+                'line_items' => $lines,
                 'meta_data' => [
                     ['key' => self::META_ORDER_ROLE, 'value' => self::ROLE_UPSELL_CHILD],
                     // Only THIS order is marked. The other path adds a line to the
@@ -193,18 +197,54 @@ final class WooUpsellChildOrderService
      */
     private function lineItem(UpsellFlowOffer $offer, float $amount): array
     {
+        return $this->productLine(
+            (string) ($offer->offer_title ?? __('upsell.offer_default_title')),
+            $amount,
+            $offer->offer_product_gid,
+            $offer->offer_variant_gid,
+        );
+    }
+
+    /**
+     * The lines this accept adds: one for a single-product offer, one PER PRODUCT for a
+     * bundle — each a real product line (stock, fulfilment), their totals adding up to
+     * exactly the bundle price that was charged.
+     *
+     * @param  list<int>  $productIds
+     * @return list<array<string, mixed>>
+     */
+    private function lineItems(UpsellFlowOffer $offer, float $amount, array $productIds): array
+    {
+        if (! $offer->isBundle()) {
+            return [$this->lineItem($offer, $amount)];
+        }
+
+        $products = $offer->selectedBundleProducts($productIds);
+        $totals = $offer->bundleLineTotals($products->count());
+
+        return $products->map(fn (Product $product, int $i): array => $this->productLine(
+            (string) $product->title,
+            $totals[$i],
+            (string) $product->external_id,
+            $product->primaryVariant()?->external_variant_id,
+        ))->all();
+    }
+
+    /** @return array<string, mixed> */
+    private function productLine(string $name, float $total, ?string $productRef, ?string $variantRef): array
+    {
         $lineItem = [
-            'name' => (string) ($offer->offer_title ?? __('upsell.offer_default_title')),
+            'name' => $name,
             'quantity' => 1,
-            'total' => number_format(round($amount, 2), 2, '.', ''),
+            'total' => number_format(round($total, 2), 2, '.', ''),
         ];
-        if (($productId = $this->numericId($offer->offer_product_gid)) > 0) {
+        if (($productId = $this->numericId($productRef)) > 0) {
             $lineItem['product_id'] = $productId;
         }
         // A SIMPLE WooCommerce product is cached with variant_id == product_id, but WooCommerce
         // requires `variation_id` to reference a REAL variation — echoing the product id back makes
         // the line invalid (and can reject the whole order write). Only send a genuine variation.
-        $variationId = $this->numericId($offer->offer_variant_gid);
+        $variationId = $this->numericId($variantRef);
         if ($variationId > 0 && $variationId !== $productId) {
             $lineItem['variation_id'] = $variationId;
         }

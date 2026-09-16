@@ -18,6 +18,8 @@
  *   data-theme=light|dark  data-button=solid|outline  data-layout=stacked|media_side
  *   data-ratio=natural|square  data-decline=link|button  data-shadow=none|soft|elevated
  * STATE via a root class: .is-loading .is-accepting .is-done .is-error
+ * BUNDLE via data-bundle-cols=1..4 on the root (card width), data-cols=1..4 on
+ * the slide track (products per slide), .is-picked on a tile, .is-full on the root.
  * ===================================================================== */
 
 .lets-ppu,
@@ -440,3 +442,173 @@
 .lets-ppu__skel--price { block-size: 40px; inline-size: 55%; margin-block: 8px 20px; }
 .lets-ppu__skel--btn { block-size: 48px; }
 
+/* ============================ BUNDLE PICKER ============================
+   content.bundle turns the card into a picker: product tiles grouped into
+   slides of N (data-cols on the track, 1–4, fewer on a narrow card), a native
+   snap-scrolling track so a finger can swipe it, an "i / n" pager, and the
+   accept button that opens only at a full pick (.is-full on the root).
+   ======================================================================= */
+.lets-ppu[data-bundle-cols="2"] { max-inline-size: 560px; }
+.lets-ppu[data-bundle-cols="3"],
+.lets-ppu[data-bundle-cols="4"] { max-inline-size: 760px; }
+
+.lets-ppu__bundle { margin-block: 4px 6px; }
+
+.lets-ppu__bundle-title {
+  margin-block-end: 16px;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  color: var(--lets-ppu-ink);
+  unicode-bidi: plaintext;
+}
+
+.lets-ppu__slides {
+  display: flex;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  /* room for the tile shadows, which overflow-x would otherwise clip */
+  padding-block: 6px 18px;
+}
+.lets-ppu__slides::-webkit-scrollbar { display: none; }
+
+.lets-ppu__slide {
+  flex: 0 0 100%;
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 14px;
+  /* Wider than a cover's shadow, so the neighbouring slide's never bleeds into view. */
+  padding-inline: 12px;
+  scroll-snap-align: start;
+  align-items: stretch;
+}
+.lets-ppu__slides[data-cols="2"] .lets-ppu__slide { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.lets-ppu__slides[data-cols="3"] .lets-ppu__slide { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.lets-ppu__slides[data-cols="4"] .lets-ppu__slide { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+.lets-ppu__tile {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-inline-size: 0;
+}
+/* One product per slide: the cover beside its details, the way a shelf card reads. */
+.lets-ppu__slides[data-cols="1"] .lets-ppu__tile {
+  display: grid;
+  grid-template-columns: minmax(0, 40%) minmax(0, 1fr);
+  gap: 20px;
+  align-items: center;
+}
+
+.lets-ppu__tile-img {
+  display: block;
+  inline-size: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border-radius: 7px;
+  box-shadow: 0 18px 28px -18px rgba(0, 0, 0, 0.35);
+  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.5s ease;
+}
+.lets-ppu[data-ratio="square"] .lets-ppu__tile-img { aspect-ratio: 1 / 1; }
+
+.lets-ppu__tile-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-inline-size: 0;
+  flex: 1;
+}
+.lets-ppu__tile-name {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--lets-ppu-ink);
+  overflow-wrap: anywhere;
+}
+.lets-ppu__slides[data-cols="1"] .lets-ppu__tile-name { font-size: 22px; font-weight: 900; }
+.lets-ppu__tile-price {
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--lets-ppu-ink);
+  unicode-bidi: isolate;
+}
+
+.lets-ppu__tile-pick {
+  margin-block-start: auto;
+  padding: 10px 14px;
+  border: 1px solid var(--lets-ppu-accent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--lets-ppu-accent);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.5s ease, color 0.5s ease, opacity 0.3s ease;
+}
+.lets-ppu[data-theme="dark"] .lets-ppu__tile-pick { color: var(--lets-ppu-ink); }
+.lets-ppu__slides[data-cols="1"] .lets-ppu__tile-pick { margin-block-start: 10px; padding: 14px 22px; font-size: 16px; }
+.lets-ppu__tile.is-picked .lets-ppu__tile-pick {
+  background: var(--lets-ppu-accent);
+  color: var(--lets-ppu-accent-text);
+}
+.lets-ppu__tile.is-picked .lets-ppu__tile-img { box-shadow: 0 0 0 2px var(--lets-ppu-accent), 0 18px 28px -18px rgba(0, 0, 0, 0.35); }
+/* Full: the tiles NOT picked step back — un-pick one to swap. */
+.lets-ppu.is-full .lets-ppu__tile:not(.is-picked) .lets-ppu__tile-pick { opacity: 0.35; cursor: default; }
+
+.lets-ppu__pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  margin-block: 2px 12px;
+}
+.lets-ppu__pager[hidden] { display: none; }
+.lets-ppu__pager-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 44px;
+  block-size: 44px;
+  padding: 0;
+  border: 1px solid var(--lets-ppu-rule);
+  border-radius: 999px;
+  background: var(--lets-ppu-paper);
+  color: var(--lets-ppu-ink);
+  cursor: pointer;
+  transition: border-color 0.5s ease, opacity 0.3s ease;
+}
+.lets-ppu__pager-btn svg { inline-size: 18px; block-size: 18px; }
+.lets-ppu__pager-btn:hover:not(:disabled) { border-color: var(--lets-ppu-ink); }
+.lets-ppu__pager-btn:disabled { opacity: 0.35; cursor: default; }
+/* The arrow points the way the slide moves: "next" toward the end of the line. */
+.lets-ppu__pager-btn--prev svg { transform: scaleX(-1); }
+[dir="rtl"] .lets-ppu__pager-btn--prev svg { transform: none; }
+[dir="rtl"] .lets-ppu__pager-btn--next svg { transform: scaleX(-1); }
+.lets-ppu__pager-count {
+  min-inline-size: 48px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--lets-ppu-muted);
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.lets-ppu__bundle-progress {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--lets-ppu-muted);
+  text-align: center;
+}
+.lets-ppu.is-full .lets-ppu__bundle-progress { color: var(--lets-ppu-ink); font-weight: 700; }
+/* Not full yet: the accept button is plainly not ready (busy keeps its own look). */
+.lets-ppu[data-bundle-cols]:not(.is-full):not(.is-accepting) .lets-ppu__accept:disabled { opacity: 0.35; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .lets-ppu__slides { scroll-behavior: smooth; }
+  .lets-ppu__tile:hover .lets-ppu__tile-img { transform: translateY(-4px); }
+}

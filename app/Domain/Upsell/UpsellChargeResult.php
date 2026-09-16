@@ -17,6 +17,12 @@ final class UpsellChargeResult
     public const RESULT_NO_METHOD = 'no_payment_method';
     public const RESULT_FAILED = 'charge_failed';
 
+    /** The offer's add-on window closed before the accept arrived. Nothing charged. */
+    public const RESULT_EXPIRED = 'expired';
+
+    /** A bundle accept whose pick is not exactly what the bundle allows. Nothing charged. */
+    public const RESULT_INVALID_SELECTION = 'invalid_selection';
+
     private function __construct(
         public readonly string $result,
         public readonly string $idempotencyKey,
@@ -43,6 +49,16 @@ final class UpsellChargeResult
     public static function noMethod(string $key): self
     {
         return new self(self::RESULT_NO_METHOD, $key);
+    }
+
+    public static function expired(string $key): self
+    {
+        return new self(self::RESULT_EXPIRED, $key);
+    }
+
+    public static function invalidSelection(string $key): self
+    {
+        return new self(self::RESULT_INVALID_SELECTION, $key);
     }
 
     public static function failed(string $key, ?string $errorCode): self

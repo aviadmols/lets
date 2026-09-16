@@ -71,6 +71,12 @@ class Product extends Model
     /** The lowest-position variant — what the list row represents. */
     public function primaryVariant(): ?ProductVariant
     {
+        // Already loaded (a bundle's products are fetched with their variants): read the
+        // collection instead of asking the database again for every product.
+        if ($this->relationLoaded('variants')) {
+            return $this->variants->sortBy([['position', 'asc'], ['id', 'asc']])->first();
+        }
+
         return $this->variants()
             ->orderBy('position')
             ->orderBy('id')

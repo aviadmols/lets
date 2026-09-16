@@ -60,6 +60,9 @@ final class WooUpsellAcceptController extends WooStorefrontController
                 parentOrderId: (string) $request->input('parent_order', ''),
                 customerRef: (string) $request->input('customer', ''),
                 customerEmail: $this->cleanEmail($request->input('email')),
+                // The bundle pick exactly as sent. Coerced to ints and nothing more: the OFFER
+                // decides whether it is a valid pick, so garbage is refused, not tidied up.
+                selectedProductIds: array_values(array_map('intval', (array) $request->input('product_ids', []))),
             );
 
             // The engine charges + records (idempotent, consent-gated). Unchanged.
@@ -77,6 +80,7 @@ final class WooUpsellAcceptController extends WooStorefrontController
                     amount: $offer->discountedPrice(),
                     currency: (string) ($offer->currency ?? config('payplus.currency', 'ILS')),
                     customerEmail: $req->customerEmail,
+                    productIds: $req->selectedProductIds,
                 );
             }
 
@@ -95,8 +99,10 @@ final class WooUpsellAcceptController extends WooStorefrontController
         return match ($result->result) {
             UpsellChargeResult::RESULT_CHARGED,
             UpsellChargeResult::RESULT_ALREADY => Response::HTTP_OK,
+            UpsellChargeResult::RESULT_EXPIRED => Response::HTTP_GONE,
             UpsellChargeResult::RESULT_NO_CONSENT,
-            UpsellChargeResult::RESULT_NO_METHOD => Response::HTTP_UNPROCESSABLE_ENTITY,
+            UpsellChargeResult::RESULT_NO_METHOD,
+            UpsellChargeResult::RESULT_INVALID_SELECTION => Response::HTTP_UNPROCESSABLE_ENTITY,
             default => Response::HTTP_PAYMENT_REQUIRED, // charge_failed
         };
     }

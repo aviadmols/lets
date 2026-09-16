@@ -373,18 +373,27 @@
                             <legend class="rc-field__label">{{ __('upsell.admin.configure.what_product') }}</legend>
                             <div class="rc-pp-radio-group">
                                 <label class="rc-pp-radio">
-                                    <input type="radio" wire:model="productSelectionMode" value="smart_select">
+                                    <input type="radio" wire:model.live="productSelectionMode" value="smart_select">
                                     <span class="rc-pp-radio__body">
                                         <span class="rc-pp-radio__title">{{ __('upsell.admin.configure.smart_select') }}</span>
                                         <span class="rc-pp-radio__hint">{{ __('upsell.admin.configure.smart_select_hint') }}</span>
                                     </span>
                                 </label>
                                 <label class="rc-pp-radio">
-                                    <input type="radio" wire:model="productSelectionMode" value="specific">
+                                    <input type="radio" wire:model.live="productSelectionMode" value="specific">
                                     <span class="rc-pp-radio__body">
                                         <span class="rc-pp-radio__title">{{ __('upsell.admin.configure.specific_products') }}</span>
                                     </span>
                                 </label>
+                                @if($this->bundleAvailable())
+                                    <label class="rc-pp-radio">
+                                        <input type="radio" wire:model.live="productSelectionMode" value="bundle">
+                                        <span class="rc-pp-radio__body">
+                                            <span class="rc-pp-radio__title">{{ __('upsell.admin.configure.bundle') }}</span>
+                                            <span class="rc-pp-radio__hint">{{ __('upsell.admin.configure.bundle_hint') }}</span>
+                                        </span>
+                                    </label>
+                                @endif
                             </div>
 
                             {{-- Searchable product picker (replaces the read-only "Product ID").
@@ -399,6 +408,66 @@
                                     'selectedLabel' => $offerProductLabel,
                                     'withVariants' => true,
                                 ])
+                            @endif
+
+                            {{-- Bundle: search to ADD (the search stays open), the list below, then
+                                 how many the customer picks, the one price, and the slide grid. --}}
+                            @if($productSelectionMode === 'bundle')
+                                @include('filament.pages.partials.product-picker', [
+                                    'searchModel' => 'productSearch',
+                                    'resultsMethod' => 'offerPickerResults',
+                                    'selectMethod' => 'addBundleProduct',
+                                    'refreshMethod' => 'refreshOfferProducts',
+                                    'selectedLabel' => '',
+                                    'withVariants' => false,
+                                ])
+
+                                <div class="rc-field">
+                                    <span class="rc-field__label">{{ __('upsell.admin.configure.bundle_products') }}</span>
+                                    @forelse($this->bundleProductRows() as $row)
+                                        <div class="rc-picker__selected" wire:key="bundle-{{ $row['id'] }}">
+                                            <span class="rc-fb-offer__thumb">
+                                                @if(filled($row['image']))
+                                                    <img src="{{ $row['image'] }}" alt="" class="rc-picker__thumb-img">
+                                                @else
+                                                    <x-filament::icon icon="heroicon-o-cube" class="rc-fb-offer__thumb-icon" />
+                                                @endif
+                                            </span>
+                                            <span class="rc-picker__selected-info">
+                                                <span class="rc-fb-offer__name">{{ $row['title'] }}</span>
+                                                <span class="rc-fb-offer__meta rc-ltr">{{ $row['price'] }}</span>
+                                            </span>
+                                            <button type="button" class="rc-link rc-picker__change" wire:click="removeBundleProduct({{ $row['id'] }})" aria-label="{{ __('upsell.admin.configure.bundle_remove', ['product' => $row['title']]) }}">
+                                                <x-filament::icon icon="heroicon-o-x-mark" class="rc-picker__refresh-icon" />
+                                            </button>
+                                        </div>
+                                    @empty
+                                        <p class="rc-muted">{{ __('upsell.admin.configure.bundle_products_empty') }}</p>
+                                    @endforelse
+                                </div>
+
+                                <div class="rc-field">
+                                    <label class="rc-field__label" for="rc-bundle-quantity">{{ __('upsell.admin.configure.bundle_quantity') }}</label>
+                                    <input id="rc-bundle-quantity" type="number" min="1" step="1" class="rc-input rc-ltr" wire:model="bundleQuantity">
+                                </div>
+
+                                <div class="rc-field">
+                                    <label class="rc-field__label" for="rc-bundle-price">{{ __('upsell.admin.configure.bundle_price') }}</label>
+                                    <div class="rc-input-prefix">
+                                        <span class="rc-input-prefix__unit">{{ __('upsell.admin.trigger_config.currency_symbol') }}</span>
+                                        <input id="rc-bundle-price" type="number" min="0" step="0.01" class="rc-input rc-ltr" wire:model="bundlePrice">
+                                    </div>
+                                </div>
+
+                                <div class="rc-field">
+                                    <label class="rc-field__label" for="rc-bundle-columns">{{ __('upsell.admin.configure.bundle_columns') }}</label>
+                                    <select id="rc-bundle-columns" class="rc-pp-select rc-field__control" wire:model="bundleColumns">
+                                        @foreach(range(\App\Domain\Upsell\Models\UpsellFlowOffer::BUNDLE_MIN_COLUMNS, \App\Domain\Upsell\Models\UpsellFlowOffer::BUNDLE_MAX_COLUMNS) as $columns)
+                                            <option value="{{ $columns }}">{{ $columns }}</option>
+                                        @endforeach
+                                    </select>
+                                    <p class="rc-muted">{{ __('upsell.admin.configure.bundle_columns_hint') }}</p>
+                                </div>
                             @endif
                         </fieldset>
 
@@ -517,6 +586,11 @@
                                     <span class="rc-check__hint">{{ __('upsell.admin.configure.show_timer_hint') }}</span>
                                 </span>
                             </label>
+                            <div class="rc-field">
+                                <label class="rc-field__label" for="rc-timer-minutes">{{ __('upsell.admin.configure.timer_minutes') }}</label>
+                                <input id="rc-timer-minutes" type="number" min="1" max="1440" step="1" class="rc-input rc-ltr" wire:model="timerMinutes">
+                                <p class="rc-muted">{{ __('upsell.admin.configure.timer_minutes_hint') }}</p>
+                            </div>
                         </fieldset>
 
                         {{-- Partial-paid info (links to the Settings tab) --}}

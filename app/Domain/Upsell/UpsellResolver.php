@@ -54,6 +54,12 @@ final class UpsellResolver
                 continue; // a flow with no offer can't be shown
             }
 
+            // This order's add-on window has closed: the offer is over, and reloading the
+            // thank-you page must not bring it (or another flow's offer) back.
+            if ($offer->windowSecondsLeft($context->parentOrderId) === 0) {
+                return null;
+            }
+
             $this->recordImpression($flow, $offer, $context);
 
             // The offer is about to be SHOWN, so this is the moment the shopper's

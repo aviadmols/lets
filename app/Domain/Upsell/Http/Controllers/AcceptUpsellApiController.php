@@ -123,8 +123,10 @@ final class AcceptUpsellApiController extends Controller
         return match ($result->result) {
             UpsellChargeResult::RESULT_CHARGED,
             UpsellChargeResult::RESULT_ALREADY => 200,
+            UpsellChargeResult::RESULT_EXPIRED => 410,
             UpsellChargeResult::RESULT_NO_CONSENT,
-            UpsellChargeResult::RESULT_NO_METHOD => 422,
+            UpsellChargeResult::RESULT_NO_METHOD,
+            UpsellChargeResult::RESULT_INVALID_SELECTION => 422,
             default => 402, // charge_failed
         };
     }

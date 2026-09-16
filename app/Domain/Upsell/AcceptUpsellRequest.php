@@ -19,5 +19,7 @@ final class AcceptUpsellRequest
         public readonly string $parentOrderId,
         public readonly string $customerRef,
         public readonly ?string $customerEmail = null,
+        /** A bundle's pick: local Product ids. Only ever CHECKED against the offer, never trusted. */
+        public readonly array $selectedProductIds = [],
     ) {}
 }

@@ -125,6 +125,19 @@ class FlowBuilder extends Page
 
     public bool $showTimer = true;
 
+    /** Minutes of the add-on window ('' = no limit). */
+    public string $timerMinutes = '';
+
+    // === Bundle (product_selection_mode = bundle) ===
+    /** @var list<int> the listed catalog Product ids, in the merchant's order */
+    public array $bundleProductIds = [];
+
+    public string $bundleQuantity = '';
+
+    public string $bundlePrice = '';
+
+    public int $bundleColumns = 1;
+
     // === Product picker (shared seam, used by BOTH drawers) ===
     /** Live search term bound to the picker input (debounced in the Blade). */
     public string $productSearch = '';
@@ -775,6 +788,11 @@ class FlowBuilder extends Page
         $this->applyDiscountOnTop = (bool) $offer->apply_discount_on_top;
         $this->shippingFeeMode = $offer->shipping_fee_mode ?: UpsellFlowOffer::SHIPPING_FREE;
         $this->showTimer = (bool) $offer->show_timer;
+        $this->timerMinutes = $offer->timer_minutes ? (string) $offer->timer_minutes : '';
+        $this->bundleProductIds = $offer->bundleProductIds();
+        $this->bundleQuantity = $offer->bundle_quantity ? (string) $offer->bundle_quantity : '';
+        $this->bundlePrice = $offer->bundle_price !== null ? $this->formatPrice((float) $offer->bundle_price) : '';
+        $this->bundleColumns = $offer->bundleColumns();
 
         // Picker: reset the search + load the offer's stored title/price into the
         // editable fields, plus a read-only label echoing the saved product. The
@@ -887,6 +905,26 @@ class FlowBuilder extends Page
         $offer->shipping_fee_mode = $this->sanitize($this->shippingFeeMode, UpsellFlowOffer::SHIPPING_MODES, UpsellFlowOffer::SHIPPING_FREE);
         $offer->show_timer = $this->showTimer;
 
+        // The add-on window. A day at most: past that it is not urgency, it is a typo.
+        $minutes = (int) $this->timerMinutes;
+        $offer->timer_minutes = $minutes > 0 ? min($minutes, 1440) : null;
+
+        // Bundles are drawn by the WooCommerce thank-you card only; anywhere else the
+        // shopper could not pick, so the mode is not offered and not accepted.
+        if ($offer->product_selection_mode === UpsellFlowOffer::PRODUCT_BUNDLE && ! $this->bundleAvailable()) {
+            $offer->product_selection_mode = UpsellFlowOffer::PRODUCT_SPECIFIC;
+        }
+
+        if ($offer->product_selection_mode === UpsellFlowOffer::PRODUCT_BUNDLE) {
+            // Re-confirmed against THIS shop's catalogue — never the raw ids from the page.
+            $offer->bundle_product_ids = array_column($this->bundleProductRows(), 'id');
+            $quantity = (int) $this->bundleQuantity;
+            $offer->bundle_quantity = $quantity > 0 ? min($quantity, UpsellFlowOffer::BUNDLE_MAX_PRODUCTS) : null;
+            $bundlePrice = round((float) str_replace([',', ' '], '', $this->bundlePrice), 2);
+            $offer->bundle_price = $bundlePrice > 0 ? $bundlePrice : null;
+            $offer->bundle_columns = max(UpsellFlowOffer::BUNDLE_MIN_COLUMNS, min(UpsellFlowOffer::BUNDLE_MAX_COLUMNS, $this->bundleColumns));
+        }
+
         // === Product picker → the platform-format gids the charge engine expects ===
         // When a product was picked this open, RE-DERIVE the gids/title/price from
         // the tenant-scoped catalog row (never trust raw input). A foreign id
@@ -941,7 +979,76 @@ class FlowBuilder extends Page
         $this->configOfferId = 0;
         $this->resetPickerState();
 
+        // Saved either way — but a half-built bundle is said out loud, not left for the
+        // canvas badge to hint at.
+        if ($offer->product_selection_mode === UpsellFlowOffer::PRODUCT_BUNDLE && ! $offer->isBundle()) {
+            Notification::make()->title(__('upsell.admin.configure.bundle_incomplete'))->warning()->send();
+
+            return;
+        }
+
         Notification::make()->title(__('upsell.admin.configure.saved'))->success()->send();
+    }
+
+    // === Bundle products (the drawer's list) ===
+
+    /** Bundles are drawn by the WooCommerce thank-you card only. */
+    public function bundleAvailable(): bool
+    {
+        $shop = Tenant::current();
+
+        return $shop instanceof Shop && $shop->platform === Shop::PLATFORM_WOOCOMMERCE;
+    }
+
+    /** Add a picked product to the bundle — tenant-scoped, once, up to the maximum. */
+    public function addBundleProduct(int $productId): void
+    {
+        $this->productSearch = '';
+        $product = $this->pickedProduct($productId);
+
+        if ($product === null || in_array((int) $product->getKey(), array_map('intval', $this->bundleProductIds), true)) {
+            return;
+        }
+
+        if (count($this->bundleProductIds) >= UpsellFlowOffer::BUNDLE_MAX_PRODUCTS) {
+            Notification::make()->title(__('upsell.admin.configure.bundle_max', ['max' => UpsellFlowOffer::BUNDLE_MAX_PRODUCTS]))->warning()->send();
+
+            return;
+        }
+
+        $this->bundleProductIds[] = (int) $product->getKey();
+    }
+
+    public function removeBundleProduct(int $productId): void
+    {
+        $this->bundleProductIds = array_values(array_filter(
+            array_map('intval', $this->bundleProductIds),
+            static fn (int $id): bool => $id !== $productId,
+        ));
+    }
+
+    /**
+     * The bundle's products as the drawer lists them, re-read from THIS shop's catalogue in
+     * the merchant's order — a stale or foreign id simply drops out.
+     *
+     * @return list<array{id: int, title: string, image: ?string, price: string}>
+     */
+    public function bundleProductRows(): array
+    {
+        $ids = array_map('intval', $this->bundleProductIds);
+        $found = $ids === [] ? collect() : Product::query()->with('variants')->whereKey($ids)->get()->keyBy('id');
+
+        return collect($ids)
+            ->map(fn (int $id): ?Product => $found->get($id))
+            ->filter()
+            ->map(fn (Product $p): array => [
+                'id' => (int) $p->getKey(),
+                'title' => (string) $p->title,
+                'image' => $p->image_url,
+                'price' => Money::format((float) ($p->primaryVariant()?->price ?? 0)),
+            ])
+            ->values()
+            ->all();
     }
 
     /** The currently-configured offer model (tenant-scoped), or null. */
@@ -964,7 +1071,7 @@ class FlowBuilder extends Page
         }
 
         $offer = $this->configuredOffer();
-        if ($offer === null || (string) $offer->offer_product_gid === '') {
+        if ($offer === null || ((string) $offer->offer_product_gid === '' && ! $offer->isBundle())) {
             return null; // no product picked yet → keep the button disabled
         }
 
@@ -1158,6 +1265,11 @@ class FlowBuilder extends Page
         $this->offerBasePrice = '';
         $this->triggerProductId = 0;
         $this->triggerProductLabel = '';
+        $this->timerMinutes = '';
+        $this->bundleProductIds = [];
+        $this->bundleQuantity = '';
+        $this->bundlePrice = '';
+        $this->bundleColumns = 1;
     }
 
     /** Plain 2dp string for the editable base_price input (no currency glyph). */
@@ -1232,8 +1344,11 @@ class FlowBuilder extends Page
 
     private function offerIsValid(UpsellFlowOffer $offer): bool
     {
-        return ! empty($offer->offer_product_gid)
-            && (float) $offer->base_price > 0
+        $sellsSomething = $offer->product_selection_mode === UpsellFlowOffer::PRODUCT_BUNDLE
+            ? $offer->isBundle()
+            : ! empty($offer->offer_product_gid) && (float) $offer->base_price > 0;
+
+        return $sellsSomething
             && ! empty($offer->headline)
             && ! empty($offer->accept_cta);
     }

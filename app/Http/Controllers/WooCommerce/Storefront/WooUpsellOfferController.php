@@ -71,7 +71,7 @@ final class WooUpsellOfferController extends WooStorefrontController
         // The FULL card view-model (content + appearance) the shared renderer consumes — the SAME
         // presenter the Filament preview uses, so the storefront card and the preview are identical
         // by construction. Additive: the legacy flat keys below stay for backward-compat.
-        $card = $this->presenter->forOffer($offer, MerchantUpsellAppearance::current(), UpsellCardPresenter::PLATFORM_WOOCOMMERCE);
+        $card = $this->presenter->forOffer($offer, MerchantUpsellAppearance::current(), UpsellCardPresenter::PLATFORM_WOOCOMMERCE, $context->parentOrderId);
 
         return response()->json([
             'offer' => [

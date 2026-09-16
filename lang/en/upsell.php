@@ -52,6 +52,18 @@ return [
     // Renderer state-machine labels (shared card).
     'adding' => 'Adding…',
     'error_generic' => 'We could not add that. Please try again.',
+    'error_expired' => 'This offer has ended. Your order is unchanged.',
+
+    // A bundle offer: the shopper picks :count products and pays one price for all of them.
+    // ":selected" and ":count" in `progress` are filled in by the renderer as they pick.
+    'bundle' => [
+        'title' => 'Choose :count for :price',
+        'progress' => ':selected of :count chosen',
+        'select' => 'Choose',
+        'selected' => 'Chosen',
+        'prev' => 'Previous',
+        'next' => 'Next',
+    ],
 
     // The Filament / storefront preview host.
     'preview' => [
@@ -319,6 +331,19 @@ return [
             'display_options' => 'Display options',
             'show_timer' => 'Show timer',
             'show_timer_hint' => 'This is a countdown to create urgency to purchase.',
+            'timer_minutes' => 'Minutes to add products',
+            'timer_minutes_hint' => 'Counted from the moment the offer first appears. When the time runs out the offer disappears and can no longer be added. Leave empty for no limit.',
+            'bundle' => 'A bundle — several products at one price',
+            'bundle_hint' => 'The customer picks the number you set from the products below, and all of them are added to the order at the bundle price.',
+            'bundle_products' => 'Products to choose from',
+            'bundle_products_empty' => 'No products yet — search above to add them.',
+            'bundle_remove' => 'Remove :product',
+            'bundle_max' => 'A bundle can list up to :max products.',
+            'bundle_quantity' => 'How many the customer picks',
+            'bundle_price' => 'Price for the whole bundle',
+            'bundle_columns' => 'Products per slide',
+            'bundle_columns_hint' => 'Products that do not fit on one slide appear in a slider.',
+            'bundle_incomplete' => 'Saved, but the bundle is not ready yet: it needs products, a price, and a quantity no larger than the number of products.',
             'partial_paid_info' => 'Partially paid orders are automatically removed. You can change this from the',
             'partial_paid_link' => 'store\'s settings',
             'view_post_purchase' => 'View post-purchase',

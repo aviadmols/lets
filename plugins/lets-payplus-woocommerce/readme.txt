@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.50.0
+Stable tag: 0.51.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,15 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.51.0 =
+* The thank-you offer can be a BUNDLE: several products in a slider (1–4 per slide),
+  the shopper picks the number the merchant set, and the add button opens only once
+  they have — all of them are added to the order at the one bundle price, with one
+  document for the sale.
+* An offer can have a time limit. The countdown starts the first time the offer appears
+  for the order and survives a reload; when it ends the offer disappears, and a late
+  click is refused with "This offer has ended" rather than charged.
 
 = 0.50.0 =
 * Every order this plugin reports for invoicing now says which site it came from,

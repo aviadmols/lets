@@ -4,6 +4,7 @@ namespace App\Domain\Upsell\Rendering;
 
 use App\Domain\Upsell\Models\UpsellFlowOffer;
 use App\Models\MerchantUpsellAppearance;
+use App\Models\Product;
 
 /**
  * The ONE serializer that turns an (offer, appearance, platform) into the view-model the shared
@@ -45,7 +46,7 @@ final class UpsellCardPresenter
      *
      * @return array<string, mixed>
      */
-    public function forOffer(UpsellFlowOffer $offer, MerchantUpsellAppearance $appearance, string $platform): array
+    public function forOffer(UpsellFlowOffer $offer, MerchantUpsellAppearance $appearance, string $platform, string $parentOrderId = ''): array
     {
         $currency = (string) ($offer->currency ?? config('payplus.currency', self::DEFAULT_CURRENCY));
 
@@ -59,9 +60,9 @@ final class UpsellCardPresenter
         $product = $offer->resolveProduct();
 
         $priceDisplay = $this->money($price, $currency);
-        $timerSeconds = ($offer->show_timer && (int) $offer->timer_minutes > 0)
-            ? (int) $offer->timer_minutes * 60
-            : null;
+        // What is LEFT of this order's window, not the full length: a reload shows the
+        // countdown where it was, because the server will refuse the accept on that clock.
+        $timerSeconds = $offer->windowSecondsLeft($parentOrderId);
 
         return [
             'platform' => $platform,
@@ -88,12 +89,16 @@ final class UpsellCardPresenter
 
                 'timer_seconds' => $timerSeconds,
 
+                'bundle' => $offer->isBundle() ? $this->bundle($offer, $currency) : null,
+
                 // LOCKED, always rendered — the exact amount that will be charged to the saved card.
                 'disclosure' => __('upsell.consent_disclosure', ['amount' => $priceDisplay]),
 
                 // State-machine labels (localized; the renderer swaps these in).
                 'accept_busy' => __('upsell.adding'),
                 'error_text' => __('upsell.error_generic'),
+                // In the shop's language, unlike the plugin's own English fallback.
+                'expired_text' => __('upsell.error_expired'),
                 'success_title' => __('upsell.success_title'),
                 'success_sub' => __('upsell.no_card_reentry'),
             ],
@@ -172,6 +177,40 @@ final class UpsellCardPresenter
             'image_ratio' => $appearance->imageRatio(),
             'decline_style' => $appearance->declineStyle(),
             'elements' => $appearance->elements(),
+        ];
+    }
+
+    /**
+     * The bundle picker: the products to choose from, how many to choose, what they cost
+     * together. A product's own price is shown for reference only — the charge is the
+     * bundle price, and it is the only amount in the disclosure.
+     *
+     * @return array<string, mixed>
+     */
+    private function bundle(UpsellFlowOffer $offer, string $currency): array
+    {
+        $quantity = (int) $offer->bundle_quantity;
+
+        return [
+            'quantity' => $quantity,
+            'columns' => $offer->bundleColumns(),
+            'title' => __('upsell.bundle.title', ['count' => $quantity, 'price' => $this->money($offer->discountedPrice(), $currency)]),
+            // ":selected" and ":count" are filled in by the renderer as the shopper picks.
+            'progress' => __('upsell.bundle.progress'),
+            'select_label' => __('upsell.bundle.select'),
+            'selected_label' => __('upsell.bundle.selected'),
+            'prev_label' => __('upsell.bundle.prev'),
+            'next_label' => __('upsell.bundle.next'),
+            'products' => $offer->bundleProducts()->map(function (Product $product) use ($currency): array {
+                $price = (float) ($product->primaryVariant()?->price ?? 0);
+
+                return [
+                    'id' => (int) $product->getKey(),
+                    'title' => (string) $product->title,
+                    'image' => $product->image_url,
+                    'price_display' => $price > 0 ? $this->money($price, $currency) : null,
+                ];
+            })->all(),
         ];
     }
 
