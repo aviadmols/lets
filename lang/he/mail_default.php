@@ -26,6 +26,13 @@ return [
         'login_code' => 'קוד הכניסה שלך: {code}',
         'order_updated' => 'ההזמנה שלך עודכנה — {business_name}',
         'card_update' => 'נא לעדכן את כרטיס האשראי — {business_name}',
+        'plan_activation' => 'המנוי שלכם מוכן — הפעילו אותו כשנוח לכם ({business_name})',
+    ],
+
+    'plan_activation' => [
+        'lead' => 'המנוי שלכם ל<strong>{product_title}</strong> שולם ומחכה לכם. הוא יתחיל כשתלחצו על הכפתור, והחיוב הבא ייספר מאותו יום.',
+        'cta' => 'הפעלת המנוי שלי',
+        'note' => 'בלחיצה לא יחויב דבר נוסף. הקישור תקף עד שתשתמשו בו.',
     ],
 
     'card_update' => [

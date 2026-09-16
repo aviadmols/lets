@@ -148,8 +148,12 @@ final class PlanActivationService
             // 5) Record consent to future installment charges (captured at deposit pay).
             $this->recordConsent($shop, $plan);
 
-            // awaiting_first_payment → active.
-            if ($plan->status !== PlanStatus::ACTIVE) {
+            // A subscription its customer starts: paid, card and consent kept, but held with
+            // no charge date until the activation link is confirmed (PlanActivation).
+            if (PlanActivation::required($plan)) {
+                app(PlanActivation::class)->hold($plan);
+            } elseif ($plan->status !== PlanStatus::ACTIVE) {
+                // awaiting_first_payment → active.
                 $plan->transitionTo(PlanStatus::ACTIVE);
             }
 

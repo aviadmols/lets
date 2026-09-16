@@ -91,6 +91,9 @@ class ProductDetail extends Page
 
     public bool $expireEnabled = false;
 
+    /** The customer starts the subscription with an emailed link (product_subscription_plans.requires_activation). */
+    public bool $requiresActivation = false;
+
     public int $expireAfterCharges = 1;
 
     /**
@@ -629,6 +632,7 @@ class ProductDetail extends Page
         $this->chargeDayOfMonth = $plan->charge_day_of_month !== null ? (int) $plan->charge_day_of_month : null;
         $this->expireEnabled = $plan->expire_after_charges !== null;
         $this->expireAfterCharges = max(1, (int) ($plan->expire_after_charges ?? 1));
+        $this->requiresActivation = (bool) $plan->requires_activation;
         $this->commitmentEnabled = $plan->minCyclesBeforeExit() > 0;
         $this->minCyclesBeforeExit = max(1, $plan->minCyclesBeforeExit() ?: 3);
         $this->channels = collect($plan->channels ?? [])
@@ -734,6 +738,10 @@ class ProductDetail extends Page
             'discount_cycles' => $isSub ? $discountCycles : null,
             'charge_day_of_month' => $isSub ? $chargeDay : null,
             'expire_after_charges' => $isSub && $this->expireEnabled ? max(1, (int) $this->expireAfterCharges) : null,
+            // Only where LETS owns the charge date. On the Shopify Payments rail the
+            // contract bills itself, so a "wait for activation" switch would be a promise
+            // nothing keeps.
+            'requires_activation' => $isSub && $railForMode !== Shop::RAIL_SHOPIFY_PAYMENTS && $this->requiresActivation,
             // min_cycles_before_exit ∈ {null} ∪ [1..120]. Subscriptions only: a
             // one-time purchase has nothing to stay committed to. Bounded like
             // its neighbours, so a typo cannot tie somebody in for a decade.

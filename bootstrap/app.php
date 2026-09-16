@@ -65,6 +65,10 @@ return Application::configure(basePath: dirname(__DIR__))
             // and return, which are server-to-server and token-authenticated.
             \Illuminate\Support\Facades\Route::group([], base_path('routes/cardupdate.php'));
 
+            // "Start my subscription": the signed activation link of a subscription that
+            // waits for its customer (GET shows a page, only its POST activates).
+            \Illuminate\Support\Facades\Route::group([], base_path('routes/activation.php'));
+
             // Loyalty club, WooCommerce rail: a temporary SIGNED URL the plugin
             // renders in an iframe (Woo has no App Proxy to sign for us). The
             // signature carries the shop + customer reference and is the whole

@@ -21,6 +21,13 @@ return [
         'login_code' => 'Your sign-in code: {code}',
         'order_updated' => 'Your order was updated — {business_name}',
         'card_update' => 'Please update your payment card — {business_name}',
+        'plan_activation' => 'Your subscription is ready — start it when you are ({business_name})',
+    ],
+
+    'plan_activation' => [
+        'lead' => 'Your subscription to <strong>{product_title}</strong> is paid and waiting for you. It starts when you press the button below, and your next charge is counted from that day.',
+        'cta' => 'Start my subscription',
+        'note' => 'Nothing more is charged when you press it. The link stays valid until you use it.',
     ],
 
     'card_update' => [

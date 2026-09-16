@@ -458,6 +458,17 @@
                                                 </select>
                                             </div>
 
+                                            {{-- A subscription the customer starts with an emailed link: paid at
+                                                 checkout, held at "awaiting activation", next charge one cycle
+                                                 from the day they activate (PlanActivation). --}}
+                                            <label class="rc-check">
+                                                <input type="checkbox" wire:model="requiresActivation">
+                                                <span class="rc-check__body">
+                                                    <span class="rc-check__title">{{ __('products.plan_drawer.activation_label') }}</span>
+                                                    <span class="rc-drawer__subtitle">{{ __('products.plan_drawer.activation_help') }}</span>
+                                                </span>
+                                            </label>
+
                                             <label class="rc-check">
                                                 <input type="checkbox" wire:model.live="expireEnabled">
                                                 <span class="rc-check__body">

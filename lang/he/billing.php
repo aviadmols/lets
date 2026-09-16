@@ -27,6 +27,7 @@ return [
     'status' => [
         'draft' => 'טיוטה',
         'awaiting_first_payment' => 'ממתין לתשלום ראשון',
+        'awaiting_activation' => 'ממתין להפעלה',
         'awaiting_payment' => 'ממתין לתשלום',
         'active' => 'פעיל',
         'paused' => 'מושהה',

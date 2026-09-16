@@ -28,6 +28,8 @@ final class StatusBadge
         // --- InstallmentPlanStatus / RecurringPlanStatus (PlanStatus enum) ---
         'draft' => 'gray',
         'awaiting_first_payment' => 'amber',
+        // Paid, waiting for the customer — nothing is wrong, so not amber.
+        'awaiting_activation' => 'teal',
         'active' => 'green',
         'paused' => 'gray',
         'completed' => 'green',

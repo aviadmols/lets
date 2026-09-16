@@ -49,6 +49,10 @@ OAuth install, also encrypted. **No shop can ever touch another shop's account.*
 
 **RecurringPlanStatus:** `draft → active` · `active → paused` · `paused → active`
 · `active → cancelled` · `active → failed` · `failed → active` · `failed → cancelled`
+· `draft|awaiting_first_payment → awaiting_activation` (paid, product plan has
+`requires_activation`; no charge date, not chargeable) · `awaiting_activation → active`
+(the customer confirmed the signed activation link, or the merchant did; next charge =
+one cycle from that day) · `awaiting_activation → cancelled`
 
 **PaymentLedgerStatus:** `pending → succeeded` · `pending → failed` ·
 `succeeded → refunded` · `failed → retry_scheduled` · `retry_scheduled → succeeded`

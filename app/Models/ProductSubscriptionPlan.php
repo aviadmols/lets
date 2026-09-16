@@ -108,6 +108,7 @@ class ProductSubscriptionPlan extends Model
             'interval_count' => 'integer',
             'charge_day_of_month' => 'integer',
             'expire_after_charges' => 'integer',
+            'requires_activation' => 'boolean',
             'position' => 'integer',
             'channels' => 'array',
             'shopify_synced_at' => 'datetime',

@@ -208,6 +208,8 @@ return [
         'charge_on_signup' => 'When customers sign up',
         'charge_on_day' => 'Day :day of the month',
         'expire_label' => 'Expire after a number of charges',
+        'activation_label' => 'Customer activates the subscription with a link',
+        'activation_help' => 'The first cycle is paid at checkout, but the subscription waits at "awaiting activation" until the customer confirms the link we email them. The next charge is one cycle from the day they activate. Not available on the Shopify Payments rail.',
         'expire_count_label' => 'Number of charges',
         'commitment_label' => 'Minimum term before the customer can leave',
         'commitment_help' => 'Until these charges are paid, the customer cannot pause or cancel from their own account. You still can, from here. Changing it later applies to new subscriptions only.',

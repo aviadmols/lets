@@ -17,6 +17,7 @@ return [
         'login_code' => 'Sign-in code',
         'order_updated' => 'Order updated',
         'card_update' => 'Card-update request',
+        'plan_activation' => 'Subscription activation link',
     ],
 
     'field' => [
@@ -123,6 +124,7 @@ return [
         'charge_failed' => 'When a charge is declined',
         'plan_cancelled' => 'When a plan is cancelled, by you or by the customer',
         'login_code' => 'When a customer asks to sign in with a code',
+        'plan_activation' => 'When a subscription that waits for activation is paid for',
     ],
 
     'state' => [

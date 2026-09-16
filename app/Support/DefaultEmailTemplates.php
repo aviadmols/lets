@@ -88,6 +88,9 @@ final class DefaultEmailTemplates
             'customer_name', 'business_name', 'product_title', 'plan_id',
             'card_update_url', 'card_last_four', 'expires_at',
         ],
+        MerchantMailSettings::TEMPLATE_PLAN_ACTIVATION => [
+            'customer_name', 'business_name', 'product_title', 'plan_id', 'activation_url',
+        ],
     ];
 
     /** Default subject for a template ({tokens} still get strtr-substituted). */
@@ -112,6 +115,7 @@ final class DefaultEmailTemplates
             MerchantMailSettings::TEMPLATE_LOGIN_CODE => self::loginCode(),
             MerchantMailSettings::TEMPLATE_ORDER_UPDATED => self::orderUpdated(),
             MerchantMailSettings::TEMPLATE_CARD_UPDATE => self::cardUpdate(),
+            MerchantMailSettings::TEMPLATE_PLAN_ACTIVATION => self::planActivation(),
             default => self::card('<p '.self::P.'>{business_name}</p>'),
         };
     }
@@ -284,6 +288,18 @@ final class DefaultEmailTemplates
             .self::line('mail_default.card_update.lead', self::P)
             .self::cta('mail_default.card_update.cta', '{card_update_url}')
             .self::line('mail_default.card_update.expiry_note', self::MUTED)
+            .self::footer()
+        );
+    }
+
+    /** "Your subscription is ready — start it when you are." */
+    private static function planActivation(): string
+    {
+        return self::card(
+            self::greeting()
+            .self::line('mail_default.plan_activation.lead', self::P)
+            .self::cta('mail_default.plan_activation.cta', '{activation_url}')
+            .self::line('mail_default.plan_activation.note', self::MUTED)
             .self::footer()
         );
     }

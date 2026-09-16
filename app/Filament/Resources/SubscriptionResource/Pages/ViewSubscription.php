@@ -11,6 +11,7 @@ use App\Domain\Installments\CardUpdateService;
 use App\Domain\Installments\ImportedTokenRecovery;
 use App\Domain\Installments\Models\CardUpdateLink;
 use App\Domain\Installments\Models\TokenRecoveryResult;
+use App\Domain\Installments\PlanActivation;
 use App\Domain\Lifecycle\ChargeNowService;
 use App\Domain\Lifecycle\SubscriptionEditService;
 use App\Domain\Lifecycle\SubscriptionLifecycleService;
@@ -259,6 +260,70 @@ class ViewSubscription extends Page
 
             $this->sendCardUpdateLinkAction(),
 
+            /*
+             * A PAID subscription waiting for its customer to start it. The merchant can start
+             * it for them (a customer who phoned in), hand them the link again, or kill the
+             * links already sent. All three exist only in that state.
+             */
+            Actions\Action::make('activateNow')
+                ->label(__('subscriptions.action.activate_now.label'))
+                ->icon('heroicon-m-play-circle')
+                ->color('primary')
+                ->visible(fn (): bool => $this->record->status === PlanStatus::AWAITING_ACTIVATION)
+                ->requiresConfirmation()
+                ->modalHeading(__('subscriptions.action.activate_now.heading'))
+                ->modalDescription(__('subscriptions.action.activate_now.body'))
+                ->action(function (): void {
+                    $plan = app(PlanActivation::class)->activate($this->record);
+                    $this->record->refresh();
+
+                    Notification::make()
+                        ->title(__('subscriptions.action.activate_now.done', ['date' => $plan->next_charge_at?->format('d/m/Y') ?? '—']))
+                        ->success()
+                        ->send();
+                }),
+
+            Actions\Action::make('activationLink')
+                ->label(__('subscriptions.action.activation_link.label'))
+                ->icon('heroicon-m-link')
+                ->color('gray')
+                ->visible(fn (): bool => $this->record->status === PlanStatus::AWAITING_ACTIVATION)
+                ->modalHeading(__('subscriptions.action.activation_link.heading'))
+                ->modalDescription(__('subscriptions.action.activation_link.body'))
+                ->fillForm(fn (): array => ['url' => app(PlanActivation::class)->url($this->record)])
+                ->form([
+                    TextInput::make('url')
+                        ->label(__('subscriptions.action.activation_link.url'))
+                        ->readOnly(),
+                ])
+                ->modalSubmitActionLabel(fn (): string => __('subscriptions.action.activation_link.send', [
+                    'email' => (string) ($this->record->customer_email ?: '—'),
+                ]))
+                ->modalCancelActionLabel(__('subscriptions.action.activation_link.close'))
+                ->action(function (): void {
+                    $shop = Tenant::current();
+                    $sent = $shop instanceof Shop && app(PlanActivation::class)->send($shop, $this->record);
+
+                    $notification = Notification::make()->title($sent
+                        ? __('subscriptions.action.activation_link.sent', ['email' => (string) $this->record->customer_email])
+                        : __('subscriptions.action.activation_link.not_sent'));
+
+                    ($sent ? $notification->success() : $notification->danger())->send();
+                }),
+
+            Actions\Action::make('revokeActivationLink')
+                ->label(__('subscriptions.action.revoke_activation_link.label'))
+                ->icon('heroicon-m-no-symbol')
+                ->color('danger')
+                ->visible(fn (): bool => $this->record->status === PlanStatus::AWAITING_ACTIVATION)
+                ->requiresConfirmation()
+                ->modalHeading(__('subscriptions.action.revoke_activation_link.heading'))
+                ->modalDescription(__('subscriptions.action.revoke_activation_link.body'))
+                ->action(function (): void {
+                    app(PlanActivation::class)->revoke($this->record);
+
+                    Notification::make()->title(__('subscriptions.action.revoke_activation_link.done'))->success()->send();
+                }),
             // A migrated member whose exported token PayPlus does not recognise.
             // Shown only when that is actually this plan's situation, so it never
             // appears beside a card that is working.
@@ -984,8 +1049,10 @@ class ViewSubscription extends Page
     /** Editing the next charge is a recurring-plan, non-terminal operation. */
     private function canEditNextCharge(): bool
     {
+        // A subscription waiting for activation has no charge date to edit: activation sets it.
         return $this->record->plan_kind === PlanKind::RECURRING
-            && ! $this->record->status->isTerminal();
+            && ! $this->record->status->isTerminal()
+            && $this->record->status !== PlanStatus::AWAITING_ACTIVATION;
     }
 
     /**

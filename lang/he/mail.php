@@ -17,6 +17,7 @@ return [
         'login_code' => 'קוד כניסה',
         'order_updated' => 'ההזמנה עודכנה',
         'card_update' => 'בקשה לעדכון כרטיס',
+        'plan_activation' => 'קישור להפעלת מנוי',
     ],
 
     'field' => [
@@ -121,6 +122,7 @@ return [
         'charge_failed' => 'כשחיוב נדחה',
         'plan_cancelled' => 'כשתוכנית מבוטלת, על ידכם או על ידי הלקוח',
         'login_code' => 'כשלקוח מבקש להתחבר עם קוד',
+        'plan_activation' => 'כשמשולם מנוי שממתין להפעלה',
     ],
 
     'state' => [

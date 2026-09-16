@@ -191,6 +191,31 @@ return [
             'refused' => 'That card is not one of this member\x27s saved cards. Nothing was changed.',
         ],
 
+        'activate_now' => [
+            'label' => 'Activate now',
+            'heading' => 'Start this subscription now?',
+            'body' => 'It becomes active today and its next charge is set one cycle from today — exactly as if the customer had pressed their activation link. Nothing is charged now.',
+            'done' => 'Subscription activated. Next charge: :date',
+        ],
+
+        'activation_link' => [
+            'label' => 'Activation link',
+            'heading' => 'The customer\'s activation link',
+            'body' => 'The subscription starts when this link is confirmed, with the next charge one cycle from that day. It does not expire.',
+            'url' => 'Link',
+            'send' => 'Email it to :email',
+            'close' => 'Close',
+            'sent' => 'Activation link emailed to :email',
+            'not_sent' => 'The email was not sent — check that the customer has an address and that this email is switched on.',
+        ],
+
+        'revoke_activation_link' => [
+            'label' => 'Revoke activation link',
+            'heading' => 'Revoke every activation link sent so far?',
+            'body' => 'Links already sent stop working. A new link is created the next time you open or send it.',
+            'done' => 'Activation links revoked',
+        ],
+
         'recover_token' => [
             'label' => 'Find saved card',
             'heading' => 'Look up this member\'s card at PayPlus?',

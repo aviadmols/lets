@@ -24,6 +24,13 @@ namespace App\Modules\PayPlusShopifyInstallments\Enums;
  * says "we are waiting for this payment", where `failed` says "we stopped
  * asking". Keeping them apart is what lets the scheduler pick this one up
  * again while the historical `failed` rows stay exactly as inert as they are.
+ *
+ * AWAITING_ACTIVATION is a PAID subscription waiting for its customer to start it
+ * (a product plan with requires_activation — see PlanActivation):
+ *   draft / awaiting_first_payment → awaiting_activation (the checkout was paid)
+ *   awaiting_activation → active (the link was confirmed; next charge = one cycle on)
+ *   awaiting_activation → cancelled
+ * It has no charge date and is not chargeable: nothing bills it until it is started.
  */
 enum PlanStatus: string
 {
@@ -34,6 +41,9 @@ enum PlanStatus: string
 
     /** Dunning: a charge did not go through and we are still trying. */
     case AWAITING_PAYMENT = 'awaiting_payment';
+
+    /** Paid, and waiting for the customer to start it with their activation link. */
+    case AWAITING_ACTIVATION = 'awaiting_activation';
 
     case FAILED = 'failed';
     case COMPLETED = 'completed';
@@ -48,7 +58,7 @@ enum PlanStatus: string
      */
     public static function live(): array
     {
-        return [self::ACTIVE, self::PAUSED, self::AWAITING_PAYMENT, self::FAILED];
+        return [self::ACTIVE, self::PAUSED, self::AWAITING_PAYMENT, self::FAILED, self::AWAITING_ACTIVATION];
     }
 
     /**
@@ -76,8 +86,9 @@ enum PlanStatus: string
     public static function allowed(): array
     {
         return [
-            self::DRAFT->value => [self::AWAITING_FIRST_PAYMENT, self::ACTIVE, self::CANCELLED],
-            self::AWAITING_FIRST_PAYMENT->value => [self::ACTIVE, self::AWAITING_PAYMENT, self::CANCELLED],
+            self::DRAFT->value => [self::AWAITING_FIRST_PAYMENT, self::ACTIVE, self::AWAITING_ACTIVATION, self::CANCELLED],
+            self::AWAITING_FIRST_PAYMENT->value => [self::ACTIVE, self::AWAITING_PAYMENT, self::AWAITING_ACTIVATION, self::CANCELLED],
+            self::AWAITING_ACTIVATION->value => [self::ACTIVE, self::CANCELLED],
             self::ACTIVE->value => [self::PAUSED, self::AWAITING_PAYMENT, self::FAILED, self::COMPLETED, self::CANCELLED],
             self::PAUSED->value => [self::ACTIVE, self::CANCELLED],
             self::AWAITING_PAYMENT->value => [self::ACTIVE, self::PAUSED, self::FAILED, self::CANCELLED],

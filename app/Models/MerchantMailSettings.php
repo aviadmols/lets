@@ -64,6 +64,12 @@ class MerchantMailSettings extends Model
     public const TEMPLATE_CARD_UPDATE = 'card_update';
 
     /**
+     * "Start your subscription" — carries the activation link of a paid subscription that
+     * waits for its customer (PlanActivation). Transactional.
+     */
+    public const TEMPLATE_PLAN_ACTIVATION = 'plan_activation';
+
+    /**
      * Placeholders the WhatsApp card-update line accepts.
      *
      * Substituted with strtr() and NOTHING else — this is merchant-typed text, and
@@ -88,6 +94,7 @@ class MerchantMailSettings extends Model
         self::TEMPLATE_LOGIN_CODE,
         self::TEMPLATE_ORDER_UPDATED,
         self::TEMPLATE_CARD_UPDATE,
+        self::TEMPLATE_PLAN_ACTIVATION,
     ];
 
     /**
@@ -115,6 +122,7 @@ class MerchantMailSettings extends Model
         self::TEMPLATE_PLAN_CANCELLED,
         self::TEMPLATE_ORDER_UPDATED,
         self::TEMPLATE_CARD_UPDATE,
+        self::TEMPLATE_PLAN_ACTIVATION,
     ];
 
     /**
