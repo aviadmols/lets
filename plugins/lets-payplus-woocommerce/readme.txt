@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.48.0
+Stable tag: 0.50.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,20 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.50.0 =
+* Every order this plugin reports for invoicing now says which site it came from,
+  and LETS refuses a report from any site other than the connected store. A
+  staging or development copy of a shop carries a copy of the connection key, so
+  a test order on the copy could mint a real tax document — addressed to a real
+  customer — against the live shop's accounting. The live store is unaffected; a
+  copy that is meant to talk to LETS needs its own connection.
+
+= 0.49.0 =
+* A renewal can skip creating a store order (LETS → Settings → Billing →
+  Renewals), for shops whose subscription is a membership rather than a shipment.
+  The cycle still charges and still issues the customer's document; the orders
+  screen is no longer buried under orders nobody picks or packs.
 
 = 0.48.0 =
 * The orders list no longer says "LETS". The column and its umbrella tag now read

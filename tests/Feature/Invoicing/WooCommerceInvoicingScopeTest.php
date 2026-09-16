@@ -167,6 +167,86 @@ final class WooCommerceInvoicingScopeTest extends TestCase
         );
     }
 
+    public function test_a_report_from_a_copy_of_the_store_is_refused(): void
+    {
+        Queue::fake();
+        [$shop, $key, $secret] = $this->connectedShop('realshop.example.com');
+        $this->enableInvoicing($shop, MerchantInvoicingSettings::SCOPE_ALL_ORDERS);
+
+        // A staging copy holds a copy of the options table, so it holds the same
+        // connection key and signs perfectly. What it must not do is mint a tax
+        // document — addressed to a real customer — against the live shop.
+        $response = $this->signed('POST', $key, $secret, self::ISSUE_PATH, $this->order(
+            site: 'https://staging.realshop.example.com',
+        ))->assertStatus(422);
+
+        $this->assertSame('site_mismatch', $response->json('error'));
+        $this->assertSame('realshop.example.com', $response->json('expected'));
+        Queue::assertNothingPushed();
+    }
+
+    public function test_the_store_reporting_itself_is_accepted_however_its_url_is_written(): void
+    {
+        Queue::fake();
+        [$shop, $key, $secret] = $this->connectedShop('spellings.example.com');
+        $this->enableInvoicing($shop, MerchantInvoicingSettings::SCOPE_ALL_ORDERS);
+
+        // One store, four ways WordPress might spell its own home_url. Every one of
+        // them is the connected store, and a wall that refused any of them would
+        // stop a real merchant's invoicing over a scheme or a `www.`.
+        $spellings = [
+            'https://spellings.example.com',
+            'https://www.spellings.example.com/',
+            'http://SPELLINGS.example.com',
+            'spellings.example.com',
+        ];
+
+        foreach ($spellings as $i => $site) {
+            // The override goes FIRST: `+` keeps the left-hand key, and four reports
+            // of one order id would collapse at the job's own ShouldBeUnique lock
+            // rather than testing four spellings.
+            $this->signed('POST', $key, $secret, self::ISSUE_PATH, ['order_id' => '56'.$i] + $this->order(site: $site))
+                ->assertOk()
+                ->assertJson(['queued' => true]);
+        }
+
+        Queue::assertPushed(IssueDocumentJob::class, count($spellings));
+    }
+
+    public function test_a_plugin_too_old_to_name_its_site_is_still_invoiced(): void
+    {
+        Queue::fake();
+        [$shop, $key, $secret] = $this->connectedShop('oldbuild.example.com');
+        $this->enableInvoicing($shop, MerchantInvoicingSettings::SCOPE_ALL_ORDERS);
+
+        // Every build before 0.50.0 reports no site. Refusing those would silently
+        // end invoicing on every store that has not updated — a worse failure than
+        // the one the wall closes. They are logged, not blocked.
+        $this->signed('POST', $key, $secret, self::ISSUE_PATH, $this->order())
+            ->assertOk()
+            ->assertJson(['queued' => true]);
+
+        Queue::assertPushed(IssueDocumentJob::class);
+    }
+
+    public function test_the_reporting_site_is_carried_onto_the_document(): void
+    {
+        Queue::fake();
+        [$shop, $key, $secret] = $this->connectedShop('carried.example.com');
+        $this->enableInvoicing($shop, MerchantInvoicingSettings::SCOPE_ALL_ORDERS);
+
+        $this->signed('POST', $key, $secret, self::ISSUE_PATH, $this->order(
+            site: 'https://carried.example.com',
+        ))->assertOk();
+
+        // source_payload is the only record of how a plain order's money arrived;
+        // the site that asked for the document belongs in it.
+        Queue::assertPushed(
+            IssueDocumentJob::class,
+            fn (IssueDocumentJob $job): bool => $job->order['site_url'] === 'https://carried.example.com',
+        );
+    }
+
     // === Helpers ===
 
     /** @return array{0:Shop,1:string,2:string} */
@@ -200,9 +280,11 @@ final class WooCommerceInvoicingScopeTest extends TestCase
     }
 
     /** @return array<string, mixed> */
-    private function order(float $total = 249.90, string $status = 'completed'): array
+    private function order(float $total = 249.90, string $status = 'completed', ?string $site = null): array
     {
-        return [
+        return array_filter([
+            'site_url' => $site,
+        ], static fn ($v): bool => $v !== null) + [
             'order_id' => '5501',
             'order_number' => '#5501',
             'status' => $status,

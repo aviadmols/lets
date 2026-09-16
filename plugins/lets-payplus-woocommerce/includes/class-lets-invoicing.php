@@ -258,6 +258,11 @@ function lets_payplus_invoicing_order_body(WC_Order $order)
     return array(
         'order_id'         => (string) $order->get_id(),
         'order_number'     => (string) $order->get_order_number(),
+        // WHICH SITE is asking. A staging or development copy of this store holds a
+        // copy of the connection key too, so the signature alone cannot tell LETS
+        // whether a report came from the real shop — and a test order on a copy
+        // otherwise mints a real tax document against the live merchant.
+        'site_url'         => home_url(),
         'status'           => lets_payplus_invoicing_normalise_status($order->get_status()),
         // Report the LETS plan link when the order has one. LETS re-checks this
         // server-side (and looks the order up in its own plan table), but sending it

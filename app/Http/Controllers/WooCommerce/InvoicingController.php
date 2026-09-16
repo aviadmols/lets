@@ -12,10 +12,12 @@ use App\Models\IssuedDocument;
 use App\Models\MerchantInvoicingSettings;
 use App\Models\Shop;
 use App\Services\WooCommerce\Orders\WooCommerceOrderStrategy;
+use App\Services\WooCommerce\WooCommerceShopProvisioner;
 use App\Support\Tenant;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -36,7 +38,9 @@ use Symfony\Component\HttpFoundation\Response;
  * bounded here; the money on the document is the total the plugin reports for its own
  * order (WooCommerce is the ORDER truth for a plain order — the `gateway` ledger row
  * WooGatewayFinalizer records is a payment record, and documents key on the order, not
- * on that row), and the double-issue walls are:
+ * on that row), and the walls are:
+ *   0. the report must come from the CONNECTED STORE — a signature proves only the
+ *      KEY, and a staging copy of a site holds the same key (siteIsNotTheStore());
  *   1. an order carrying a LETS plan id is REJECTED (it is already invoiced through
  *      the plan pipeline, and invoicing it twice would double-declare the income);
  *   2. the deterministic doc:order:{shop}:{order} key + its unique index.
@@ -96,6 +100,16 @@ final class InvoicingController extends WooStorefrontController
         $orderId = $this->cleanString($request->input('order_id'));
         if ($orderId === null) {
             return response()->json(['error' => 'invalid_order'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        // Wall 0: is the site that signed this report the store we are connected to?
+        // Asked FIRST, before any lookup: a report from somewhere else is not a
+        // question about this order, it is a report we should never have been sent.
+        if ($this->siteIsNotTheStore($shop, $request, $orderId)) {
+            return response()->json([
+                'error' => 'site_mismatch',
+                'expected' => (string) ($shop->woocommerce_domain ?? ''),
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
         // Wall 1: this order already belongs to a LETS plan, so the plan pipeline has
@@ -185,6 +199,66 @@ final class InvoicingController extends WooStorefrontController
             ->exists());
     }
 
+    /**
+     * Is the site that signed this report somebody OTHER than the connected store?
+     *
+     * The HMAC proves the API KEY and nothing more. A staging, development or
+     * migrated copy of a WordPress site carries a byte-for-byte copy of the options
+     * table that key lives in — so it can report ITS OWN orders, and this endpoint
+     * mints a REAL tax document at the merchant's provider for each one.
+     *
+     * That is not hypothetical. On 2026-09-16 orders 3489 and 3490 — orders the
+     * merchant could not find anywhere in their WooCommerce — issued documents
+     * 94918 and 94919 against the live shop and emailed them to the customer. A
+     * missing document is a button-click to fix; a tax document for a sale that
+     * never happened is a VAT correction with the authority.
+     *
+     * So the plugin reports the host it runs on, and a host that is not the
+     * connected store is refused — compared through the SAME normalisation the
+     * connect handshake uses (InstallController), so that a scheme or a `www.`
+     * can never make the real store look foreign.
+     *
+     * A report carrying NO site is ACCEPTED: every plugin build before 0.50.0
+     * sends none, and silently ending documents for every store yet to update is a
+     * worse failure than the one being closed here. It is logged instead, so the
+     * stores still to update can be named rather than guessed at.
+     */
+    private function siteIsNotTheStore(Shop $shop, Request $request, string $orderId): bool
+    {
+        $expected = (string) ($shop->woocommerce_domain ?? '');
+        $reported = app(WooCommerceShopProvisioner::class)
+            ->normalizeDomain((string) $request->input('site_url', ''));
+
+        if ($expected === '') {
+            return false; // nothing to compare against — never invent a mismatch
+        }
+
+        if ($reported === '') {
+            Log::info('invoicing.report_without_site', [
+                'shop_id' => $shop->getKey(),
+                'order_id' => $orderId,
+                'expected' => $expected,
+            ]);
+
+            return false;
+        }
+
+        if ($reported === $expected) {
+            return false;
+        }
+
+        // WARNING, not info: somebody's test orders are reaching a live merchant's
+        // accounting, and the host named here is where to go and disconnect it.
+        Log::warning('invoicing.report_from_foreign_site', [
+            'shop_id' => $shop->getKey(),
+            'order_id' => $orderId,
+            'expected' => $expected,
+            'reported' => $reported,
+        ]);
+
+        return true;
+    }
+
     // === Input shaping ===
 
     /**
@@ -209,6 +283,9 @@ final class InvoicingController extends WooStorefrontController
             'lines' => $this->lines($request),
             'payment_gateway' => $this->cleanString($request->input('payment_gateway')),
             'card_last4' => $this->digitsOrNull($request->input('card_last4'), 4),
+            // Kept on the document's source_payload: when a document is questioned
+            // later, the site that asked for it is the first thing worth knowing.
+            'site_url' => $this->cleanString($request->input('site_url')),
         ];
     }
 

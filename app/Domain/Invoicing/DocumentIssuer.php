@@ -179,7 +179,10 @@ final class DocumentIssuer
      * @param  array{order_id:string, order_number:?string, total:float, currency:string,
      *               customer:array{name:string,email:?string,phone:?string,tax_id:?string},
      *               lines:list<array{description:string,unit_price:float,quantity:int,catalog_number:?string}>,
-     *               payment_gateway:?string, card_last4:?string}  $order
+     *               payment_gateway:?string, card_last4:?string, site_url?:?string}  $order
+     *               — site_url is the host that ASKED, kept on source_payload so a
+     *               questioned document can name where it came from. The controller
+     *               has already refused any host that is not the connected store.
      */
     public function issueForPlatformOrder(int $shopId, array $order): ?IssuedDocument
     {
