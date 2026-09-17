@@ -90,6 +90,7 @@ final class EventPresenter
         'shopify_subscription_cancelled' => ['info', 'timeline.kind.plan_cancelled'],
         'shopify_subscription_rescheduled' => ['info', 'timeline.kind.shopify_subscription_rescheduled'],
         'shopify_subscription_bill_now' => ['info', 'timeline.kind.shopify_subscription_bill_now'],
+        'shopify_subscription_cycle_advanced' => ['success', 'timeline.kind.shopify_subscription_cycle_advanced'],
         'shopify_subscription_products_edited' => ['info', 'timeline.kind.shopify_subscription_products_edited'],
         'shopify_subscription_card_update_email' => ['info', 'timeline.kind.shopify_subscription_card_update_email'],
         // Email campaigns. The LOGIN is deliberately its own line and not a

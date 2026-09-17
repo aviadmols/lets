@@ -40,6 +40,7 @@ return [
         'shopify_subscription_resumed' => 'המנוי חודש',
         'shopify_subscription_rescheduled' => 'תאריך החיוב הבא שונה',
         'shopify_subscription_bill_now' => 'נשלחה בקשת חיוב מיידי ל-Shopify',
+        'shopify_subscription_cycle_advanced' => 'המחזור שולם — תאריך החיוב הבא התקדם',
         'shopify_subscription_products_edited' => 'מוצרי המנוי עודכנו',
         'shopify_subscription_card_update_email' => 'נשלח ללקוח מייל לעדכון כרטיס',
         'card_updated' => 'הלקוח עדכן את הכרטיס',

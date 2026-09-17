@@ -219,8 +219,35 @@ final class ContractActionService
     }
 
     /**
+     * Move a contract past the cycle it just paid (ContractScheduleAdvancer is the only
+     * caller). Unguarded on purpose: the date may be in the past — a `cycle` anchor owes
+     * every missed cycle — and the scanner collects those one a day.
+     *
+     * @return array{ok: bool, reason: ?string, contract: ?SubscriptionContract}
+     */
+    public function advanceAfterPayment(Shop $shop, SubscriptionContract $contract, Carbon $next, string $paidCycle): array
+    {
+        $result = $this->setNextBillingDate($shop, $contract, $next);
+
+        if ($result['ok']) {
+            Timeline::record(
+                kind: ContractScheduleAdvancer::KIND_ADVANCED,
+                details: [
+                    'contract_gid' => (string) $contract->shopify_gid,
+                    'paid_cycle' => $paidCycle,
+                    'next_billing_date' => $next->toDateString(),
+                ],
+                actor: ActivityEvent::ACTOR_SYSTEM,
+                shopId: (int) $shop->getKey(),
+            );
+        }
+
+        return $result;
+    }
+
+    /**
      * Move the next billing date at Shopify and mirror the answer. No guard, no Timeline:
-     * reschedule() and startForActivation() each decide both.
+     * reschedule(), startForActivation() and advanceAfterPayment() each decide both.
      *
      * @return array{ok: bool, reason: ?string, contract: ?SubscriptionContract}
      */

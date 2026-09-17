@@ -120,7 +120,7 @@ return [
         'not_found' => 'Shopify no longer recognises this contract.',
         'bad_date' => 'Pick a future date.',
         'not_billable' => 'Only an active subscription can be charged.',
-        'already_requested' => 'This cycle already has a billing attempt — check Billing attempts below.',
+        'already_requested' => 'This cycle was already charged, or its charge is still being processed. See Order history — once Shopify confirms the payment, the next charge date moves on by itself.',
         'awaiting_activation' => 'This subscription is waiting for its customer to start it. Use "Activate now" to start it for them.',
     ],
 ];

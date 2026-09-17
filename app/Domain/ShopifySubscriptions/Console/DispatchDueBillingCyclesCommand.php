@@ -2,8 +2,10 @@
 
 namespace App\Domain\ShopifySubscriptions\Console;
 
+use App\Domain\ShopifySubscriptions\Jobs\AdvanceContractScheduleJob;
 use App\Domain\ShopifySubscriptions\Jobs\BillingAttemptJob;
 use App\Models\Shop;
+use App\Models\SubscriptionBillingAttempt;
 use App\Models\SubscriptionContract;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
@@ -37,6 +39,7 @@ final class DispatchDueBillingCyclesCommand extends Command
     {
         $chunk = max(1, (int) $this->option('chunk'));
         $dispatched = 0;
+        $advanced = 0;
 
         SubscriptionContract::acrossAllTenants()
             ->whereIn('status', SubscriptionContract::BILLABLE_STATUSES)
@@ -49,19 +52,41 @@ final class DispatchDueBillingCyclesCommand extends Command
             // (Settings → Billing). A shop back on PayPlus keeps its mirror but
             // gets no app-driven billing attempts.
             ->whereHas('shop', fn ($q) => $q->where('subscription_rail', Shop::RAIL_SHOPIFY_PAYMENTS))
-            ->chunkById($chunk, function ($contracts) use (&$dispatched): void {
+            ->chunkById($chunk, function ($contracts) use (&$dispatched, &$advanced): void {
                 foreach ($contracts as $contract) {
-                    BillingAttemptJob::dispatch(
-                        (int) $contract->shop_id,
-                        (int) $contract->getKey(),
-                        $contract->next_billing_date->toDateString(),
-                    );
+                    $cycle = $contract->next_billing_date->toDateString();
+                    $attempts = SubscriptionBillingAttempt::acrossAllTenants()
+                        ->where('shop_id', (int) $contract->shop_id)
+                        ->where('subscription_contract_id', (int) $contract->getKey());
+
+                    // Due, but this cycle is already PAID: its date was never moved on (a
+                    // success webhook that never came, or a contract from before the advance
+                    // existed). Move it — never bill it again, and never leave it stuck.
+                    $paid = (clone $attempts)
+                        ->where('billing_cycle_key', $cycle)
+                        ->where('status', SubscriptionBillingAttempt::STATUS_SUCCEEDED)
+                        ->first();
+
+                    if ($paid !== null) {
+                        AdvanceContractScheduleJob::dispatch((int) $contract->shop_id, (int) $paid->getKey());
+                        $advanced++;
+
+                        continue;
+                    }
+
+                    // One charge a day per contract: one owing several cycles (the `cycle`
+                    // anchor collects every missed one) is billed a day apart, not all at once.
+                    if ((clone $attempts)->where('requested_at', '>', now()->subDay())->exists()) {
+                        continue;
+                    }
+
+                    BillingAttemptJob::dispatch((int) $contract->shop_id, (int) $contract->getKey(), $cycle);
                     $dispatched++;
                 }
             });
 
         Cache::put(self::HEARTBEAT_KEY, now()->toIso8601String());
-        $this->info("Dispatched {$dispatched} due billing attempt(s).");
+        $this->info("Dispatched {$dispatched} due billing attempt(s); moved {$advanced} paid cycle(s) on.");
 
         return self::SUCCESS;
     }

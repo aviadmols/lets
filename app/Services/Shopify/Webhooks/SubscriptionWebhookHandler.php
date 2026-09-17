@@ -5,6 +5,7 @@ namespace App\Services\Shopify\Webhooks;
 use App\Domain\ShopifySubscriptions\ContractActivation;
 use App\Domain\ShopifySubscriptions\ContractBackfill;
 use App\Domain\ShopifySubscriptions\ContractMirror;
+use App\Domain\ShopifySubscriptions\Jobs\AdvanceContractScheduleJob;
 use App\Models\Shop;
 use App\Models\SubscriptionBillingAttempt;
 use App\Models\SubscriptionContract;
@@ -149,6 +150,12 @@ final class SubscriptionWebhookHandler implements WebhookHandler
                 'error_message' => (string) ($payload['error_message'] ?? '') ?: null,
                 'resolved_at' => now(),
             ])->save();
+
+            // Paid: Shopify does NOT move the contract to its next cycle — we must, or it
+            // never bills again. A job, unique per attempt, because this webhook comes twice.
+            if ($status === SubscriptionBillingAttempt::STATUS_SUCCEEDED) {
+                AdvanceContractScheduleJob::dispatch((int) $shop->getKey(), (int) $attempt->getKey());
+            }
         }
 
         // Whatever happened, our copy of the contract just changed (next billing
