@@ -3,6 +3,7 @@
 namespace App\Domain\ShopifySubscriptions;
 
 use App\Domain\Installments\PlanActivation;
+use App\Domain\Installments\StoreActivationPage;
 use App\Domain\Mail\MailPolicy;
 use App\Domain\ShopifySubscriptions\Jobs\SendContractActivationLinkJob;
 use App\Mail\ContractActivationMail;
@@ -164,10 +165,20 @@ final class ContractActivation
         return ['ok' => true, 'reason' => null, 'contract' => $contract->fresh() ?? $contract];
     }
 
-    /** The contract's link. Mints the nonce if it has none. */
+    /**
+     * The contract's link — into the store when the merchant chose a store page
+     * (StoreActivationPage), else the LETS page. Mints the nonce if it has none.
+     */
     public function url(SubscriptionContract $contract): string
     {
-        return URL::signedRoute(self::ROUTE_SHOW, $this->parameters($contract));
+        $parameters = $this->parameters($contract);
+
+        return app(StoreActivationPage::class)->url(
+            Shop::query()->find((int) $contract->shop_id),
+            StoreActivationPage::KIND_CONTRACT,
+            (string) $parameters['contract'],
+            $parameters['nonce'],
+        ) ?? URL::signedRoute(self::ROUTE_SHOW, $parameters);
     }
 
     /** The landing page's form target: the same contract and nonce, signed separately. */

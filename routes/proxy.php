@@ -3,6 +3,7 @@
 use App\Domain\Installments\Http\Controllers\Storefront\InstallmentModalController;
 use App\Domain\Installments\Http\Controllers\Storefront\InstallmentQuoteController;
 use App\Domain\Installments\Http\Controllers\Storefront\StartInstallmentPlanController;
+use App\Domain\Installments\Http\StoreActivationController;
 use App\Domain\Loyalty\Http\Controllers\LoyaltyActionController;
 use App\Domain\Loyalty\Http\Controllers\LoyaltyPageController;
 use App\Domain\Loyalty\Http\Controllers\LoyaltyRedeemController;
@@ -78,4 +79,16 @@ Route::prefix('proxy')
         Route::post('/loyalty/birthday', [LoyaltyActionController::class, 'birthday'])->name('proxy.loyalty.birthday');
         Route::post('/loyalty/social', [LoyaltyActionController::class, 'social'])->name('proxy.loyalty.social');
         Route::post('/loyalty/redeem', [LoyaltyRedeemController::class, 'redeem'])->name('proxy.loyalty.redeem');
+
+        /*
+        |----------------------------------------------------------------------
+        | Subscription activation — the theme block on a store page
+        |----------------------------------------------------------------------
+        | The activation link can open a page in the store (Settings → Billing).
+        | The block there asks GET what to draw and POSTs the button. The token is
+        | the link's own proof; the shop is Shopify's signature. Anything that does
+        | not match both answers {show: false}, and the block draws nothing.
+        */
+        Route::get('/activation', [StoreActivationController::class, 'show'])->name('proxy.activation.show');
+        Route::post('/activation', [StoreActivationController::class, 'activate'])->name('proxy.activation.activate');
     });

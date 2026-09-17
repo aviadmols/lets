@@ -197,6 +197,19 @@ return [
             'lock_fulfillment_help' => 'Hold fulfillment until every installment is paid.',
         ],
 
+        'activation' => [
+            'heading' => 'Activation links',
+            'intro' => 'For subscriptions the customer starts themselves: where the link in their email opens.',
+            'opens' => 'The activation link opens',
+            'opens_lets' => 'The LETS activation page',
+            'opens_lets_help' => 'A simple page with your store name and one button. Nothing to set up.',
+            'opens_store' => 'A page in my store',
+            'opens_store_help' => 'The customer lands in your store, where the "Subscription activation" block shows the button. Add that block to the page in the theme editor. It stays invisible to anyone who did not arrive from an activation link.',
+            'page_path' => 'Store page address',
+            'page_path_help' => 'The page\'s path in your store, for example /pages/activate. Create the page in Shopify (Online Store → Pages) and add the "Subscription activation" app block to it.',
+            'page_path_invalid' => 'Enter a page path in your store, such as /pages/activate.',
+        ],
+
         'self_service' => [
             'heading' => 'Customer self-service',
             'intro' => 'What customers can do from their portal magic link.',

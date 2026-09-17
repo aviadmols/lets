@@ -10,6 +10,11 @@
 # A standalone pasteable snippet (snippet/lets-installments-button.liquid) ships
 # alongside for merchants who prefer manual {% render %} insertion — same markup,
 # same App-Proxy-only calls. See docs/INSTALLMENTS-SNIPPET.md.
+#
+# It also carries the "Subscription activation" block (blocks/subscription_activation
+# .liquid): the store-page home of an activation link, invisible to anyone who did not
+# arrive from one. It lives here, not in its own extension, because this is the theme
+# extension both Partner apps already ship and release.
 
 api_version = "2026-04"
 uid = "45589920-e4d0-8f01-8480-f6f7aafb8f530dfd0fcc"

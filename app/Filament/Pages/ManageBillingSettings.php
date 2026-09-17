@@ -64,6 +64,11 @@ class ManageBillingSettings extends Page implements HasForms
     /** Installment frequencies a merchant may offer (drives the CheckboxList). */
     public const FREQUENCIES = MerchantBillingSettings::SELECTABLE_FREQUENCIES;
 
+    /** Where the activation link opens — the form's choice; stored as a path or null. */
+    public const ACTIVATION_OPENS_LETS = 'lets';
+
+    public const ACTIVATION_OPENS_STORE = 'store';
+
     /** @var array<string, mixed> the form state (statePath: data). */
     public array $data = [];
 
@@ -125,6 +130,9 @@ class ManageBillingSettings extends Page implements HasForms
             'single_active_subscription' => $settings->allowsOneSubscriptionOnly(),
             'live_charging_enabled' => $settings->chargingIsLive(),
 
+            'activation_link_opens' => $settings->activationPagePath() !== null ? self::ACTIVATION_OPENS_STORE : self::ACTIVATION_OPENS_LETS,
+            'activation_page_path' => $settings->activationPagePath() ?? MerchantBillingSettings::SUGGESTED_ACTIVATION_PAGE_PATH,
+
             'cancellation_policy_text' => $settings->cancellationPolicyText(),
             'terms_version' => $settings->termsVersion(),
             'support_email' => $settings->supportEmail(),
@@ -142,6 +150,7 @@ class ManageBillingSettings extends Page implements HasForms
                 $this->retriesSection(),
                 $this->installmentsSection(),
                 $this->selfServiceSection(),
+                $this->activationSection(),
                 $this->policySection(),
             ]);
     }
@@ -459,6 +468,51 @@ class ManageBillingSettings extends Page implements HasForms
             ->columns(2);
     }
 
+    /**
+     * Where a subscription's activation link opens — the LETS page, or a page in the store
+     * that carries the "Subscription activation" theme block. Shopify stores only: the block
+     * is a Shopify theme extension. The path is checked here AND normalized on save, so what
+     * is stored is always a plain path inside the store.
+     */
+    private function activationSection(): Section
+    {
+        $shop = Tenant::current();
+
+        return Section::make(__('billing.settings.activation.heading'))
+            ->description(__('billing.settings.activation.intro'))
+            ->schema([
+                Radio::make('activation_link_opens')
+                    ->label(__('billing.settings.activation.opens'))
+                    ->options([
+                        self::ACTIVATION_OPENS_LETS => __('billing.settings.activation.opens_lets'),
+                        self::ACTIVATION_OPENS_STORE => __('billing.settings.activation.opens_store'),
+                    ])
+                    ->descriptions([
+                        self::ACTIVATION_OPENS_LETS => __('billing.settings.activation.opens_lets_help'),
+                        self::ACTIVATION_OPENS_STORE => __('billing.settings.activation.opens_store_help'),
+                    ])
+                    ->live()
+                    ->columnSpanFull(),
+
+                TextInput::make('activation_page_path')
+                    ->label(__('billing.settings.activation.page_path'))
+                    ->helperText(__('billing.settings.activation.page_path_help'))
+                    ->placeholder(MerchantBillingSettings::SUGGESTED_ACTIVATION_PAGE_PATH)
+                    ->maxLength(MerchantBillingSettings::MAX_ACTIVATION_PAGE_PATH)
+                    ->required(fn (Get $get): bool => $get('activation_link_opens') === self::ACTIVATION_OPENS_STORE)
+                    ->rule(fn (Get $get): \Closure => function (string $attribute, mixed $value, \Closure $fail) use ($get): void {
+                        if ($get('activation_link_opens') === self::ACTIVATION_OPENS_STORE
+                            && MerchantBillingSettings::normalizeActivationPagePath($value) === null) {
+                            $fail(__('billing.settings.activation.page_path_invalid'));
+                        }
+                    })
+                    ->visible(fn (Get $get): bool => $get('activation_link_opens') === self::ACTIVATION_OPENS_STORE)
+                    ->columnSpanFull(),
+            ])
+            ->columns(1)
+            ->visible($shop instanceof Shop && $shop->platform === Shop::PLATFORM_SHOPIFY);
+    }
+
     /** Policy & terms — snapshotted into every CustomerConsent row. */
     private function policySection(): Section
     {
@@ -530,6 +584,12 @@ class ManageBillingSettings extends Page implements HasForms
         $settings->allow_customer_reschedule = (bool) ($input['allow_customer_reschedule'] ?? true);
         $settings->allow_customer_edit_items = (bool) ($input['allow_customer_edit_items'] ?? true);
         $settings->single_active_subscription = (bool) ($input['single_active_subscription'] ?? false);
+
+        // A store page only when chosen AND the path is a real path; anything else keeps the
+        // LETS page. A WooCommerce shop never sees the section, so it never sets one.
+        $settings->activation_page_path = ($input['activation_link_opens'] ?? null) === self::ACTIVATION_OPENS_STORE
+            ? MerchantBillingSettings::normalizeActivationPagePath($input['activation_page_path'] ?? null)
+            : null;
 
         $resumed = $this->applyLiveChargingSwitch($settings, (bool) ($input['live_charging_enabled'] ?? true));
 

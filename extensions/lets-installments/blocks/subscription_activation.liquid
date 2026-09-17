@@ -1,0 +1,158 @@
+{%- comment -%}
+  LETS subscription activation — the button a customer presses to start a subscription
+  that waits for them, on a page in the merchant's own store.
+
+  The merchant chooses "A page in my store" in LETS → Settings → Billing and drops this
+  block on that page. The emailed link is the page plus ?lets_activation={token}.
+
+  INVISIBLE UNLESS ARRIVED FROM AN ACTIVATION LINK: with no token in the address the
+  script stops before asking anything, and the block stays empty. With a token it asks the
+  App Proxy (/apps/{subpath}/activation), which draws a card only when the token names a
+  subscription of THIS store that is waiting or already started — anything else answers
+  {show:false} and the block stays empty too.
+
+  Nothing happens on page load: mail scanners open links before people do, so only the
+  button's POST starts the subscription. Every word is the server's, in the shop's customer
+  language, written with textContent (never innerHTML).
+
+  In the theme editor (request.design_mode) a sample card shows where the block sits.
+
+  Settings: button colours, and the App Proxy subpath for a shop that changed it.
+{%- endcomment -%}
+
+{%- assign proxy_subpath = block.settings.proxy_subpath | default: 'payplus' -%}
+
+<div
+  class="lets-activation"
+  data-lets-activation
+  data-endpoint="/apps/{{ proxy_subpath }}/activation"
+  {% unless request.design_mode %}hidden{% endunless %}
+  {{ block.shopify_attributes }}
+>
+  {%- if request.design_mode -%}
+    <div class="lets-activation__card">
+      <p class="lets-activation__heading">{{ 'activation.editor_heading' | t }}</p>
+      <p class="lets-activation__body">{{ 'activation.editor_body' | t }}</p>
+      <button type="button" class="lets-activation__button" disabled>{{ 'activation.editor_button' | t }}</button>
+    </div>
+  {%- endif -%}
+</div>
+
+{%- style -%}
+  .lets-activation { margin: 24px auto; max-width: 560px; }
+  .lets-activation[hidden] { display: none; }
+  .lets-activation__card {
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    padding: 28px 24px; text-align: center;
+    border: 1px solid rgba(0, 0, 0, .12); border-radius: 14px;
+  }
+  .lets-activation__heading { margin: 0; font-size: 1.4em; font-weight: 600; line-height: 1.3; }
+  .lets-activation__body, .lets-activation__note, .lets-activation__error { margin: 0; line-height: 1.5; }
+  .lets-activation__note { opacity: .75; font-size: .9em; }
+  .lets-activation__error { color: #b42318; }
+  .lets-activation__button {
+    cursor: pointer; min-height: 46px; padding: 12px 32px; border-radius: 999px;
+    border: 1px solid {{ block.settings.button_bg | default: '#111827' }};
+    background: {{ block.settings.button_bg | default: '#111827' }};
+    color: {{ block.settings.button_fg | default: '#ffffff' }};
+    font: inherit; font-weight: 600;
+  }
+  .lets-activation__button[disabled] { opacity: .6; cursor: default; }
+{%- endstyle -%}
+
+{%- unless request.design_mode -%}
+<script>
+  (function () {
+    'use strict';
+    var QUERY_PARAM = 'lets_activation';
+    var root = document.querySelector('[data-lets-activation]');
+    if (!root || root.dataset.letsBound) { return; }
+    root.dataset.letsBound = '1';
+
+    // Not from an activation link: ask nothing, show nothing.
+    var token = new URL(window.location.href).searchParams.get(QUERY_PARAM);
+    if (!token) { return; }
+
+    var endpoint = root.getAttribute('data-endpoint');
+
+    function ask(method) {
+      var options = { method: method, credentials: 'same-origin', headers: { 'Accept': 'application/json' } };
+      var target = endpoint;
+      if (method === 'GET') {
+        target += '?token=' + encodeURIComponent(token);
+      } else {
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify({ token: token });
+      }
+      return fetch(target, options).then(function (r) { return r.ok ? r.json() : { show: false }; });
+    }
+
+    function line(tag, className, text) {
+      var node = document.createElement(tag);
+      node.className = className;
+      node.textContent = text;
+      return node;
+    }
+
+    function render(data) {
+      root.textContent = '';
+      if (!data || !data.show) { root.hidden = true; return; }
+
+      var card = line('div', 'lets-activation__card', '');
+      card.setAttribute('dir', data.dir || 'ltr');
+      card.appendChild(line('p', 'lets-activation__heading', data.heading || ''));
+      card.appendChild(line('p', 'lets-activation__body', data.body || ''));
+      if (data.error) { card.appendChild(line('p', 'lets-activation__error', data.error)); }
+
+      if (data.button) {
+        var button = line('button', 'lets-activation__button', data.button);
+        button.type = 'button';
+        button.addEventListener('click', function () {
+          button.disabled = true;
+          ask('POST').then(render).catch(function () { button.disabled = false; });
+        });
+        card.appendChild(button);
+      }
+
+      if (data.note) { card.appendChild(line('p', 'lets-activation__note', data.note)); }
+
+      root.appendChild(card);
+      root.hidden = false;
+    }
+
+    ask('GET').then(render).catch(function () { root.hidden = true; });
+  })();
+</script>
+{%- endunless -%}
+
+{% schema %}
+{
+  "name": "Subscription activation",
+  "target": "section",
+  "settings": [
+    {
+      "type": "paragraph",
+      "content": "Shows the activation button only to a customer who arrived from their activation link. Everyone else sees nothing."
+    },
+    {
+      "type": "color",
+      "id": "button_bg",
+      "label": "Button colour",
+      "default": "#111827"
+    },
+    {
+      "type": "color",
+      "id": "button_fg",
+      "label": "Button text colour",
+      "default": "#ffffff"
+    },
+    {
+      "type": "text",
+      "id": "proxy_subpath",
+      "label": "App Proxy subpath",
+      "default": "payplus",
+      "info": "Change only if the app's proxy subpath was changed."
+    }
+  ]
+}
+{% endschema %}

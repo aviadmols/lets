@@ -1,3 +1,8 @@
 {
-  "name": "LETS Deposit Plan"
+  "name": "LETS Deposit Plan",
+  "activation": {
+    "editor_heading": "Subscription activation",
+    "editor_body": "Only a customer who arrives from their activation link sees this card. Everyone else sees nothing here.",
+    "editor_button": "Start my subscription"
+  }
 }

@@ -63,10 +63,20 @@ final class PlanActivation
         return $plan->isRecurring() && (bool) $plan->template?->requires_activation;
     }
 
-    /** The plan's link. Mints the nonce the first time it is asked for. */
+    /**
+     * The plan's link — into the Shopify store when the merchant chose a store page
+     * (StoreActivationPage), else the LETS page. Mints the nonce the first time.
+     */
     public function url(InstallmentPlan $plan): string
     {
-        return URL::signedRoute(self::ROUTE_SHOW, $this->parameters($plan));
+        $parameters = $this->parameters($plan);
+
+        return app(StoreActivationPage::class)->url(
+            Shop::query()->find((int) $plan->shop_id),
+            StoreActivationPage::KIND_PLAN,
+            $parameters['plan'],
+            $parameters['nonce'],
+        ) ?? URL::signedRoute(self::ROUTE_SHOW, $parameters);
     }
 
     /** The form target on the landing page: the same plan and nonce, signed separately. */

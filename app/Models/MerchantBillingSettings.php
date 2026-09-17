@@ -84,6 +84,15 @@ class MerchantBillingSettings extends Model
     public const DEFAULT_SINGLE_ACTIVE_SUBSCRIPTION = false;
 
     /**
+     * Where a Shopify store's activation link opens: null = the LETS page; a path = that page
+     * in the store, which carries the "Subscription activation" theme block. A PATH only —
+     * never a host — so a link can only ever lead into the store itself.
+     */
+    public const SUGGESTED_ACTIVATION_PAGE_PATH = '/pages/activate';
+
+    public const MAX_ACTIVATION_PAGE_PATH = 200;
+
+    /**
      * Does a recurring cycle materialise an ORDER in the store?
      *
      * TRUE by default, because that is what every shop does today and an upgrade
@@ -432,6 +441,33 @@ class MerchantBillingSettings extends Model
     public function allowsOneSubscriptionOnly(): bool
     {
         return (bool) ($this->single_active_subscription ?? self::DEFAULT_SINGLE_ACTIVE_SUBSCRIPTION);
+    }
+
+    /** The store page activation links open on, or null for the LETS page. */
+    public function activationPagePath(): ?string
+    {
+        return self::normalizeActivationPagePath($this->activation_page_path);
+    }
+
+    /**
+     * A clean store path from what the merchant typed: "/pages/activate", "pages/activate"
+     * and a pasted "https://my-store.com/pages/activate?x=1" all become "/pages/activate".
+     * Anything that is not a plain path — empty, "//evil.com", odd characters — is null,
+     * which falls back to the LETS page rather than sending customers somewhere broken.
+     */
+    public static function normalizeActivationPagePath(mixed $value): ?string
+    {
+        $value = is_string($value) ? trim($value) : '';
+
+        if (preg_match('#^https?://#i', $value) === 1) {
+            $value = (string) (parse_url($value, PHP_URL_PATH) ?? '');
+        }
+
+        $path = '/'.ltrim((string) strtok($value, '?#'), '/');
+
+        return $path !== '/' && strlen($path) <= self::MAX_ACTIVATION_PAGE_PATH && preg_match('#^(/[A-Za-z0-9._~%-]+)+/?$#', $path) === 1
+            ? $path
+            : null;
     }
 
     public function termsVersion(): string
