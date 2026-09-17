@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.51.0
+Stable tag: 0.52.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,13 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.52.0 =
+* Every product an After Sell offer adds to an order carries a label in the admin order
+  screen — "Added by After Sell: {offer}" — so the shop can tell which lines the offer
+  sold. Customers never see it: not on their order page, in emails or on receipts.
+* An order reported for invoicing leaves out the products After Sell added: LETS declares
+  those itself, on the order's one document, from the charge — never twice.
 
 = 0.51.0 =
 * The thank-you offer can be a BUNDLE: several products in a slider (1–4 per slide),

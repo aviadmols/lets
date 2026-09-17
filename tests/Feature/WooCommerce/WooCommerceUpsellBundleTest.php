@@ -17,6 +17,7 @@ use App\Modules\PayPlusShopifyInstallments\Contracts\PayPlusGatewayInterface;
 use App\Modules\PayPlusShopifyInstallments\Enums\LedgerStatus;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\GatewayResult;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
+use App\Services\WooCommerce\Orders\WooUpsellChildOrderService;
 use App\Services\WooCommerce\WooCommerceShopProvisioner;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -142,13 +143,18 @@ final class WooCommerceUpsellBundleTest extends TestCase
 
         // Every book is its own line on the shopper's order, in the merchant's order, and the
         // lines add up to exactly what the card was charged — ₪100 over three is not ₪99.99.
-        Http::assertSent(function (HttpRequest $req) use ($books): bool {
+        Http::assertSent(function (HttpRequest $req) use ($books, $offer): bool {
             $lines = (array) ($req->data()['line_items'] ?? []);
 
             return $req->method() === 'PUT'
                 && str_ends_with($req->url(), '/orders/'.self::ORDER)
                 && array_column($lines, 'product_id') === [(int) $books['C']->external_id, (int) $books['A']->external_id, (int) $books['B']->external_id]
-                && array_column($lines, 'total') === ['33.33', '33.33', '33.34'];
+                && array_column($lines, 'total') === ['33.33', '33.33', '33.34']
+                // Each line says, to the admin only (a hidden `_` key), which After Sell offer added it.
+                && array_map(fn (array $line): array => $line['meta_data'] ?? [], $lines) === array_fill(0, 3, [[
+                    'key' => WooUpsellChildOrderService::META_AFTER_SELL_ITEM,
+                    'value' => (string) $offer->offer_title,
+                ]]);
         });
 
         // One document for the sale, naming what was bought.

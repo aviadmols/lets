@@ -34,6 +34,13 @@ final class WooUpsellChildOrderService
 
     public const META_UPSELL_OFFER_ID = 'lets_upsell_offer_id';
 
+    /**
+     * On each LINE the offer adds: the offer's name. The leading underscore is WooCommerce's own
+     * "hidden" convention — never shown on the customer's order page, emails or receipts — and
+     * the plugin draws it as an "Added by After Sell" label in the admin order screen only.
+     */
+    public const META_AFTER_SELL_ITEM = '_lets_after_sell';
+
     public const ROLE_UPSELL_CHILD = 'upsell_child';
 
     private const STATUS_COMPLETED = 'completed';
@@ -202,7 +209,14 @@ final class WooUpsellChildOrderService
             $amount,
             $offer->offer_product_gid,
             $offer->offer_variant_gid,
+            $this->afterSellLabel($offer),
         );
+    }
+
+    /** The offer's name, as the admin reads it on each line the offer added. */
+    private function afterSellLabel(UpsellFlowOffer $offer): string
+    {
+        return trim((string) ($offer->offer_title ?? '')) ?: (string) __('upsell.offer_default_title');
     }
 
     /**
@@ -227,16 +241,18 @@ final class WooUpsellChildOrderService
             $totals[$i],
             (string) $product->external_id,
             $product->primaryVariant()?->external_variant_id,
+            $this->afterSellLabel($offer),
         ))->all();
     }
 
     /** @return array<string, mixed> */
-    private function productLine(string $name, float $total, ?string $productRef, ?string $variantRef): array
+    private function productLine(string $name, float $total, ?string $productRef, ?string $variantRef, string $afterSell): array
     {
         $lineItem = [
             'name' => $name,
             'quantity' => 1,
             'total' => number_format(round($total, 2), 2, '.', ''),
+            'meta_data' => [['key' => self::META_AFTER_SELL_ITEM, 'value' => $afterSell]],
         ];
         if (($productId = $this->numericId($productRef)) > 0) {
             $lineItem['product_id'] = $productId;

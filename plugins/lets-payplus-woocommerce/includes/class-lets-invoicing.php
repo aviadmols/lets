@@ -240,8 +240,22 @@ function lets_payplus_invoicing_report(WC_Order $order)
 function lets_payplus_invoicing_order_body(WC_Order $order)
 {
     $lines = array();
+    $after_sell_total = 0.0;
+    $after_sell_meta = defined('LETS_PAYPLUS_AFTER_SELL_ITEM_META') ? LETS_PAYPLUS_AFTER_SELL_ITEM_META : '_lets_after_sell';
 
-    foreach (array_slice($order->get_items(), 0, LETS_PAYPLUS_INVOICE_MAX_LINES) as $item) {
+    foreach ($order->get_items() as $item) {
+        // A product an After Sell offer added was charged — and is declared — by LETS itself,
+        // from the charge. Reporting it again as part of the order would declare it twice.
+        if (is_object($item) && method_exists($item, 'get_meta') && '' !== (string) $item->get_meta($after_sell_meta)) {
+            $after_sell_total += (float) $order->get_line_total($item, true, true);
+        }
+    }
+
+    $sold_here = array_filter($order->get_items(), function ($item) use ($after_sell_meta) {
+        return ! (is_object($item) && method_exists($item, 'get_meta') && '' !== (string) $item->get_meta($after_sell_meta));
+    });
+
+    foreach (array_slice($sold_here, 0, LETS_PAYPLUS_INVOICE_MAX_LINES) as $item) {
         $quantity = max(1, (int) $item->get_quantity());
         // The line SUBTOTAL is the pre-discount price; get_total() is what the customer
         // actually pays for the line, which is what a document must declare.
@@ -268,7 +282,7 @@ function lets_payplus_invoicing_order_body(WC_Order $order)
         // server-side (and looks the order up in its own plan table), but sending it
         // lets the cheap check win before any database work.
         LETS_PAYPLUS_PLAN_META => (string) $order->get_meta(LETS_PAYPLUS_PLAN_META),
-        'total'            => round((float) $order->get_total(), 2),
+        'total'            => round(max(0.0, (float) $order->get_total() - $after_sell_total), 2),
         'currency'         => (string) $order->get_currency(),
         'customer_name'    => trim($order->get_billing_first_name() . ' ' . $order->get_billing_last_name()),
         'customer_email'   => (string) $order->get_billing_email(),

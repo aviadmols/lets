@@ -36,6 +36,13 @@ define('LETS_PAYPLUS_TAGS_UMBRELLA', 'LETS');
 define('LETS_PAYPLUS_TAGS_FILTER_ARG', 'lets_tag');
 
 /**
+ * Order ITEM meta LETS stamps on every product an After Sell offer added (the offer's name).
+ * Mirrors WooUpsellChildOrderService::META_AFTER_SELL_ITEM. The leading underscore keeps it
+ * off everything the customer sees — order page, emails, receipts.
+ */
+define('LETS_PAYPLUS_AFTER_SELL_ITEM_META', '_lets_after_sell');
+
+/**
  * What the merchant reads on the umbrella tag and on the column heading.
  *
  * The product name means nothing to somebody doing ordinary shop work: on the
@@ -164,12 +171,56 @@ add_action('admin_head', 'lets_payplus_tags_column_styles');
 function lets_payplus_tags_column_styles()
 {
     $screen = function_exists('get_current_screen') ? get_current_screen() : null;
-    if (! $screen || lets_payplus_orders_screen() !== $screen->id) {
+    // The orders list and the single-order screen (HPOS shares one id for both; the
+    // classic editor's is shop_order).
+    if (! $screen || ! in_array($screen->id, array(lets_payplus_orders_screen(), 'shop_order'), true)) {
         return;
     }
-    // Scoped to this screen; the admin list has no stylesheet of ours to extend.
+    // Scoped to these screens; the admin has no stylesheet of ours to extend.
     echo '<style>.lets-tag{display:inline-block;padding:1px 7px;margin:1px 2px 1px 0;border-radius:10px;'
-        . 'background:#f1ecfd;color:#5f38bd;font-size:11px;line-height:18px;white-space:nowrap;}</style>';
+        . 'background:#f1ecfd;color:#5f38bd;font-size:11px;line-height:18px;white-space:nowrap;}'
+        . '.lets-tag--item{margin-top:6px;}</style>';
+}
+
+// ---------------------------------------------------------------------------
+// The After Sell label on an order's products
+// ---------------------------------------------------------------------------
+
+/**
+ * The raw meta row would print as "_lets_after_sell: …" in the admin's item details; the
+ * label below says it properly, so the raw key is hidden there. (Customers never see it.)
+ */
+add_filter('woocommerce_hidden_order_itemmeta', 'lets_payplus_hide_after_sell_meta');
+
+function lets_payplus_hide_after_sell_meta($hidden)
+{
+    $hidden[] = LETS_PAYPLUS_AFTER_SELL_ITEM_META;
+
+    return $hidden;
+}
+
+/**
+ * "Added by After Sell: {offer}" under each product an offer added. The hook renders only in
+ * the admin order-items box, so the storefront, the customer's account and the emails never
+ * carry it.
+ */
+add_action('woocommerce_after_order_itemmeta', 'lets_payplus_after_sell_item_label', 10, 3);
+
+function lets_payplus_after_sell_item_label($item_id, $item, $product)
+{
+    if (! is_admin() || ! $item instanceof WC_Order_Item_Product) {
+        return;
+    }
+
+    $offer = trim((string) $item->get_meta(LETS_PAYPLUS_AFTER_SELL_ITEM_META));
+    if ('' === $offer) {
+        return;
+    }
+
+    $he = function_exists('lets_payplus_is_he') && lets_payplus_is_he();
+    $label = ($he ? 'נוסף מ-After Sell: ' : 'Added by After Sell: ') . $offer;
+
+    echo '<div><span class="lets-tag lets-tag--item">' . esc_html($label) . '</span></div>';
 }
 
 // ---------------------------------------------------------------------------
