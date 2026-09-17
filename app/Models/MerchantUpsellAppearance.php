@@ -172,6 +172,18 @@ class MerchantUpsellAppearance extends Model
 
     public const DEFAULT_DECLINE = self::DECLINE_LINK;
 
+    /**
+     * card_locale — the language of the card's OWN words (bundle picker, decline, disclosure,
+     * success/error states). English by default: what every card spoke before the choice existed.
+     */
+    public const LOCALE_EN = 'en';
+
+    public const LOCALE_HE = 'he';
+
+    public const LOCALES = [self::LOCALE_EN, self::LOCALE_HE];
+
+    public const DEFAULT_LOCALE = self::LOCALE_EN;
+
     protected $guarded = ['id', 'shop_id'];
 
     protected function casts(): array
@@ -256,6 +268,29 @@ class MerchantUpsellAppearance extends Model
     public function imageRatio(): string
     {
         return $this->oneOf($this->image_ratio, self::IMAGE_RATIOS, self::DEFAULT_RATIO);
+    }
+
+    public function cardLocale(): string
+    {
+        return $this->oneOf($this->card_locale, self::LOCALES, self::DEFAULT_LOCALE);
+    }
+
+    /**
+     * Run a render with the card's language bound, restoring the caller's after. Every place a
+     * card is built goes through this — the storefront, Shopify's post-purchase page and the
+     * admin preview — so the three cannot speak different languages.
+     */
+    public function inCardLocale(callable $callback): mixed
+    {
+        $previous = app()->getLocale();
+
+        try {
+            app()->setLocale($this->cardLocale());
+
+            return $callback();
+        } finally {
+            app()->setLocale($previous);
+        }
     }
 
     public function declineStyle(): string

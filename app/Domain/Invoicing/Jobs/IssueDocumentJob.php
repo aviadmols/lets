@@ -4,8 +4,10 @@ namespace App\Domain\Invoicing\Jobs;
 
 use App\Domain\Invoicing\DocumentContext;
 use App\Domain\Invoicing\DocumentIssuer;
+use App\Domain\Invoicing\OrderDocumentHold;
 use App\Models\IssuedDocument;
 use App\Models\MerchantInvoicingSettings;
+use App\Models\PaymentLedger;
 use App\Models\Shop;
 use App\Services\WooCommerce\WooPluginNotifier;
 use App\Support\TenantContext;
@@ -55,6 +57,9 @@ final class IssueDocumentJob implements ShouldBeUnique, ShouldQueue
      * the two from racing for it at all.
      */
     public int $uniqueFor = 1800;
+
+    /** Attempts a document may spend waiting for an after-purchase offer (see tries()). */
+    private const HOLD_ATTEMPTS = 1;
 
     /**
      * @param  int  $shopId  the tenant, carried explicitly
@@ -153,9 +158,13 @@ final class IssueDocumentJob implements ShouldBeUnique, ShouldQueue
         }
     }
 
+    /**
+     * The provider's retries, plus the one attempt a document may spend WAITING for its order's
+     * after-purchase offer to close (OrderDocumentHold) — so waiting never costs a retry.
+     */
     public function tries(): int
     {
-        return max(1, (int) config('invoicing.job_tries', 3));
+        return max(1, (int) config('invoicing.job_tries', 3)) + self::HOLD_ATTEMPTS;
     }
 
     /**
@@ -234,12 +243,22 @@ final class IssueDocumentJob implements ShouldBeUnique, ShouldQueue
 
     private function issue(DocumentIssuer $issuer, DocumentContext $context): void
     {
+        // Waiting for an after-purchase offer: the order's document until the offers shown
+        // for it have closed, an upsell's own until its order's document has had the chance
+        // to declare it. Once only — on the next attempt the document goes out regardless.
+        $wait = $this->secondsToWait($context);
+        if ($wait > 0 && $this->attempts() <= self::HOLD_ATTEMPTS) {
+            $this->release($wait);
+
+            return;
+        }
+
         if ($this->ledgerId !== null) {
             // Ledger-path documents notify the store too: a deposit/recurring
             // document on a Woo shop belongs to a WC order (external_order_id),
             // and without the notify leg that order never learns its own invoice
             // exists — the plugin metabox would show plan orders as undocumented.
-            $this->notifyStore($issuer->issueForLedger(
+            $document = $issuer->issueForLedger(
                 $this->shopId,
                 $this->ledgerId,
                 $context,
@@ -248,7 +267,13 @@ final class IssueDocumentJob implements ShouldBeUnique, ShouldQueue
                 $this->itemTitle,
                 $this->alreadyRefunded,
                 $this->refundRequestId,
-            ));
+            );
+
+            // An upsell declared on its ORDER's document comes back as that document, which
+            // told the store about itself already — never announce it twice.
+            if ($document === null || (string) $document->context === $context->value) {
+                $this->notifyStore($document);
+            }
 
             return;
         }
@@ -256,6 +281,24 @@ final class IssueDocumentJob implements ShouldBeUnique, ShouldQueue
         if ($this->order !== null) {
             $this->notifyStore($issuer->issueForPlatformOrder($this->shopId, $this->order));
         }
+    }
+
+    /** Seconds this document should still wait for an after-purchase offer; 0 = go now. */
+    private function secondsToWait(DocumentContext $context): int
+    {
+        $hold = app(OrderDocumentHold::class);
+
+        if ($this->order !== null && $context === DocumentContext::PLATFORM_ORDER) {
+            return $hold->secondsUntilSettled($this->shopId, (string) ($this->order['order_id'] ?? ''));
+        }
+
+        if ($this->ledgerId !== null && $context === DocumentContext::UPSELL) {
+            $ledger = PaymentLedger::acrossAllTenants()->where('shop_id', $this->shopId)->whereKey($this->ledgerId)->first();
+
+            return $ledger !== null ? $hold->secondsUpsellShouldWait($this->shopId, $ledger) : 0;
+        }
+
+        return 0;
     }
 
     /**

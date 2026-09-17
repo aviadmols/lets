@@ -911,9 +911,9 @@ class FlowBuilder extends Page
         $offer->shipping_fee_mode = $this->sanitize($this->shippingFeeMode, UpsellFlowOffer::SHIPPING_MODES, UpsellFlowOffer::SHIPPING_FREE);
         $offer->show_timer = $this->showTimer;
 
-        // The add-on window. A day at most: past that it is not urgency, it is a typo.
+        // The add-on window: every offer closes within MAX_WINDOW_MINUTES (empty = that cap).
         $minutes = (int) $this->timerMinutes;
-        $offer->timer_minutes = $minutes > 0 ? min($minutes, 1440) : null;
+        $offer->timer_minutes = $minutes > 0 ? min($minutes, UpsellFlowOffer::MAX_WINDOW_MINUTES) : null;
 
         // Bundles are drawn by the WooCommerce thank-you card only; anywhere else the
         // shopper could not pick, so the mode is not offered and not accepted.

@@ -50,6 +50,13 @@ class UpsellFlowOffer extends Model
     /** How late an accept may land after the window closes: the click made at 0:01, still in flight. */
     public const WINDOW_ACCEPT_GRACE_SECONDS = 15;
 
+    /**
+     * EVERY offer closes, at most this many minutes after it first appears — and exactly this
+     * long when the merchant set no shorter time. An offer that never closes would hold the
+     * order's tax document open forever (OrderDocumentHold waits for it).
+     */
+    public const MAX_WINDOW_MINUTES = 5;
+
     public const VARIANT_CUSTOMER = 'customer';
     public const VARIANT_MERCHANT = 'merchant';
     public const VARIANT_MODES = [self::VARIANT_CUSTOMER, self::VARIANT_MERCHANT];
@@ -241,37 +248,55 @@ class UpsellFlowOffer extends Model
 
     // === Add-on window ===
 
-    /** Minutes the shopper has to take this offer, or null when it never closes. */
-    public function windowMinutes(): ?int
+    /**
+     * Minutes the shopper has to take this offer: the merchant's time, capped at
+     * MAX_WINDOW_MINUTES, and that cap when they set none. Independent of show_timer, which
+     * only decides whether the countdown is DRAWN.
+     */
+    public function windowMinutes(): int
     {
-        return $this->show_timer && (int) $this->timer_minutes > 0 ? (int) $this->timer_minutes : null;
+        $minutes = (int) $this->timer_minutes;
+
+        return $minutes > 0 ? min($minutes, self::MAX_WINDOW_MINUTES) : self::MAX_WINDOW_MINUTES;
     }
 
     /**
-     * Seconds left of THIS order's window, or null when the offer has none.
+     * Seconds left of THIS order's window.
      *
      * The clock starts the FIRST time the offer was shown for the order (its first
      * impression row), so reloading the thank-you page never buys more time.
      */
-    public function windowSecondsLeft(string $parentOrderId): ?int
+    public function windowSecondsLeft(string $parentOrderId): int
     {
-        $minutes = $this->windowMinutes();
-
-        return $minutes === null ? null : max(0, $minutes * 60 - $this->secondsSinceFirstShown($parentOrderId));
+        return max(0, $this->windowMinutes() * 60 - $this->secondsSinceFirstShown($parentOrderId));
     }
 
     /** Has this order's window closed, allowing `$graceSeconds` for a click already on its way? */
     public function windowClosed(string $parentOrderId, int $graceSeconds = 0): bool
     {
-        $minutes = $this->windowMinutes();
+        return $this->secondsSinceFirstShown($parentOrderId) > $this->windowMinutes() * 60 + $graceSeconds;
+    }
 
-        return $minutes !== null && $this->secondsSinceFirstShown($parentOrderId) > $minutes * 60 + $graceSeconds;
+    /** When this order's window closes, or null when the offer was never shown for it. */
+    public function windowClosesAt(string $parentOrderId): ?Carbon
+    {
+        $first = $this->firstShownAt($parentOrderId);
+
+        return $first?->copy()->addSeconds($this->windowMinutes() * 60);
     }
 
     private function secondsSinceFirstShown(string $parentOrderId): int
     {
+        $first = $this->firstShownAt($parentOrderId);
+
+        // Never shown (or a preview with no order): the window is still full.
+        return $first === null ? 0 : max(0, now()->getTimestamp() - $first->getTimestamp());
+    }
+
+    private function firstShownAt(string $parentOrderId): ?Carbon
+    {
         if ($parentOrderId === '') {
-            return 0; // nothing to anchor to (a preview): the window is always full
+            return null;
         }
 
         $first = UpsellOfferEvent::query()
@@ -280,7 +305,7 @@ class UpsellFlowOffer extends Model
             ->where('event_type', OfferEventType::IMPRESSION->value)
             ->min('occurred_at');
 
-        return $first === null ? 0 : max(0, now()->getTimestamp() - Carbon::parse($first)->getTimestamp());
+        return $first === null ? null : Carbon::parse($first);
     }
 
     public function flow(): BelongsTo

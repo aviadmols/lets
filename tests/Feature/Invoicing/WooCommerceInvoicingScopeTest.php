@@ -88,7 +88,28 @@ final class WooCommerceInvoicingScopeTest extends TestCase
             ->assertJson(['queued' => true]);
 
         Queue::assertPushed(IssueDocumentJob::class, fn (IssueDocumentJob $job): bool => $job->shopId === (int) $shop->getKey()
-            && $job->order['order_id'] === '5501');
+            && $job->order['order_id'] === '5501'
+            // No after-purchase offer in this shop: nothing to wait for.
+            && $job->delay === null);
+    }
+
+    public function test_a_shop_with_an_after_purchase_offer_gives_the_thank_you_page_a_first_look(): void
+    {
+        Queue::fake();
+        [$shop, $key, $secret] = $this->connectedShop('firstlook.example.com');
+        $this->enableInvoicing($shop, MerchantInvoicingSettings::SCOPE_ALL_ORDERS);
+
+        Tenant::run($shop, function () use ($shop): void {
+            $flow = new \App\Domain\Upsell\Models\UpsellFlow(['name' => 'Books', 'priority' => 1]);
+            $flow->shop_id = $shop->id;
+            $flow->forceFill(['status' => \App\Domain\Upsell\Enums\UpsellFlowStatus::ACTIVE->value])->save();
+        });
+
+        $this->signed('POST', $key, $secret, self::ISSUE_PATH, $this->order())->assertOk()->assertJson(['queued' => true]);
+
+        // Not considered until the thank-you page has had its first look — and then it waits
+        // for any offer actually shown (OrderUpsellDocumentTest).
+        Queue::assertPushed(IssueDocumentJob::class, fn (IssueDocumentJob $job): bool => $job->delay !== null);
     }
 
     public function test_a_status_the_merchant_did_not_pick_is_refused(): void

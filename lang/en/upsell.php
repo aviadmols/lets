@@ -126,6 +126,10 @@ return [
             'badge' => 'Badge',
             'badge_help' => 'A small pill (e.g. “Best seller”). Leave blank to hide it.',
             'trust' => 'Trust line',
+            'language' => 'Card language',
+            'language_help' => 'The card\'s own words: the bundle picker, "No thanks", the charge disclosure and the success and error messages. Your headline and button text stay as you wrote them.',
+            'language_he' => 'Hebrew',
+            'language_en' => 'English',
         ],
 
         // Element labels (each row in the Elements list).
@@ -332,7 +336,7 @@ return [
             'show_timer' => 'Show timer',
             'show_timer_hint' => 'This is a countdown to create urgency to purchase.',
             'timer_minutes' => 'Minutes to add products',
-            'timer_minutes_hint' => 'Counted from the moment the offer first appears. When the time runs out the offer disappears and can no longer be added. Leave empty for no limit.',
+            'timer_minutes_hint' => 'Counted from the moment the offer first appears. When the time runs out the offer disappears and can no longer be added. At most 5 minutes; leave empty for 5. The order\'s invoice is issued once the time is up, with everything the customer added.',
             'bundle' => 'A bundle — several products at one price',
             'bundle_hint' => 'The customer picks the number you set from the products below, and all of them are added to the order at the bundle price.',
             'bundle_products' => 'Products to choose from',

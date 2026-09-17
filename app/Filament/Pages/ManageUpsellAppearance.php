@@ -183,6 +183,17 @@ class ManageUpsellAppearance extends Page implements HasForms
         return Section::make(__('upsell.appearance.copy.heading'))
             ->description(__('upsell.appearance.copy.intro'))
             ->schema([
+                // The card's OWN words — the bundle picker, "No thanks", the disclosure. Applied
+                // on save; the preview reloads in the new language.
+                ToggleButtons::make('card_locale')
+                    ->label(__('upsell.appearance.copy.language'))
+                    ->helperText(__('upsell.appearance.copy.language_help'))
+                    ->options([
+                        MerchantUpsellAppearance::LOCALE_HE => __('upsell.appearance.copy.language_he'),
+                        MerchantUpsellAppearance::LOCALE_EN => __('upsell.appearance.copy.language_en'),
+                    ])
+                    ->inline()
+                    ->columnSpanFull(),
                 TextInput::make('eyebrow_text')
                     ->label(__('upsell.appearance.copy.eyebrow'))
                     ->placeholder(__('upsell.widget_eyebrow'))
@@ -224,6 +235,8 @@ class ManageUpsellAppearance extends Page implements HasForms
         $settings->save();
 
         $this->mount();
+        // The card's words are built on the server, so a language change needs the page itself.
+        $this->dispatch('lets-appearance-reload');
         Notification::make()->title(__('upsell.appearance.saved'))->success()->send();
     }
 
@@ -241,10 +254,10 @@ class ManageUpsellAppearance extends Page implements HasForms
         $draft = $this->cleanFrom($this->data);
         $block = app(UpsellCardPresenter::class)->appearance($draft);
 
-        // Resolved copy so the preview reflects blank → default immediately.
-        $block['eyebrow'] = $draft->eyebrowText() ?? __('upsell.widget_eyebrow');
+        // Resolved copy so the preview reflects blank → default immediately, in the card's language.
+        $block['eyebrow'] = $draft->eyebrowText() ?? $draft->inCardLocale(fn (): string => __('upsell.widget_eyebrow'));
         $block['badge'] = $draft->badgeText();
-        $block['trust'] = $draft->trustText() ?? __('upsell.no_card_reentry');
+        $block['trust'] = $draft->trustText() ?? $draft->inCardLocale(fn (): string => __('upsell.no_card_reentry'));
 
         return $block;
     }
@@ -347,6 +360,7 @@ class ManageUpsellAppearance extends Page implements HasForms
             'eyebrow_text' => $s->eyebrowText(),
             'badge_text' => $s->badgeText(),
             'trust_text' => $s->trustText(),
+            'card_locale' => $s->cardLocale(),
         ];
     }
 
@@ -369,6 +383,7 @@ class ManageUpsellAppearance extends Page implements HasForms
             'eyebrow_text' => $input['eyebrow_text'] ?? null,
             'badge_text' => $input['badge_text'] ?? null,
             'trust_text' => $input['trust_text'] ?? null,
+            'card_locale' => $input['card_locale'] ?? null,
         ]);
 
         return $model;

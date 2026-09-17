@@ -9,7 +9,7 @@ use App\Domain\Upsell\Rendering\UpsellCardPresenter;
 use App\Http\Controllers\Controller;
 use App\Models\MerchantUpsellAppearance;
 use App\Support\Tenant;
-use Illuminate\Contracts\View\View;
+use Illuminate\Http\Response;
 
 /**
  * Filament-authenticated, tenant-scoped PREVIEW of the post-purchase card (Phase 3) — the real
@@ -36,7 +36,7 @@ final class AdminUpsellPreviewController extends Controller
         private readonly PostPurchasePresenter $postPurchase,
     ) {}
 
-    public function __invoke(string $platform, int $offer): View
+    public function __invoke(string $platform, int $offer): Response
     {
         abort_unless(Tenant::check(), 403);
 
@@ -46,22 +46,26 @@ final class AdminUpsellPreviewController extends Controller
             ? $this->presenter->forOffer($this->offer($offer), $appearance, $platform)
             : $this->presenter->sample($appearance, $platform);
 
-        // Shopify's post-purchase page is drawn from SHOPIFY'S components, not our
-        // markup, so previewing it with the storefront card would show a surface
-        // the shopper never sees. It gets its own view, built from the SAME
-        // contract the extension consumes — which is what keeps it faithful.
-        if ($platform === PostPurchaseController::PLATFORM) {
-            return view('upsell.preview-post-purchase', [
-                'viewModel' => $viewModel,
-                'presentation' => $this->postPurchase->present($viewModel, $appearance),
-                'platform' => $platform,
-            ]);
-        }
+        // Rendered NOW, in the card's language: the page's lang/dir follow it, so a Hebrew card
+        // previews right-to-left for an admin working in English, as the shopper will see it.
+        return $appearance->inCardLocale(function () use ($viewModel, $appearance, $platform): Response {
+            // Shopify's post-purchase page is drawn from SHOPIFY'S components, not our
+            // markup, so previewing it with the storefront card would show a surface
+            // the shopper never sees. It gets its own view, built from the SAME
+            // contract the extension consumes — which is what keeps it faithful.
+            if ($platform === PostPurchaseController::PLATFORM) {
+                return response(view('upsell.preview-post-purchase', [
+                    'viewModel' => $viewModel,
+                    'presentation' => $this->postPurchase->present($viewModel, $appearance),
+                    'platform' => $platform,
+                ])->render());
+            }
 
-        return view('upsell.preview', [
-            'viewModel' => $viewModel,
-            'platform' => $platform,
-        ]);
+            return response(view('upsell.preview', [
+                'viewModel' => $viewModel,
+                'platform' => $platform,
+            ])->render());
+        });
     }
 
     /** Tenant-scoped offer, or 404 (global scope resolves a foreign id to not-found). */

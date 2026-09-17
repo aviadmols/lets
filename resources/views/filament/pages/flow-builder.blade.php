@@ -588,7 +588,7 @@
                             </label>
                             <div class="rc-field">
                                 <label class="rc-field__label" for="rc-timer-minutes">{{ __('upsell.admin.configure.timer_minutes') }}</label>
-                                <input id="rc-timer-minutes" type="number" min="1" max="1440" step="1" class="rc-input rc-ltr" wire:model="timerMinutes">
+                                <input id="rc-timer-minutes" type="number" min="1" max="{{ \App\Domain\Upsell\Models\UpsellFlowOffer::MAX_WINDOW_MINUTES }}" step="1" class="rc-input rc-ltr" wire:model="timerMinutes" placeholder="{{ \App\Domain\Upsell\Models\UpsellFlowOffer::MAX_WINDOW_MINUTES }}">
                                 <p class="rc-muted">{{ __('upsell.admin.configure.timer_minutes_hint') }}</p>
                             </div>
                         </fieldset>

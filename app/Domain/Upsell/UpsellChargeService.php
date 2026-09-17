@@ -354,7 +354,15 @@ final class UpsellChargeService
             'currency' => $currency,
             'parent_order_id' => $req->parentOrderId,
             'customer_ref' => $req->customerRef,
-            'context' => ['transaction_uid' => $result->transactionUid],
+            'context' => [
+                'transaction_uid' => $result->transactionUid,
+                // WHAT this charge sold, product by product, at the amounts that add up to
+                // the charge — the lines its tax document declares (OrderDocumentHold::linesFor).
+                'items' => array_map(
+                    static fn (array $item): array => ['title' => $item[0], 'amount' => $item[1]],
+                    $this->addedItems($offer, $req, $amount),
+                ),
+            ],
         ]);
 
         // Create the LINKED child Shopify order — AFTER the ledger is succeeded.

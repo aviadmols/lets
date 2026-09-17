@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Upsell;
 
+use App\Domain\Upsell\Rendering\UpsellCardPresenter;
 use App\Filament\Pages\ManageUpsellAppearance;
 use App\Models\MerchantUpsellAppearance;
 use App\Models\Shop;
@@ -43,6 +44,42 @@ final class ManageUpsellAppearancePageTest extends TestCase
             ->assertSee(__('upsell.appearance.brand.heading'))
             ->assertSee(__('upsell.appearance.layout.heading'))
             ->assertSee(__('upsell.appearance.elements.heading'));
+    }
+
+    public function test_the_card_speaks_the_language_the_merchant_chose(): void
+    {
+        $presenter = app(UpsellCardPresenter::class);
+        $appearance = MerchantUpsellAppearance::current();
+
+        // Untouched: English, as every card spoke before the choice existed.
+        $this->assertSame(MerchantUpsellAppearance::LOCALE_EN, $appearance->cardLocale());
+        $this->assertSame('No thanks', $presenter->sample($appearance, 'woocommerce')['content']['decline_cta']);
+
+        $appearance->forceFill(['card_locale' => MerchantUpsellAppearance::LOCALE_HE])->save();
+        $card = $presenter->sample($appearance->fresh(), 'woocommerce');
+
+        $this->assertSame(__('upsell.decline_cta', [], 'he'), $card['content']['decline_cta']);
+        $this->assertSame(__('upsell.no_card_reentry', [], 'he'), $card['content']['trust']);
+        $this->assertSame('en', app()->getLocale(), "the admin's own language is restored after the card is built");
+    }
+
+    public function test_the_card_language_is_saved_and_the_preview_follows_it(): void
+    {
+        Livewire::test(ManageUpsellAppearance::class)
+            ->assertSet('data.card_locale', MerchantUpsellAppearance::LOCALE_EN)
+            ->set('data.card_locale', MerchantUpsellAppearance::LOCALE_HE)
+            ->call('save')
+            ->assertHasNoErrors()
+            ->assertDispatched('lets-appearance-reload');
+
+        $this->assertSame(MerchantUpsellAppearance::LOCALE_HE, MerchantUpsellAppearance::current()->fresh()->cardLocale());
+
+        // The preview page reads right-to-left for an admin working in English.
+        $this->get((new ManageUpsellAppearance)->previewUrl())->assertOk()->assertSee('dir="rtl"', false);
+
+        // A tampered value never reaches the card: it falls back to English.
+        Livewire::test(ManageUpsellAppearance::class)->set('data.card_locale', 'fr')->call('save');
+        $this->assertSame(MerchantUpsellAppearance::LOCALE_EN, MerchantUpsellAppearance::current()->fresh()->cardLocale());
     }
 
     public function test_save_persists_and_enforces_the_locked_elements(): void

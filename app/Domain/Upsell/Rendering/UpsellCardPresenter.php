@@ -42,11 +42,18 @@ final class UpsellCardPresenter
         .'%3Ccircle%20cx%3D%22250%22%20cy%3D%22168%22%20r%3D%2222%22%20fill%3D%22%23bdbdbd%22%2F%3E%3C%2Fsvg%3E';
 
     /**
-     * Build the full view-model for one offer under the shop's appearance.
+     * Build the full view-model for one offer under the shop's appearance — every built-in word
+     * in the card language the merchant chose (MerchantUpsellAppearance::cardLocale).
      *
      * @return array<string, mixed>
      */
     public function forOffer(UpsellFlowOffer $offer, MerchantUpsellAppearance $appearance, string $platform, string $parentOrderId = ''): array
+    {
+        return $appearance->inCardLocale(fn (): array => $this->offerCard($offer, $appearance, $platform, $parentOrderId));
+    }
+
+    /** @return array<string, mixed> */
+    private function offerCard(UpsellFlowOffer $offer, MerchantUpsellAppearance $appearance, string $platform, string $parentOrderId): array
     {
         $currency = (string) ($offer->currency ?? config('payplus.currency', self::DEFAULT_CURRENCY));
 
@@ -62,7 +69,9 @@ final class UpsellCardPresenter
         $priceDisplay = $this->money($price, $currency);
         // What is LEFT of this order's window, not the full length: a reload shows the
         // countdown where it was, because the server will refuse the accept on that clock.
-        $timerSeconds = $offer->windowSecondsLeft($parentOrderId);
+        // Every offer closes (UpsellFlowOffer::MAX_WINDOW_MINUTES); the COUNTDOWN is drawn only when
+        // the merchant asked for one.
+        $timerSeconds = $offer->show_timer ? $offer->windowSecondsLeft($parentOrderId) : null;
 
         return [
             'platform' => $platform,
@@ -114,6 +123,12 @@ final class UpsellCardPresenter
      * @return array<string, mixed>
      */
     public function sample(MerchantUpsellAppearance $appearance, string $platform): array
+    {
+        return $appearance->inCardLocale(fn (): array => $this->sampleCard($appearance, $platform));
+    }
+
+    /** @return array<string, mixed> */
+    private function sampleCard(MerchantUpsellAppearance $appearance, string $platform): array
     {
         $currency = (string) config('payplus.currency', self::DEFAULT_CURRENCY);
         $base = 99.90;

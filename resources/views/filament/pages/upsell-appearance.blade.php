@@ -25,6 +25,12 @@
                 Livewire.on('lets-appearance-preview', (payload) => {
                     self.push(payload.appearance);
                 });
+                // Saved: the card's words may have changed language, which only the server draws.
+                Livewire.on('lets-appearance-reload', () => {
+                    const f = self.$refs.frame;
+                    self.ready = false;
+                    if (f && f.contentWindow) { f.contentWindow.location.reload(); }
+                });
             },
             push(appearance) {
                 if (!appearance) { return; }

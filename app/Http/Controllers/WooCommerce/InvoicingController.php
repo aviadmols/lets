@@ -6,6 +6,7 @@ use App\Domain\Campaigns\Models\GiftRecipient;
 use App\Domain\Invoicing\DocumentContext;
 use App\Domain\Invoicing\DocumentIssuer;
 use App\Domain\Invoicing\Jobs\IssueDocumentJob;
+use App\Domain\Invoicing\OrderDocumentHold;
 use App\Http\Controllers\WooCommerce\Storefront\WooStorefrontController;
 use App\Models\InstallmentPlan;
 use App\Models\IssuedDocument;
@@ -156,11 +157,16 @@ final class InvoicingController extends WooStorefrontController
             ]);
         }
 
+        // A shop that can show an after-purchase offer: give the thank-you page its first
+        // look before the order's document is considered. The job then waits for any offer
+        // actually shown to close, and issues ONE document with what was added
+        // (OrderDocumentHold).
+        $hold = app(OrderDocumentHold::class);
         IssueDocumentJob::dispatch(
             shopId: $shopId,
             context: DocumentContext::PLATFORM_ORDER->value,
             order: $this->orderPayload($request, $orderId, $total, $shop),
-        );
+        )->delay($hold->shopHasOffers($shopId) ? now()->addSeconds(OrderDocumentHold::FIRST_LOOK_SECONDS) : null);
 
         return response()->json(['ok' => true, 'queued' => true]);
     }

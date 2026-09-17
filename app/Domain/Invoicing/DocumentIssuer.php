@@ -6,6 +6,8 @@ use App\Domain\Billing\ChargeLineDescription;
 use App\Domain\Billing\Contracts\DocumentDecision;
 use App\Domain\Billing\Contracts\DocumentPolicy;
 use App\Domain\Billing\Contracts\DocumentPolicyInput;
+use App\Domain\Upsell\Models\UpsellFlowOffer;
+use App\Domain\Upsell\Models\UpsellOfferEvent;
 use App\Models\InstallmentPlan;
 use App\Models\IssuedDocument;
 use App\Models\MerchantInvoicingSettings;
@@ -79,6 +81,47 @@ final class DocumentIssuer
         float $alreadyRefunded = 0.0,
         ?int $refundRequestId = null,
     ): ?IssuedDocument {
+        // An UPSELL on a shop that documents every order may belong on its ORDER's document
+        // (OrderDocumentHold). Decided under the order's lock, against the order's row: a
+        // charge the order's document declared gets nothing more; any other gets its own.
+        $orderId = $context === DocumentContext::UPSELL ? $this->combinedUpsellOrderId($shopId, $ledgerId) : null;
+
+        if ($orderId !== null) {
+            $hold = app(OrderDocumentHold::class);
+
+            return $hold->underLock($shopId, $orderId, function () use ($hold, $shopId, $orderId, $ledgerId, $context, $linkedDocumentId, $amountOverride, $itemTitle, $alreadyRefunded, $refundRequestId): ?IssuedDocument {
+                $orderDocument = $hold->orderDocument($shopId, $orderId);
+
+                return $hold->orderDocumentIncludes($orderDocument, $ledgerId)
+                    ? $orderDocument
+                    : $this->ledgerDocument($shopId, $ledgerId, $context, $linkedDocumentId, $amountOverride, $itemTitle, $alreadyRefunded, $refundRequestId);
+            });
+        }
+
+        return $this->ledgerDocument($shopId, $ledgerId, $context, $linkedDocumentId, $amountOverride, $itemTitle, $alreadyRefunded, $refundRequestId);
+    }
+
+    /** The order an upsell charge joins on a combining shop, or null to document it alone. */
+    private function combinedUpsellOrderId(int $shopId, int $ledgerId): ?string
+    {
+        $orderId = trim((string) PaymentLedger::acrossAllTenants()
+            ->where('shop_id', $shopId)
+            ->whereKey($ledgerId)
+            ->value('parent_order_id'));
+
+        return $orderId !== '' && app(OrderDocumentHold::class)->combinesOrders($shopId) ? $orderId : null;
+    }
+
+    private function ledgerDocument(
+        int $shopId,
+        int $ledgerId,
+        DocumentContext $context,
+        ?string $linkedDocumentId,
+        ?float $amountOverride,
+        ?string $itemTitle,
+        float $alreadyRefunded,
+        ?int $refundRequestId,
+    ): ?IssuedDocument {
         try {
             $shop = $this->shop($shopId);
             if ($shop === null) {
@@ -131,10 +174,11 @@ final class DocumentIssuer
                 customer: $plan !== null
                     ? DocumentCustomer::fromPlan($plan)
                     : new DocumentCustomer(name: $ledger->customerLabel()),
-                lines: [DocumentLine::single(
-                    $this->lineDescriptionFor($context, $ledger, $plan, $itemTitle),
-                    $amount,
-                )],
+                // An upsell names each product it sold, one line apiece; everything else is
+                // one line for the money that moved.
+                lines: $context === DocumentContext::UPSELL
+                    ? app(OrderDocumentHold::class)->linesFor($ledger, $this->lineDescriptionFor($context, $ledger, $plan, $itemTitle))
+                    : [DocumentLine::single($this->lineDescriptionFor($context, $ledger, $plan, $itemTitle), $amount)],
                 amount: $amount,
                 currency: (string) ($ledger->currency ?: config('payplus.currency', 'ILS')),
                 isPaid: true, // the hooks only fire on a succeeded/refunded ledger row
@@ -186,6 +230,18 @@ final class DocumentIssuer
      */
     public function issueForPlatformOrder(int $shopId, array $order): ?IssuedDocument
     {
+        // Under the order's lock: which upsell charges this document declares is decided
+        // against the same rows an upsell's own document checks (OrderDocumentHold).
+        return app(OrderDocumentHold::class)->underLock(
+            $shopId,
+            (string) ($order['order_id'] ?? ''),
+            fn (): ?IssuedDocument => $this->platformOrderDocument($shopId, $order),
+        );
+    }
+
+    /** @param array<string, mixed> $order */
+    private function platformOrderDocument(int $shopId, array $order): ?IssuedDocument
+    {
         $context = DocumentContext::PLATFORM_ORDER;
 
         try {
@@ -226,10 +282,24 @@ final class DocumentIssuer
 
             $settings = MerchantInvoicingSettings::forShop($shopId);
             $lines = $this->linesFromPlatformOrder($order);
+            $total = round((float) $order['total'], 2);
+
+            // What the customer added after checkout, product by product — the offers'
+            // charges that have no document of their own. The order's document is issued
+            // once their windows have closed (IssueDocumentJob waits), so this is all of them.
+            $hold = app(OrderDocumentHold::class);
+            $upsells = $hold->chargesToInclude($shopId, $orderId);
+            foreach ($upsells as $charge) {
+                array_push($lines, ...$hold->linesFor(
+                    $charge,
+                    $this->lineDescriptionFor(DocumentContext::UPSELL, $charge, null, $this->offerTitleFor($charge)),
+                ));
+                $total = round($total + (float) $charge->amount, 2);
+            }
 
             // Same central policy gate as the ledger path — a merchant who suppressed
             // documents must not have them appear for plain store orders instead.
-            if (! $this->decide($shop, $context, round((float) $order['total'], 2), null)->shouldIssueNow) {
+            if (! $this->decide($shop, $context, $total, null)->shouldIssueNow) {
                 return null;
             }
 
@@ -243,7 +313,7 @@ final class DocumentIssuer
                     taxId: $this->blankToNull((string) ($order['customer']['tax_id'] ?? '')),
                 ),
                 lines: $lines,
-                amount: round((float) $order['total'], 2),
+                amount: $total,
                 currency: (string) ($order['currency'] ?: config('payplus.currency', 'ILS')),
                 isPaid: true, // the plugin only reports orders in a merchant-chosen PAID status
                 remarks: $this->orderRemarks($order),
@@ -263,7 +333,11 @@ final class DocumentIssuer
                 // it a re-issue would have to invent `payment_gateway`, and the
                 // provider reads a missing gateway as a CARD payment — declaring a
                 // bank transfer as card on a tax document.
-                'source_payload' => $order,
+                // …plus which upsell charges it declared: the one record that stops an
+                // upsell's own document declaring the same money again.
+                'source_payload' => array_merge($order, [
+                    OrderDocumentHold::PAYLOAD_UPSELL_LEDGERS => $upsells->map(fn (PaymentLedger $l): int => (int) $l->getKey())->all(),
+                ]),
             ]);
         } catch (Throwable $e) {
             return $this->recordBuildFailure($shopId, $context, $e);
@@ -1019,6 +1093,21 @@ final class DocumentIssuer
         }
 
         return $lines;
+    }
+
+    /** The name of the offer an upsell charge was for, from its charge event, or null. */
+    private function offerTitleFor(PaymentLedger $charge): ?string
+    {
+        $offerId = UpsellOfferEvent::acrossAllTenants()
+            ->where('shop_id', (int) $charge->shop_id)
+            ->where('payment_ledger_id', (int) $charge->getKey())
+            ->value('offer_id');
+
+        $title = $offerId !== null
+            ? UpsellFlowOffer::acrossAllTenants()->where('shop_id', (int) $charge->shop_id)->whereKey($offerId)->value('offer_title')
+            : null;
+
+        return trim((string) $title) !== '' ? (string) $title : null;
     }
 
     /** @param array<string, mixed> $order */
