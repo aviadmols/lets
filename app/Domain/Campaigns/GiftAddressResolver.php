@@ -83,6 +83,87 @@ final class GiftAddressResolver
         }
     }
 
+    /**
+     * Resolve for MANY recipients — the export's path, where a live read per person made a
+     * list of hundreds take many minutes.
+     *
+     * On WooCommerce the store is read in bulk: the profiles and the origin orders a hundred
+     * to a request, and the email lookups (which WooCommerce cannot batch) several at once.
+     * The chain each person then walks is resolve()'s own, over what was read. Anything the
+     * bulk read cannot serve — a Shopify recipient, a failed bulk read — is resolved one at a
+     * time as before. Never throws.
+     *
+     * @param  array<int|string, GiftRecipient>  $recipients
+     * @return array<int|string, array{address: ?GiftShippingAddress, source: ?string, reason: ?string}> the same keys
+     */
+    public function resolveMany(Shop $shop, array $recipients): array
+    {
+        $reads = $this->bulkWooReads($shop, $recipients);
+
+        $resolved = [];
+        foreach ($recipients as $key => $recipient) {
+            $plan = $recipient->source_type !== GiftRecipient::SOURCE_CONTRACT ? ($reads['plans'][(int) $recipient->source_id] ?? null) : null;
+
+            $resolved[$key] = $plan !== null
+                ? $this->withPlanFallback($plan, $this->fromWooReads(
+                    $plan,
+                    customer: fn (int $id): ?array => $reads['customers'][$id] ?? null,
+                    byEmail: fn (string $email): ?array => $reads['byEmail'][strtolower(trim($email))] ?? null,
+                    order: fn (string $id): ?array => $reads['orders'][(int) $id] ?? null,
+                ))
+                : $this->resolve($shop, $recipient);
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * The store reads a batch of plan recipients needs, done in bulk — or no plans at all
+     * (so every recipient resolves one at a time) when the shop is not WooCommerce or a bulk
+     * read failed.
+     *
+     * @param  array<int|string, GiftRecipient>  $recipients
+     * @return array{plans: array<int, InstallmentPlan>, customers: array<int, array<string, mixed>>, byEmail: array<string, array<string, mixed>>, orders: array<int, array<string, mixed>>}
+     */
+    private function bulkWooReads(Shop $shop, array $recipients): array
+    {
+        $none = ['plans' => [], 'customers' => [], 'byEmail' => [], 'orders' => []];
+
+        if ($shop->platform !== Shop::PLATFORM_WOOCOMMERCE || ! $shop->hasWooConnection()) {
+            return $none;
+        }
+
+        $planIds = [];
+        foreach ($recipients as $recipient) {
+            if ($recipient->source_type !== GiftRecipient::SOURCE_CONTRACT) {
+                $planIds[] = (int) $recipient->source_id;
+            }
+        }
+
+        try {
+            $plans = InstallmentPlan::query()->whereKey($planIds)->get()->keyBy('id')->all();
+            $client = WooClientFactory::for($shop);
+
+            $withId = array_filter($plans, static fn (InstallmentPlan $p): bool => (int) $p->externalCustomerId() > 0);
+            $withoutId = array_filter($plans, static fn (InstallmentPlan $p): bool => (int) $p->externalCustomerId() <= 0);
+
+            return [
+                'plans' => $plans,
+                'customers' => $client->fetchCustomersByIds(array_map(static fn (InstallmentPlan $p): int => (int) $p->externalCustomerId(), $withId)),
+                'byEmail' => $client->findCustomersByEmails(array_map(static fn (InstallmentPlan $p): string => (string) ($p->customer_email ?? ''), $withoutId)),
+                'orders' => $client->fetchOrdersByIds(array_map(static fn (InstallmentPlan $p): string => (string) $p->externalOrderId(), $plans)),
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('campaigns.gift.bulk_address_read_failed', [
+                'shop_id' => $shop->getKey(),
+                'recipients' => count($recipients),
+                'error' => $e->getMessage(),
+            ]);
+
+            return $none;
+        }
+    }
+
     /** @return array{address: ?GiftShippingAddress, source: ?string, reason: ?string} */
     private function forPlan(Shop $shop, GiftRecipient $recipient): array
     {
@@ -95,6 +176,15 @@ final class GiftAddressResolver
             ? $this->fromWoo($shop, $plan)
             : $this->fromShopify($shop, (string) $plan->externalCustomerId(), (string) $plan->externalOrderId());
 
+        return $this->withPlanFallback($plan, $resolved);
+    }
+
+    /**
+     * @param  array{address: ?GiftShippingAddress, source: ?string, reason: ?string}  $resolved
+     * @return array{address: ?GiftShippingAddress, source: ?string, reason: ?string}
+     */
+    private function withPlanFallback(InstallmentPlan $plan, array $resolved): array
+    {
         // The store had nothing — but the PLAN may hold an address of its own:
         // an imported member's (most have no store account at all), or the one
         // an admin typed on the subscription screen. Same rung, same mapping,
@@ -146,10 +236,33 @@ final class GiftAddressResolver
 
         $client = WooClientFactory::for($shop);
 
+        return $this->fromWooReads(
+            $plan,
+            customer: fn (int $id): ?array => $client->fetchCustomer($id),
+            byEmail: function (string $email) use ($client): ?array {
+                $id = $client->findCustomerIdByEmail($email);
+
+                return $id !== null && $id > 0 ? $client->fetchCustomer($id) : null;
+            },
+            order: fn (string $id): ?array => $client->fetchOrder($id),
+        );
+    }
+
+    /**
+     * The WooCommerce chain over whatever does the reading — live, one person at a time
+     * (fromWoo), or answered from a bulk read (resolveMany). One chain, so the export and the
+     * gift orders can never disagree about where a package goes.
+     *
+     * @param  callable(int): ?array<string, mixed>  $customer
+     * @param  callable(string): ?array<string, mixed>  $byEmail
+     * @param  callable(string): ?array<string, mixed>  $order
+     * @return array{address: ?GiftShippingAddress, source: ?string, reason: ?string}
+     */
+    private function fromWooReads(InstallmentPlan $plan, callable $customer, callable $byEmail, callable $order): array
+    {
         $customerId = (int) $plan->externalCustomerId();
         if ($customerId > 0) {
-            $customer = $client->fetchCustomer($customerId);
-            $address = $this->pickWooBlock($customer);
+            $address = $this->pickWooBlock($customer($customerId));
             if ($address !== null) {
                 return $this->found($address, GiftRecipient::ADDRESS_FROM_PROFILE);
             }
@@ -158,13 +271,11 @@ final class GiftAddressResolver
         // No id (an imported member, a guest) — but the store may still know
         // this PERSON: same email, same customer. The account they opened after
         // being imported carries the address they keep current.
-        if ($customerId <= 0) {
-            $byEmail = $client->findCustomerIdByEmail((string) ($plan->customer_email ?? ''));
-            if ($byEmail !== null && $byEmail > 0) {
-                $address = $this->pickWooBlock($client->fetchCustomer($byEmail));
-                if ($address !== null) {
-                    return $this->found($address, GiftRecipient::ADDRESS_FROM_PROFILE);
-                }
+        $email = trim((string) ($plan->customer_email ?? ''));
+        if ($customerId <= 0 && $email !== '') {
+            $address = $this->pickWooBlock($byEmail($email));
+            if ($address !== null) {
+                return $this->found($address, GiftRecipient::ADDRESS_FROM_PROFILE);
             }
         }
 
@@ -172,7 +283,7 @@ final class GiftAddressResolver
         // address they typed.
         $orderId = (string) $plan->externalOrderId();
         if ($orderId !== '') {
-            $address = $this->pickWooBlock($client->fetchOrder($orderId));
+            $address = $this->pickWooBlock($order($orderId));
             if ($address !== null) {
                 return $this->found($address, GiftRecipient::ADDRESS_FROM_ORDER);
             }

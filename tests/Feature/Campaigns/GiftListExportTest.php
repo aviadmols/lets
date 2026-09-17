@@ -65,7 +65,8 @@ final class GiftListExportTest extends TestCase
     public function test_each_qualifier_is_a_row_in_the_courier_sheet_shape(): void
     {
         Http::fake([
-            '*/wp-json/wc/v3/customers/55' => Http::response([
+            // Read in bulk: one request for a hundred profiles, not one per person.
+            '*/wp-json/wc/v3/customers?*include=55*' => Http::response([[
                 'id' => 55,
                 'shipping' => [
                     'first_name' => 'דנה', 'last_name' => 'קונה',
@@ -80,7 +81,7 @@ final class GiftListExportTest extends TestCase
                     ['id' => 3, 'key' => 'shipping_floor', 'value' => '2'],
                     ['id' => 4, 'key' => 'shipping_entrance', 'value' => 'ב'],
                 ],
-            ], 200),
+            ]], 200),
             '*' => Http::response([], 200),
         ]);
 
@@ -89,20 +90,22 @@ final class GiftListExportTest extends TestCase
         $rows = $this->rows($this->export(1));
 
         $this->assertSame([
-            __('gifts.export.col.name'), __('gifts.export.col.phone'), __('gifts.export.col.city'),
-            __('gifts.export.col.street'), __('gifts.export.col.building'), __('gifts.export.col.entrance'),
-            __('gifts.export.col.apartment'), __('gifts.export.col.floor'), __('gifts.export.col.note'),
+            __('gifts.export.col.first_name'), __('gifts.export.col.last_name'), __('gifts.export.col.phone'),
+            __('gifts.export.col.city'), __('gifts.export.col.street'), __('gifts.export.col.building'),
+            __('gifts.export.col.entrance'), __('gifts.export.col.apartment'), __('gifts.export.col.floor'),
+            __('gifts.export.col.note'),
         ], $rows[0]);
 
-        // The shipping block has no phone of its own — the billing one is used,
-        // because a courier cannot deliver to a number that is not there.
-        $this->assertSame(['דנה קונה', '0501234567', 'תל אביב', 'הרצל', '12', 'ב', '4', '2', ''], $rows[1]);
+        // First and last name in their own columns. The shipping block has no phone of its
+        // own — the billing one is used, because a courier cannot deliver to a number that is
+        // not there.
+        $this->assertSame(['דנה', 'קונה', '0501234567', 'תל אביב', 'הרצל', '12', 'ב', '4', '2', ''], $rows[1]);
     }
 
     public function test_an_order_address_is_split_back_into_its_parts(): void
     {
         Http::fake([
-            '*/wp-json/wc/v3/orders/900' => Http::response([
+            '*/wp-json/wc/v3/orders?*include=900*' => Http::response([[
                 'id' => 900,
                 // What the plugin folds into an order: "street building" and the
                 // labelled parts — plus what the customer asked for at checkout.
@@ -112,7 +115,7 @@ final class GiftListExportTest extends TestCase
                     'city' => 'חיפה', 'phone' => '0520000000',
                 ],
                 'customer_note' => 'להשאיר אצל השכנים',
-            ], 200),
+            ]], 200),
             '*' => Http::response([], 200),
         ]);
 
@@ -123,7 +126,7 @@ final class GiftListExportTest extends TestCase
         // Anything address_2 says that is not one of the parts reaches the note,
         // where the courier will still read it.
         $this->assertSame(
-            ['Dana K', '0520000000', 'חיפה', 'הרצל', '12א', 'ב', '4', '2', 'ליד המכולת · להשאיר אצל השכנים'],
+            ['Dana', 'K', '0520000000', 'חיפה', 'הרצל', '12א', 'ב', '4', '2', 'ליד המכולת · להשאיר אצל השכנים'],
             $rows[1],
         );
     }
@@ -132,7 +135,7 @@ final class GiftListExportTest extends TestCase
     {
         Http::fake([
             // A profile with a country and nothing to deliver to.
-            '*/wp-json/wc/v3/customers/55' => Http::response(['id' => 55, 'shipping' => ['country' => 'IL']], 200),
+            '*/wp-json/wc/v3/customers?*include=55*' => Http::response([['id' => 55, 'shipping' => ['country' => 'IL']]], 200),
             '*' => Http::response([], 200),
         ]);
 
@@ -206,6 +209,29 @@ final class GiftListExportTest extends TestCase
         $csv = Tenant::run($this->shop, fn (): string => app(GiftListExporter::class)->file($run));
         // Header + every recipient, none dropped.
         $this->assertCount($count + 1, $this->rows($csv));
+    }
+
+    /**
+     * The export's speed: a store read per PERSON made a list of hundreds take many minutes.
+     * Now a hundred profiles come back in one request, and an imported member with no store
+     * id costs one email lookup — sent several at once — instead of a lookup plus a profile read.
+     */
+    public function test_a_list_is_read_from_the_store_in_bulk_not_one_request_per_person(): void
+    {
+        Http::fake(['*' => Http::response([], 200)]);
+        for ($i = 1; $i <= 150; $i++) {
+            $this->subscriber('Member '.$i, succeeded: 3, customerId: (string) (1000 + $i), email: 'member'.$i.'@example.com');
+        }
+        $this->subscriber('Imported Member', succeeded: 3, customerId: '0', email: 'imported@example.com');
+
+        $csv = $this->export(1);
+
+        $this->assertCount(152, $this->rows($csv));
+        $profileReads = collect(Http::recorded())->filter(fn (array $pair): bool => str_contains($pair[0]->url(), '/customers') && ! str_contains($pair[0]->url(), 'email='));
+        $this->assertCount(2, $profileReads, '150 profiles in two bulk reads (100 + 50)');
+        $this->assertCount(1, collect(Http::recorded())->filter(fn (array $pair): bool => str_contains($pair[0]->url(), 'email=')));
+        // An imported member whose store holds only one name field still gets two columns.
+        $this->assertContains(['Imported', 'Member', '', '', '', '', '', '', '', __('gifts.reason.no_address')], $this->rows($csv));
     }
 
     /** A re-delivered slice must not write — or count — a row twice. */

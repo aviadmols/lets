@@ -3,6 +3,7 @@
 namespace App\Services\WooCommerce;
 
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 
@@ -15,6 +16,16 @@ use Illuminate\Support\Facades\Http;
  */
 final class WooCommerceClient
 {
+    // === CONSTANTS ===
+    /** Records per request when reading many by id — WooCommerce's own per_page ceiling. */
+    private const BULK_PAGE = 100;
+
+    /**
+     * Email lookups in flight together. WooCommerce has no many-emails filter, so these go
+     * one per request; a small store's PHP workers, not ours, set how many at once is kind.
+     */
+    private const EMAIL_LOOKUPS_AT_ONCE = 8;
+
     public function __construct(
         private readonly string $baseUrl,
         private readonly string $consumerKey,
@@ -158,6 +169,92 @@ final class WooCommerceClient
         $body = $response->json();
 
         return is_array($body) && ! empty($body['id']) ? $body : null;
+    }
+
+    /**
+     * GET customers?include=… — many profiles in as few reads as WooCommerce allows, where
+     * fetchCustomer() spends one read per person. Throws on a failed read; the caller
+     * decides whether to fall back to reading one at a time.
+     *
+     * @param  array<int, int|string>  $ids
+     * @return array<int, array<string, mixed>> keyed by customer id; an unknown id is absent
+     */
+    public function fetchCustomersByIds(array $ids): array
+    {
+        return $this->bulkById('customers', $ids, ['role' => 'all']);
+    }
+
+    /**
+     * GET orders?include=… — many orders in as few reads as WooCommerce allows.
+     *
+     * @param  array<int, int|string>  $ids
+     * @return array<int, array<string, mixed>> keyed by order id; an unknown id is absent
+     */
+    public function fetchOrdersByIds(array $ids): array
+    {
+        return $this->bulkById('orders', $ids);
+    }
+
+    /**
+     * customers?email=… for many emails, EMAIL_LOOKUPS_AT_ONCE in flight together. Fail-soft
+     * per email, like findCustomerIdByEmail(): a lookup that fails is a person not found.
+     *
+     * @param  array<int, string>  $emails
+     * @return array<string, array<string, mixed>> lowercased email → that customer; not found = absent
+     */
+    public function findCustomersByEmails(array $emails): array
+    {
+        $emails = array_values(array_unique(array_filter(array_map(
+            static fn ($email): string => strtolower(trim((string) $email)),
+            $emails,
+        ))));
+
+        $found = [];
+        foreach (array_chunk($emails, self::EMAIL_LOOKUPS_AT_ONCE) as $chunk) {
+            $responses = Http::pool(fn (Pool $pool): array => array_map(
+                fn (string $email) => $pool->as($email)
+                    ->withBasicAuth($this->consumerKey, $this->consumerSecret)
+                    ->timeout($this->timeout)
+                    ->acceptJson()
+                    ->get($this->url('customers'), ['email' => $email, 'per_page' => 1, 'role' => 'all']),
+                $chunk,
+            ));
+
+            foreach ($chunk as $email) {
+                $response = $responses[$email] ?? null;
+                $first = $response instanceof Response && $response->successful() ? (($response->json() ?? [])[0] ?? null) : null;
+
+                if (is_array($first) && (int) ($first['id'] ?? 0) > 0) {
+                    $found[$email] = $first;
+                }
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * @param  array<int, int|string>  $ids
+     * @param  array<string, mixed>  $query
+     * @return array<int, array<string, mixed>>
+     */
+    private function bulkById(string $resource, array $ids, array $query = []): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn (int $id): bool => $id > 0)));
+
+        $found = [];
+        foreach (array_chunk($ids, self::BULK_PAGE) as $chunk) {
+            $response = $this->get($resource, $query + ['include' => implode(',', $chunk), 'per_page' => self::BULK_PAGE]);
+            $response->throw();
+
+            foreach ((array) $response->json() as $record) {
+                if (is_array($record) && (int) ($record['id'] ?? 0) > 0) {
+                    $found[(int) $record['id']] = $record;
+                }
+            }
+        }
+
+        return $found;
     }
 
     /**

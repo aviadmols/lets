@@ -71,7 +71,8 @@ return [
     // store as the file is built, so it says where each gift would go today.
     'export' => [
         'col' => [
-            'name' => 'Name',
+            'first_name' => 'First name',
+            'last_name' => 'Last name',
             'phone' => 'Phone',
             'city' => 'City',
             'street' => 'Street',

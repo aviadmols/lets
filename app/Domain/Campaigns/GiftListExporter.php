@@ -34,7 +34,10 @@ final class GiftListExporter
     private const BOM = "\xEF\xBB\xBF";
 
     /** The columns, in the order the courier's sheet asks for them. */
-    public const COLUMNS = ['name', 'phone', 'city', 'street', 'building', 'entrance', 'apartment', 'floor', 'note'];
+    public const COLUMNS = ['first_name', 'last_name', 'phone', 'city', 'street', 'building', 'entrance', 'apartment', 'floor', 'note'];
+
+    /** A row finished before the name was split carried one name column and this many fields. */
+    private const LEGACY_FIELD_COUNT = 9;
 
     /** Rows read per query while stitching the file. */
     private const FILE_CHUNK = 500;
@@ -63,21 +66,67 @@ final class GiftListExporter
      */
     public function fields(Shop $shop, array $row): array
     {
-        $resolved = $this->addresses->resolve($shop, $this->recipientFor($shop, $row));
+        return $this->line($row, $this->addresses->resolve($shop, $this->recipientFor($shop, $row)));
+    }
+
+    /**
+     * Many recipients' lines at once — the export's path. The store is read in bulk
+     * (GiftAddressResolver::resolveMany) instead of once per person.
+     *
+     * @param  array<int|string, array<string, mixed>>  $rows  GiftEligibility::qualifying() rows
+     * @return array<int|string, list<string>> the same keys, each in COLUMNS order
+     */
+    public function fieldsForMany(Shop $shop, array $rows): array
+    {
+        $resolved = $this->addresses->resolveMany($shop, array_map(fn (array $row): GiftRecipient => $this->recipientFor($shop, $row), $rows));
+
+        $lines = [];
+        foreach ($rows as $key => $row) {
+            $lines[$key] = $this->line($row, $resolved[$key]);
+        }
+
+        return $lines;
+    }
+
+    /**
+     * "דנה כהן לוי" → ["דנה", "כהן לוי"]: the first word is the first name and the rest the
+     * family name — the split a courier's form expects when the store kept only one field.
+     *
+     * @return array{0: string, 1: string}
+     */
+    public static function splitName(string $name): array
+    {
+        $parts = preg_split('/\s+/u', trim($name), 2) ?: [];
+
+        return [(string) ($parts[0] ?? ''), (string) ($parts[1] ?? '')];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  array{address: ?GiftShippingAddress, source: ?string, reason: ?string}  $resolved
+     * @return list<string>
+     */
+    private function line(array $row, array $resolved): array
+    {
         $address = $resolved['address'];
 
         if ($address === null) {
             // Nowhere to ship — the row stays, and says why.
             return [
-                (string) $row['label'], '', '', '', '', '', '', '',
+                ...self::splitName((string) $row['label']), '', '', '', '', '', '', '',
                 (string) __('gifts.reason.'.$resolved['reason']),
             ];
         }
 
         $parts = $address->deliveryParts();
 
+        // The store's own two fields when it kept them; else the one name, split.
+        $name = trim((string) ($address->lastName ?? '')) !== ''
+            ? [trim((string) $address->firstName), trim((string) $address->lastName)]
+            : self::splitName($address->fullName() !== '' ? $address->fullName() : (string) $row['label']);
+
         return [
-            $address->fullName() !== '' ? $address->fullName() : (string) $row['label'],
+            ...$name,
             (string) ($address->phone ?? ''),
             (string) ($address->city ?? ''),
             $parts['street'],
@@ -106,7 +155,11 @@ final class GiftListExporter
                 // Never happens on a completed run; if it ever does, the person
                 // is still on the sheet rather than silently missing from it.
                 if (! is_array($fields)) {
-                    $fields = [(string) (($row->recipient ?? [])['label'] ?? '')];
+                    $fields = self::splitName((string) (($row->recipient ?? [])['label'] ?? ''));
+                } elseif (count($fields) === self::LEGACY_FIELD_COUNT) {
+                    // Finished before the name was split: split it here, so the file never
+                    // mixes one layout with the other under the same header.
+                    $fields = [...self::splitName((string) array_shift($fields)), ...$fields];
                 }
 
                 $this->put($handle, array_map('strval', $fields));

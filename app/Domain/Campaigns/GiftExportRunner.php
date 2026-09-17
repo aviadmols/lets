@@ -35,7 +35,14 @@ final class GiftExportRunner
 {
     // === CONSTANTS ===
     /** Rows one job invocation resolves before handing itself back to the queue. */
-    public const ROWS_PER_JOB = 50;
+    public const ROWS_PER_JOB = 500;
+
+    /**
+     * Rows resolved together: their store reads go out in bulk (a hundred profiles per
+     * request, email lookups several at once), where each person used to cost a read of
+     * their own — the reason a list of hundreds took many minutes.
+     */
+    public const ROWS_PER_BATCH = 100;
 
     /**
      * And a clock on the same slice. A store that answers slowly must cost one
@@ -134,24 +141,36 @@ final class GiftExportRunner
 
             $deadline = microtime(true) + $seconds;
 
-            for ($i = 0; $i < $maxRows; $i++) {
+            for ($done = 0; $done < $maxRows;) {
                 if (microtime(true) > $deadline) {
                     return false;
                 }
 
-                $row = GiftExportRow::query()
+                $rows = GiftExportRow::query()
                     ->where('run_id', $runId)
                     ->whereNull('fields')
                     ->orderBy('position')
-                    ->first();
+                    ->limit(min(self::ROWS_PER_BATCH, $maxRows - $done))
+                    ->get();
 
-                if ($row === null) {
+                if ($rows->isEmpty()) {
                     $this->finish($runId, GiftExportRun::STATUS_COMPLETED);
 
                     return true;
                 }
 
-                $this->commit($runId, (int) $row->getKey(), $this->exporter->fields($shop, (array) $row->recipient));
+                // The batch's store reads happen here, with no transaction held; each row is
+                // then committed on its own, exactly as before.
+                $lines = $this->exporter->fieldsForMany(
+                    $shop,
+                    $rows->mapWithKeys(fn (GiftExportRow $row): array => [(int) $row->getKey() => (array) $row->recipient])->all(),
+                );
+
+                foreach ($lines as $rowId => $fields) {
+                    $this->commit($runId, (int) $rowId, $fields);
+                }
+
+                $done += $rows->count();
             }
 
             // The slice ran out exactly on the last row: say so now rather than
