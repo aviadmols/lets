@@ -259,6 +259,45 @@ final class DocumentIssuerTest extends TestCase
         $this->assertSame(95.0, $request->lineTotal());
     }
 
+    /**
+     * "Make the receipt out to my employer."
+     *
+     * The document names whoever the shopper asked for at checkout; the ORDER
+     * still records who actually paid, which is what a refund or a chargeback is
+     * answered from. Two different questions, and the plugin keeps them apart.
+     */
+    public function test_the_document_is_made_out_to_the_name_the_shopper_asked_for(): void
+    {
+        $shop = $this->connectedShop('receipt-name.example.com', platform: Shop::PLATFORM_WOOCOMMERCE);
+        $this->fakeProvider();
+
+        $payload = $this->orderPayload();
+        $payload['customer']['receipt_name'] = 'אקמה בע״מ';
+
+        (new DocumentIssuer)->issueForPlatformOrder((int) $shop->getKey(), $payload);
+
+        /** @var IssueDocumentRequest $request */
+        $request = $this->issued[0];
+
+        $this->assertSame('אקמה בע״מ', $request->customer->name);
+        // Their own contact details are untouched — the document still reaches them.
+        $this->assertSame('buyer@example.com', $request->customer->email);
+    }
+
+    /** An empty one changes nothing: the buyer's own name stands. */
+    public function test_a_blank_receipt_name_leaves_the_buyers_own_name(): void
+    {
+        $shop = $this->connectedShop('receipt-blank.example.com', platform: Shop::PLATFORM_WOOCOMMERCE);
+        $this->fakeProvider();
+
+        $payload = $this->orderPayload();
+        $payload['customer']['receipt_name'] = '   ';
+
+        (new DocumentIssuer)->issueForPlatformOrder((int) $shop->getKey(), $payload);
+
+        $this->assertSame('Dana Buyer', $this->issued[0]->customer->name);
+    }
+
     public function test_nothing_is_issued_when_the_merchant_has_invoicing_off(): void
     {
         $shop = $this->connectedShop('off.myshopify.com');

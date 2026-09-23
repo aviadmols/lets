@@ -282,6 +282,12 @@ final class InvoicingController extends WooStorefrontController
             'currency' => $this->currency($request, $shop),
             'customer' => [
                 'name' => $this->cleanString($request->input('customer_name')) ?? '',
+                // WHO THE RECEIPT IS FOR, when the shopper said it is not them —
+                // "make it out to my company", a gift, a reimbursement. Kept
+                // BESIDE the buyer's own name rather than replacing it: the
+                // document is made out to this, and the order still records who
+                // actually paid, which is what a dispute is answered from.
+                'receipt_name' => $this->cleanString($request->input('customer_receipt_name')),
                 'email' => $this->cleanEmail($request->input('customer_email')),
                 'phone' => $this->cleanString($request->input('customer_phone')),
                 'tax_id' => $this->cleanString($request->input('customer_tax_id')),

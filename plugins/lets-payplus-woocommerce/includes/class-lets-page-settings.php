@@ -68,6 +68,28 @@ add_action('admin_post_lets_payplus_save_page_settings', function () {
     // Local: hide WooCommerce's password-change block there (class-lets-account-password).
     update_option(LETS_PASSWORD_HIDE_OPT, empty($_POST['lets_hide_password_fields']) ? '0' : '1');
 
+    // Local: the "issue the receipt to …" field at checkout (class-lets-receipt-name).
+    update_option(LETS_RECEIPT_NAME_OPT, empty($_POST['lets_receipt_name']) ? '0' : '1');
+
+    // Local: the two subscription-checkout rules (class-lets-subscription-checkout).
+    // The URL is stored with esc_url_raw and the wording stripped to text — both
+    // are printed back into the checkout, and a settings field is not a place to
+    // accept markup from.
+    update_option(LETS_SUB_GATEWAY_LOCK_OPT, empty($_POST['lets_subscription_gateway_lock']) ? '0' : '1');
+    update_option(LETS_SUB_TERMS_OPT, empty($_POST['lets_subscription_terms']) ? '0' : '1');
+    update_option(
+        LETS_SUB_TERMS_URL_OPT,
+        isset($_POST['lets_subscription_terms_url'])
+            ? esc_url_raw(trim((string) wp_unslash($_POST['lets_subscription_terms_url'])))
+            : ''
+    );
+    update_option(
+        LETS_SUB_TERMS_TEXT_OPT,
+        isset($_POST['lets_subscription_terms_text'])
+            ? wp_strip_all_tags(trim((string) wp_unslash($_POST['lets_subscription_terms_text'])))
+            : ''
+    );
+
     $body = array(
         'language_code'             => isset($_POST['language_code']) ? sanitize_text_field(wp_unslash($_POST['language_code'])) : 'he',
         'charge_default'            => isset($_POST['charge_default']) ? sanitize_text_field(wp_unslash($_POST['charge_default'])) : '',
@@ -383,6 +405,53 @@ function lets_payplus_render_page_settings()
                     </label>
                     <p class="description">
                         <?php esc_html_e('One form instead of a tab, a landing page and two links. When the store has no separate shipping address at all, the addresses tab is removed.', 'lets-payplus'); ?>
+                    </p>
+                </td>
+            </tr>
+
+            <tr>
+                <th scope="row"><?php esc_html_e('Receipt name', 'lets-payplus'); ?></th>
+                <td>
+                    <label>
+                        <input type="checkbox" name="lets_receipt_name" value="1" <?php checked(lets_payplus_receipt_name_enabled()); ?>>
+                        <?php esc_html_e('Ask at checkout who the receipt should be made out to', 'lets-payplus'); ?>
+                    </label>
+                    <p class="description">
+                        <?php esc_html_e('One optional field. When a shopper fills it, the accounting document is issued in that name — a company reimbursing them, a gift, a parent paying for a child. The order still records who actually paid, which is what a refund or a dispute is answered from.', 'lets-payplus'); ?>
+                    </p>
+                </td>
+            </tr>
+
+            <tr>
+                <th scope="row"><?php esc_html_e('Subscription checkout', 'lets-payplus'); ?></th>
+                <td>
+                    <label>
+                        <input type="checkbox" name="lets_subscription_gateway_lock" value="1" <?php checked(lets_payplus_subscription_gateway_lock_enabled()); ?>>
+                        <?php esc_html_e('A basket holding a subscription can only be paid on this store’s LETS payment method', 'lets-payplus'); ?>
+                    </label>
+                    <p class="description">
+                        <?php esc_html_e('PayPal, Bit, bank transfer and cash on delivery all take the first payment perfectly well and leave nothing to charge the next cycle with — the subscription goes live and fails at its first renewal, while the shopper believes they subscribed. Leave this on unless you know otherwise.', 'lets-payplus'); ?>
+                    </p>
+
+                    <p style="margin-top:1em">
+                        <label>
+                            <input type="checkbox" name="lets_subscription_terms" value="1" <?php checked('1' === get_option(LETS_SUB_TERMS_OPT, '0')); ?>>
+                            <?php esc_html_e('Require the shopper to accept the subscription terms', 'lets-payplus'); ?>
+                        </label>
+                    </p>
+                    <p>
+                        <input type="url" class="regular-text" name="lets_subscription_terms_url"
+                               value="<?php echo esc_attr(lets_payplus_subscription_terms_url()); ?>"
+                               placeholder="https://example.com/subscription-terms">
+                        <br><span class="description"><?php esc_html_e('The page the tick links to. Without it the tick stays off — a store that has not said where its terms are must not start blocking its own checkout.', 'lets-payplus'); ?></span>
+                    </p>
+                    <p>
+                        <input type="text" class="large-text" name="lets_subscription_terms_text"
+                               value="<?php echo esc_attr(get_option(LETS_SUB_TERMS_TEXT_OPT, '')); ?>"
+                               placeholder="<?php esc_attr_e('Optional — your own wording. Write {link} where the link should go.', 'lets-payplus'); ?>">
+                    </p>
+                    <p class="description">
+                        <?php esc_html_e('The tick appears only when a subscription is in the basket, is never pre-ticked, and what was accepted — the wording and the link, as they were at that moment — is stamped on the order. A terms page edited next year cannot change what the customer agreed to.', 'lets-payplus'); ?>
                     </p>
                 </td>
             </tr>

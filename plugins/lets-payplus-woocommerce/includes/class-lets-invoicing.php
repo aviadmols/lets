@@ -285,6 +285,12 @@ function lets_payplus_invoicing_order_body(WC_Order $order)
         'total'            => round(max(0.0, (float) $order->get_total() - $after_sell_total), 2),
         'currency'         => (string) $order->get_currency(),
         'customer_name'    => trim($order->get_billing_first_name() . ' ' . $order->get_billing_last_name()),
+        // Who the shopper asked the receipt to be made out to, when that is not
+        // them. Sent BESIDE their own name, never instead of it: LETS addresses
+        // the document to this, and the order still records who paid.
+        'customer_receipt_name' => function_exists('lets_payplus_receipt_name_for_order')
+            ? lets_payplus_receipt_name_for_order($order)
+            : '',
         'customer_email'   => (string) $order->get_billing_email(),
         'customer_phone'   => (string) $order->get_billing_phone(),
         'payment_gateway'  => (string) $order->get_payment_method(),

@@ -182,6 +182,72 @@ parts, and it reaches a shipping block with floor and entrance). Test runs no
 longer depend on the registry's uptime: the create tests fake it unreachable on
 purpose, which is also the free-text shape they type into. Full suite 2256 green.
 
+---
+
+## 2026-09-23 — R4 (three WooCommerce checkout asks)
+
+Plugin **0.53.0**. Three merchant requests, and the middle one turned out not to
+need building at all.
+
+**1. "Issue the receipt to …"** — one optional checkout field
+(`class-lets-receipt-name.php`). When a shopper fills it, the accounting document
+is made out to that name; the ORDER still records who paid, because a refund and
+a chargeback are answered from that and not from whose name is on the receipt.
+The SaaS carries it as `customer.receipt_name` beside the buyer's own name, and
+`DocumentIssuer::documentName()` decides between them in ONE place so the sale
+and the credit note that reverses it name the same party.
+
+**2. PayPal — already there; what was missing was the wall.** PayPal is a PayPlus
+charge method, merchant-toggleable on Settings → LETS today; no gateway to build.
+What did not exist is the rule that a SUBSCRIPTION cannot be paid with it. It is
+now enforced in three places, because each covers what the others cannot:
+
+- `PayPlusPageOptions::forTokenPage()` — a subscription's page offers the card and
+  hides everything else. Bit, PayPal, Multipass and the vouchers all take the first
+  cycle perfectly well and leave nothing to bill the second one with; the
+  subscription would go live and fail at its first renewal while the shopper
+  believed they had subscribed.
+- `woocommerce_available_payment_gateways` — a basket with a subscription shows
+  only the LETS method. Not a list of banned gateways: the rule is not about
+  PayPal, it is about what can still be charged next month, and naming them one
+  by one leaves the next plugin somebody installs quietly able to break a
+  subscription. It hands back the full list rather than an EMPTY one if the LETS
+  gateway is itself unavailable — a checkout with no way to pay is worse than the
+  problem.
+- A refusal on both checkout paths for an order that arrives on the wrong rail
+  anyway (a stale page, a saved session).
+
+**3. The subscription-terms tick** — required only when a subscription is in the
+basket, never pre-ticked, with the merchant's own wording (`{link}` becomes the
+anchor) and their terms URL. What was accepted is frozen onto the order: the
+wording, the link and the time, because a terms page edited next year must not be
+able to change what the customer agreed to.
+
+**The block-checkout trap, avoided.** Both new fields were first written to read
+their value from order meta under a guessed key (`_wc_other/…`). The
+additional-fields API stores registered fields under a key of its own devising,
+and for the TERMS tick a wrong guess does not fail quietly — it fails closed, on
+every order: the tick reads as empty however hard it was ticked, and the whole
+checkout refuses. Both now hook `woocommerce_validate_additional_field` (and its
+earlier name), which HANDS the value over, so there is nothing to guess. The
+acceptance is then stamped without re-reading the tick, because the order does
+not exist unless validation let it through.
+
+**Defaults, so an update changes nothing by surprise:** the receipt field is OFF,
+the terms tick is OFF and stays off until a terms URL is set, and the gateway
+lock is ON — it is a money rule, and a store that has been letting subscriptions
+be paid on a rail that cannot bill them again has a problem either way.
+
+**Tests.** `WooCommerceCartSubscriptionFlowTest` +2 (a subscription page is
+card-only with `create_token`; an ordinary basket keeps every method the merchant
+enabled) · `DocumentIssuerTest` +2 (the document is made out to the requested
+name; a blank one leaves the buyer's own).
+
+**Unverified live, and it needs saying:** none of the plugin half has run inside a
+real WooCommerce checkout. The block-checkout paths in particular are written
+against WooCommerce's documented API, not against an observed store — the
+classic checkout is the one this plugin's other fields already use.
+
 **Tests (R2).** `NoChargePlanTest` 11 (+3 for R2: the reminder is sent for a paying
 plan and withheld for a comped one carrying the same clock; the upcoming-charges
 list shows only the paying one; a zero-amount plan is not re-dispatched) ·

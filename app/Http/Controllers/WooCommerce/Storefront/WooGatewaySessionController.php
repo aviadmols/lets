@@ -96,11 +96,22 @@ final class WooGatewaySessionController extends WooStorefrontController
 
         try {
             $result = PayPlusGatewayFactory::for($shop)->generateLink([
-                // The merchant's page options (language, installments, Bit/PayPal, receipts,
-                // create_token…). Spread FIRST so the money + correlation keys below always
-                // win; PayPlusPageOptions can only emit documented, allow-listed keys, and
-                // PayPlusGateway forces payment_page_uid/terminal_uid to this shop's own creds.
-                ...app(PayPlusPageOptions::class)->for($shop),
+                /*
+                 * The merchant's page options (language, installments, Bit/PayPal,
+                 * receipts, create_token…). Spread FIRST so the money + correlation
+                 * keys below always win; PayPlusPageOptions can only emit documented,
+                 * allow-listed keys, and PayPlusGateway forces
+                 * payment_page_uid/terminal_uid to this shop's own credentials.
+                 *
+                 * A cart carrying a SUBSCRIPTION gets the token page instead: card
+                 * only, everything else hidden. Paying the first cycle with Bit or
+                 * PayPal works perfectly and leaves nothing to bill the second one
+                 * with — the subscription would go live and fail at every renewal,
+                 * while the shopper believes they subscribed.
+                 */
+                ...($subscriptionPlanIds !== []
+                    ? app(PayPlusPageOptions::class)->forTokenPage($shop)
+                    : app(PayPlusPageOptions::class)->for($shop)),
                 'amount' => $amount,
                 'currency_code' => $currency,
                 'product_name' => (string) ($request->input('product_name') ?: __('storefront.installments.default_item')),
@@ -118,10 +129,6 @@ final class WooGatewaySessionController extends WooStorefrontController
                 // Ask PayPlus to call the callback on FAILURE too — otherwise a decline
                 // produces no server-side signal at all (no log, no admin email). W16.
                 'send_failure_callback' => true,
-                // A subscription's first payment MUST vault a reusable token so the recurring
-                // engine can bill future cycles — force it on regardless of the merchant setting.
-                // Later key wins over the PayPlusPageOptions spread above.
-                ...($subscriptionPlanIds !== [] ? ['create_token' => true] : []),
             ]);
         } catch (\Throwable $e) {
             Log::error('woocommerce.gateway.session_failed', ['shop_id' => $shop->getKey(), 'order_id' => $orderId, 'error' => $e->getMessage()]);

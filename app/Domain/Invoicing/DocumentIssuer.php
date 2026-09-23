@@ -307,7 +307,7 @@ final class DocumentIssuer
                 shop: $shop,
                 context: $context,
                 customer: new DocumentCustomer(
-                    name: (string) ($order['customer']['name'] ?? ''),
+                    name: $this->documentName((array) ($order['customer'] ?? [])),
                     email: $this->blankToNull((string) ($order['customer']['email'] ?? '')),
                     phone: $this->blankToNull((string) ($order['customer']['phone'] ?? '')),
                     taxId: $this->blankToNull((string) ($order['customer']['tax_id'] ?? '')),
@@ -462,11 +462,29 @@ final class DocumentIssuer
         $customer = (array) ($order['customer'] ?? []);
 
         return new DocumentCustomer(
-            name: (string) ($customer['name'] ?? '') ?: (string) __('common.none'),
+            name: $this->documentName($customer) ?: (string) __('common.none'),
             email: $this->blankToNull((string) ($customer['email'] ?? '')),
             phone: $this->blankToNull((string) ($customer['phone'] ?? '')),
             taxId: $this->blankToNull((string) ($customer['tax_id'] ?? '')),
         );
+    }
+
+    /**
+     * WHOSE NAME goes on the document.
+     *
+     * The shopper's own, unless they asked for it to be made out to somebody else
+     * at checkout ("the receipt goes to my employer"). Read here and not at the
+     * edge so BOTH paths agree — the sale and the credit note that reverses it
+     * must name the same party, or the correction does not obviously belong to
+     * the document it corrects.
+     *
+     * @param  array<string, mixed>  $customer
+     */
+    private function documentName(array $customer): string
+    {
+        $requested = trim((string) ($customer['receipt_name'] ?? ''));
+
+        return $requested !== '' ? $requested : trim((string) ($customer['name'] ?? ''));
     }
 
     private function currencyFromSale(?IssuedDocument $sale): string

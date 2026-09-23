@@ -3,7 +3,7 @@
  * Plugin Name: LETS — PayPlus Subscriptions & Installments for WooCommerce
  * Plugin URI: https://app.lets.co.il
  * Description: Connect your WooCommerce store to LETS to offer PayPlus deposits + installments, recurring subscriptions, one-click post-purchase upsells, and optional full PayPlus checkout. Paste the connection token from your LETS dashboard to link this store.
- * Version: 0.52.0
+ * Version: 0.53.0
  * Author: LETS
  * Author URI: https://app.lets.co.il
  * Text Domain: lets-payplus
@@ -24,7 +24,7 @@ if (! defined('ABSPATH')) {
     exit; // never run outside WordPress
 }
 
-define('LETS_PAYPLUS_VERSION', '0.52.0');
+define('LETS_PAYPLUS_VERSION', '0.53.0');
 define('LETS_PAYPLUS_OPT', 'lets_payplus_connection'); // wp_option holding the decoded token
 define('LETS_PAYPLUS_FILE', __FILE__);
 define('LETS_PAYPLUS_URL', plugin_dir_url(__FILE__)); // base URL for assets
@@ -412,6 +412,17 @@ require_once __DIR__ . '/includes/class-lets-gateway.php';
 // data.gov.il, proxied through the plugin's own nonce-guarded REST). Loads AFTER
 // the signer file, whose lets_payplus_rest_permission() its routes reuse.
 require_once __DIR__ . '/includes/class-lets-address-autocomplete.php';
+
+// "Issue the receipt to …" at checkout. Loads AFTER the address file, whose
+// lets_payplus_address_is_he() it borrows for its Hebrew labels, and BEFORE the
+// invoicing reporter, which sends the value it stores.
+require_once __DIR__ . '/includes/class-lets-receipt-name.php';
+
+// The two rules a cart with a subscription obeys: it is paid on the LETS rail
+// only (nothing else can be charged next month), and the subscription terms are
+// ticked. Loads AFTER class-lets-subscriptions.php, whose `_lets_subscription`
+// cart flag both rules read.
+require_once __DIR__ . '/includes/class-lets-subscription-checkout.php';
 
 // Read-only status endpoint so the SaaS "Test connection" button can confirm the plugin
 // is installed with the correct token (GET /wp-json/lets-payplus/v1/status).

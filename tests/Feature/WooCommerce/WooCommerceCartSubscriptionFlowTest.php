@@ -4,6 +4,7 @@ namespace Tests\Feature\WooCommerce;
 
 use App\Models\CustomerConsent;
 use App\Models\InstallmentPlan;
+use App\Models\MerchantCheckoutSettings;
 use App\Models\PaymentLedger;
 use App\Models\Product;
 use App\Models\ProductSubscriptionPlan;
@@ -15,6 +16,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\GatewayResult;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
+use App\Services\PayPlus\PayPlusPageOptions;
 use App\Services\WooCommerce\WooCommerceShopProvisioner;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -106,7 +108,7 @@ final class WooCommerceCartSubscriptionFlowTest extends TestCase
             ],
         ])->assertOk()->assertJsonPath('paid', true);
 
-        Tenant::run($shop, function () use ($planId, $shop): void {
+        Tenant::run($shop, function () use ($planId): void {
             $plan = InstallmentPlan::query()->where('public_id', $planId)->sole();
 
             $this->assertSame(PlanStatus::ACTIVE, $plan->status);
@@ -173,6 +175,60 @@ final class WooCommerceCartSubscriptionFlowTest extends TestCase
         // No subscription items → we do NOT force create_token (merchant setting governs it).
         $this->assertArrayNotHasKey('create_token', $this->gatewayPayloads[0]);
         $this->assertSame(0, InstallmentPlan::query()->count());
+    }
+
+    /**
+     * A subscription's first payment is offered the CARD and nothing else.
+     *
+     * PayPal, Bit, Multipass and the vouchers all take this cycle's money
+     * perfectly well and leave nothing behind to charge the next one with. The
+     * subscription would go live and fail at its first renewal while the shopper
+     * believed they had subscribed — so the page hides them, whatever the
+     * merchant enabled for ordinary checkouts.
+     */
+    public function test_a_subscription_page_offers_the_card_only(): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop('cart-card-only.example.com');
+        Tenant::run($shop, function () use ($shop): void {
+            $this->makeSubscriptionProduct($shop, '501', 100.0);
+
+            // The merchant has PayPal and Bit switched on for their normal page.
+            MerchantCheckoutSettings::current()->forceFill([
+                'allowed_charge_methods' => ['credit-card', 'bit', 'paypal'],
+            ])->save();
+        });
+        $this->fakeGateway();
+
+        $this->signedPost($key, $secret, self::SESSION, [
+            'order_id' => '8800', 'amount' => 100.0, 'currency' => 'ILS',
+            'customer_id' => '55',
+            'subscription_items' => [['product_id' => '501', 'variant_id' => '501', 'quantity' => 1]],
+        ])->assertOk();
+
+        $payload = $this->gatewayPayloads[0];
+
+        $this->assertSame([PayPlusPageOptions::TOKENISING_METHOD], $payload['allowed_charge_methods'] ?? null);
+        $this->assertTrue((bool) ($payload['hide_other_charge_methods'] ?? false));
+        $this->assertTrue((bool) ($payload['create_token'] ?? false));
+    }
+
+    /** …and an ordinary basket still gets every method the merchant enabled. */
+    public function test_a_plain_order_keeps_the_merchants_own_payment_methods(): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop('cart-methods.example.com');
+        Tenant::run($shop, fn () => MerchantCheckoutSettings::current()->forceFill([
+            'allowed_charge_methods' => ['credit-card', 'bit', 'paypal'],
+        ])->save());
+        $this->fakeGateway();
+
+        $this->signedPost($key, $secret, self::SESSION, [
+            'order_id' => '8900', 'amount' => 50.0, 'currency' => 'ILS',
+        ])->assertOk();
+
+        $this->assertSame(
+            ['credit-card', 'bit', 'paypal'],
+            $this->gatewayPayloads[0]['allowed_charge_methods'] ?? null,
+        );
     }
 
     // === Helpers ===

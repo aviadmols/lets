@@ -53,6 +53,15 @@ final class PayPlusPageOptions
     ];
 
     /**
+     * The ONE charge method that hands back a card token we can bill again.
+     *
+     * PayPlus offers several (Bit, PayPal, Multipass, vouchers…) and a merchant may
+     * enable any of them on their page. None of the others leaves us with something
+     * to charge a second time.
+     */
+    public const TOKENISING_METHOD = 'credit-card';
+
+    /**
      * The page options for a shop, ready to spread into a generateLink payload.
      *
      * Only keys that DIFFER from PayPlus's own defaults are emitted, so a shop that never
@@ -153,6 +162,38 @@ final class PayPlusPageOptions
 
         // Belt and braces: nothing outside the allow-list can ever escape this class.
         return array_intersect_key($options, array_flip(self::ALLOWED_KEYS));
+    }
+
+    /**
+     * The options for a page whose payment MUST leave us a reusable card token —
+     * a subscription's first cycle, and anything else that bills again later.
+     *
+     * Two things on top of the merchant's own settings, and the second is the one
+     * that matters:
+     *
+     *   - create_token, because the recurring engine has nothing to bill without it.
+     *     (Already forced by the callers; stated here so the rule lives in one place.)
+     *   - CARD ONLY. A merchant may enable Bit, PayPal, Multipass or a voucher on
+     *     their page, and a shopper who picks one of those pays this cycle
+     *     perfectly well and leaves nothing behind to charge for the next one. The
+     *     subscription would then exist, be active, and fail forever at the first
+     *     renewal — the worst shape a subscription can take, because the shopper
+     *     believes they subscribed.
+     *
+     * So the page offers the card and hides the rest. This is a WALL, not a
+     * preference: it overrides the merchant's own allowed_charge_methods for this
+     * page only, and their settings are untouched for every ordinary checkout.
+     *
+     * @return array<string, mixed>
+     */
+    public function forTokenPage(Shop $shop): array
+    {
+        return [
+            ...$this->for($shop),
+            'create_token' => true,
+            'allowed_charge_methods' => [self::TOKENISING_METHOD],
+            'hide_other_charge_methods' => true,
+        ];
     }
 
     /**
