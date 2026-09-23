@@ -107,15 +107,37 @@ class InstallmentPlan extends Model
      */
     public const META_CONTACT_ADDRESS = 'contact_address';
 
-    /** The address field keys, in display/CSV order (matches SubscriptionCsvSchema). */
+    /**
+     * The address field keys, in display/CSV order (matches SubscriptionCsvSchema).
+     *
+     * FLOOR and ENTRANCE are here because the store's own checkout asks for them
+     * (the plugin's address step: city, street, building, apartment, floor,
+     * entrance — all six from the same form), and an address a merchant types
+     * into the admin has to be able to say everything the shopper could. Without
+     * them the courier sheet for a hand-typed member was missing exactly the two
+     * lines that get a box to a door in a block of flats.
+     */
     public const ADDRESS_FIELDS = [
-        'street', 'building_number', 'apartment_number', 'city', 'zip_code', 'country',
+        'street', 'building_number', 'apartment_number', 'floor', 'entrance', 'city', 'zip_code', 'country',
     ];
 
     /** What joins those fields into one readable line. @see contactAddressLine() */
     public const ADDRESS_LINE_SEPARATOR = ', ';
 
-    /** The apartment's own label, so a line reads as an address and not a CSV row. */
+    /**
+     * The parts that need their own word in a readable line, in the order they
+     * belong there: "אליהו הנביא 18, דירה 4, קומה 2, כניסה ב, חיפה".
+     *
+     * A bare "4, 2, ב" between a street and a city is not an address — it is a
+     * CSV row somebody forgot to label.
+     */
+    public const ADDRESS_LABELLED_PARTS = [
+        'apartment_number' => 'subscriptions.detail.contact.apartment_short',
+        'floor' => 'subscriptions.detail.contact.floor_short',
+        'entrance' => 'subscriptions.detail.contact.entrance_short',
+    ];
+
+    /** @deprecated Use ADDRESS_LABELLED_PARTS — kept so an external caller keeps working. */
     public const ADDRESS_APARTMENT_KEY = 'subscriptions.detail.contact.apartment_short';
 
     /**
@@ -447,11 +469,16 @@ class InstallmentPlan extends Model
         // apartment gets its own translated label.
         $street = trim(($address['street'] ?? '').' '.($address['building_number'] ?? ''));
 
+        $labelled = [];
+        foreach (self::ADDRESS_LABELLED_PARTS as $field => $key) {
+            if (isset($address[$field])) {
+                $labelled[] = (string) __($key, ['number' => $address[$field]]);
+            }
+        }
+
         $line = implode(self::ADDRESS_LINE_SEPARATOR, array_filter([
             $street !== '' ? $street : null,
-            isset($address['apartment_number'])
-                ? (string) __(self::ADDRESS_APARTMENT_KEY, ['number' => $address['apartment_number']])
-                : null,
+            ...$labelled,
             $address['city'] ?? null,
             $address['zip_code'] ?? null,
             $address['country'] ?? null,

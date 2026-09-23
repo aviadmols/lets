@@ -158,6 +158,11 @@ final readonly class GiftShippingAddress
             phone: self::clean($plan->customer_phone),
             building: self::clean($stored['building_number'] ?? null),
             apartment: self::clean($apartment),
+            // The plan can now hold what the store's checkout asks for. A courier
+            // sheet that names the flat but not the floor or the entrance is the
+            // one that ends in a phone call from the doorway.
+            floor: self::clean($stored['floor'] ?? null),
+            entrance: self::clean($stored['entrance'] ?? null),
         );
 
         return $address->isShippable() ? $address : null;

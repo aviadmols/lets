@@ -152,6 +152,8 @@ final class SubscriptionExporter
             'street' => (string) ($address['street'] ?? ''),
             'building_number' => (string) ($address['building_number'] ?? ''),
             'apartment_number' => (string) ($address['apartment_number'] ?? ''),
+            'floor' => (string) ($address['floor'] ?? ''),
+            'entrance' => (string) ($address['entrance'] ?? ''),
             'city' => (string) ($address['city'] ?? ''),
             'zip_code' => (string) ($address['zip_code'] ?? ''),
             'country' => (string) ($address['country'] ?? ''),

@@ -45,6 +45,8 @@ final class SubscriptionCsvSchema
         'street',
         'building_number',
         'apartment_number',
+        'floor',
+        'entrance',
         'city',
         'zip_code',
         'country',

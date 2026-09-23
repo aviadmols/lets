@@ -132,7 +132,57 @@ clears `no_charge`, so turning a comped member into a paying one means a new
 subscription through the ordinary checkout. That is the wall the unit wanted;
 it is recorded here so the next person knows it is a decision.
 
-**Tests.** `NoChargePlanTest` 11 (+3 for R2: the reminder is sent for a paying
+---
+
+## 2026-09-23 — R3 (the address, and the closed list it comes from)
+
+**Why.** The merchant asked to type the customer's address "exactly as I have it
+in the store's checkout". The checkout asks for six things — city, street,
+building, apartment, **floor**, **entrance** — and picks the first two from a
+closed list.
+
+**The plan's address vocabulary grew by two.** `ADDRESS_FIELDS` gains `floor` and
+`entrance`, which reaches everything that already walks it: the detail page's
+edit form and its prefill (now walked, not listed again), the readable line (the
+labelled parts are a MAP now, so "4, 2, ב" between a street and a city can never
+be printed as bare numbers), the CSV's columns both ways, and
+`GiftShippingAddress::fromPlanContact` — which already had floor/entrance
+parameters and simply had nothing to put in them. A courier sheet for a
+hand-typed member no longer stops at the flat number.
+
+**The list is read from the REGISTRY, not from the store.** The obvious route —
+ask the plugin, which already holds these lists — is closed: its address
+endpoints are guarded by a WordPress REST nonce, a browser-session credential
+this server cannot mint. Reaching them would need a new signed route in the
+plugin and a release every store installs. `AddressRegistry` reads the same
+public data.gov.il resources the plugin downloads from, with the same resource
+ids and fields, cached for 90 days (5 minutes on failure, so a dead registry is
+not re-asked per keystroke). One cache for every shop, and it works on the
+Shopify rail where the plugin never runs.
+
+It is **not** a merchant-steered outbound request — the host is a constant and
+the only thing that varies is a numeric city code the registry itself issued —
+so it needs none of SafeSiteFetcher's walls and gets none of its ceremony.
+
+**Fail open, exactly as the checkout does.** A registry that does not answer
+returns `null`, NOT an empty list, and the form falls back to free text. The
+distinction is the whole point: a form that reads an outage as "there are no
+cities" refuses every address in the country. Pinned in `AddressRegistryTest`,
+along with the spelling tolerance (the two registry resources disagree about
+hyphens) and the fact that streets are fetched by the registry's own city code
+rather than by name.
+
+**Left as free text, deliberately:** the detail page's "Edit contact details".
+That form also repairs imported addresses, whose spellings predate any list, and
+a closed list there would block the correction it exists for.
+
+**Tests.** `AddressRegistryTest` 6 · `CreateSubscriptionTest` 20 (the whole
+checkout address round-trips, unknown keys are dropped, the line labels its
+parts, and it reaches a shipping block with floor and entrance). Test runs no
+longer depend on the registry's uptime: the create tests fake it unreachable on
+purpose, which is also the free-text shape they type into. Full suite 2256 green.
+
+**Tests (R2).** `NoChargePlanTest` 11 (+3 for R2: the reminder is sent for a paying
 plan and withheld for a comped one carrying the same clock; the upcoming-charges
 list shows only the paying one; a zero-amount plan is not re-dispatched) ·
 `CreateSubscriptionTest` 12 · full suite 2242 green.

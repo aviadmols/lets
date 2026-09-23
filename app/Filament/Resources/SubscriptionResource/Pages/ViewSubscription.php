@@ -538,6 +538,12 @@ class ViewSubscription extends Page
                     TextInput::make('apartment_number')
                         ->label(__('subscriptions.detail.contact.apartment'))
                         ->maxLength(20),
+                    TextInput::make('floor')
+                        ->label(__('subscriptions.detail.contact.floor'))
+                        ->maxLength(20),
+                    TextInput::make('entrance')
+                        ->label(__('subscriptions.detail.contact.entrance'))
+                        ->maxLength(20),
                     TextInput::make('city')
                         ->label(__('subscriptions.detail.contact.city'))
                         ->maxLength(120),
@@ -924,22 +930,30 @@ class ViewSubscription extends Page
         ];
     }
 
-    /** @return array<string, string> the edit form's current values */
+    /**
+     * The edit form's current values.
+     *
+     * The address half is walked from ADDRESS_FIELDS rather than listed again,
+     * so a field added to the plan's address vocabulary (floor and entrance
+     * were) reaches this form without a second place to remember.
+     *
+     * @return array<string, string>
+     */
     private function contactDefaults(): array
     {
         $address = $this->record->contactAddress();
 
-        return [
+        $defaults = [
             'customer_name' => (string) ($this->record->customer_name ?? ''),
             'customer_email' => (string) ($this->record->customer_email ?? ''),
             'customer_phone' => (string) ($this->record->customer_phone ?? ''),
-            'street' => (string) ($address['street'] ?? ''),
-            'building_number' => (string) ($address['building_number'] ?? ''),
-            'apartment_number' => (string) ($address['apartment_number'] ?? ''),
-            'city' => (string) ($address['city'] ?? ''),
-            'zip_code' => (string) ($address['zip_code'] ?? ''),
-            'country' => (string) ($address['country'] ?? ''),
         ];
+
+        foreach (InstallmentPlan::ADDRESS_FIELDS as $field) {
+            $defaults[$field] = (string) ($address[$field] ?? '');
+        }
+
+        return $defaults;
     }
 
     /**

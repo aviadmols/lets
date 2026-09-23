@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Subscriptions;
 
+use App\Domain\Addresses\AddressRegistry;
+use App\Domain\Campaigns\GiftShippingAddress;
 use App\Domain\Installments\ManualSubscriptionService;
 use App\Domain\Installments\RecurringPlanService;
 use App\Filament\Resources\SubscriptionContractResource\Pages\ListSubscriptionContracts;
@@ -18,6 +20,8 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Jobs\ChargeJob;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -51,6 +55,15 @@ final class CreateSubscriptionTest extends TestCase
 
         Tenant::set($this->shop);
         $this->actingAs(User::factory()->forShop($this->shop)->create());
+
+        /*
+         * The address section asks the locality registry whether it can offer a
+         * closed list. Faked as UNREACHABLE here, for two reasons: building a
+         * form must never depend on somebody else's uptime in a test run, and
+         * the free-text fallback is the shape the address tests below type into.
+         * The list itself is pinned in AddressRegistryTest.
+         */
+        Http::fake([AddressRegistry::GOV_API.'*' => Http::response('', 503)]);
     }
 
     protected function tearDown(): void
@@ -230,6 +243,125 @@ final class CreateSubscriptionTest extends TestCase
         $plan = InstallmentPlan::query()->where('public_id', '!=', 'usd-plan')->firstOrFail();
 
         $this->assertSame('USD', $plan->currency);
+    }
+
+    /**
+     * The address a merchant types here is the one the store's checkout asks
+     * for — every field of it, floor and entrance included — and it lands where
+     * an admin EDIT would have put it, not where an import would.
+     *
+     * That distinction is the whole point: meta.import.address is the audit
+     * trail of what a migration file said and is never rewritten, so an address
+     * stored there would be invisible to the "Edit contact details" form the
+     * merchant reaches for next.
+     */
+    public function test_it_stores_the_whole_checkout_address(): void
+    {
+        $address = [
+            'street' => 'אליהו הנביא',
+            'building_number' => '18',
+            'apartment_number' => '4',
+            'floor' => '2',
+            'entrance' => 'ב',
+            'city' => 'חיפה',
+            'zip_code' => '3521234',
+            'country' => 'IL',
+        ];
+
+        Livewire::test(ListSubscriptions::class)
+            ->callAction('newSubscription', array_merge($this->formData(), ['address' => $address]))
+            ->assertHasNoActionErrors();
+
+        $plan = InstallmentPlan::query()->firstOrFail();
+
+        $this->assertSame($address, $plan->contactAddress());
+        $this->assertSame(
+            $address,
+            $plan->meta[InstallmentPlan::META_CONTACT_ADDRESS] ?? null,
+            'an address typed by a person is an admin edit, not an import record',
+        );
+
+        // The readable line names the parts instead of running the numbers
+        // together — "4, 2, ב" between a street and a city is not an address.
+        // Asserted through the translator, because the label a merchant sees is
+        // whichever language they are reading the admin in.
+        $line = $plan->contactAddressLine();
+        $this->assertStringContainsString('אליהו הנביא 18', $line);
+        $this->assertStringContainsString('חיפה', $line);
+
+        foreach (InstallmentPlan::ADDRESS_LABELLED_PARTS as $field => $key) {
+            $this->assertStringContainsString(
+                (string) __($key, ['number' => $address[$field]]),
+                $line,
+                "the line labels {$field}",
+            );
+        }
+    }
+
+    /**
+     * With the registry answering, the city and the street are a CLOSED LIST —
+     * the same one the store's checkout offers — and what the merchant picks is
+     * stored as the registry spells it.
+     */
+    public function test_the_city_and_street_come_from_the_registry_when_it_answers(): void
+    {
+        Http::fake([AddressRegistry::GOV_API.'*' => Http::sequence()
+            ->push(['result' => ['records' => [
+                [AddressRegistry::CITY_FIELD => 'חיפה', AddressRegistry::CITY_CODE_FIELD => 4000],
+            ]]], 200)
+            ->push(['result' => ['records' => [
+                [AddressRegistry::STREET_FIELD => 'אליהו הנביא'],
+            ]]], 200),
+        ]);
+        Cache::flush();
+
+        Livewire::test(ListSubscriptions::class)
+            ->callAction('newSubscription', array_merge($this->formData(), [
+                'address' => ['city' => 'חיפה', 'street' => 'אליהו הנביא', 'building_number' => '18'],
+            ]))
+            ->assertHasNoActionErrors();
+
+        $this->assertSame(
+            ['street' => 'אליהו הנביא', 'building_number' => '18', 'city' => 'חיפה'],
+            InstallmentPlan::query()->firstOrFail()->contactAddress(),
+        );
+    }
+
+    /** A key the plan's address vocabulary does not know is dropped, not stored. */
+    public function test_it_keeps_only_the_address_fields_it_knows(): void
+    {
+        $plan = $this->create([
+            'address' => ['city' => 'חיפה', 'unknown_field' => 'x', 'street' => '   '],
+        ]);
+
+        $this->assertSame(['city' => 'חיפה'], $plan->contactAddress());
+        $this->assertArrayNotHasKey(
+            'unknown_field',
+            $plan->meta[InstallmentPlan::META_CONTACT_ADDRESS] ?? [],
+        );
+    }
+
+    /** It ships: the courier sheet gets the floor and the entrance too. */
+    public function test_the_address_reaches_a_shipping_block(): void
+    {
+        $plan = $this->create([
+            'address' => [
+                'street' => 'אליהו הנביא',
+                'building_number' => '18',
+                'apartment_number' => '4',
+                'floor' => '2',
+                'entrance' => 'ב',
+                'city' => 'חיפה',
+            ],
+        ]);
+
+        $shipping = GiftShippingAddress::fromPlanContact($plan);
+
+        $this->assertNotNull($shipping);
+        $this->assertSame('2', $shipping->floor);
+        $this->assertSame('ב', $shipping->entrance);
+        $this->assertSame('18', $shipping->building);
+        $this->assertSame('חיפה', $shipping->city);
     }
 
     /** The timeline says how this subscription got here — a sale is not implied. */

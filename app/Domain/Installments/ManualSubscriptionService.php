@@ -109,6 +109,9 @@ final class ManualSubscriptionService
     /** What the subscription is called, when no catalog product names it. */
     public const MAX_TITLE_LENGTH = 255;
 
+    /** Ceiling on one address part — a street name, not a paragraph. */
+    public const MAX_ADDRESS_LENGTH = 200;
+
     /** The cadence a form that says nothing means. */
     public const DEFAULT_FREQUENCY = BillingFrequency::MONTHLY;
 
@@ -124,6 +127,7 @@ final class ManualSubscriptionService
      *
      * @param  array{
      *     customer_name?: ?string, customer_email?: ?string, customer_phone?: ?string,
+     *     address?: array<string, mixed>|null,
      *     item_title?: ?string, product_external_id?: ?string,
      *     amount?: float|int|string|null, currency?: ?string,
      *     frequency?: BillingFrequency|string|null, interval_count?: int|string|null,
@@ -195,6 +199,14 @@ final class ManualSubscriptionService
                 'shopify_variant_id' => $this->variantId($product),
                 'meta' => [
                     InstallmentPlan::META_ITEM_TITLE => $title,
+                    // Written under the key an ADMIN EDIT writes, not the import's
+                    // — meta.import.address is the audit trail of what a migration
+                    // file said and is never rewritten, while this one is a person
+                    // stating an address, which is what contactAddress() prefers.
+                    // So the address typed here is editable afterwards from the
+                    // detail page, exports in the CSV's own columns, and reaches a
+                    // courier sheet, with no second vocabulary to keep in step.
+                    InstallmentPlan::META_CONTACT_ADDRESS => $this->address($context['address'] ?? null),
                     // Why it is here, not whether it charges: that is the
                     // `no_charge` COLUMN's job, and two copies of one fact is how
                     // they come to disagree.
@@ -277,6 +289,32 @@ final class ManualSubscriptionService
         }
 
         return $identity;
+    }
+
+    /**
+     * The address, in the plan's own vocabulary and nothing else.
+     *
+     * Keys outside ADDRESS_FIELDS are dropped rather than stored: an address bag
+     * that quietly accepts whatever it was handed is how a field nobody reads
+     * ends up looking like data somebody typed. Blanks are dropped for the same
+     * reason contactAddress() drops them — an empty string is not an answer.
+     *
+     * @param  array<string, mixed>|null  $input
+     * @return array<string, string>
+     */
+    private function address(?array $input): array
+    {
+        $address = [];
+
+        foreach (InstallmentPlan::ADDRESS_FIELDS as $field) {
+            $value = $this->trimmed(is_scalar($input[$field] ?? null) ? (string) $input[$field] : null);
+
+            if ($value !== null) {
+                $address[$field] = mb_substr($value, 0, self::MAX_ADDRESS_LENGTH);
+            }
+        }
+
+        return $address;
     }
 
     /** The catalog row behind a picked product id, or null when none was picked. */

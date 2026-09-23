@@ -138,6 +138,11 @@ return [
             'building' => 'Building no.',
             'apartment' => 'Apartment',
             'apartment_short' => 'Apt. :number',
+            // The store's checkout asks for these two; so does this admin.
+            'floor' => 'Floor',
+            'floor_short' => 'Floor :number',
+            'entrance' => 'Entrance',
+            'entrance_short' => 'Entrance :number',
             'city' => 'City',
             'zip' => 'Zip code',
             'country' => 'Country',
@@ -173,6 +178,8 @@ return [
             'section' => [
                 'customer' => 'Who it is for',
                 'plan' => 'What they get',
+                'address' => 'Where it ships',
+                'address_help' => 'The same details your store asks for at checkout. All optional — and you can fill them in later from the subscription itself.',
             ],
 
             'field' => [
@@ -189,6 +196,9 @@ return [
                 'interval_help' => '“Every 2” with “Monthly” means once every two months.',
                 'amount' => 'Amount per cycle (:currency)',
                 'amount_help' => 'What the subscription is worth on paper. Leave it at 0 for a free member. Whatever you put here is never charged — this subscription has no card and no charge date.',
+                'city_placeholder' => 'Choose a city from the list',
+                'street_placeholder' => 'Choose a street from the list',
+                'street_needs_city' => 'Choose a city first.',
                 'status' => 'Status',
                 'note' => 'Note',
                 'note_help' => 'Why this subscription is free. Kept with the subscription for whoever opens it next.',

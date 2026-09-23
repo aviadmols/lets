@@ -85,6 +85,8 @@ final class SubscriptionRowNormalizer
             'street' => $this->text($values, 'street'),
             'building_number' => $this->text($values, 'building_number'),
             'apartment_number' => $this->text($values, 'apartment_number'),
+            'floor' => $this->text($values, 'floor'),
+            'entrance' => $this->text($values, 'entrance'),
             'city' => $this->text($values, 'city'),
             'zip_code' => $this->text($values, 'zip_code'),
             'country' => $this->text($values, 'country'),

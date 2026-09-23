@@ -2,6 +2,7 @@
 
 namespace App\Filament\Actions;
 
+use App\Domain\Addresses\AddressRegistry;
 use App\Domain\Installments\ManualSubscriptionService;
 use App\Filament\Resources\SubscriptionResource;
 use App\Models\InstallmentPlan;
@@ -17,6 +18,7 @@ use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Get;
 use Filament\Forms\Set;
 use Filament\Notifications\Notification;
 use Livewire\Component;
@@ -67,6 +69,27 @@ final class NewSubscription
 
     /** Where the status names live — StatusBadge::LABEL_DOMAIN_PLAN's keys. */
     public const STATUS_LABEL_PREFIX = 'billing.status.';
+
+    /** Where the address labels live — the detail page's own contact card. */
+    public const ADDRESS_LABEL_PREFIX = 'subscriptions.detail.contact.';
+
+    /**
+     * Address field => the label key under that prefix. A map and not a
+     * convention, because three of the eight are not named after their column
+     * (`building_number` reads "Building no.", not "Building number").
+     *
+     * @var array<string, string>
+     */
+    public const ADDRESS_LABEL_KEYS = [
+        'street' => 'street',
+        'building_number' => 'building',
+        'apartment_number' => 'apartment',
+        'floor' => 'floor',
+        'entrance' => 'entrance',
+        'city' => 'city',
+        'zip_code' => 'zip',
+        'country' => 'country',
+    ];
 
     /** The new-subscription modal: two columns of fields need the room. */
     public const MODAL_WIDTH = '2xl';
@@ -156,6 +179,26 @@ final class NewSubscription
                         ->maxLength(self::MAX_CONTACT_LENGTH),
                 ]),
 
+            /*
+             * WHERE IT SHIPS — the same questions the store's own checkout asks.
+             *
+             * The plugin's address step collects city, street, building,
+             * apartment, floor and entrance, and a member typed in here has to be
+             * able to say everything a member who checked out could. The fields
+             * are walked from the plan's address vocabulary rather than listed,
+             * so the two forms cannot drift apart and a field added to one
+             * reaches the other.
+             *
+             * All optional: a comped membership is not always a thing that gets
+             * posted, and refusing to record a member until somebody knows their
+             * postcode helps nobody.
+             */
+            Section::make(__('subscriptions.action.create.section.address'))
+                ->description(__('subscriptions.action.create.section.address_help'))
+                ->columns(2)
+                ->collapsible()
+                ->schema(self::addressFields()),
+
             Section::make(__('subscriptions.action.create.section.plan'))
                 ->columns(2)
                 ->schema([
@@ -237,6 +280,72 @@ final class NewSubscription
     }
 
     /**
+     * The address half of the form, one input per plan address field.
+     *
+     * The LABELS are the detail page's own (`subscriptions.detail.contact.*`),
+     * so the merchant reads the same words when they type an address here and
+     * when they correct it later — and a field added to ADDRESS_FIELDS arrives
+     * here with its label already written.
+     *
+     * The street takes the full width because a street name is long and a house
+     * number is not; everything else pairs off.
+     *
+     * @return array<int, object>
+     */
+    public static function addressFields(): array
+    {
+        $wide = ['street', 'city'];
+        $cities = AddressRegistry::cities();
+
+        return array_map(
+            static fn (string $field): object => match (true) {
+                /*
+                 * CITY and STREET come from the registry when it answered — the
+                 * same closed list the store's checkout picks from, so an address
+                 * typed here and one a shopper typed are the same address written
+                 * the same way. The street list follows the chosen city, which is
+                 * why the city field is live.
+                 *
+                 * When the registry did NOT answer they are plain text, exactly
+                 * as the checkout falls back: an outage must not stand between a
+                 * merchant and recording a member.
+                 */
+                $field === 'city' && $cities !== null => Select::make('address.city')
+                    ->label(__(self::ADDRESS_LABEL_PREFIX.'city'))
+                    ->placeholder(__('subscriptions.action.create.field.city_placeholder'))
+                    ->options($cities)
+                    ->searchable()
+                    ->live()
+                    // The streets below belong to the city above; keeping a
+                    // street from the previous one would be worse than an empty
+                    // field, because it looks like an answer.
+                    ->afterStateUpdated(static fn (Set $set): mixed => $set('address.street', null))
+                    ->columnSpan(2),
+
+                $field === 'street' && $cities !== null => Select::make('address.street')
+                    ->label(__(self::ADDRESS_LABEL_PREFIX.'street'))
+                    ->placeholder(__('subscriptions.action.create.field.street_placeholder'))
+                    // Searched server-side: the largest city has thousands of
+                    // streets, and shipping all of them to the browser to filter
+                    // is a payload nobody reads.
+                    ->options(static fn (Get $get): array => AddressRegistry::streetsIn($get('address.city')))
+                    ->searchable()
+                    ->disabled(static fn (Get $get): bool => trim((string) $get('address.city')) === '')
+                    ->helperText(static fn (Get $get): ?string => trim((string) $get('address.city')) === ''
+                        ? __('subscriptions.action.create.field.street_needs_city')
+                        : null)
+                    ->columnSpan(2),
+
+                default => TextInput::make('address.'.$field)
+                    ->label(__(self::ADDRESS_LABEL_PREFIX.self::ADDRESS_LABEL_KEYS[$field]))
+                    ->maxLength(ManualSubscriptionService::MAX_ADDRESS_LENGTH)
+                    ->columnSpan(in_array($field, $wide, true) ? 2 : 1),
+            },
+            InstallmentPlan::ADDRESS_FIELDS,
+        );
+    }
+
+    /**
      * Write the plan. Returns null when no tenant is bound — the screen is
      * already gated on one (ShopScopedScreen), so this is the fail-closed floor
      * under that gate, not a second gate.
@@ -256,6 +365,9 @@ final class NewSubscription
             'customer_name' => self::text($data, 'customer_name'),
             'customer_email' => self::text($data, 'customer_email'),
             'customer_phone' => self::text($data, 'customer_phone'),
+            // The service keeps only the keys the plan's address vocabulary
+            // knows, so a stray one cannot ride in from the form state.
+            'address' => is_array($data['address'] ?? null) ? $data['address'] : [],
             'item_title' => self::text($data, 'item_title'),
             'product_external_id' => self::text($data, 'product_external_id'),
             'amount' => $data['amount'] ?? 0,
