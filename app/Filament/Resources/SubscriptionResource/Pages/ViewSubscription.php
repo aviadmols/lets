@@ -21,7 +21,6 @@ use App\Models\InstallmentPayment;
 use App\Models\InstallmentPlan;
 use App\Models\MerchantMailSettings;
 use App\Models\PaymentLedger;
-use App\Models\Product;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
@@ -36,6 +35,7 @@ use App\Support\PhoneNumber;
 use App\Support\Tenant;
 use App\Support\Ui\EventPresenter;
 use App\Support\Ui\Money;
+use App\Support\Ui\ProductOptions;
 use Carbon\CarbonInterface;
 use Filament\Actions;
 use Filament\Forms\Components\Checkbox;
@@ -1050,7 +1050,11 @@ class ViewSubscription extends Page
     private function canEditNextCharge(): bool
     {
         // A subscription waiting for activation has no charge date to edit: activation sets it.
+        // Neither has a comped one: the engine refuses to charge it, so a date
+        // here would buy the merchant nothing and cost the customer a reminder
+        // email naming money that is never taken.
         return $this->record->plan_kind === PlanKind::RECURRING
+            && ! $this->record->no_charge
             && ! $this->record->status->isTerminal()
             && $this->record->status !== PlanStatus::AWAITING_ACTIVATION;
     }
@@ -1103,22 +1107,16 @@ class ViewSubscription extends Page
         ];
     }
 
-    /** The tenant's synced product catalog as Select options ("Title · ₪price"), keyed by external id. */
+    /**
+     * The tenant's synced product catalog as Select options ("Title · ₪price"),
+     * keyed by external id — priced in THIS plan's currency.
+     *
+     * The list itself lives in ProductOptions, shared with the hand-typed
+     * subscription form: one catalog, one order, one way of pricing a label.
+     */
     public function productOptions(): array
     {
-        return Product::query()
-            ->with('variants')
-            ->orderBy('title')
-            ->get()
-            ->mapWithKeys(function (Product $product): array {
-                $variant = $product->variants->sortBy('position')->first();
-                $price = $variant !== null
-                    ? ' · '.Money::format((float) $variant->price, $this->record->currency ?: Money::DEFAULT_CURRENCY)
-                    : '';
-
-                return [(string) $product->external_id => trim((string) $product->title).$price];
-            })
-            ->all();
+        return ProductOptions::forSelect($this->record->currency);
     }
 
     /**

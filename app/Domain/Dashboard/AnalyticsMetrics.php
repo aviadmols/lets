@@ -68,7 +68,10 @@ final class AnalyticsMetrics
         $activePlans = InstallmentPlan::query()
             ->where('plan_kind', PlanKind::RECURRING->value)
             ->where('status', 'active')
-            ->get(['shopify_customer_id', 'external_customer_id', 'customer_email', 'installment_amount', 'billing_frequency', 'interval_count']);
+            // `no_charge` travels with the row because a comped member counts as
+            // a subscriber and as a subscription — they are one — but never as
+            // revenue. @see mrr()
+            ->get(['shopify_customer_id', 'external_customer_id', 'customer_email', 'installment_amount', 'billing_frequency', 'interval_count', 'no_charge']);
 
         $activeContracts = SubscriptionContract::query()
             ->where('status', SubscriptionContract::STATUS_ACTIVE)
@@ -123,12 +126,22 @@ final class AnalyticsMetrics
         return $quantity;
     }
 
-    /** Active MRR: every cycle amount normalised to a 30.44-day month. */
+    /**
+     * Active MRR: every cycle amount normalised to a 30.44-day month.
+     *
+     * A subscription the shop GIVES AWAY is left out. Its amount is a record of
+     * what the membership is worth, not money that will arrive, and counting it
+     * would report revenue that nobody is ever billed for.
+     */
     private static function mrr($plans, $contracts): float
     {
         $mrr = 0.0;
 
         foreach ($plans as $plan) {
+            if ($plan->no_charge) {
+                continue;
+            }
+
             $factor = self::MONTHLY_FACTOR[(string) ($plan->billing_frequency?->value ?? 'monthly')] ?? 1.0;
             $mrr += (float) $plan->installment_amount * $factor / max(1, (int) $plan->interval_count);
         }

@@ -59,6 +59,13 @@ final class DispatchRemindersCommand extends Command
         // AUDITED cross-tenant scan; each send re-binds its own tenant below.
         InstallmentPlan::acrossAllTenants()
             ->whereIn('status', [PlanStatus::ACTIVE->value, PlanStatus::AWAITING_FIRST_PAYMENT->value])
+            // Never remind a subscriber the shop gives away. This email states a
+            // sum and a date — "we will charge you ₪X on the 5th" — and for a
+            // comped member both are false: the engine refuses the charge. A plan
+            // like that has no clock by design, but the date verbs can still hand
+            // it one, and a wrong number in a customer's inbox is not undone by
+            // the charge never happening.
+            ->where('no_charge', false)
             ->whereNotNull('next_charge_at')
             ->where('next_charge_at', '>', $now)            // not already due/past
             ->where('next_charge_at', '<=', $windowEnd)     // within the widest window

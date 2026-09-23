@@ -172,6 +172,10 @@ class HomeDashboard extends Page
     {
         return InstallmentPlan::query()
             ->whereIn('status', [PlanStatus::ACTIVE->value, PlanStatus::AWAITING_FIRST_PAYMENT->value])
+            // A comped subscriber is not money coming in. Same predicate as the
+            // reminder fan-out, for the same reason: this list states sums that
+            // will arrive, and theirs never will.
+            ->where('no_charge', false)
             ->whereNotNull('next_charge_at')
             ->where('next_charge_at', '>', now())
             ->orderBy('next_charge_at')

@@ -54,6 +54,11 @@ final class DispatchDuePlansCommand extends Command
         // AUDITED cross-tenant scan; each dispatched job re-binds its own tenant.
         InstallmentPlan::acrossAllTenants()
             ->whereIn('status', PlanStatus::chargeable())
+            // A subscriber the shop gives away is never due. The orchestrator
+            // refuses them too — this is here so a comped plan that somehow
+            // acquired a clock (Resume mints one; the date verbs hand one over)
+            // does not queue a job every five minutes to be told no.
+            ->where('no_charge', false)
             ->whereNotNull('next_charge_at')
             ->where('next_charge_at', '<=', $dueBefore)
             // A slot waiting out its daily retry is NOT due yet. Without this the

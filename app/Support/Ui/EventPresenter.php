@@ -21,6 +21,14 @@ final class EventPresenter
     /** kind => [tone, translation-key]. tone drives the timeline dot color. */
     public const KINDS = [
         'plan_created' => ['info', 'timeline.kind.plan_created'],
+        // A subscription an admin typed in. Kept apart from plan_created because
+        // it is the answer to "why has this never been charged?" — nobody ever
+        // paid for it, and the timeline should say so rather than imply a sale.
+        'plan_created_manually' => ['info', 'timeline.kind.plan_created_manually'],
+        // Not failures — decisions. Gray, because nothing went wrong and nobody
+        // has to do anything about them.
+        'charge_refused_no_charge_plan' => ['gray', 'timeline.kind.charge_refused_no_charge_plan'],
+        'charge_refused_zero_amount' => ['gray', 'timeline.kind.charge_refused_zero_amount'],
         'charge_succeeded' => ['success', 'timeline.kind.charge_succeeded'],
         'charge_failed' => ['failure', 'timeline.kind.charge_failed'],
         'retry_scheduled' => ['info', 'timeline.kind.retry_scheduled'],

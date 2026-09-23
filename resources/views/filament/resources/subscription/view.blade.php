@@ -22,6 +22,14 @@
                     </span>
                     <span class="rc-muted rc-ltr">{{ $this->summaryLine() }}</span>
                 </div>
+                {{-- A subscriber the shop gives away. Beside the status and not
+                     instead of it: they really are active — they simply owe
+                     nothing. Without this the page is indistinguishable from a
+                     subscription that is quietly failing to bill, which is the
+                     one thing a merchant would open it to find out. --}}
+                @if($record->no_charge)
+                    <x-rc.badge tone="gray" label="subscriptions.detail.no_charge" />
+                @endif
                 <x-rc.badge :status="$record->status->value" dot />
             </div>
         </div>

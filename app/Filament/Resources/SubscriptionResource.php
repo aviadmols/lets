@@ -209,6 +209,22 @@ class SubscriptionResource extends Resource
                         ->all()),
 
                 /*
+                 * The subscribers the shop gives away.
+                 *
+                 * A ternary and not a tab, because it is a property of a
+                 * subscription rather than a stage of one — a comped member can
+                 * be active, paused or a draft, and the tabs are about where a
+                 * subscription is in its life. It answers two real questions in
+                 * one control: "who am I comping?" and, the commoner one, "show
+                 * me only the subscriptions that actually bill".
+                 */
+                Tables\Filters\TernaryFilter::make('no_charge')
+                    ->label(__('subscriptions.filter.no_charge'))
+                    ->placeholder(__('subscriptions.filter.no_charge_all'))
+                    ->trueLabel(__('subscriptions.filter.no_charge_only'))
+                    ->falseLabel(__('subscriptions.filter.no_charge_excluded')),
+
+                /*
                  * Product. Matched on the platform product id rather than on a
                  * title: two plans can name the same product differently (one
                  * captured its title at checkout, one fell back to the catalog),

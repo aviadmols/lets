@@ -4,6 +4,9 @@
 return [
     'kind' => [
         'plan_created' => 'התוכנית נוצרה',
+        'plan_created_manually' => 'נוסף ידנית — בלי אמצעי תשלום',
+        'charge_refused_no_charge_plan' => 'לא חויב — המנוי הזה ללא תשלום',
+        'charge_refused_zero_amount' => 'לא חויב — אין סכום לגבות במחזור הזה',
         'charge_succeeded' => 'החיוב הצליח',
         'charge_failed' => 'החיוב נכשל',
         'retry_scheduled' => 'תוזמן ניסיון חוזר',

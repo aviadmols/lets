@@ -4,6 +4,7 @@ namespace App\Domain\Bulk\Operations;
 
 use App\Domain\Bulk\InvalidBulkEdit;
 use App\Models\InstallmentPlan;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 
 /**
@@ -46,6 +47,23 @@ final class SetNextChargeDate extends ColumnEdit
     public function key(): string
     {
         return self::KEY;
+    }
+
+    /**
+     * A subscriber the shop gives away is not given a charge date.
+     *
+     * This is the one verb that can hand a clock to a plan that has none, and a
+     * comped plan has none by design. The engine would refuse the charge anyway,
+     * but the date is not harmless on its own: it puts the person on the
+     * upcoming-charges screen as money that is coming in, and it is what the
+     * reminder email reads to tell them a sum will be taken on a day.
+     *
+     * Mirrors the detail page, which no longer offers "Edit next charge" for one
+     * — the bulk screen may never do what the single screen refuses.
+     */
+    public function eligible(Builder $query, array $params): Builder
+    {
+        return parent::eligible($query, $params)->where('no_charge', false);
     }
 
     public function normalise(array $params): array

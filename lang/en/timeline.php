@@ -4,6 +4,9 @@
 return [
     'kind' => [
         'plan_created' => 'Plan created',
+        'plan_created_manually' => 'Added by hand — no payment attached',
+        'charge_refused_no_charge_plan' => 'Not charged — this subscription is free',
+        'charge_refused_zero_amount' => 'Not charged — this cycle is worth nothing',
         'charge_succeeded' => 'Charge succeeded',
         'charge_failed' => 'Charge failed',
         'retry_scheduled' => 'Retry scheduled',

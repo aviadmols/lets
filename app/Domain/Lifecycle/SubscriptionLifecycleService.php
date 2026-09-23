@@ -69,6 +69,15 @@ final class SubscriptionLifecycleService
              */
             $needsClock = $fresh->next_charge_at === null || $fresh->next_charge_at->isPast();
 
+            // …unless the shop gives this subscription away. A comped member has
+            // no clock BY DESIGN, and "resume" for them means "they are a member
+            // again", never "start collecting today". The engine would refuse the
+            // charge anyway; minting the date would still put them on the
+            // merchant's upcoming-charges screen as money that is coming in.
+            if ($fresh->no_charge) {
+                $needsClock = false;
+            }
+
             if (! $heldByUs && $needsClock) {
                 $fresh->forceFill(['next_charge_at' => now()->startOfDay()])->save();
             }

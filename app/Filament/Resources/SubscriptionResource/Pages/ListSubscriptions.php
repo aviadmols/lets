@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\SubscriptionResource\Pages;
 
 use App\Domain\Import\SubscriptionExporter;
+use App\Filament\Actions\NewSubscription;
 use App\Filament\Pages\BulkEditSubscriptions;
 use App\Filament\Resources\SubscriptionResource;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
@@ -16,8 +17,14 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Subscriptions list. Native Filament table re-skinned via the published theme;
- * the filters live on the resource. No record creation here — plans are created
- * by the checkout/engine flow, not hand-authored in the admin.
+ * the filters live on the resource.
+ *
+ * It offers ONE creation path, and that path cannot take money: "New
+ * subscription" writes a subscriber with no card, no consent and no charge date
+ * (NewSubscription → ManualSubscriptionService). A PAYING subscription is still
+ * only ever born from a checkout the customer completed — that is not a gap in
+ * this screen, it is the reason the screen is allowed to have a create button
+ * at all.
  *
  * The TABS are the questions a merchant opens this screen already holding: what
  * is about to bill, and what did not go through. Each is a filter they would
@@ -55,6 +62,20 @@ class ListSubscriptions extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
+            /*
+             * ADD A SUBSCRIBER BY HAND — and only one that owes nothing.
+             *
+             * The plan it writes carries `no_charge`, which the scheduler filters
+             * on and the orchestrator refuses on, so it is inert by construction
+             * rather than by a rule somebody has to remember. That is what makes
+             * a create button safe on a screen whose other rows represent money
+             * moving on a schedule.
+             *
+             * The button itself lives in NewSubscription, because the Shopify-rail
+             * contracts screen offers the same one.
+             */
+            NewSubscription::make(),
+
             Action::make('export')
                 ->label(__('subscriptions.action.export.label'))
                 ->icon('heroicon-m-arrow-down-tray')

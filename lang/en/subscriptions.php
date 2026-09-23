@@ -43,6 +43,11 @@ return [
         'frequency' => 'Billing frequency',
         'product' => 'Product',
 
+        'no_charge' => 'Payment',
+        'no_charge_all' => 'All subscriptions',
+        'no_charge_only' => 'Free — never billed',
+        'no_charge_excluded' => 'Billed subscriptions only',
+
         'balance' => 'Remaining balance',
         'balance_min' => 'From amount',
         'balance_max' => 'Up to amount',
@@ -74,6 +79,9 @@ return [
     'detail' => [
         'missing' => 'That subscription no longer exists, or it belongs to another store.',
         'customer' => 'Customer',
+        // Beside the status badge, and in the list filter. Deliberately not
+        // "free": what it promises is that nobody is ever billed for it.
+        'no_charge' => 'No payment',
         'remaining_of_total' => 'Remaining :balance of :total',
         'every_frequency' => 'Every :frequency',
         'plan_items' => 'Plan items',
@@ -149,6 +157,49 @@ return [
     // Lifecycle actions (Pause / Resume / Cancel) on the subscription detail page.
     'action' => [
         'failed' => 'Action failed. No change was made.',
+
+        /* Adding a subscriber by hand. The copy's whole job is to be honest
+           about what this does NOT do: it takes no card and charges nobody,
+           now or later, and a merchant who expects otherwise will find out on
+           the day a renewal does not happen. */
+        'create' => [
+            'label' => 'New subscription',
+            'heading' => 'Add a subscription — without payment',
+            'body' => 'For a member who pays nothing here: a comped or staff subscription, a gift, or someone whose money you collect elsewhere. No card is attached and no charge is ever scheduled — not now, and not on a later cycle. To take money from this person they have to subscribe and give their card the normal way.',
+            'save' => 'Create subscription',
+            'success' => 'Subscription created.',
+            'success_body' => 'Nothing was charged and nothing is scheduled.',
+
+            'section' => [
+                'customer' => 'Who it is for',
+                'plan' => 'What they get',
+            ],
+
+            'field' => [
+                'name' => 'Customer name',
+                'email' => 'Email',
+                'email_help' => 'How this subscription reaches them — their customer page, their account area and any mail you send. If you already have subscriptions under this address, the new one joins that customer.',
+                'phone' => 'Phone',
+                'product' => 'Product',
+                'product_help' => 'Optional. Pick one if this subscription maps onto something in your catalog; leave it empty for a membership that does not.',
+                'title' => 'Subscription name',
+                'title_help' => 'What the customer sees this called.',
+                'frequency' => 'Billing frequency',
+                'interval' => 'Every',
+                'interval_help' => '“Every 2” with “Monthly” means once every two months.',
+                'amount' => 'Amount per cycle (:currency)',
+                'amount_help' => 'What the subscription is worth on paper. Leave it at 0 for a free member. Whatever you put here is never charged — this subscription has no card and no charge date.',
+                'status' => 'Status',
+                'note' => 'Note',
+                'note_help' => 'Why this subscription is free. Kept with the subscription for whoever opens it next.',
+            ],
+
+            'status_help' => [
+                'active' => 'A live subscriber who owes nothing. Counts as active everywhere.',
+                'draft' => 'Recorded, but not started yet.',
+            ],
+        ],
+
         'pause' => [
             'label' => 'Pause',
             'heading' => 'Pause this subscription?',

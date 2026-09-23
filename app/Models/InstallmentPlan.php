@@ -139,6 +139,9 @@ class InstallmentPlan extends Model
             'discount_cycles' => 'integer',
             'interval_count' => 'integer',
             'requires_manual_payment' => 'boolean',
+            // This subscriber pays nothing, ever. Read by the scheduler, the
+            // orchestrator and the revenue report — see the migration.
+            'no_charge' => 'boolean',
             'next_charge_at' => 'datetime',
             'last_charge_attempt_at' => 'datetime',
             // When collection gave up on this plan's owed cycle. Set means the

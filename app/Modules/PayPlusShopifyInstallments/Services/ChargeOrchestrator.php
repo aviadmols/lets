@@ -85,6 +85,12 @@ final class ChargeOrchestrator
      */
     public const SKIP_CHARGED_RECENTLY = 'charged_recently';
 
+    /** Timeline kind for a plan the shop gives away — refused before anything happens. */
+    public const KIND_NO_CHARGE_PLAN = 'charge_refused_no_charge_plan';
+
+    /** Timeline kind for a cycle worth nothing — a gateway would only decline it. */
+    public const KIND_ZERO_AMOUNT = 'charge_refused_zero_amount';
+
     /**
      * How far the `skip_missed` renewal anchor may walk a schedule forward in
      * one go. A decade of monthly cycles; past that it is not a subscription
@@ -340,6 +346,36 @@ final class ChargeOrchestrator
             return ChargeOutcome::skipped('charging_paused', $key);
         }
 
+        /*
+         * A SUBSCRIBER WHO PAYS NOTHING. Comped, staff, a gift, or somebody whose
+         * money is collected somewhere else (ManualSubscriptionService).
+         *
+         * Asked before a charge attempt is even recorded — there is no attempt to
+         * record — and deliberately before two things that would otherwise have
+         * this plan first:
+         *
+         *   - MANUAL-PAYMENT MODE, which a plan with no saved card falls into.
+         *     That branch emails the customer an invoice and advances their
+         *     cycle: a comped member would have been dunned for money nobody ever
+         *     meant to ask them for.
+         *   - THE CONSENT GATE, which matches the CUSTOMER and not the plan. Comp
+         *     someone who already subscribes and the gate passes on the consent
+         *     they gave for the subscription they pay for.
+         *
+         * No ledger row, no mail, no clock movement: this plan is not "not due
+         * today", it is never due.
+         */
+        if ($plan->no_charge) {
+            Timeline::record(
+                kind: self::KIND_NO_CHARGE_PLAN,
+                details: ['type' => $type->value, 'key' => $key],
+                planId: $plan->getKey(),
+                shopId: $shopId,
+            );
+
+            return ChargeOutcome::skipped('no_charge_plan', $key);
+        }
+
         Timeline::record(
             kind: Timeline::KIND_CHARGE_ATTEMPT_STARTED,
             details: ['type' => $type->value, 'key' => $key],
@@ -376,6 +412,55 @@ final class ChargeOrchestrator
         }
 
         $amount = round((float) $payment->amount, 2);
+
+        /*
+         * A CYCLE WORTH NOTHING. Every path that CREATES a plan refuses a
+         * non-positive amount (RecurringPlanService), but nothing refused one by
+         * the time it came to be collected — a plan priced at zero by an import,
+         * an edit or a hand-typed subscription would open a `pending` ledger row
+         * and ask PayPlus for ₪0.00, which it declines. That decline then reads
+         * as a failed cycle and starts a dunning ladder against a customer whose
+         * card is perfectly fine.
+         *
+         * Refused here: after the slot exists (so the cycle is recorded and the
+         * clock still advances on the caller's normal path) and before the ledger
+         * row, because a row for money that was never asked for is not a trace of
+         * anything.
+         */
+        if ($amount <= 0) {
+            /*
+             * AND THE CLOCK MOVES ON. A refusal that left the date where it was
+             * would be re-dispatched every five minutes for as long as the plan
+             * lived — the scheduler runs on that cadence and a failure does not
+             * move next_charge_at — filling a timeline with one refusal repeated
+             * thousands of times. Manual-payment mode advances for exactly this
+             * reason; so does this.
+             *
+             * A recurring plan therefore skips the cycle and is next due one
+             * cycle on, with its anniversary intact. An INSTALLMENT plan has no
+             * next cycle to move to — a slot worth nothing means there is nothing
+             * left to collect — so its clock stops instead, which is the honest
+             * state and a visible one.
+             */
+            $plan->next_charge_at = $plan->plan_kind === PlanKind::RECURRING
+                ? $this->advanceNextChargeAt($plan)
+                : null;
+            $plan->save();
+
+            Timeline::record(
+                kind: self::KIND_ZERO_AMOUNT,
+                details: [
+                    'type' => $type->value,
+                    'key' => $key,
+                    'amount' => $amount,
+                    'to' => $plan->next_charge_at?->toDateString(),
+                ],
+                planId: $plan->getKey(),
+                shopId: $shopId,
+            );
+
+            return ChargeOutcome::skipped('zero_amount', $key);
+        }
 
         // Ledger opens PENDING before the side effect — and COMMITS before it,
         // now that the gateway call has left this transaction.

@@ -103,7 +103,11 @@ final class CardUpdateService
         // just as much. The old column is the fallback inside that method.
         return $shop->hasPayplusConnection()
             && $shop->callbackToken() !== null
-            && ! in_array($plan->status, self::TERMINAL, true);
+            && ! in_array($plan->status, self::TERMINAL, true)
+            // A subscription the shop gives away has no card to keep current.
+            // The engine refuses to charge it whatever is vaulted, so asking its
+            // owner for card details would be collecting a card for nothing.
+            && ! $plan->no_charge;
     }
 
     /**
