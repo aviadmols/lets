@@ -248,6 +248,11 @@ final class DocumentReconciliationService
             ledgerId: $document->ledger_id !== null ? (int) $document->ledger_id : null,
             order: $document->ledger_id === null ? $this->orderPayload($document) : null,
             amount: $this->amountOverrideFor($document),
+            // A credit note's key also carries what had gone back before it; the
+            // same number rebuilds the same key, so the retry reuses THIS row.
+            alreadyRefunded: DocumentIssuer::alreadyRefundedFromKey((string) $document->idempotency_key),
+            // Re-sent, or the reopened row is re-linked to no refund at all.
+            refundRequestId: $document->refund_request_id !== null ? (int) $document->refund_request_id : null,
         );
     }
 

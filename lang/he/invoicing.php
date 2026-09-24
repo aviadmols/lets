@@ -15,6 +15,9 @@ return [
         'refund' => 'זיכוי — תוכנית :reference',
         'cancellation' => 'ביטול — תוכנית :reference',
         'platform_order' => 'הזמנה :reference',
+        // זיכוי לחיוב שאין לו תוכנית (קופה, הצעה אחרי רכישה) — ההזמנה היא ההפניה.
+        'order_refund' => 'זיכוי להזמנה :reference',
+        'order_cancellation' => 'ביטול הזמנה :reference',
         // מאזן את פירוט הפריטים לסכום ההזמנה (משלוח, עמלות, עיגול).
         'adjustment' => 'משלוח, עמלות והתאמות',
     ],

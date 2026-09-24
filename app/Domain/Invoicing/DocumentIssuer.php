@@ -415,7 +415,7 @@ final class DocumentIssuer
                 // only record of who that was on this path.
                 customer: $this->customerFromSale($sale),
                 lines: [DocumentLine::single(
-                    (string) __('invoicing.line.'.$context->value, ['reference' => $orderId]),
+                    (string) __('invoicing.line.order_'.$context->value, ['reference' => $orderId]),
                     round($amount, 2),
                 )],
                 amount: round($amount, 2),
@@ -563,6 +563,19 @@ final class DocumentIssuer
         return IssuedDocument::KEY_PREFIX.'refund:'.$ledger->getKey()
             .':'.number_format(round($alreadyRefunded, 2), 2, '.', '')
             .':'.number_format(round($amount, 2), 2, '.', '');
+    }
+
+    /**
+     * The starting point a keyForRefund() key was written with — read back so a
+     * RETRY rebuilds the same key and reuses its own row. Without it a retried
+     * second slice keyed itself as a first one and opened a new row beside the
+     * failed one. A legacy key (no starting point) was always a first refund.
+     */
+    public static function alreadyRefundedFromKey(string $key): float
+    {
+        $parts = explode(':', $key);
+
+        return count($parts) === 5 && $parts[1] === 'refund' ? round((float) $parts[3], 2) : 0.0;
     }
 
     /**
@@ -933,6 +946,15 @@ final class DocumentIssuer
             return $title;
         }
 
+        // A credit for a charge no plan owns — a checkout, an offer taken after it —
+        // names the ORDER it reverses. The plan label below would otherwise print the
+        // charge's idempotency key on the customer's credit note ("זיכוי — תוכנית
+        // gateway:2:3581", credit note 72175).
+        $orderId = $this->orderIdOf($ledger);
+        if ($plan === null && $context->isCredit() && $orderId !== '') {
+            return (string) __('invoicing.line.order_'.$context->value, ['reference' => $orderId]);
+        }
+
         // The last resort is a translated, context-specific label. It falls back to
         // the plan's public id — a short human reference — and only reaches the
         // idempotency key when there is no plan at all, which every caller that
@@ -1017,7 +1039,14 @@ final class DocumentIssuer
                 // the order, not from a ledger row. The credit note for that sale
                 // still has to name the document it credits, so fall back to the
                 // document that belongs to the same ORDER.
-                ?? $this->documentIdForOrder($shopId, (string) ($ledger->shopify_order_id ?? ''));
+                //
+                // BOTH order columns: an after-purchase offer's charge keeps its
+                // order in parent_order_id, and on a shop that documents every
+                // order its money was declared on that ORDER's document. Reading
+                // shopify_order_id alone, the ₪9.99 offer on order 3581 found no
+                // sale and its credit note failed while the checkout's ₪30 went
+                // through against the same document.
+                ?? $this->documentIdForOrder($shopId, $this->orderIdOf($ledger));
         }
 
         if (! $decision->shouldLinkToPreviousDocument || $plan === null) {
@@ -1033,9 +1062,14 @@ final class DocumentIssuer
     }
 
     /**
-     * The issued document recorded against one STORE ORDER, or null. The
+     * The SALE document issued against one STORE ORDER, or null. The
      * platform-order path keys on the order rather than on a ledger row, so this
      * is the only way a credit note can name the sale it reverses.
+     *
+     * A sale, never a credit note: credit notes carry the order id too, so "the
+     * newest document on the order" is the FIRST refund's credit note by the time
+     * a second one is asked for — and a credit note crediting a credit note is
+     * paperwork no accountant can reconcile.
      */
     private function documentIdForOrder(int $shopId, string $orderId): ?string
     {
@@ -1043,23 +1077,30 @@ final class DocumentIssuer
             return null;
         }
 
-        return IssuedDocument::acrossAllTenants()
-            ->where('shop_id', $shopId)
-            ->where('external_order_id', $orderId)
-            ->where('status', IssuedDocument::STATUS_ISSUED)
-            ->latest('id')
-            ->first()?->provider_document_id;
+        return $this->saleDocumentForOrder($shopId, $orderId)?->provider_document_id;
     }
 
-    /** The issued document recorded for one specific money movement, or null. */
+    /**
+     * The SALE document issued for one specific money movement, or null. Credit
+     * notes are excluded for the same reason as above: they carry the ledger_id of
+     * the charge they reverse.
+     */
     private function documentIdForLedger(int $shopId, int $ledgerId): ?string
     {
         return IssuedDocument::acrossAllTenants()
             ->where('shop_id', $shopId)
             ->where('ledger_id', $ledgerId)
             ->where('status', IssuedDocument::STATUS_ISSUED)
+            ->whereNot('context', DocumentContext::REFUND->value)
+            ->whereNot('context', DocumentContext::CANCELLATION->value)
             ->latest('id')
             ->first()?->provider_document_id;
+    }
+
+    /** The store order a charge belongs to: its own, or the one an offer followed. */
+    private function orderIdOf(PaymentLedger $ledger): string
+    {
+        return trim((string) ($ledger->shopify_order_id ?: $ledger->parent_order_id ?: ''));
     }
 
     /**

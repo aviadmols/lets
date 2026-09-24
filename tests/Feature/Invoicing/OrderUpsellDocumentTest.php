@@ -139,6 +139,54 @@ final class OrderUpsellDocumentTest extends TestCase
         $this->assertCount(1, $this->issued);
     }
 
+    /**
+     * Order 3581: a ₪30 checkout and a ₪9.99 offer, declared on ONE document. Refunding
+     * the order credits each charge — and both credit notes must name THAT document,
+     * the offer's included (it keeps its order in parent_order_id), and neither may
+     * name the other credit note.
+     */
+    public function test_refunding_the_order_credits_the_offer_against_the_order_document(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-17 08:52:00'));
+        [$shop, $offer] = $this->shopWithOffer();
+        $this->shown($shop, $offer, Carbon::parse('2026-09-17 08:45:00'));
+        $upsell = $this->charge($shop, $offer, ['מרד הגנרלים' => 9.99]);
+        $checkout = Tenant::run($shop, fn (): PaymentLedger => Ledger::transition(Ledger::open(
+            shopId: (int) $shop->getKey(),
+            chargeContext: PaymentLedger::CONTEXT_GATEWAY,
+            idempotencyKey: 'gateway:'.$shop->getKey().':'.self::ORDER,
+            amount: 1.0,
+            currency: 'ILS',
+            attributes: ['shopify_order_id' => self::ORDER],
+        ), LedgerStatus::SUCCEEDED));
+
+        $this->runJob($this->orderJob($shop), $shop);
+        $this->assertCount(1, $this->issued, 'one document for the order and the offer');
+
+        $issuer = app(DocumentIssuer::class);
+        $issuer->issueForLedger((int) $shop->getKey(), (int) $checkout->getKey(), DocumentContext::REFUND, amountOverride: 1.0);
+        $issuer->issueForLedger((int) $shop->getKey(), (int) $upsell->getKey(), DocumentContext::REFUND, amountOverride: 9.99);
+
+        $this->assertCount(3, $this->issued, 'a credit note for each charge');
+        $this->assertSame('gi-1', $this->issued[1]->linkedDocumentId);
+        $this->assertSame('gi-1', $this->issued[2]->linkedDocumentId, 'the offer credits the ORDER document, never the first credit note');
+        $this->assertSame(
+            __('invoicing.line.order_refund', ['reference' => self::ORDER]),
+            $this->issued[1]->lines[0]->description,
+            'the order, never the charge key, on the credit note',
+        );
+        $this->assertSame(0, IssuedDocument::acrossAllTenants()->where('status', IssuedDocument::STATUS_FAILED)->count());
+    }
+
+    public function test_a_retried_credit_note_rebuilds_its_own_key(): void
+    {
+        $ledger = (new PaymentLedger)->forceFill(['id' => 742]);
+
+        $this->assertSame(2.5, DocumentIssuer::alreadyRefundedFromKey(DocumentIssuer::keyForRefund($ledger, 5.0, 2.5)));
+        $this->assertSame(0.0, DocumentIssuer::alreadyRefundedFromKey('doc:refund:742:9.99'), 'legacy key: a first refund');
+        $this->assertSame(0.0, DocumentIssuer::alreadyRefundedFromKey('doc:order:2:3581'));
+    }
+
     // === Fixtures ===
 
     /** @return array{0: Shop, 1: UpsellFlowOffer} */

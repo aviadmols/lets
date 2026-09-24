@@ -16,6 +16,10 @@ return [
         'refund' => 'Refund — plan :reference',
         'cancellation' => 'Cancellation — plan :reference',
         'platform_order' => 'Order :reference',
+        // A credit for a charge no plan owns (a checkout, an after-purchase offer)
+        // — the order is the reference.
+        'order_refund' => 'Credit for order :reference',
+        'order_cancellation' => 'Cancellation of order :reference',
         // Balances an item breakdown to the order total (shipping, fees, rounding).
         'adjustment' => 'Shipping, fees and adjustments',
     ],
