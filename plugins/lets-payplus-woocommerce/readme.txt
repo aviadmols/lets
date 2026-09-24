@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.52.0
+Stable tag: 0.54.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,18 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.54.0 =
+* The thank-you offer has a GRID layout for an offer with many products: every product on
+  screen at once in rows (no slider), the headline beside a large countdown, and the price
+  and button in a bar underneath. No box and no shadows — it sits on the store's own page
+  in the store's own font when the shop chooses so. Its words (the countdown label and
+  note, a facts line, the heading and hint over the products) are edited in LETS →
+  Settings → Upsell card design, with a live preview.
+
+= 0.53.0 =
+* The invoice can be made out to a name the shopper types at checkout, a terms tick
+  before paying, and PayPal is not offered on a subscription order.
 
 = 0.52.0 =
 * Every product an After Sell offer adds to an order carries a label in the admin order

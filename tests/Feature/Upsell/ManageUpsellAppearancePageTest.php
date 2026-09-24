@@ -114,7 +114,45 @@ final class ManageUpsellAppearancePageTest extends TestCase
 
         $this->assertArrayHasKey('accent', $draft);
         $this->assertArrayHasKey('elements', $draft);
+        $this->assertArrayHasKey('grid_columns', $draft);
+        $this->assertArrayHasKey('facts', $draft);
         $this->assertArrayNotHasKey('price', $draft);
         $this->assertArrayNotHasKey('price_display', $draft);
+    }
+
+    /**
+     * The grid layout: chosen, saved through the guards, and its words reach the live
+     * preview resolved — the merchant's text where typed, the default otherwise.
+     */
+    public function test_the_grid_layout_is_saved_and_its_words_reach_the_preview(): void
+    {
+        $page = Livewire::test(ManageUpsellAppearance::class)
+            ->set('data.layout', MerchantUpsellAppearance::LAYOUT_GRID)
+            ->set('data.grid_columns', 8)
+            ->set('data.display_font', MerchantUpsellAppearance::DISPLAY_SERIF)
+            ->set('data.timer_label', 'Closes in')
+            ->set('data.facts_text', 'Ships together | One charge')
+            ->set('data.picker_title', '   ');
+
+        $draft = $page->instance()->draftAppearance();
+        $this->assertSame('grid', $draft['layout']);
+        $this->assertSame(8, $draft['grid_columns']);
+        $this->assertSame('serif', $draft['display_font']);
+        $this->assertSame('Closes in', $draft['timer_label']);
+        $this->assertSame(['Ships together', 'One charge'], $draft['facts']);
+        $this->assertSame(__('upsell.grid.picker_title'), $draft['picker_title'], 'blank → the built-in words');
+
+        $page->call('save')->assertHasNoErrors();
+
+        $saved = MerchantUpsellAppearance::current()->fresh();
+        $this->assertSame('grid', $saved->layout());
+        $this->assertSame(8, $saved->gridColumns());
+        $this->assertSame('serif', $saved->displayFont());
+        $this->assertSame('Closes in', $saved->timerLabel());
+        $this->assertNull($saved->pickerTitle());
+
+        // A tampered column count never reaches the row as typed: clamped by the guard.
+        Livewire::test(ManageUpsellAppearance::class)->set('data.grid_columns', 99)->call('save');
+        $this->assertSame(8, MerchantUpsellAppearance::current()->fresh()->gridColumns());
     }
 }

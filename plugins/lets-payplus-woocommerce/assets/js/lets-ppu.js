@@ -25,6 +25,12 @@
  * onAccept(vm, selectedIds) receives the pick; the server checks it and charges the
  * bundle price. A tile's price is reference text, never the charge.
  *
+ * GRID (appearance.layout === 'grid'): the many-products module. The copy beside a
+ * large countdown, every tile on screen at once in rows (no slider), the price and
+ * the button in a bar underneath. Regions are fixed; the element list still decides
+ * what is ON. Its own words (timer_label, timer_note, facts, picker_title,
+ * picker_hint) arrive resolved in content, like eyebrow/trust do.
+ *
  * WINDOW: content.timer_seconds is what is LEFT of the offer's window. At zero the card
  * leaves (handlers.onExpire, when given, decides instead) — the server refuses a late
  * accept on the same clock.
@@ -33,7 +39,7 @@ window.LetsUpsell = (function () {
   'use strict';
 
   // === CONSTANTS ===
-  var VERSION = '1.0.0';
+  var VERSION = '1.1.0';
   var ELEMENT_KEYS = [
     'eyebrow', 'badge', 'timer', 'image', 'headline', 'product_name',
     'subcopy', 'price', 'save', 'trust', 'cta', 'decline', 'disclosure'
@@ -52,11 +58,24 @@ window.LetsUpsell = (function () {
   ];
   var APPEARANCE_KEYS = [
     'theme', 'accent', 'accent_text', 'button_style', 'radius_px',
-    'shadow', 'font', 'layout', 'image_ratio', 'decline_style', 'elements'
+    'shadow', 'font', 'layout', 'image_ratio', 'decline_style', 'elements',
+    'grid_columns', 'display_font'
   ];
+  // Resolved copy the live preview may replace without a reload (never money).
+  var COPY_KEYS = ['eyebrow', 'badge', 'trust', 'timer_label', 'timer_note', 'facts', 'picker_title', 'picker_hint'];
+  var GRID_MIN_COLS = 3;
+  var GRID_MAX_COLS = 8;
+  var GRID_DEFAULT_COLS = 6;
+  // The serif display face, loaded only when a shop chose it (one stylesheet, once).
+  var SERIF_FONT_HREF = 'https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@300;400;500&display=swap';
 
   var CHECK_SVG = '<svg class="lets-ppu__check" viewBox="0 0 52 52" fill="none" aria-hidden="true">'
     + '<path d="M14 27l8 8 16-18" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  // The grid tile's corner mark: a plus that becomes a check once the tile is picked (CSS swaps them).
+  var MARK_SVG = '<svg class="lets-ppu__mark-plus" viewBox="0 0 24 24" fill="none" aria-hidden="true">'
+    + '<path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>'
+    + '<svg class="lets-ppu__mark-check" viewBox="0 0 24 24" fill="none" aria-hidden="true">'
+    + '<path d="M5 12l5 5L20 7" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   var LOCK_SVG = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">'
     + '<rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" stroke-width="1.7"/>'
     + '<path d="M8 11V8a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>';
@@ -108,15 +127,30 @@ window.LetsUpsell = (function () {
     a = a || {};
     root.setAttribute('data-theme', a.theme === 'dark' ? 'dark' : 'light');
     root.setAttribute('data-button', a.button_style === 'outline' ? 'outline' : 'solid');
-    root.setAttribute('data-layout', a.layout === 'media_side' ? 'media_side' : 'stacked');
+    root.setAttribute('data-layout', ['media_side', 'grid'].indexOf(a.layout) >= 0 ? a.layout : 'stacked');
     root.setAttribute('data-ratio', a.image_ratio === 'square' ? 'square' : 'natural');
     root.setAttribute('data-decline', a.decline_style === 'button' ? 'button' : 'link');
     root.setAttribute('data-shadow', ['none', 'soft', 'elevated'].indexOf(a.shadow) >= 0 ? a.shadow : 'soft');
-    root.setAttribute('data-font', a.font === 'system' ? 'system' : 'heebo');
+    root.setAttribute('data-font', ['system', 'inherit'].indexOf(a.font) >= 0 ? a.font : 'heebo');
+    root.setAttribute('data-display', a.display_font === 'serif' ? 'serif' : 'same');
     if (nonEmpty(a.accent)) { root.style.setProperty('--lets-ppu-accent', a.accent); }
     if (nonEmpty(a.accent_text)) { root.style.setProperty('--lets-ppu-accent-text', a.accent_text); }
     var r = typeof a.radius_px === 'number' ? a.radius_px : parseInt(a.radius_px, 10);
     if (!isNaN(r)) { root.style.setProperty('--lets-ppu-btn-radius', r + 'px'); }
+    var cols = parseInt(a.grid_columns, 10);
+    if (isNaN(cols)) { cols = GRID_DEFAULT_COLS; }
+    root.style.setProperty('--lets-ppu-grid-cols', String(Math.max(GRID_MIN_COLS, Math.min(GRID_MAX_COLS, cols))));
+    if (a.display_font === 'serif') { ensureSerifFont(); }
+  }
+
+  /** Load the serif display face once, only for a shop that chose it. */
+  function ensureSerifFont() {
+    if (!document.head || document.head.querySelector('link[data-lets-ppu-font="serif"]')) { return; }
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = SERIF_FONT_HREF;
+    link.setAttribute('data-lets-ppu-font', 'serif');
+    document.head.appendChild(link);
   }
 
   // ------------------------------------------------------------- head cluster
@@ -137,20 +171,52 @@ window.LetsUpsell = (function () {
     var wrap = elt('div', 'lets-ppu__timer');
     var digits = elt('span', 'lets-ppu__timer-digits');
     wrap.appendChild(digits);
-    function fmt(s) {
-      var m = Math.floor(s / 60), r = s % 60;
-      return m + ':' + (r < 10 ? '0' + r : r);
-    }
+    registerClock(state, wrap, digits, null);
+    return wrap;
+  }
+
+  function fmtClock(s) {
+    var m = Math.floor(s / 60), r = s % 60;
+    return m + ':' + (r < 10 ? '0' + r : r);
+  }
+
+  /**
+   * One clock, any number of faces. A card may show its countdown twice (the grid's large
+   * one and the bar's compact one); every face registers here and startClock() drives them
+   * all from ONE interval, so two faces can never disagree by a second.
+   */
+  function registerClock(state, wrap, digits, fill) {
+    if (!state.clock) { state.clock = { wraps: [], digits: [], fills: [] }; }
+    if (wrap) { state.clock.wraps.push(wrap); }
+    if (digits) { state.clock.digits.push(digits); }
+    if (fill) { state.clock.fills.push(fill); }
+  }
+
+  function startClock(seconds, state) {
+    var clock = state.clock;
+    if (!clock || !clock.digits.length) { return; }
+    var total = Math.max(1, seconds);
     var left = seconds;
-    digits.textContent = fmt(left);
+    function paint() {
+      var text = fmtClock(left);
+      clock.digits.forEach(function (d) { d.textContent = text; });
+      // The draining bar: a custom property, not a width, per the tokens→properties seam.
+      var pct = Math.max(0, Math.min(100, Math.round(left / total * 100)));
+      clock.fills.forEach(function (f) { f.style.setProperty('--lets-ppu-clock-pct', pct + '%'); });
+      if (left <= 60) { clock.wraps.forEach(function (w) { w.classList.add('is-urgent'); }); }
+    }
+    paint();
     if (_timer) { clearInterval(_timer); }
     _timer = setInterval(function () {
       left -= 1;
-      if (left <= 60) { wrap.classList.add('is-urgent'); }
-      if (left <= 0) { clearInterval(_timer); _timer = null; wrap.style.display = 'none'; expire(state); return; }
-      digits.textContent = fmt(left);
+      if (left <= 0) {
+        clearInterval(_timer); _timer = null;
+        clock.wraps.forEach(function (w) { w.hidden = true; });
+        expire(state);
+        return;
+      }
+      paint();
     }, 1000);
-    return wrap;
   }
 
   // ------------------------------------------------------------- body elements
@@ -182,12 +248,7 @@ window.LetsUpsell = (function () {
         return nonEmpty(c.subcopy) ? elt('p', 'lets-ppu__subcopy', c.subcopy) : null;
 
       case 'price':
-        var price = elt('div', 'lets-ppu__price');
-        price.appendChild(elt('span', 'lets-ppu__price-now', c.price_display));
-        if (nonEmpty(c.was_display)) {
-          price.appendChild(elt('span', 'lets-ppu__price-was', c.was_display));
-        }
-        return price;
+        return buildPrice(c);
 
       case 'save':
         return nonEmpty(c.save_label) ? elt('div', 'lets-ppu__save', c.save_label) : null;
@@ -221,6 +282,16 @@ window.LetsUpsell = (function () {
     return null;
   }
 
+  /** The price now (+ what it was). For a bundle this is the BUNDLE price — the one charge. */
+  function buildPrice(c) {
+    var price = elt('div', 'lets-ppu__price');
+    price.appendChild(elt('span', 'lets-ppu__price-now', c.price_display));
+    if (nonEmpty(c.was_display)) {
+      price.appendChild(elt('span', 'lets-ppu__price-was', c.was_display));
+    }
+    return price;
+  }
+
   // ------------------------------------------------------------- bundle picker
   function effectiveColumns(columns, width) {
     var cols = Math.max(1, Math.min(4, parseInt(columns, 10) || 1));
@@ -250,7 +321,11 @@ window.LetsUpsell = (function () {
     return tile;
   }
 
-  function togglePick(state, id, tile, pick) {
+  /**
+   * @param label the node whose text says picked/not — the pick button itself on a slider
+   *              tile, a visually-hidden span on a grid tile (whose whole face is the button).
+   */
+  function togglePick(state, id, tile, pick, label) {
     var b = state.bundle;
     if (state.busy || !b) { return; }
     var at = state.selected.indexOf(id);
@@ -264,22 +339,28 @@ window.LetsUpsell = (function () {
     var on = state.selected.indexOf(id) >= 0;
     tile.classList.toggle('is-picked', on);
     pick.setAttribute('aria-pressed', on ? 'true' : 'false');
-    pick.textContent = on ? b.selected_label : b.select_label;
+    (label || pick).textContent = on ? b.selected_label : b.select_label;
     syncBundle(state);
   }
 
-  /** The progress line, the "full" state, and the accept button that opens only at full. */
+  /** The progress line(s), the "full" state, and the accept button that opens only at full. */
   function syncBundle(state) {
     var b = state.bundle;
     if (!b) { return; }
     var full = state.selected.length === b.quantity;
-    if (state.progress) {
-      state.progress.textContent = String(b.progress || '')
-        .replace(':selected', String(state.selected.length))
-        .replace(':count', String(b.quantity));
-    }
+    var text = String(b.progress || '')
+      .replace(':selected', String(state.selected.length))
+      .replace(':count', String(b.quantity));
+    (state.progressNodes || []).forEach(function (n) { n.textContent = text; });
     if (state.root) { state.root.classList.toggle('is-full', full); }
     if (state.accept && !state.busy) { state.accept.disabled = !full; }
+  }
+
+  function progressNode(state) {
+    var node = elt('div', 'lets-ppu__bundle-progress');
+    if (!state.progressNodes) { state.progressNodes = []; }
+    state.progressNodes.push(node);
+    return node;
   }
 
   /**
@@ -309,10 +390,9 @@ window.LetsUpsell = (function () {
     pager.appendChild(counter);
     pager.appendChild(next);
 
-    state.progress = elt('div', 'lets-ppu__bundle-progress');
     wrap.appendChild(track);
     wrap.appendChild(pager);
-    wrap.appendChild(state.progress);
+    wrap.appendChild(progressNode(state));
 
     var tiles = (b.products || []).map(function (p) { return buildTile(p, b, state); });
     var perSlide = 0;
@@ -360,6 +440,166 @@ window.LetsUpsell = (function () {
     return wrap;
   }
 
+  // ------------------------------------------------------------- grid layout
+  /**
+   * A grid tile: the WHOLE face is the button (a big target, no pill to hunt for), a
+   * plus-mark in the image corner that becomes a check, and a visually-hidden label
+   * that says picked/not for a screen reader. No shadow anywhere — the tile has to sit
+   * on any store's page.
+   */
+  function buildGridTile(p, b, state) {
+    var tile = elt('div', 'lets-ppu__tile lets-ppu__tile--grid');
+    var hit = elt('button', 'lets-ppu__tile-hit');
+    hit.type = 'button';
+    hit.setAttribute('aria-pressed', 'false');
+
+    var media = elt('div', 'lets-ppu__tile-media');
+    if (nonEmpty(p.image)) {
+      var img = elt('img', 'lets-ppu__tile-img');
+      img.src = p.image;
+      img.alt = '';
+      img.loading = 'lazy';
+      media.appendChild(img);
+    } else {
+      media.appendChild(elt('div', 'lets-ppu__tile-blank', p.title));
+    }
+    var mark = elt('span', 'lets-ppu__tile-mark');
+    mark.innerHTML = MARK_SVG;
+    media.appendChild(mark);
+    hit.appendChild(media);
+
+    var info = elt('div', 'lets-ppu__tile-info');
+    info.appendChild(elt('div', 'lets-ppu__tile-name', p.title));
+    if (nonEmpty(p.price_display)) { info.appendChild(elt('div', 'lets-ppu__tile-price', p.price_display)); }
+    hit.appendChild(info);
+
+    var label = elt('span', 'lets-ppu__sr', b.select_label);
+    hit.appendChild(label);
+    hit.addEventListener('click', function () { togglePick(state, p.id, tile, hit, label); });
+
+    tile.appendChild(hit);
+    return tile;
+  }
+
+  /** The picker's heading row and every tile at once — rows, not slides. */
+  function buildGrid(c, state) {
+    var b = c.bundle;
+    state.bundle = b;
+    state.selected = [];
+
+    var wrap = elt('section', 'lets-ppu__picker');
+    var head = elt('div', 'lets-ppu__picker-head');
+    var titles = elt('div', 'lets-ppu__picker-titles');
+    if (nonEmpty(c.picker_title)) { titles.appendChild(elt('h4', 'lets-ppu__picker-title', c.picker_title)); }
+    if (nonEmpty(c.picker_hint)) { titles.appendChild(elt('p', 'lets-ppu__picker-hint', c.picker_hint)); }
+    head.appendChild(titles);
+    head.appendChild(progressNode(state));
+    wrap.appendChild(head);
+
+    var grid = elt('div', 'lets-ppu__grid');
+    (b.products || []).forEach(function (p) { grid.appendChild(buildGridTile(p, b, state)); });
+    wrap.appendChild(grid);
+    return wrap;
+  }
+
+  /** The large countdown: label, digits, a draining line, and what happens at zero. */
+  function buildClock(c, state) {
+    var wrap = elt('div', 'lets-ppu__clock');
+    if (nonEmpty(c.timer_label)) { wrap.appendChild(elt('div', 'lets-ppu__clock-label', c.timer_label)); }
+    var digits = elt('div', 'lets-ppu__clock-digits');
+    wrap.appendChild(digits);
+    var bar = elt('div', 'lets-ppu__clock-bar');
+    var fill = elt('i', 'lets-ppu__clock-fill');
+    bar.appendChild(fill);
+    wrap.appendChild(bar);
+    if (nonEmpty(c.timer_note)) { wrap.appendChild(elt('div', 'lets-ppu__clock-note', c.timer_note)); }
+    registerClock(state, wrap, digits, fill);
+    return wrap;
+  }
+
+  /** The bar's compact countdown, a second face of the same clock. */
+  function buildBarClock(state) {
+    var wrap = elt('div', 'lets-ppu__bar-clock');
+    var digits = elt('span', 'lets-ppu__bar-clock-digits');
+    wrap.appendChild(digits);
+    registerClock(state, wrap, digits, null);
+    return wrap;
+  }
+
+  /** Short reassurances with a dot between them — a line, not a row of pills. */
+  function buildFacts(list) {
+    var items = (Array.isArray(list) ? list : []).filter(nonEmpty);
+    if (!items.length) { return null; }
+    var wrap = elt('div', 'lets-ppu__facts');
+    items.forEach(function (text, i) {
+      if (i > 0) { wrap.appendChild(elt('span', 'lets-ppu__facts-dot')); }
+      wrap.appendChild(elt('span', 'lets-ppu__fact', text));
+    });
+    return wrap;
+  }
+
+  /**
+   * The grid module. Regions are FIXED — hero (copy | clock), picker, bar, disclosure —
+   * and the merchant's element list decides what is on and, within the copy, in what
+   * order. The locked price / button / disclosure always draw, in the bar and under it.
+   */
+  function buildGridLayout(root, c, elements, state) {
+    var on = {};
+    elements.forEach(function (e) { on[e.key] = e.enabled; });
+
+    var hero = elt('div', 'lets-ppu__hero');
+    var copy = elt('div', 'lets-ppu__copy');
+    // The single product's image belongs with its copy; a bundle's products are the grid.
+    var withImage = !c.bundle && nonEmpty(c.product_image);
+    var factsPlaced = false;
+    elements.forEach(function (e) {
+      if (!e.enabled) { return; }
+      var node = null;
+      if (e.key === 'eyebrow' || e.key === 'badge') { node = buildHeadChild(e.key, c, state); }
+      else if (e.key === 'image' && withImage) { node = buildElement('image', c, state); }
+      else if (e.key === 'headline' || e.key === 'product_name' || e.key === 'subcopy' || e.key === 'trust') { node = buildElement(e.key, c, state); }
+      if (!node) { return; }
+      copy.appendChild(node);
+      if (e.key === 'subcopy') {
+        var facts = buildFacts(c.facts);
+        if (facts) { copy.appendChild(facts); factsPlaced = true; }
+      }
+    });
+    if (!factsPlaced) {
+      var late = buildFacts(c.facts);
+      if (late) { copy.appendChild(late); }
+    }
+    hero.appendChild(copy);
+
+    // An offer with a window always shows its clock (the same rule as the stacked card).
+    var hasClock = Number(c.timer_seconds) > 0;
+    if (hasClock) { hero.appendChild(buildClock(c, state)); }
+    root.appendChild(hero);
+
+    if (c.bundle) { root.appendChild(buildGrid(c, state)); }
+
+    var bar = elt('div', 'lets-ppu__bar');
+    var priceBox = elt('div', 'lets-ppu__bar-price');
+    priceBox.appendChild(buildPrice(c));
+    if (on.save && nonEmpty(c.save_label)) { priceBox.appendChild(elt('span', 'lets-ppu__save', c.save_label)); }
+    if (c.bundle && nonEmpty(c.bundle.title)) { priceBox.appendChild(elt('span', 'lets-ppu__bar-bundle', c.bundle.title)); }
+    bar.appendChild(priceBox);
+    if (c.bundle) { bar.appendChild(progressNode(state)); }
+    if (hasClock) { bar.appendChild(buildBarClock(state)); }
+    var actions = elt('div', 'lets-ppu__bar-actions');
+    if (on.decline) { actions.appendChild(buildElement('decline', c, state)); }
+    var cta = buildElement('cta', c, state);
+    // The error line belongs UNDER the bar, full width — not squeezed in beside the button.
+    var error = cta.querySelector('.lets-ppu__error');
+    actions.appendChild(cta);
+    bar.appendChild(actions);
+    root.appendChild(bar);
+    if (error) { root.appendChild(error); }
+
+    var disclosure = buildElement('disclosure', c, state);
+    if (disclosure) { root.appendChild(disclosure); }
+  }
+
   // ------------------------------------------------------------- assembly
   function build(root, vm, handlers, state) {
     var c = vm.content || {};
@@ -369,6 +609,11 @@ window.LetsUpsell = (function () {
     // list predates the timer and has no entry for it at all.
     if (Number(c.timer_seconds) > 0 && !elements.some(function (e) { return e.key === 'timer'; })) {
       elements.unshift({ key: 'timer', enabled: true });
+    }
+
+    if (a.layout === 'grid') {
+      buildGridLayout(root, c, elements, state);
+      return;
     }
 
     var nodes = [];        // ordered { key, node }
@@ -510,7 +755,7 @@ window.LetsUpsell = (function () {
     vm.content = vm.content || {};
     vm.appearance = vm.appearance || {};
 
-    var state = { busy: false, selected: [] };
+    var state = { busy: false, selected: [], progressNodes: [] };
     var root = elt('div', 'lets-ppu');
     if (opts.animate === false) { root.style.animation = 'none'; }
     setTokens(root, vm.appearance);
@@ -519,6 +764,8 @@ window.LetsUpsell = (function () {
     }
     build(root, vm, handlers, state);
     wire(root, vm, handlers, state);
+    // Every face of the countdown is registered by now; one interval drives them all.
+    if (Number(vm.content.timer_seconds) > 0) { startClock(Number(vm.content.timer_seconds), state); }
 
     mount.innerHTML = '';
     mount.appendChild(root);
@@ -544,14 +791,14 @@ window.LetsUpsell = (function () {
     mount.hidden = false;
   }
 
-  /** Live-preview: re-apply a draft appearance (+ optional resolved eyebrow/badge/trust). */
+  /** Live-preview: re-apply a draft appearance (+ the resolved copy it may carry, never money). */
   function applyAppearance(draft) {
     if (!_last || !draft) { return; }
     var vm = _last.vm;
     APPEARANCE_KEYS.forEach(function (k) {
       if (draft[k] !== undefined) { vm.appearance[k] = draft[k]; }
     });
-    ['eyebrow', 'badge', 'trust'].forEach(function (k) {
+    COPY_KEYS.forEach(function (k) {
       if (draft[k] !== undefined) { vm.content[k] = draft[k]; }
     });
     renderCard(_last.mount, vm, _last.handlers, { animate: false });

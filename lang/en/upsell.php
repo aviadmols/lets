@@ -105,11 +105,17 @@ return [
             'heading' => 'Layout',
             'intro' => 'How the card is arranged.',
             'arrangement' => 'Arrangement',
+            'arrangement_help' => 'Grid is the module for an offer with many products: every product is on screen at once (no slider), the headline sits beside a large countdown, and the price and button are in a bar underneath.',
             'image_ratio' => 'Image shape',
             'decline' => 'Decline treatment',
+            'grid_columns' => 'Products per row',
+            'grid_columns_help' => 'On a wide screen. The grid narrows by itself on a phone.',
+            'display_font' => 'Large type',
+            'display_font_help' => 'The headline, the countdown digits and the price.',
             // Arrangement values.
             'stacked' => 'Stacked',
             'media_side' => 'Image beside',
+            'grid' => 'Grid',
         ],
 
         'elements' => [
@@ -130,6 +136,14 @@ return [
             'language_help' => 'The card\'s own words: the bundle picker, "No thanks", the charge disclosure and the success and error messages. Your headline and button text stay as you wrote them.',
             'language_he' => 'Hebrew',
             'language_en' => 'English',
+            // The grid layout's own words (shown only when Grid is the arrangement).
+            'grid_heading' => 'Grid layout text',
+            'timer_label' => 'Countdown label',
+            'timer_note' => 'Under the countdown',
+            'facts' => 'Facts line',
+            'facts_help' => 'Short reassurances under the description. Separate items with | and the card draws a dot between them.',
+            'picker_title' => 'Heading over the products',
+            'picker_hint' => 'Instruction beside that heading',
         ],
 
         // Element labels (each row in the Elements list).
@@ -154,9 +168,19 @@ return [
         'button' => ['solid' => 'Solid', 'outline' => 'Outline'],
         'radius' => ['sharp' => 'Sharp', 'soft' => 'Soft', 'pill' => 'Pill'],
         'shadow' => ['none' => 'None', 'soft' => 'Soft', 'elevated' => 'Elevated'],
-        'font' => ['heebo' => 'Heebo', 'system' => 'System'],
+        'font' => ['heebo' => 'Heebo', 'system' => 'System', 'inherit' => 'The store\'s font'],
+        'display' => ['same' => 'Same as the text', 'serif' => 'Serif'],
         'ratio' => ['natural' => 'Natural', 'square' => 'Square'],
         'decline' => ['link' => 'Text link', 'button' => 'Button'],
+    ],
+
+    // The grid layout's built-in words — each replaceable on Settings → Upsell card design.
+    'grid' => [
+        'timer_label' => 'The offer closes in',
+        'timer_note' => 'minutes. After that it leaves the page.',
+        'facts' => 'Ships with your order | Charged to your saved card | One-time price',
+        'picker_title' => 'Choose your products',
+        'picker_hint' => 'Tap a product to choose it.',
     ],
 
     // Funnel event-type labels (Activity tab badges).
@@ -346,7 +370,7 @@ return [
             'bundle_quantity' => 'How many the customer picks',
             'bundle_price' => 'Price for the whole bundle',
             'bundle_columns' => 'Products per slide',
-            'bundle_columns_hint' => 'Products that do not fit on one slide appear in a slider.',
+            'bundle_columns_hint' => 'Products that do not fit on one slide appear in a slider. In the Grid layout (Settings → Upsell card design) every product is shown at once and this is ignored.',
             'bundle_incomplete' => 'Saved, but the bundle is not ready yet. Fill in "How many the customer picks" (no more than the products listed) and "Price for the whole bundle".',
             'partial_paid_info' => 'Partially paid orders are automatically removed. You can change this from the',
             'partial_paid_link' => 'store\'s settings',

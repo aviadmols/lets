@@ -110,8 +110,28 @@ final class UpsellCardPresenter
                 'expired_text' => __('upsell.error_expired'),
                 'success_title' => __('upsell.success_title'),
                 'success_sub' => __('upsell.no_card_reentry'),
-            ],
+            ] + $this->gridCopy($appearance),
             'appearance' => $this->appearance($appearance),
+        ];
+    }
+
+    /**
+     * The words that exist only in the GRID layout — the label over the large countdown,
+     * the note under it, the facts line, the heading and hint over the tiles. Each is the
+     * merchant's own text or the card's localized default, resolved HERE so the storefront
+     * and the preview print the same sentence. Always present in the view-model: the
+     * renderer decides whether the layout draws them.
+     *
+     * @return array<string, mixed>
+     */
+    public function gridCopy(MerchantUpsellAppearance $appearance): array
+    {
+        return [
+            'timer_label' => $appearance->timerLabel() ?? __('upsell.grid.timer_label'),
+            'timer_note' => $appearance->timerNote() ?? __('upsell.grid.timer_note'),
+            'facts' => MerchantUpsellAppearance::factsList($appearance->factsText() ?? __('upsell.grid.facts')),
+            'picker_title' => $appearance->pickerTitle() ?? __('upsell.grid.picker_title'),
+            'picker_hint' => $appearance->pickerHint() ?? __('upsell.grid.picker_hint'),
         ];
     }
 
@@ -167,7 +187,7 @@ final class UpsellCardPresenter
                 'error_text' => __('upsell.error_generic'),
                 'success_title' => __('upsell.success_title'),
                 'success_sub' => __('upsell.no_card_reentry'),
-            ],
+            ] + $this->gridCopy($appearance),
             'appearance' => $this->appearance($appearance),
         ];
     }
@@ -191,6 +211,8 @@ final class UpsellCardPresenter
             'layout' => $appearance->layout(),
             'image_ratio' => $appearance->imageRatio(),
             'decline_style' => $appearance->declineStyle(),
+            'grid_columns' => $appearance->gridColumns(),
+            'display_font' => $appearance->displayFont(),
             'elements' => $appearance->elements(),
         ];
     }

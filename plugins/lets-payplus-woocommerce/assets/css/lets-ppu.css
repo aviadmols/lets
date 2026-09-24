@@ -14,12 +14,17 @@
  *   --lets-ppu-accent        accent colour (solid CTA fill / outline stroke)
  *   --lets-ppu-accent-text   text ON the accent (solid CTA)
  *   --lets-ppu-btn-radius    CTA border-radius (px)
+ *   --lets-ppu-grid-cols     grid layout: tiles per row on a wide card (3..8)
+ *   --lets-ppu-clock-pct     grid layout: how much of the window is left (the draining line)
  * ENUM STATE via data-attributes on the root:
- *   data-theme=light|dark  data-button=solid|outline  data-layout=stacked|media_side
+ *   data-theme=light|dark  data-button=solid|outline  data-layout=stacked|media_side|grid
  *   data-ratio=natural|square  data-decline=link|button  data-shadow=none|soft|elevated
+ *   data-font=heebo|system|inherit  data-display=same|serif
  * STATE via a root class: .is-loading .is-accepting .is-done .is-error
  * BUNDLE via data-bundle-cols=1..4 on the root (card width), data-cols=1..4 on
  * the slide track (products per slide), .is-picked on a tile, .is-full on the root.
+ * GRID LAYOUT (the many-products module, last section): no card chrome, no
+ * shadows, hairlines; sized by @container so it fits any store's page.
  * ===================================================================== */
 
 .lets-ppu,
@@ -64,6 +69,15 @@
 /* Host the system font instead of the webfont when the shop chose it. */
 .lets-ppu[data-font="system"] {
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+}
+/* Or the STORE'S own font: the card reads as part of the theme, whatever it set. */
+.lets-ppu[data-font="inherit"] {
+  font-family: inherit;
+}
+
+/* A hidden face stays hidden whatever display its class asked for (the clock at zero). */
+.lets-ppu [hidden] {
+  display: none;
 }
 
 /* --- theme: dark --- */
@@ -611,4 +625,462 @@
 @media (prefers-reduced-motion: no-preference) {
   .lets-ppu__slides { scroll-behavior: smooth; }
   .lets-ppu__tile:hover .lets-ppu__tile-img { transform: translateY(-4px); }
+}
+
+/* ============================ GRID LAYOUT ============================
+   data-layout="grid" — the many-products module. NOT a card: no box, no
+   border, no shadow anywhere (the tiles included), hairlines between the
+   regions, and the page's own background showing through, so it sits on
+   any store's thank-you page. Regions, top to bottom:
+     .lets-ppu__hero    the copy beside the large countdown (.lets-ppu__clock)
+     .lets-ppu__picker  heading row + every tile at once (.lets-ppu__grid)
+     .lets-ppu__bar     price · progress · compact clock · decline · accept
+     .lets-ppu__disclosure
+   Widths are judged by @container against the module itself — the same
+   file draws it in a 1180px content column and a 360px phone.
+   This section is LAST on purpose: its rules outrank the slider tile's
+   shadow and hover rules above.
+   ======================================================================= */
+.lets-ppu[data-layout="grid"] {
+  --lets-ppu-card-shadow: none;
+  container-type: inline-size;
+  max-inline-size: 1180px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+/* DARK is the one theme that cannot be transparent: light ink on a page we do not
+   own is invisible on a light page. It paints its own band — full bleed of the
+   column, no border, no shadow — so the module stays legible whatever the page is. */
+.lets-ppu[data-layout="grid"][data-theme="dark"] {
+  padding: 32px clamp(16px, 4cqi, 40px);
+  background: var(--lets-ppu-paper);
+  border-radius: 4px;
+}
+.lets-ppu[data-layout="grid"] .lets-ppu__head {
+  display: contents;
+}
+
+/* --- the serif display face (headline, countdown, price, heading) --- */
+.lets-ppu[data-layout="grid"][data-display="serif"] .lets-ppu__headline,
+.lets-ppu[data-layout="grid"][data-display="serif"] .lets-ppu__clock-digits,
+.lets-ppu[data-layout="grid"][data-display="serif"] .lets-ppu__price-now,
+.lets-ppu[data-layout="grid"][data-display="serif"] .lets-ppu__picker-title,
+.lets-ppu[data-layout="grid"][data-display="serif"] .lets-ppu__done-title {
+  font-family: "Frank Ruhl Libre", Georgia, "Times New Roman", serif;
+}
+
+/* --- hero: copy | clock --- */
+.lets-ppu__hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 40px 64px;
+  align-items: start;
+  padding-block: 8px 40px;
+  border-block-end: 1px solid var(--lets-ppu-rule);
+}
+.lets-ppu__copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  min-inline-size: 0;
+}
+.lets-ppu__copy > * {
+  margin: 0;
+}
+.lets-ppu[data-layout="grid"] .lets-ppu__eyebrow {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: none;
+  color: var(--lets-ppu-accent);
+}
+.lets-ppu[data-layout="grid"][data-theme="dark"] .lets-ppu__eyebrow { color: var(--lets-ppu-ink); }
+.lets-ppu[data-layout="grid"] .lets-ppu__headline {
+  max-inline-size: 24ch;
+  font-size: 42px;
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+.lets-ppu[data-layout="grid"] .lets-ppu__product {
+  font-size: 17px;
+  color: var(--lets-ppu-ink);
+}
+.lets-ppu[data-layout="grid"] .lets-ppu__subcopy {
+  max-inline-size: 62ch;
+  font-size: 17px;
+  line-height: 1.65;
+  color: var(--lets-ppu-ink);
+  opacity: 0.82;
+}
+.lets-ppu[data-layout="grid"] .lets-ppu__trust {
+  margin: 0;
+}
+/* The single product's image, with its copy — no shadow, no lift. */
+.lets-ppu[data-layout="grid"] .lets-ppu__media {
+  inline-size: 100%;
+  max-inline-size: 320px;
+  margin: 0;
+  box-shadow: none;
+  transition: none;
+}
+.lets-ppu[data-layout="grid"] .lets-ppu__media:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.lets-ppu__facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-block-start: 4px;
+  font-size: 14px;
+  color: var(--lets-ppu-muted);
+}
+.lets-ppu__facts-dot {
+  inline-size: 3px;
+  block-size: 3px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.6;
+}
+
+/* --- the large countdown: typography, not a box --- */
+.lets-ppu__clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-inline-size: 260px;
+  padding-block-start: 4px;
+}
+.lets-ppu__clock-label {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--lets-ppu-muted);
+}
+.lets-ppu__clock-digits {
+  font-size: 112px;
+  font-weight: 300;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--lets-ppu-ink);
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+.lets-ppu__clock-bar {
+  inline-size: 100%;
+  block-size: 2px;
+  margin-block-start: 6px;
+  background: var(--lets-ppu-rule);
+}
+.lets-ppu__clock-fill {
+  display: block;
+  block-size: 2px;
+  inline-size: var(--lets-ppu-clock-pct, 100%);
+  background: var(--lets-ppu-accent);
+  transition: inline-size 1s linear;
+}
+.lets-ppu[data-layout="grid"][data-theme="dark"] .lets-ppu__clock-fill { background: var(--lets-ppu-ink); }
+.lets-ppu__clock-note {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--lets-ppu-muted);
+}
+.lets-ppu__clock.is-urgent .lets-ppu__clock-digits { color: var(--lets-ppu-warn); }
+.lets-ppu__clock.is-urgent .lets-ppu__clock-fill { background: var(--lets-ppu-warn); }
+
+/* --- picker: heading row + the grid --- */
+.lets-ppu__picker {
+  padding-block-start: 36px;
+}
+.lets-ppu__picker-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-block-end: 24px;
+}
+.lets-ppu__picker-titles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+}
+.lets-ppu__picker-title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 400;
+  color: var(--lets-ppu-ink);
+}
+.lets-ppu__picker-hint {
+  margin: 0;
+  font-size: 15px;
+  color: var(--lets-ppu-muted);
+}
+.lets-ppu[data-layout="grid"] .lets-ppu__bundle-progress {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--lets-ppu-accent);
+  text-align: start;
+}
+.lets-ppu[data-layout="grid"][data-theme="dark"] .lets-ppu__bundle-progress,
+.lets-ppu[data-layout="grid"].is-full .lets-ppu__bundle-progress { color: var(--lets-ppu-ink); }
+
+.lets-ppu__grid {
+  display: grid;
+  grid-template-columns: repeat(var(--lets-ppu-grid-cols, 6), minmax(0, 1fr));
+  gap: 32px 20px;
+}
+
+/* --- a grid tile: the whole face is the button; no box, no shadow --- */
+.lets-ppu__tile--grid {
+  display: block;
+  gap: 0;
+}
+.lets-ppu__tile-hit {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  inline-size: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--lets-ppu-ink);
+  font-family: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.lets-ppu__tile-media {
+  position: relative;
+  inline-size: 100%;
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--lets-ppu-skeleton);
+  transition: outline-color 0.3s ease;
+}
+.lets-ppu[data-ratio="square"] .lets-ppu__tile-media { aspect-ratio: 1 / 1; }
+.lets-ppu__tile--grid .lets-ppu__tile-img {
+  inline-size: 100%;
+  block-size: 100%;
+  aspect-ratio: auto;
+  object-fit: cover;
+  border-radius: 0;
+  box-shadow: none;
+  transition: none;
+}
+.lets-ppu__tile--grid.is-picked .lets-ppu__tile-img,
+.lets-ppu__tile--grid:hover .lets-ppu__tile-img {
+  box-shadow: none;
+  transform: none;
+}
+.lets-ppu__tile-blank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  block-size: 100%;
+  padding: 12px;
+  font-size: 13px;
+  line-height: 1.3;
+  text-align: center;
+  color: var(--lets-ppu-muted);
+}
+.lets-ppu__tile-mark {
+  position: absolute;
+  inset-block-end: 10px;
+  inset-inline-end: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 28px;
+  block-size: 28px;
+  border: 1.5px solid var(--lets-ppu-ink);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--lets-ppu-paper) 88%, transparent);
+  color: var(--lets-ppu-ink);
+  transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+.lets-ppu__tile-mark svg { inline-size: 14px; block-size: 14px; }
+.lets-ppu__mark-check { display: none; }
+.lets-ppu__tile.is-picked .lets-ppu__mark-plus { display: none; }
+.lets-ppu__tile.is-picked .lets-ppu__mark-check { display: block; }
+.lets-ppu__tile.is-picked .lets-ppu__tile-mark {
+  border-color: var(--lets-ppu-accent);
+  background: var(--lets-ppu-accent);
+  color: var(--lets-ppu-accent-text);
+}
+.lets-ppu__tile.is-picked .lets-ppu__tile-media {
+  outline: 3px solid var(--lets-ppu-accent);
+  outline-offset: -3px;
+}
+.lets-ppu__tile-hit:focus-visible { outline: none; }
+.lets-ppu__tile-hit:focus-visible .lets-ppu__tile-media {
+  outline: 2px solid var(--lets-ppu-accent);
+  outline-offset: 3px;
+}
+.lets-ppu__tile--grid .lets-ppu__tile-info { gap: 3px; padding-inline: 2px; }
+.lets-ppu__tile--grid .lets-ppu__tile-name {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.lets-ppu__tile--grid .lets-ppu__tile-price {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--lets-ppu-muted);
+}
+/* Full: the tiles NOT picked step back — un-pick one to swap. */
+.lets-ppu.is-full .lets-ppu__tile--grid:not(.is-picked) .lets-ppu__tile-hit { opacity: 0.55; }
+/* Screen-reader only: the picked/not label behind the whole-face button. */
+.lets-ppu__sr {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* --- the bar: price · progress · clock · decline · accept --- */
+.lets-ppu__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px 28px;
+  margin-block-start: 44px;
+  padding-block-start: 22px;
+  border-block-start: 1px solid var(--lets-ppu-ink);
+}
+.lets-ppu__bar-price {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+}
+.lets-ppu[data-layout="grid"] .lets-ppu__price {
+  margin: 0;
+  gap: 10px;
+}
+.lets-ppu[data-layout="grid"] .lets-ppu__price-now {
+  font-size: 40px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.lets-ppu[data-layout="grid"] .lets-ppu__price-was { font-size: 15px; font-weight: 400; }
+.lets-ppu[data-layout="grid"] .lets-ppu__save {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--lets-ppu-muted);
+  animation: none;
+}
+.lets-ppu__bar-bundle {
+  flex-basis: 100%;
+  font-size: 14px;
+  color: var(--lets-ppu-muted);
+}
+.lets-ppu__bar-clock {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 15px;
+  color: var(--lets-ppu-muted);
+  font-variant-numeric: tabular-nums;
+}
+.lets-ppu__bar-clock-digits {
+  font-weight: 700;
+  color: var(--lets-ppu-ink);
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+.lets-ppu__bar-clock.is-urgent .lets-ppu__bar-clock-digits { color: var(--lets-ppu-warn); }
+.lets-ppu__bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-inline-start: auto;
+}
+.lets-ppu[data-layout="grid"] .lets-ppu__actions { margin: 0; }
+.lets-ppu[data-layout="grid"] .lets-ppu__accept {
+  inline-size: auto;
+  padding: 15px 32px;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+.lets-ppu[data-layout="grid"] .lets-ppu__accept:hover:not(:disabled) {
+  transform: none;
+  box-shadow: none;
+}
+.lets-ppu[data-layout="grid"] .lets-ppu__decline {
+  inline-size: auto;
+  margin: 0;
+  padding: 10px 4px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.lets-ppu[data-layout="grid"][data-decline="button"] .lets-ppu__decline {
+  padding: 13px 22px;
+  text-decoration: none;
+}
+.lets-ppu[data-layout="grid"] .lets-ppu__error { text-align: start; }
+.lets-ppu[data-layout="grid"] .lets-ppu__disclosure {
+  margin-block-start: 18px;
+  font-size: 13px;
+}
+
+/* --- narrower than a content column: stack, and fewer tiles per row --- */
+@container (max-width: 760px) {
+  .lets-ppu__hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+    padding-block-end: 28px;
+  }
+  .lets-ppu[data-layout="grid"] .lets-ppu__headline { font-size: 32px; }
+  .lets-ppu[data-layout="grid"] .lets-ppu__subcopy { font-size: 15px; }
+  .lets-ppu__clock {
+    inline-size: 100%;
+    min-inline-size: 0;
+    padding-block-start: 20px;
+    border-block-start: 1px solid var(--lets-ppu-rule);
+  }
+  .lets-ppu__clock-digits { font-size: 72px; }
+  .lets-ppu__picker { padding-block-start: 28px; }
+  .lets-ppu__picker-title { font-size: 24px; }
+  .lets-ppu__grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px 12px; }
+  .lets-ppu__tile--grid .lets-ppu__tile-name { font-size: 13px; }
+  .lets-ppu__tile--grid .lets-ppu__tile-price { font-size: 12px; }
+  .lets-ppu__tile-mark { inline-size: 26px; block-size: 26px; inset-block-end: 8px; inset-inline-end: 8px; }
+  .lets-ppu__bar { margin-block-start: 32px; gap: 14px 20px; }
+  .lets-ppu[data-layout="grid"] .lets-ppu__price-now { font-size: 34px; }
+  .lets-ppu__bar-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    inline-size: 100%;
+    margin-inline-start: 0;
+    gap: 4px;
+  }
+  .lets-ppu[data-layout="grid"] .lets-ppu__actions { inline-size: 100%; }
+  .lets-ppu[data-layout="grid"] .lets-ppu__accept { inline-size: 100%; }
+  .lets-ppu[data-layout="grid"] .lets-ppu__decline { inline-size: 100%; text-align: center; }
+}
+@container (max-width: 520px) {
+  .lets-ppu__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@container (max-width: 340px) {
+  .lets-ppu__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

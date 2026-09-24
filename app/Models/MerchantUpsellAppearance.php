@@ -66,19 +66,46 @@ class MerchantUpsellAppearance extends Model
 
     public const CARD_SHADOWS = [self::SHADOW_NONE, self::SHADOW_SOFT, self::SHADOW_ELEVATED];
 
-    /** theme_font — the webfont (Heebo) vs the host's system font. */
+    /**
+     * theme_font — the webfont (Heebo), the host's system font, or the STORE'S OWN font
+     * (`inherit`: whatever the theme set on the page, so the card reads as part of the site).
+     */
     public const FONT_HEEBO = 'heebo';
 
     public const FONT_SYSTEM = 'system';
 
-    public const FONTS = [self::FONT_HEEBO, self::FONT_SYSTEM];
+    public const FONT_INHERIT = 'inherit';
 
-    /** layout. */
+    public const FONTS = [self::FONT_HEEBO, self::FONT_SYSTEM, self::FONT_INHERIT];
+
+    /**
+     * display_font — the face of the LARGE type (headline, countdown digits, price): the
+     * body font, or a serif (Frank Ruhl Libre) for an editorial look.
+     */
+    public const DISPLAY_SAME = 'same';
+
+    public const DISPLAY_SERIF = 'serif';
+
+    public const DISPLAY_FONTS = [self::DISPLAY_SAME, self::DISPLAY_SERIF];
+
+    /**
+     * layout. GRID is the many-products module: a bundle's tiles in rows (no slider), the
+     * copy beside a large countdown, the price and the button in a bar underneath.
+     */
     public const LAYOUT_STACKED = 'stacked';
 
     public const LAYOUT_MEDIA_SIDE = 'media_side';
 
-    public const LAYOUTS = [self::LAYOUT_STACKED, self::LAYOUT_MEDIA_SIDE];
+    public const LAYOUT_GRID = 'grid';
+
+    public const LAYOUTS = [self::LAYOUT_STACKED, self::LAYOUT_MEDIA_SIDE, self::LAYOUT_GRID];
+
+    /** grid_columns — tiles per row on a wide screen; the card narrows that by its own width. */
+    public const GRID_MIN_COLUMNS = 3;
+
+    public const GRID_MAX_COLUMNS = 8;
+
+    public const GRID_COLUMN_CHOICES = [4, 5, 6, 8];
 
     /** image_ratio. */
     public const RATIO_NATURAL = 'natural';
@@ -171,6 +198,10 @@ class MerchantUpsellAppearance extends Model
     public const DEFAULT_RATIO = self::RATIO_NATURAL;
 
     public const DEFAULT_DECLINE = self::DECLINE_LINK;
+
+    public const DEFAULT_GRID_COLUMNS = 6;
+
+    public const DEFAULT_DISPLAY_FONT = self::DISPLAY_SAME;
 
     /**
      * card_locale — the language of the card's OWN words (bundle picker, decline, disclosure,
@@ -270,6 +301,19 @@ class MerchantUpsellAppearance extends Model
         return $this->oneOf($this->image_ratio, self::IMAGE_RATIOS, self::DEFAULT_RATIO);
     }
 
+    public function displayFont(): string
+    {
+        return $this->oneOf($this->display_font, self::DISPLAY_FONTS, self::DEFAULT_DISPLAY_FONT);
+    }
+
+    /** Tiles per row in the grid layout, clamped; a non-number is the house default. */
+    public function gridColumns(): int
+    {
+        $value = is_numeric($this->grid_columns) ? (int) $this->grid_columns : self::DEFAULT_GRID_COLUMNS;
+
+        return max(self::GRID_MIN_COLUMNS, min(self::GRID_MAX_COLUMNS, $value));
+    }
+
     public function cardLocale(): string
     {
         return $this->oneOf($this->card_locale, self::LOCALES, self::DEFAULT_LOCALE);
@@ -312,6 +356,54 @@ class MerchantUpsellAppearance extends Model
     public function trustText(): ?string
     {
         return $this->trimmedOrNull($this->trust_text, 80);
+    }
+
+    // === The grid layout's own words (blank → the card's localized default) ===
+
+    /** Above the large countdown: "The offer closes in". */
+    public function timerLabel(): ?string
+    {
+        return $this->trimmedOrNull($this->timer_label, 48);
+    }
+
+    /** Under the countdown: what happens when it reaches zero. */
+    public function timerNote(): ?string
+    {
+        return $this->trimmedOrNull($this->timer_note, 120);
+    }
+
+    /**
+     * The short facts under the copy ("Ships with your order | Charged to your saved
+     * card"), ONE line, items separated by `|`. Split by factsList().
+     */
+    public function factsText(): ?string
+    {
+        return $this->trimmedOrNull($this->facts_text, 160);
+    }
+
+    /** Heading over the tiles: "Choose your products". */
+    public function pickerTitle(): ?string
+    {
+        return $this->trimmedOrNull($this->picker_title, 48);
+    }
+
+    /** The one-line instruction beside that heading. */
+    public function pickerHint(): ?string
+    {
+        return $this->trimmedOrNull($this->picker_hint, 120);
+    }
+
+    /**
+     * A facts line as the list the card draws with a dot between items. Blank items are
+     * dropped so a trailing separator never draws an empty slot.
+     *
+     * @return list<string>
+     */
+    public static function factsList(?string $facts): array
+    {
+        $items = preg_split('/\s*\|\s*/u', (string) $facts) ?: [];
+
+        return array_values(array_filter(array_map('trim', $items), static fn (string $s): bool => $s !== ''));
     }
 
     /**

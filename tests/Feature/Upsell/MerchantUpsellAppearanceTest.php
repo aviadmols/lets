@@ -104,6 +104,41 @@ final class MerchantUpsellAppearanceTest extends TestCase
         $this->assertCount(13, $a->elements());
     }
 
+    public function test_the_grid_layout_and_its_two_knobs_are_guarded(): void
+    {
+        $a = new MerchantUpsellAppearance();
+        $a->forceFill(['layout' => 'grid', 'grid_columns' => 8, 'display_font' => 'serif']);
+
+        $this->assertSame('grid', $a->layout());
+        $this->assertSame(8, $a->gridColumns());
+        $this->assertSame('serif', $a->displayFont());
+
+        // Out of range or nonsense: clamped, or the house default.
+        $this->assertSame(8, $a->forceFill(['grid_columns' => 40])->gridColumns());
+        $this->assertSame(3, $a->forceFill(['grid_columns' => 1])->gridColumns());
+        $this->assertSame(6, $a->forceFill(['grid_columns' => 'many'])->gridColumns());
+        $this->assertSame(6, (new MerchantUpsellAppearance())->gridColumns(), 'a fresh row: six per row');
+        $this->assertSame('same', $a->forceFill(['display_font' => 'comic'])->displayFont());
+    }
+
+    public function test_the_grid_words_are_trimmed_capped_and_the_facts_line_splits_on_pipes(): void
+    {
+        $a = new MerchantUpsellAppearance();
+        $a->forceFill([
+            'timer_label' => '  Closes in  ',
+            'timer_note' => '',
+            'facts_text' => ' Ships together |  | Saved card|',
+            'picker_title' => str_repeat('x', 60),
+        ]);
+
+        $this->assertSame('Closes in', $a->timerLabel());
+        $this->assertNull($a->timerNote());
+        $this->assertSame(48, mb_strlen((string) $a->pickerTitle()));
+        $this->assertNull($a->pickerHint());
+        $this->assertSame(['Ships together', 'Saved card'], MerchantUpsellAppearance::factsList($a->factsText()), 'blank items never draw an empty dot');
+        $this->assertSame([], MerchantUpsellAppearance::factsList(null));
+    }
+
     public function test_blank_copy_becomes_null_and_long_copy_is_capped(): void
     {
         $a = new MerchantUpsellAppearance();

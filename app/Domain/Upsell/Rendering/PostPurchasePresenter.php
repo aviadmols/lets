@@ -55,6 +55,10 @@ final class PostPurchasePresenter
         // extension renders a bare <Image>, so the control did nothing while
         // still looking live in the admin.
         'image_ratio',
+        // The grid layout's own knobs and words: Shopify's page has no grid to
+        // draw them in (its layout falls back to stacked, see present()).
+        'grid_columns', 'display_font',
+        'timer_label', 'timer_note', 'facts_text', 'picker_title', 'picker_hint',
     ];
 
     /** Shopify's own spacing scale, which is all the density control we have. */

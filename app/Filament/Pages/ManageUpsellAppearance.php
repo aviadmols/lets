@@ -12,6 +12,7 @@ use App\Models\Shop;
 use App\Support\Tenant;
 use Filament\Forms\Components\ColorPicker;
 use Filament\Forms\Components\Field;
+use Filament\Forms\Components\Fieldset;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Repeater;
@@ -124,7 +125,7 @@ class ManageUpsellAppearance extends Page implements HasForms
             ->columns(2);
     }
 
-    /** Layout — stacked vs media-beside, image ratio, decline treatment. */
+    /** Layout — stacked / media-beside / grid, image ratio, decline treatment, the grid's knobs. */
     private function layoutSection(): Section
     {
         return Section::make(__('upsell.appearance.layout.heading'))
@@ -132,8 +133,10 @@ class ManageUpsellAppearance extends Page implements HasForms
             ->schema([
                 ToggleButtons::make('layout')
                     ->label(__('upsell.appearance.layout.arrangement'))
+                    ->helperText(__('upsell.appearance.layout.arrangement_help'))
                     ->options($this->options(MerchantUpsellAppearance::LAYOUTS, 'layout'))
-                    ->inline()->live(),
+                    ->inline()->live()
+                    ->columnSpanFull(),
                 $this->markInert(ToggleButtons::make('image_ratio')
                     ->label(__('upsell.appearance.layout.image_ratio'))
                     ->options($this->options(MerchantUpsellAppearance::IMAGE_RATIOS, 'ratio'))
@@ -142,8 +145,30 @@ class ManageUpsellAppearance extends Page implements HasForms
                     ->label(__('upsell.appearance.layout.decline'))
                     ->options($this->options(MerchantUpsellAppearance::DECLINE_STYLES, 'decline'))
                     ->inline()->live(),
+                // The grid's own two knobs: only meaningful — and only shown — in that layout.
+                $this->markInert(ToggleButtons::make('grid_columns')
+                    ->label(__('upsell.appearance.layout.grid_columns'))
+                    ->helperText(__('upsell.appearance.layout.grid_columns_help'))
+                    ->options(array_combine(
+                        MerchantUpsellAppearance::GRID_COLUMN_CHOICES,
+                        array_map('strval', MerchantUpsellAppearance::GRID_COLUMN_CHOICES),
+                    ))
+                    ->inline()->live()
+                    ->visible($this->isGrid(...)), 'grid_columns'),
+                $this->markInert(ToggleButtons::make('display_font')
+                    ->label(__('upsell.appearance.layout.display_font'))
+                    ->helperText(__('upsell.appearance.layout.display_font_help'))
+                    ->options($this->options(MerchantUpsellAppearance::DISPLAY_FONTS, 'display'))
+                    ->inline()->live()
+                    ->visible($this->isGrid(...)), 'display_font'),
             ])
             ->columns(2);
+    }
+
+    /** Is the form's CURRENT arrangement the grid? Drives which controls are shown. */
+    private function isGrid(Get $get): bool
+    {
+        return $get('layout') === MerchantUpsellAppearance::LAYOUT_GRID;
     }
 
     /** Elements — the ordered, toggleable card parts. Locked parts can't be removed or disabled. */
@@ -210,8 +235,51 @@ class ManageUpsellAppearance extends Page implements HasForms
                     ->maxLength(80)
                     ->live(onBlur: true)
                     ->columnSpanFull(),
+                $this->gridCopyFields(),
             ])
             ->columns(2);
+    }
+
+    /**
+     * The grid layout's own words. Shown only while Grid is the arrangement, so a merchant on
+     * the stacked card never meets five fields that change nothing on their page. The
+     * placeholders are the card's built-in sentences, so "leave blank" is visibly a choice.
+     */
+    private function gridCopyFields(): Fieldset
+    {
+        return Fieldset::make(__('upsell.appearance.copy.grid_heading'))
+            ->visible($this->isGrid(...))
+            ->columnSpanFull()
+            ->columns(2)
+            ->schema([
+                TextInput::make('timer_label')
+                    ->label(__('upsell.appearance.copy.timer_label'))
+                    ->placeholder(__('upsell.grid.timer_label'))
+                    ->maxLength(48)
+                    ->live(onBlur: true),
+                TextInput::make('timer_note')
+                    ->label(__('upsell.appearance.copy.timer_note'))
+                    ->placeholder(__('upsell.grid.timer_note'))
+                    ->maxLength(120)
+                    ->live(onBlur: true),
+                TextInput::make('facts_text')
+                    ->label(__('upsell.appearance.copy.facts'))
+                    ->helperText(__('upsell.appearance.copy.facts_help'))
+                    ->placeholder(__('upsell.grid.facts'))
+                    ->maxLength(160)
+                    ->live(onBlur: true)
+                    ->columnSpanFull(),
+                TextInput::make('picker_title')
+                    ->label(__('upsell.appearance.copy.picker_title'))
+                    ->placeholder(__('upsell.grid.picker_title'))
+                    ->maxLength(48)
+                    ->live(onBlur: true),
+                TextInput::make('picker_hint')
+                    ->label(__('upsell.appearance.copy.picker_hint'))
+                    ->placeholder(__('upsell.grid.picker_hint'))
+                    ->maxLength(120)
+                    ->live(onBlur: true),
+            ]);
     }
 
     /**
@@ -252,14 +320,16 @@ class ManageUpsellAppearance extends Page implements HasForms
     public function draftAppearance(): array
     {
         $draft = $this->cleanFrom($this->data);
-        $block = app(UpsellCardPresenter::class)->appearance($draft);
+        $presenter = app(UpsellCardPresenter::class);
+        $block = $presenter->appearance($draft);
 
         // Resolved copy so the preview reflects blank → default immediately, in the card's language.
         $block['eyebrow'] = $draft->eyebrowText() ?? $draft->inCardLocale(fn (): string => __('upsell.widget_eyebrow'));
         $block['badge'] = $draft->badgeText();
         $block['trust'] = $draft->trustText() ?? $draft->inCardLocale(fn (): string => __('upsell.no_card_reentry'));
 
-        return $block;
+        // The grid layout's words, the same resolution the storefront card gets.
+        return $block + $draft->inCardLocale(fn (): array => $presenter->gridCopy($draft));
     }
 
     /**
@@ -356,10 +426,17 @@ class ManageUpsellAppearance extends Page implements HasForms
             'layout' => $s->layout(),
             'image_ratio' => $s->imageRatio(),
             'decline_style' => $s->declineStyle(),
+            'grid_columns' => $s->gridColumns(),
+            'display_font' => $s->displayFont(),
             'elements' => $s->elements(),
             'eyebrow_text' => $s->eyebrowText(),
             'badge_text' => $s->badgeText(),
             'trust_text' => $s->trustText(),
+            'timer_label' => $s->timerLabel(),
+            'timer_note' => $s->timerNote(),
+            'facts_text' => $s->factsText(),
+            'picker_title' => $s->pickerTitle(),
+            'picker_hint' => $s->pickerHint(),
             'card_locale' => $s->cardLocale(),
         ];
     }
@@ -379,10 +456,17 @@ class ManageUpsellAppearance extends Page implements HasForms
             'layout' => $input['layout'] ?? null,
             'image_ratio' => $input['image_ratio'] ?? null,
             'decline_style' => $input['decline_style'] ?? null,
+            'grid_columns' => $input['grid_columns'] ?? null,
+            'display_font' => $input['display_font'] ?? null,
             'elements' => $this->normalizeElements($input['elements'] ?? []),
             'eyebrow_text' => $input['eyebrow_text'] ?? null,
             'badge_text' => $input['badge_text'] ?? null,
             'trust_text' => $input['trust_text'] ?? null,
+            'timer_label' => $input['timer_label'] ?? null,
+            'timer_note' => $input['timer_note'] ?? null,
+            'facts_text' => $input['facts_text'] ?? null,
+            'picker_title' => $input['picker_title'] ?? null,
+            'picker_hint' => $input['picker_hint'] ?? null,
             'card_locale' => $input['card_locale'] ?? null,
         ]);
 

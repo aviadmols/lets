@@ -108,6 +108,43 @@ final class UpsellCardPresenterTest extends TestCase
         $this->assertSame('Hot', $vm['content']['badge']);
     }
 
+    /**
+     * The grid layout's words ride in content, resolved: the merchant's own text where
+     * they wrote one, the card's localized default where they did not — and the facts
+     * line already split, so the renderer draws dots and never parses.
+     */
+    public function test_the_grid_words_are_resolved_in_the_card_language(): void
+    {
+        $offer = $this->offer(base: 10.0);
+        $app = MerchantUpsellAppearance::current();
+        $app->forceFill([
+            'layout' => MerchantUpsellAppearance::LAYOUT_GRID,
+            'grid_columns' => 5,
+            'display_font' => MerchantUpsellAppearance::DISPLAY_SERIF,
+            'card_locale' => MerchantUpsellAppearance::LOCALE_HE,
+            'timer_label' => 'נשאר לכם',
+            'facts_text' => 'נשלח יחד | בלי כרטיס',
+        ]);
+
+        $vm = $this->presenter()->forOffer($offer, $app, UpsellCardPresenter::PLATFORM_WOOCOMMERCE);
+        $c = $vm['content'];
+
+        $this->assertSame('נשאר לכם', $c['timer_label']);
+        $this->assertSame(['נשלח יחד', 'בלי כרטיס'], $c['facts']);
+        $this->assertSame(__('upsell.grid.timer_note', [], 'he'), $c['timer_note'], 'blank → the default, in the card language');
+        $this->assertSame(__('upsell.grid.picker_title', [], 'he'), $c['picker_title']);
+        $this->assertSame(__('upsell.grid.picker_hint', [], 'he'), $c['picker_hint']);
+
+        $this->assertSame('grid', $vm['appearance']['layout']);
+        $this->assertSame(5, $vm['appearance']['grid_columns']);
+        $this->assertSame('serif', $vm['appearance']['display_font']);
+
+        // The sample card carries them too, so the builder's preview never renders a bare grid.
+        $sample = $this->presenter()->sample($app, UpsellCardPresenter::PLATFORM_WOOCOMMERCE)['content'];
+        $this->assertSame('נשאר לכם', $sample['timer_label']);
+        $this->assertSame(['נשלח יחד', 'בלי כרטיס'], $sample['facts']);
+    }
+
     private function presenter(): UpsellCardPresenter
     {
         return app(UpsellCardPresenter::class);
