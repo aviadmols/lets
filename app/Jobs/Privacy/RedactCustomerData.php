@@ -2,6 +2,7 @@
 
 namespace App\Jobs\Privacy;
 
+use App\Domain\Privacy\PersonalDataEraser;
 use App\Domain\Privacy\RedactionPolicy;
 use App\Models\ActivityEvent;
 use App\Models\CustomerConsent;
@@ -73,7 +74,7 @@ final class RedactCustomerData implements ShouldQueue
             return; // shop already gone (e.g. shop/redact ran first) → nothing to do.
         }
 
-        Tenant::run($shop, function (): void {
+        Tenant::run($shop, function () use ($shop): void {
             $shopifyCustomerId = $this->resolveShopifyCustomerId();
             $email = $this->resolveEmail();
 
@@ -82,13 +83,23 @@ final class RedactCustomerData implements ShouldQueue
                 return;
             }
 
+            // FIRST: every other table holding this person (PersonalDataRegistry).
+            // Before the plan redaction below, because it matches plans on the
+            // email that redaction is about to overwrite.
+            $registry = app(PersonalDataEraser::class)->forCustomer($shop, $shopifyCustomerId, $email);
+
+            // Evaluated in order: redactPlans runs LAST, because every step before
+            // it finds this customer's plans by the email it overwrites (an
+            // email-only erasure request otherwise reached the plans and nothing
+            // linked through them).
             $counts = [
-                'installment_plans' => $this->redactPlans($shopifyCustomerId, $email),
+                'installment_payment_methods' => $this->redactPaymentMethods($shopifyCustomerId, $email),
                 'loyalty_accounts' => $this->redactLoyaltyAccounts($shopifyCustomerId, $email),
                 'customer_consents' => $this->redactConsents($shopifyCustomerId, $email),
-                'installment_payment_methods' => $this->redactPaymentMethods($shopifyCustomerId),
                 'issued_documents' => $this->neutraliseIssuedDocuments($shopifyCustomerId, $email),
                 'activity_events' => $this->scrubActivityEvents($shopifyCustomerId, $email),
+                'installment_plans' => $this->redactPlans($shopifyCustomerId, $email),
+                'registry' => $registry,
             ];
 
             $this->writeAudit($shopifyCustomerId, $email, $counts);
@@ -171,23 +182,50 @@ final class RedactCustomerData implements ShouldQueue
         return $count;
     }
 
-    private function redactPaymentMethods(?string $shopifyCustomerId): int
+    /**
+     * The customer's saved cards: display metadata AND the chargeable token go.
+     *
+     * Nulling only brand + last-four left the PayPlus token and customer uid in
+     * place, so an "erased" customer stayed chargeable. The card is REVOKED:
+     * every token reference is dropped and the status says so, which is what
+     * every charge path reads before it touches a card.
+     *
+     * Found by the customer id, and — for an email-only request — through the
+     * plans that email names (a payment method carries no email of its own).
+     */
+    private function redactPaymentMethods(?string $shopifyCustomerId, ?string $email = null): int
     {
-        if ($shopifyCustomerId === null) {
-            return 0; // payment methods only carry the shopify id, never an email.
+        $planMethodIds = InstallmentPlan::query()
+            ->where(fn (Builder $q) => $this->matchCustomer($q, $shopifyCustomerId, $email))
+            ->whereNotNull('payment_method_id')
+            ->pluck('payment_method_id');
+
+        if ($shopifyCustomerId === null && $planMethodIds->isEmpty()) {
+            return 0; // fail closed: nothing identifies a card
         }
 
         $count = 0;
 
         InstallmentPaymentMethod::query()
-            ->where('shopify_customer_id', $shopifyCustomerId)
+            ->where(function (Builder $q) use ($shopifyCustomerId, $planMethodIds): void {
+                $q->whereRaw('1 = 0');
+                if ($shopifyCustomerId !== null) {
+                    $q->orWhere('shopify_customer_id', $shopifyCustomerId);
+                }
+                if ($planMethodIds->isNotEmpty()) {
+                    $q->orWhereIn('id', $planMethodIds);
+                }
+            })
             ->each(function (InstallmentPaymentMethod $method) use (&$count): void {
-                // Quasi-PII card metadata → null. The token UID is an encrypted
-                // credential (revoked via the gateway elsewhere); we null the
-                // display brand + last-four so nothing identifies the card holder.
-                $method->card_brand = null;
-                $method->card_last_four = null;
-                $method->save();
+                $method->forceFill([
+                    'card_brand' => null,
+                    'card_last_four' => null,
+                    'payplus_card_token_uid' => null,
+                    'encrypted_payplus_token' => null,
+                    'payplus_token_reference' => null,
+                    'payplus_customer_uid' => null,
+                    'status' => InstallmentPaymentMethod::STATUS_REVOKED,
+                ])->save();
                 $count++;
             });
 

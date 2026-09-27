@@ -192,6 +192,38 @@ final class LoyaltyReferralTest extends TestCase
 
         $this->assertSame(['count' => 2, 'points' => 400], $service->statsFor($referrer->refresh()));
     }
+    public function test_a_variant_of_the_members_own_email_is_still_self_referral(): void
+    {
+        [$referrer, $code] = $this->memberWithCode('42', 'Dana.Levi@gmail.com');
+        $service = app(ReferralService::class);
+
+        // Case, a +tag, Gmail dots, googlemail — all one mailbox.
+        $service->attribute($this->shop, [$code], 'order-5', 300.0, null, 'dana.levi+deal@gmail.com');
+        $service->attribute($this->shop, [$code], 'order-6', 300.0, null, 'DANALEVI@googlemail.com');
+
+        $this->assertSame(0, LoyaltyReferral::query()->count());
+        $this->assertSame(0, (int) $referrer->refresh()->points_balance);
+    }
+
+    public function test_a_second_club_account_for_the_same_mailbox_is_self_referral(): void
+    {
+        [$referrer, $code] = $this->memberWithCode('42', 'dana@example.com');
+        // The same person, joined again under another customer record.
+        app(PointsEngine::class)->join('77', 'Dana+alt@example.com');
+
+        app(ReferralService::class)->attribute($this->shop, [$code], 'order-7', 300.0, '77', 'other@example.net');
+
+        $this->assertSame(0, LoyaltyReferral::query()->count());
+    }
+
+    public function test_a_real_friend_with_a_different_mailbox_still_pays(): void
+    {
+        [$referrer, $code] = $this->memberWithCode('42', 'dana@gmail.com');
+
+        app(ReferralService::class)->attribute($this->shop, [$code], 'order-8', 300.0, '99', 'dan@gmail.com');
+
+        $this->assertSame(200, (int) $referrer->refresh()->points_balance);
+    }
 
     // === Fixtures ===
 

@@ -12,4 +12,5 @@ return [
     App\Domain\Loyalty\LoyaltyServiceProvider::class,
     App\Domain\Account\AccountServiceProvider::class,
     App\Domain\Installments\InstallmentsServiceProvider::class,
+    App\Domain\Privacy\PrivacyServiceProvider::class,
 ];

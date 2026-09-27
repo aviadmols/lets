@@ -41,10 +41,23 @@ class LoyaltyPointEvent extends Model
     /** A friend bought through this member's referral link. */
     public const KIND_REFERRAL = 'referral';
 
+    /**
+     * Points reserved for a redemption given back, because the platform never
+     * issued the credit. Positive; never counted in lifetime_points.
+     */
+    public const KIND_REDEEM_REVERSED = 'redeem_reversed';
+
+    /**
+     * Points earned on money that was later refunded, taken back. Negative;
+     * floored at the balance — a clawback empties a balance, never overdraws it.
+     */
+    public const KIND_REFUND_CLAWBACK = 'refund_clawback';
+
     public const KINDS = [
         self::KIND_EARN_PURCHASE, self::KIND_JOIN, self::KIND_BIRTHDAY,
         self::KIND_SOCIAL, self::KIND_TIER_ENTRY, self::KIND_REDEEM,
-        self::KIND_ADJUST, self::KIND_REFERRAL,
+        self::KIND_ADJUST, self::KIND_REFERRAL, self::KIND_REDEEM_REVERSED,
+        self::KIND_REFUND_CLAWBACK,
     ];
 
     protected $guarded = ['id', 'shop_id'];
@@ -65,6 +78,15 @@ class LoyaltyPointEvent extends Model
     }
 
     // === Idempotency keys — the ONE place each cause is named ===
+
+    /**
+     * Every clawback of ONE earning shares this prefix (the suffix names the
+     * refund), so the engine can sum what that earning has already given back.
+     */
+    public static function keyForRefundClawbackPrefix(int $earningEventId): string
+    {
+        return 'refund-clawback:'.$earningEventId.':';
+    }
 
     /** Money recorded in our own payment ledger. */
     public static function keyForLedger(int $ledgerId): string

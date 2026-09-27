@@ -206,15 +206,65 @@ final class ReferralService
             ->first();
     }
 
+    /**
+     * Is the buyer the member who owns the code?
+     *
+     * Compared on CANONICAL identities, not raw strings: an address differing
+     * only by case, a `+tag`, or (at Gmail) dots is one mailbox, and was the
+     * cheapest way past the old exact-match wall. The buyer's own member
+     * account, when their id or email names one, is compared too — two club
+     * accounts for one mailbox are one person.
+     */
     private function isSelfReferral(LoyaltyAccount $referrer, ?string $buyerRef, ?string $buyerEmail): bool
     {
-        if ($buyerRef !== null && trim($buyerRef) !== '' && trim($buyerRef) === trim((string) $referrer->customer_ref)) {
+        $buyerRef = trim((string) $buyerRef);
+        $referrerRef = trim((string) $referrer->customer_ref);
+
+        if ($buyerRef !== '' && $buyerRef === $referrerRef) {
             return true;
         }
 
-        $email = is_string($buyerEmail) ? mb_strtolower(trim($buyerEmail)) : '';
+        $referrerEmail = self::canonicalEmail($referrer->customer_email);
+        $buyerEmails = [self::canonicalEmail($buyerEmail)];
 
-        return $email !== '' && $email === mb_strtolower(trim((string) $referrer->customer_email));
+        // The buyer's member account (by id), and the email IT carries.
+        if ($buyerRef !== '') {
+            $buyerAccount = LoyaltyAccount::query()->where('customer_ref', $buyerRef)->first();
+            if ($buyerAccount !== null && (int) $buyerAccount->getKey() === (int) $referrer->getKey()) {
+                return true;
+            }
+            $buyerEmails[] = self::canonicalEmail($buyerAccount?->customer_email);
+        }
+
+        foreach ($buyerEmails as $email) {
+            if ($email !== '' && $email === $referrerEmail) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * One mailbox, one string: lower-cased, sub-address (`+tag`) dropped, and
+     * for Gmail the dots in the local part dropped (googlemail is gmail).
+     */
+    public static function canonicalEmail(?string $email): string
+    {
+        $email = mb_strtolower(trim((string) $email));
+        if ($email === '' || ! str_contains($email, '@')) {
+            return $email;
+        }
+
+        [$local, $domain] = explode('@', $email, 2);
+        $local = explode('+', $local, 2)[0];
+
+        if (in_array($domain, ['gmail.com', 'googlemail.com'], true)) {
+            $local = str_replace('.', '', $local);
+            $domain = 'gmail.com';
+        }
+
+        return $local.'@'.$domain;
     }
 
     /** A fresh code nobody in this shop holds. */

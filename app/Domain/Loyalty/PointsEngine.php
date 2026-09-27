@@ -171,6 +171,159 @@ final class PointsEngine
     }
 
     /**
+     * RESERVE points for a redemption — the check and the deduction in ONE
+     * locked transaction, BEFORE any credit is issued.
+     *
+     * Checking an unlocked balance and deducting after the platform issued the
+     * credit let N parallel requests all see the same balance and all be issued
+     * credit. Under the row lock the second request reads the balance the first
+     * one left, so the points can be spent once. The caller releases the
+     * reservation (releaseRedemption) if the platform then refuses to issue.
+     *
+     * @param  callable(int): array{points: int, amount: float}  $quote  the credit
+     *                                                                  a locked balance buys
+     * @return array{ok: bool, reason: ?string, points: int, amount: float, event: ?LoyaltyPointEvent}
+     */
+    public function reserveRedemption(
+        LoyaltyAccount $account,
+        int $minimumPoints,
+        callable $quote,
+        string $idempotencyKey,
+        array $meta = [],
+    ): array {
+        return DB::transaction(function () use ($account, $minimumPoints, $quote, $idempotencyKey, $meta): array {
+            /** @var LoyaltyAccount $locked */
+            $locked = LoyaltyAccount::query()->lockForUpdate()->find($account->getKey());
+            $balance = (int) ($locked?->points_balance ?? 0);
+
+            if ($locked === null || $balance < $minimumPoints) {
+                return ['ok' => false, 'reason' => 'below_minimum', 'points' => 0, 'amount' => 0.0, 'event' => null];
+            }
+
+            $credit = $quote($balance);
+            $points = (int) $credit['points'];
+            $amount = (float) $credit['amount'];
+
+            if ($points <= 0 || $amount <= 0 || $points > $balance) {
+                return ['ok' => false, 'reason' => 'nothing_to_redeem', 'points' => 0, 'amount' => 0.0, 'event' => null];
+            }
+
+            $event = $this->record($locked, LoyaltyPointEvent::KIND_REDEEM, -$points, $idempotencyKey, [
+                'meta' => $meta + ['amount' => $amount, 'reserved' => true],
+            ]);
+
+            if ($event === null) {
+                // The same reservation key twice is a caller bug, never a second spend.
+                return ['ok' => false, 'reason' => 'nothing_to_redeem', 'points' => 0, 'amount' => 0.0, 'event' => null];
+            }
+
+            $locked->forceFill(['points_balance' => $balance - $points])->save();
+
+            return ['ok' => true, 'reason' => null, 'points' => $points, 'amount' => $amount, 'event' => $event];
+        });
+    }
+
+    /**
+     * Give back a reservation whose credit was never issued. Its own event
+     * (append-only ledger), keyed on the reservation so it can happen once.
+     */
+    public function releaseRedemption(LoyaltyAccount $account, LoyaltyPointEvent $reservation, array $meta = []): ?LoyaltyPointEvent
+    {
+        $points = abs((int) $reservation->points);
+        if ($points === 0) {
+            return null;
+        }
+
+        return DB::transaction(function () use ($account, $reservation, $points, $meta): ?LoyaltyPointEvent {
+            /** @var LoyaltyAccount $locked */
+            $locked = LoyaltyAccount::query()->lockForUpdate()->find($account->getKey());
+
+            $event = $this->record($locked, LoyaltyPointEvent::KIND_REDEEM_REVERSED, $points,
+                'redeem-reversed:'.$reservation->idempotency_key, ['meta' => $meta + ['reservation_id' => $reservation->getKey()]]);
+
+            if ($event === null) {
+                return null;
+            }
+
+            // Back to the balance only — this was never new earning.
+            $locked->forceFill(['points_balance' => (int) $locked->points_balance + $points])->save();
+
+            return $event;
+        });
+    }
+
+    /**
+     * Take back the points a purchase earned when its money is refunded.
+     *
+     * Proportional to the refunded share of the earning (a partial refund takes
+     * back part), keyed per refund so a replay cannot take twice, and floored at
+     * the current balance: points already spent are not recovered into a debt —
+     * the same no-overdraw policy every negative adjustment follows. When the
+     * grant was the buyer's own spend ($reduceSpend), lifetime spend drops by the
+     * refunded amount too, so the tier ladder reflects money that stayed.
+     *
+     * @param  float  $share  the refunded fraction of the money behind the grant (0..1)
+     */
+    public function clawbackForRefund(
+        LoyaltyPointEvent $earning,
+        float $share,
+        float $refundedAmount,
+        string $refundRef,
+        array $meta = [],
+        bool $reduceSpend = true,
+    ): ?LoyaltyPointEvent {
+        $prefix = LoyaltyPointEvent::keyForRefundClawbackPrefix((int) $earning->getKey());
+        $idempotencyKey = $prefix.$refundRef;
+        $earnedPoints = (int) $earning->points;
+        $share = max(0.0, min(1.0, $share));
+
+        if ($earnedPoints <= 0 || $share <= 0) {
+            return null;
+        }
+
+        $target = (int) ceil($earnedPoints * $share);
+        $spendBack = $reduceSpend ? max(0.0, $refundedAmount) : 0.0;
+
+        return DB::transaction(function () use ($earning, $target, $refundedAmount, $spendBack, $prefix, $idempotencyKey, $meta): ?LoyaltyPointEvent {
+            /** @var LoyaltyAccount|null $locked */
+            $locked = LoyaltyAccount::query()->lockForUpdate()->find($earning->loyalty_account_id);
+            if ($locked === null) {
+                return null;
+            }
+
+            // Never take back more than this earning has left to give, across
+            // every earlier partial refund of it.
+            $alreadyTaken = (int) abs((int) LoyaltyPointEvent::query()
+                ->where('loyalty_account_id', $locked->getKey())
+                ->where('kind', LoyaltyPointEvent::KIND_REFUND_CLAWBACK)
+                ->where('idempotency_key', 'like', $prefix.'%')
+                ->sum('points'));
+
+            $delta = min($target, max(0, (int) $earning->points - $alreadyTaken), (int) $locked->points_balance);
+
+            $event = $this->record($locked, LoyaltyPointEvent::KIND_REFUND_CLAWBACK, -$delta, $idempotencyKey, [
+                'amount' => round($refundedAmount, 2),
+                'source_ledger_id' => $earning->source_ledger_id,
+                'meta' => $meta + [
+                    'earning_event_id' => $earning->getKey(),
+                    'intended_points' => $target,
+                ],
+            ]);
+
+            if ($event === null) {
+                return null; // this refund was already clawed back
+            }
+
+            $locked->forceFill([
+                'points_balance' => (int) $locked->points_balance - $delta,
+                'lifetime_spend' => round(max(0.0, (float) $locked->lifetime_spend - $spendBack), 2),
+            ])->save();
+
+            return $event;
+        });
+    }
+
+    /**
      * Create the member row (the join), with the merchant's welcome bonus.
      * Idempotent: a second join returns the existing membership untouched.
      */

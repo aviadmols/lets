@@ -92,7 +92,8 @@ final class Ledger
      * (shop_id, idempotency_key) unique index: if a row already exists for the
      * key it is returned as-is (a retry re-uses the same row through its lifecycle).
      *
-     * A row found in `failed` is REOPENED to `retry_scheduled` first. The state
+     * A row found in `failed` or `retry_scheduled` is REOPENED to `pending`
+     * (through retry_scheduled, with `attempt_started_at` stamped). The state
      * machine has no failed → succeeded edge — deliberately, because a failure
      * is a fact and the row must say how it came to be tried again. Callers that
      * re-attempt a declined charge (a shopper pressing Buy a second time) were
@@ -113,8 +114,21 @@ final class Ledger
     ): PaymentLedger {
         $existing = self::find($shopId, $idempotencyKey);
         if ($existing !== null) {
-            if (LedgerStatus::from((string) $existing->status) === LedgerStatus::FAILED) {
+            $status = LedgerStatus::from((string) $existing->status);
+
+            if ($status === LedgerStatus::FAILED) {
                 self::transition($existing, LedgerStatus::RETRY_SCHEDULED);
+                $status = LedgerStatus::RETRY_SCHEDULED;
+            }
+
+            // A RETRY ATTEMPT IS STARTING. The row goes back to `pending` and
+            // the attempt is stamped, so it is in flight in exactly the sense a
+            // first attempt is: the orchestrator's wall (a pending row younger
+            // than the window) refuses a sibling trigger — a merchant's "charge
+            // now" racing the scheduler's retry — instead of letting both reach
+            // PayPlus. Left in retry_scheduled, the wall could not see it.
+            if ($status === LedgerStatus::RETRY_SCHEDULED) {
+                self::transition($existing, LedgerStatus::PENDING, ['attempt_started_at' => now()]);
             }
 
             return $existing;
@@ -132,7 +146,7 @@ final class Ledger
         // tenancy). A new row is BORN `pending` — set the initial state via
         // forceFill so the in-memory instance carries it (the DB default alone
         // would leave the returned model's status null for the next transition).
-        $row->forceFill(['status' => LedgerStatus::PENDING->value])->save();
+        $row->forceFill(['status' => LedgerStatus::PENDING->value, 'attempt_started_at' => now()])->save();
 
         return $row;
     }

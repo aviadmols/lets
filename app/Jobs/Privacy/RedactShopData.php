@@ -2,6 +2,7 @@
 
 namespace App\Jobs\Privacy;
 
+use App\Domain\Privacy\PersonalDataEraser;
 use App\Domain\Privacy\RedactionPolicy;
 use App\Models\ActivityEvent;
 use App\Models\CustomerConsent;
@@ -86,6 +87,9 @@ final class RedactShopData implements ShouldQueue
                 'payment_ledger' => $this->neutraliseLedger(),
                 'issued_documents' => $this->neutraliseIssuedDocuments(),
                 'activity_events' => $this->scrubActivityEvents(),
+                // Every other table holding customers (PersonalDataRegistry), and
+                // the merchant's own keys once the shop is really uninstalled.
+                'registry' => app(PersonalDataEraser::class)->forShop($shop),
             ];
 
             $this->writeAudit($shop, $counts);

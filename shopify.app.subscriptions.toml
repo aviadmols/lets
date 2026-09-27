@@ -133,10 +133,14 @@ api_version = "2026-04"
     "subscription_billing_attempts/challenged",
   ]
   uri = "/shopify/webhooks"
-  #
-  # [[webhooks.subscriptions]]
-  # compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
-  # uri = "/shopify/webhooks"
+
+  # Mandatory privacy topics. Only the toml / Partner Dashboard can subscribe
+  # them — never the per-shop Admin API — so without this block redaction and
+  # data requests never arrive. Same set as config('shopify.webhook_topics')
+  # and the public app's shopify.app.toml.
+  [[webhooks.subscriptions]]
+  compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
+  uri = "/shopify/webhooks"
 
 [app_proxy]
 # Storefront → backend trust boundary (installments button + the thank-you /

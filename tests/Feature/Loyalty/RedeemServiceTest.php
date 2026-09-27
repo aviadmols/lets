@@ -15,8 +15,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * Redemption's one rule: the platform issues the credit FIRST, and points leave
- * only after it has. Everything here is a way of checking that a failure costs
+ * Redemption reserves the points under the row lock, issues, and releases the
+ * reservation if the platform refuses. Everything here checks that a failure costs
  * the customer nothing.
  */
 final class RedeemServiceTest extends TestCase
@@ -81,7 +81,40 @@ final class RedeemServiceTest extends TestCase
         $this->assertFalse($result['ok']);
         $this->assertSame(RedeemService::ERR_FAILED, $result['reason']);
         $this->assertSame(300, (int) $account->refresh()->points_balance, 'A failed issue must cost the customer nothing.');
-        $this->assertSame(0, LoyaltyPointEvent::query()->where('kind', LoyaltyPointEvent::KIND_REDEEM)->count());
+        $this->assertSame(0, (int) LoyaltyPointEvent::query()->sum('points') - (int) LoyaltyPointEvent::query()->whereNotIn('kind', [LoyaltyPointEvent::KIND_REDEEM, LoyaltyPointEvent::KIND_REDEEM_REVERSED])->sum('points'), 'The reservation was released by its own event: net zero.');
+    }
+
+    /**
+     * A second redemption arriving WHILE the first is at the platform must not
+     * be issued credit too. The points are reserved under the row lock before
+     * the issuer is called, so the sibling reads the balance the first left.
+     */
+    public function test_a_concurrent_redemption_cannot_spend_the_same_points_twice(): void
+    {
+        $account = $this->memberWith(1000);
+        $issued = 0;
+        $sibling = null;
+        $stale = $account->replicate()->forceFill(['id' => $account->getKey()]);
+        $stale->exists = true;
+
+        $this->fakeIssuer(function () use (&$issued, &$sibling, $stale): string {
+            $issued++;
+
+            if ($sibling === null) {
+                $sibling = false;
+                // The sibling request loaded the account before this one reserved.
+                $sibling = app(RedeemService::class)->redeem($this->shop, $stale, 'ILS');
+            }
+
+            return 'LETS-'.$issued;
+        });
+
+        $first = app(RedeemService::class)->redeem($this->shop, $account, 'ILS');
+
+        $this->assertTrue($first['ok']);
+        $this->assertFalse($sibling['ok'], 'The sibling found nothing left to redeem.');
+        $this->assertSame(1, $issued, 'Credit was issued exactly once.');
+        $this->assertSame(0, (int) $account->refresh()->points_balance);
     }
 
     public function test_a_balance_below_the_minimum_is_refused(): void

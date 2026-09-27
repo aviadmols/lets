@@ -29,6 +29,9 @@ final class RefundServiceTest extends TestCase
     public int $refundCalls = 0;
     public bool $refundShouldFail = false;
 
+    /** Runs INSIDE the gateway refund call — a second refund arriving mid-flight. */
+    public ?\Closure $duringRefund = null;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -43,6 +46,11 @@ final class RefundServiceTest extends TestCase
             public function refund(string $transactionUid, float $amount, array $meta = []): GatewayResult
             {
                 $this->test->refundCalls++;
+                if ($this->test->duringRefund !== null) {
+                    $sibling = $this->test->duringRefund;
+                    $this->test->duringRefund = null;
+                    $sibling();
+                }
                 if ($this->test->refundShouldFail) {
                     return GatewayResult::fromResponse(['results' => ['status' => 'error', 'code' => 5, 'description' => 'declined']]);
                 }
@@ -132,6 +140,66 @@ final class RefundServiceTest extends TestCase
         $this->assertFalse($result['ok']);
         $this->assertSame(1, $this->refundCalls);
         $this->assertSame(LedgerStatus::SUCCEEDED->value, $ledger->fresh()->status, 'a failed refund never flips the money truth');
+    }
+
+    /**
+     * Two refunds racing on one charge: the second arrives while the first is
+     * at PayPlus. The first's claim is on the row, so the second is refused
+     * before the gateway — together they would have exceeded the charge.
+     */
+    public function test_a_concurrent_refund_is_refused_while_one_is_in_flight(): void
+    {
+        $shop = $this->makeShop();
+        $ledger = $this->makeLedger($shop, LedgerStatus::SUCCEEDED); // 49.90
+        Tenant::set($shop);
+
+        $sibling = null;
+        $this->duringRefund = function () use ($ledger, &$sibling): void {
+            $sibling = app(RefundService::class)->refund($ledger->fresh(), 30.00);
+        };
+
+        $first = app(RefundService::class)->refund($ledger, 30.00);
+
+        $this->assertTrue($first['ok']);
+        $this->assertFalse($sibling['ok']);
+        $this->assertSame('refund_in_flight', $sibling['message']);
+        $this->assertSame(1, $this->refundCalls, 'The sibling never reached PayPlus.');
+
+        $row = $ledger->fresh();
+        $this->assertSame('30.00', (string) $row->refunded_amount);
+        $this->assertSame('0.00', (string) $row->refunding_amount, 'The claim is settled into refunded_amount.');
+    }
+
+    public function test_a_failed_refund_releases_its_claim(): void
+    {
+        $this->refundShouldFail = true;
+        $shop = $this->makeShop();
+        $ledger = $this->makeLedger($shop, LedgerStatus::SUCCEEDED);
+        Tenant::set($shop);
+
+        app(RefundService::class)->refund($ledger, 10.00);
+
+        $this->assertSame('0.00', (string) $ledger->fresh()->refunding_amount);
+
+        // …so the merchant can try again straight away.
+        $this->refundShouldFail = false;
+        $this->assertTrue(app(RefundService::class)->refund($ledger->fresh(), 10.00)['ok']);
+    }
+
+    public function test_an_over_limit_amount_is_refused_under_the_lock(): void
+    {
+        $shop = $this->makeShop();
+        $ledger = $this->makeLedger($shop, LedgerStatus::SUCCEEDED);
+        Tenant::set($shop);
+
+        $this->assertTrue(app(RefundService::class)->refund($ledger, 40.00)['ok']);
+
+        // A stale model still says 0 refunded; the locked re-read does not.
+        $result = app(RefundService::class)->refund($ledger, 20.00);
+
+        $this->assertFalse($result['ok']);
+        $this->assertSame('exceeds_remaining', $result['message']);
+        $this->assertSame(1, $this->refundCalls);
     }
 
     // === Helpers ===

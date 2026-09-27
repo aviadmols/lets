@@ -73,6 +73,9 @@ class PaymentLedger extends Model
             'amount' => 'decimal:2',
             'refunded_amount' => 'decimal:2',
             'raw_response_masked' => 'array',
+            'attempt_started_at' => 'datetime',
+            'refunding_amount' => 'decimal:2',
+            'refunding_started_at' => 'datetime',
         ];
     }
 

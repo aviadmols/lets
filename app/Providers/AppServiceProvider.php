@@ -5,9 +5,11 @@ namespace App\Providers;
 use App\Domain\Installments\Contracts\DepositTokenResolver;
 use App\Events\ChargeFailed;
 use App\Events\ChargeSucceeded;
+use App\Events\LedgerRowRefunded;
 use App\Events\LedgerRowSucceeded;
 use App\Listeners\Loyalty\AccruePointsFromLedger;
 use App\Listeners\Loyalty\AccruePointsFromShopifyOrder;
+use App\Listeners\Loyalty\ClawbackPointsOnRefund;
 use App\Listeners\SendChargeFailedNotification;
 use App\Listeners\SendChargeSucceededNotification;
 use App\Services\Orders\PlatformDepositTokenResolver;
@@ -95,6 +97,8 @@ class AppServiceProvider extends ServiceProvider
         // Shopify Payments checkouts + Shopify-billed subscription cycles).
         Event::listen(LedgerRowSucceeded::class, AccruePointsFromLedger::class);
         Event::listen('shopify.order.paid', AccruePointsFromShopifyOrder::class);
+        // ...and the reverse: a refund takes back what the refunded money earned.
+        Event::listen(LedgerRowRefunded::class, ClawbackPointsOnRefund::class);
 
         // TENANT BINDING ON LIVEWIRE UPDATES. Filament does NOT make the panel's
         // ->middleware() persistent for /livewire/update requests (only a hardcoded

@@ -7,6 +7,7 @@ use App\Domain\Installments\Http\StoreActivationController;
 use App\Domain\Loyalty\Http\Controllers\LoyaltyActionController;
 use App\Domain\Loyalty\Http\Controllers\LoyaltyPageController;
 use App\Domain\Loyalty\Http\Controllers\LoyaltyRedeemController;
+use App\Domain\Loyalty\LoyaltyServiceProvider;
 use App\Domain\Upsell\Http\Controllers\ProxyOfferController;
 use App\Http\Middleware\VerifyShopifyAppProxy;
 use Illuminate\Support\Facades\Route;
@@ -78,7 +79,9 @@ Route::prefix('proxy')
         Route::post('/loyalty/join', [LoyaltyActionController::class, 'join'])->name('proxy.loyalty.join');
         Route::post('/loyalty/birthday', [LoyaltyActionController::class, 'birthday'])->name('proxy.loyalty.birthday');
         Route::post('/loyalty/social', [LoyaltyActionController::class, 'social'])->name('proxy.loyalty.social');
-        Route::post('/loyalty/redeem', [LoyaltyRedeemController::class, 'redeem'])->name('proxy.loyalty.redeem');
+        Route::post('/loyalty/redeem', [LoyaltyRedeemController::class, 'redeem'])
+            ->middleware('throttle:'.LoyaltyServiceProvider::LIMITER_REDEEM)
+            ->name('proxy.loyalty.redeem');
 
         /*
         |----------------------------------------------------------------------

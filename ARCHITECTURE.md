@@ -64,7 +64,9 @@ webhook never holds a contract.
 
 **PaymentLedgerStatus:** `pending → succeeded` · `pending → failed` ·
 `succeeded → refunded` · `failed → retry_scheduled` · `retry_scheduled → succeeded`
-· `retry_scheduled → failed`
+· `retry_scheduled → failed` · `retry_scheduled → pending` (a retry ATTEMPT starting:
+`Ledger::open` reopens the row to `pending` and stamps `attempt_started_at`, so the
+orchestrator's in-flight wall sees a retry exactly as it sees a first attempt)
 
 Any transition not listed is illegal and rejected by a guarded `transitionTo()`,
 which writes a ledger + Timeline event on every move.
