@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\AddHstsHeader;
+use App\Http\Middleware\AddSecurityHeaders;
 use App\Http\Middleware\AllowExtensionCors;
 use App\Http\Middleware\EmbeddedAuthenticate;
 use App\Http\Middleware\SessionTokenAuth;
@@ -96,6 +97,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // stale uPress vhost. Global so it covers admin + storefront + proxy. Only
         // emits over a real https request in production (see the middleware).
         $middleware->append(AddHstsHeader::class);
+
+        // nosniff + Referrer-Policy everywhere, no X-Powered-By, and the admin's
+        // frame-ancestors wall (Shopify + the shop's own wp-admin stay allowed).
+        $middleware->append(AddSecurityHeaders::class);
 
         // Named middleware aliases for the Shopify boundary.
         $middleware->alias([

@@ -60,6 +60,28 @@ changes — validates against this rule. Accounts are provisioned with random
 40-character placeholders and claimed via the reset flow; no password is ever
 generated for, printed to, or emailed to a human.
 
+### 4.1 Two-factor sign-in (authenticator app)
+
+A password login to the admin can require a second step: a 6-digit TOTP code
+from an authenticator app (`Domain\Auth\TwoFactor\TwoFactorAuthenticator`).
+
+- **Mandatory for platform admins.** Until one enrols, every panel page load
+  redirects to Account → Security (`RequireTwoFactorEnrollment`), and the
+  `/horizon` gate refuses them. Optional for merchants (user menu → Security).
+- **The password alone never logs anyone in** when 2FA is on: `Pages\Auth\Login`
+  checks the password, records a 5-minute pending step in the session, and
+  `TwoFactorChallenge` logs in only after the code. Throttled to 5 tries a
+  minute; failures are logged (`auth.two_factor_failed`).
+- **A code works once.** The accepted 30-second step is stored and older or equal
+  steps are refused (±1 step drift allowed).
+- **Secret encrypted at rest** (APP_KEY); **recovery codes stored as sha256
+  hashes**, shown once, burned on use. Turning 2FA off or making new recovery
+  codes needs a current code; a platform admin cannot turn it off in the panel.
+- **Lost phone:** `php artisan auth:two-factor-reset {email}`, only after
+  confirming the person by another channel.
+- Shopify and WordPress embedded sign-ins do not use the password login (the
+  platform already authenticated the merchant), so they are unaffected.
+
 ## 5. Limiting and logging access to personal data
 
 **Limiting.** Every tenant-owned row carries `shop_id` with a global scope
@@ -141,6 +163,16 @@ method row is kept as history. Each swap writes a `card_updated` Timeline event
 switch** — a shop must never be able to withhold the way a shopper fixes a
 failing card — and answers only with the hosted-page LINK; nothing changes on
 the click.
+
+### 5.3 Browser security headers
+
+`AddSecurityHeaders` (global) sends `X-Content-Type-Options: nosniff` and
+`Referrer-Policy: strict-origin-when-cross-origin` on every response and drops
+`X-Powered-By`. On `/admin` and `/horizon` it adds `Content-Security-Policy:
+frame-ancestors` (clickjacking): only this app, Shopify's admin
+(`admin.shopify.com`, `*.myshopify.com`), and the connected WooCommerce store's
+own domain (+`www.`) and wp-admin origin may frame the admin. Storefront,
+account and payment surfaces are left to their own per-route policy.
 
 ## 6. Security incident response policy
 
