@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.54.1
+Stable tag: 0.55.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,16 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.55.0 =
+* Security: the thank-you offer (and the payment-page error report) now require the order's
+  own key; a request without it is refused.
+* Security: an SMS sign-in opens an existing account only when that account's own saved phone
+  is the number that answered. Otherwise the shopper is asked to sign in with an email code.
+* Security: the personal area and the members club share an account's email with LETS only
+  once that address is proven (an email code or Google). Accounts that existed before this
+  version keep working as before. Guest orders are attached only to a proven address.
+* Security: an hourly cap on how many sign-in codes one visitor can have sent.
 
 = 0.54.1 =
 * The grid layout no longer collapses to one word per line when the store's theme puts the

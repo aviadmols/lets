@@ -37,9 +37,31 @@ add_action('rest_api_init', function () {
 });
 
 /**
+ * Does the browser hold this order's key? The key is WooCommerce's own proof that the
+ * visitor is the one who placed the order (it rides the order-received URL). A MISSING key
+ * is a refusal, not a pass: order ids are sequential, so an id alone proves nothing, and
+ * the accept route charges the saved card behind that order.
+ *
+ * @param  WC_Order|false|null  $order
+ * @param  mixed  $order_key
+ * @return bool
+ */
+function lets_payplus_order_key_matches($order, $order_key)
+{
+    $order_key = is_string($order_key) ? trim($order_key) : '';
+    if (! $order || '' === $order_key) {
+        return false;
+    }
+
+    $real = (string) $order->get_order_key();
+
+    return '' !== $real && hash_equals($real, $order_key);
+}
+
+/**
  * Resolve the order facts from a WC order id (SERVER-side — the browser only sends the
  * order id + key, which we validate against the order). Returns null when the order can't
- * be loaded/validated.
+ * be loaded/validated — including when no key was sent at all.
  */
 function lets_payplus_thankyou_facts($order_id, $order_key)
 {
@@ -47,7 +69,7 @@ function lets_payplus_thankyou_facts($order_id, $order_key)
         return null;
     }
     $order = wc_get_order((int) $order_id);
-    if (! $order || ($order_key !== '' && ! hash_equals((string) $order->get_order_key(), (string) $order_key))) {
+    if (! lets_payplus_order_key_matches($order, $order_key)) {
         return null;
     }
 
@@ -213,7 +235,7 @@ add_action('template_redirect', function () {
     }
     // Validate the order key from the URL (the same guard WooCommerce uses for this page).
     $key = isset($_GET['key']) ? wc_clean(wp_unslash($_GET['key'])) : '';
-    if ($key !== '' && ! hash_equals((string) $order->get_order_key(), $key)) {
+    if (! lets_payplus_order_key_matches($order, $key)) {
         return;
     }
 

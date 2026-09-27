@@ -135,7 +135,7 @@ function lets_payplus_loyalty_page_url()
         // The SAME customer reference the gateway records on the ledger, so the
         // member who earns the points is the member the page shows.
         'customer_ref' => (string) $user_id,
-        'email'        => (string) $user->user_email,
+        'email'        => lets_payplus_account_asserted_email($user), // a PROVEN address only
         'name'         => (string) $user->display_name,
     ));
 

@@ -92,6 +92,35 @@ define('LETS_ACCOUNT_LOCAL_CODE_LIMIT', 8);
 define('LETS_ACCOUNT_IP_CODE_LIMIT', 60);
 
 /**
+ * Codes one visitor address may ask LETS to SEND per hour, whatever the
+ * destinations. The buckets above are per destination (fine) and per address
+ * across every endpoint (coarse); this one caps what costs the merchant money —
+ * the SMS itself — so rotating handsets from one address stops here. Filterable
+ * (`lets_payplus_account_ip_send_limit`) for a store behind a proxy whose
+ * REMOTE_ADDR is shared by every shopper.
+ */
+define('LETS_ACCOUNT_IP_SEND_LIMIT', 20);
+
+/**
+ * User meta holding the email address this account has PROVEN it owns — by a
+ * LETS email code or a Google sign-in that Google marked verified.
+ *
+ * WordPress does not verify the address on "create an account", so a user's
+ * email is only a claim. The personal area asserts an email to LETS (which then
+ * matches guest and imported subscriptions on it) only when this meta equals the
+ * account's current address; change the address and the proof lapses.
+ */
+define('LETS_ACCOUNT_EMAIL_PROOF_META', '_lets_email_proven');
+
+/**
+ * The moment this release first ran (unix time). Accounts registered BEFORE it
+ * keep being trusted on their email, so no existing customer loses their
+ * subscriptions on upgrade; every account opened after it has to prove the
+ * address once. Filterable off (`lets_payplus_account_trust_legacy_emails`).
+ */
+define('LETS_ACCOUNT_EMAIL_TRUST_OPT', 'lets_payplus_email_trust_cutoff');
+
+/**
  * Capabilities that disqualify an account from passwordless sign-in. A shopper has
  * none of them; anyone who can edit the site, its products or its orders signs in
  * through WordPress's own login, where the merchant's 2FA plugin still applies.
@@ -1188,7 +1217,7 @@ function lets_payplus_account_fetch($user_id)
         // The SAME reference the gateway records on the ledger, so the
         // subscriptions we show are the subscriptions they pay for.
         'customer_ref' => (string) $user_id,
-        'email'        => (string) $user->user_email,
+        'email'        => lets_payplus_account_asserted_email($user), // only a PROVEN address; see the helper
         'name'         => (string) $user->display_name,
         'phone'        => (string) get_user_meta($user_id, LETS_ACCOUNT_PHONE_META, true),
         'locale'       => lets_payplus_account_site_locale(),
@@ -1285,7 +1314,7 @@ function lets_payplus_account_rest_act(WP_REST_Request $request)
 
     $result = lets_payplus_signed_post('/api/woocommerce/account/subscriptions/' . $action, array(
         'customer_ref' => (string) $user_id,
-        'email'        => (string) ($user ? $user->user_email : ''),
+        'email'        => lets_payplus_account_asserted_email($user),
         'name'         => (string) ($user ? $user->display_name : ''),
         'subscription' => sanitize_text_field((string) $request->get_param('subscription')),
         'date'         => sanitize_text_field((string) $request->get_param('date')),
@@ -1379,6 +1408,13 @@ function lets_payplus_account_rest_code_request(WP_REST_Request $request)
         return rest_ensure_response(array('ok' => true));
     }
 
+    // Per VISITOR, across every destination: the buckets above are per address
+    // asked about, so one browser rotating handsets would otherwise send without
+    // limit. Spent only for a send that would really go out. Same silent answer.
+    if (! lets_payplus_account_spend_send_budget()) {
+        return rest_ensure_response(array('ok' => true));
+    }
+
     $user = lets_payplus_account_find_user($channel, $destination);
 
     // The shop owner's own address is the one an attacker knows. Same answer as
@@ -1464,6 +1500,14 @@ function lets_payplus_account_rest_code_verify(WP_REST_Request $request)
     }
 
     if ($user) {
+        // On SMS `$user` is the account whose OWN stored phone is the handset that
+        // just answered (find_user reads only the user's phone meta). On email it
+        // is the account holding the address that answered — which is proof of
+        // that address, and is recorded as such.
+        if ('email' === $channel) {
+            lets_payplus_account_mark_email_proven($user);
+        }
+
         return lets_payplus_account_sign_in($user, $request->get_param('redirect'));
     }
 
@@ -1497,16 +1541,18 @@ function lets_payplus_account_rest_code_verify(WP_REST_Request $request)
  * quick-registration form.
  *
  * The SaaS is asked only AFTER the code proved the destination; it answers with
- * a name and an email, never more. Three outcomes:
- *   - LETS knows them + a WP user already holds their email → LINK: the proven
- *     phone is indexed onto that user (so next time the lookup finds them
- *     directly) and they are signed into it. Privileged accounts are refused
- *     outright — this door never opens into an admin.
+ * a name and an email, never more. On the EMAIL channel, three outcomes:
+ *   - LETS knows them + a WP user already holds that address → they are signed
+ *     into it (the code just proved the address). Privileged accounts are
+ *     refused outright — this door never opens into an admin.
  *   - LETS knows them + no WP user → their customer account is created from the
  *     LETS name and they are signed in. `created` rides the response so the
  *     panel can say what just happened.
  *   - LETS does not know them (or knows no usable name/email) → null; the
  *     registration form asks, exactly as before.
+ *
+ * On SMS the email LETS answers with is NOT proof of anything — see
+ * lets_payplus_account_known_by_phone().
  *
  * @param  string  $channel      'email' | 'sms'
  * @param  string  $destination  the VERIFIED address the code answered from
@@ -1524,17 +1570,24 @@ function lets_payplus_account_provision_known_member($channel, $destination, $re
         return null;
     }
 
-    // On the email channel the address is the one that answered the code; on SMS
-    // the email is LETS's word for who owns the handset that answered.
-    $email = 'email' === $channel
-        ? sanitize_email($destination)
-        : sanitize_email((string) ($identity['email'] ?? ''));
+    // On SMS, LETS's email is only what somebody TYPED at a checkout beside this
+    // phone number — it is not proof of owning that inbox, nor the WordPress
+    // account that carries it. So the handset opens an existing account only when
+    // that account's OWN stored phone is this handset, and never opens a new
+    // account under an address it did not prove. Otherwise the shopper is sent to
+    // the email code, which does prove the address.
+    if ('sms' === $channel) {
+        return lets_payplus_account_known_by_phone($identity, $destination, $redirect);
+    }
+
+    // Email channel: the address is the one that just answered the code.
+    $email = sanitize_email($destination);
 
     if ('' === $email || ! is_email($email)) {
         return null;
     }
 
-    $phone = 'sms' === $channel ? lets_payplus_account_digits($destination) : '';
+    $phone = '';
 
     $existing = get_user_by('email', $email);
     if ($existing) {
@@ -1544,9 +1597,7 @@ function lets_payplus_account_provision_known_member($channel, $destination, $re
             return rest_ensure_response(array('ok' => false, 'reason' => 'rejected'));
         }
 
-        if ('' !== $phone) {
-            update_user_meta($existing->ID, LETS_ACCOUNT_PHONE_INDEX, $phone);
-        }
+        lets_payplus_account_mark_email_proven($existing);
 
         return lets_payplus_account_sign_in($existing, $redirect);
     }
@@ -1571,6 +1622,9 @@ function lets_payplus_account_provision_known_member($channel, $destination, $re
         return null;
     }
 
+    // Created from the address that answered the code.
+    lets_payplus_account_mark_email_proven($user);
+
     $response = lets_payplus_account_sign_in($user, $redirect);
     if ($response instanceof WP_REST_Response) {
         $data = $response->get_data();
@@ -1582,6 +1636,202 @@ function lets_payplus_account_provision_known_member($channel, $destination, $re
 
     return $response;
 }
+
+/**
+ * The SMS half of the known-member door.
+ *
+ * Reached only when no account's own phone matched the handset (find_user() came
+ * back empty). LETS's email for this phone came from checkout data, so it may
+ * lead to an account only if that account's OWN stored phone agrees with the
+ * handset that answered (a stale phone index is the realistic case). Anything
+ * else is answered with `use_email` — the shopper proves the address with an
+ * email code instead — or, on a shop that offers no email codes, with the
+ * ordinary registration form (null), whose typed address stays unproven.
+ *
+ * Privileged accounts stay refused, whatever matches.
+ *
+ * @param  array  $identity     the SaaS answer ({known, email, first_name, last_name})
+ * @param  string  $destination  the VERIFIED phone the code answered from
+ * @param  mixed  $redirect
+ * @return WP_REST_Response|null
+ */
+function lets_payplus_account_known_by_phone($identity, $destination, $redirect)
+{
+    $email = sanitize_email((string) ($identity['email'] ?? ''));
+    $phone = lets_payplus_account_digits($destination);
+
+    if ('' === $email || ! is_email($email) || '' === $phone) {
+        return null;
+    }
+
+    $existing = get_user_by('email', $email);
+
+    if ($existing && lets_payplus_account_is_privileged($existing)) {
+        return rest_ensure_response(array('ok' => false, 'reason' => 'rejected'));
+    }
+
+    if ($existing && lets_payplus_account_user_phone_matches($existing, $phone)) {
+        // Their own number: repair the index so the next sign-in finds them directly.
+        lets_payplus_account_index_phone($existing->ID);
+
+        return lets_payplus_account_sign_in($existing, $redirect);
+    }
+
+    if (lets_payplus_account_email_channel_offered()) {
+        return rest_ensure_response(array('ok' => false, 'reason' => 'use_email'));
+    }
+
+    return null;
+}
+
+/**
+ * Does this account's OWN stored phone equal the verified handset?
+ *
+ * Both the WooCommerce billing phone and our canonical mirror are read, each
+ * normalised the same way the sign-in lookup normalises a typed number.
+ *
+ * @param  WP_User  $user
+ * @param  string  $digits  canonical digits of the verified phone
+ * @return bool
+ */
+function lets_payplus_account_user_phone_matches($user, $digits)
+{
+    $digits = (string) $digits;
+    if ('' === $digits) {
+        return false;
+    }
+
+    $stored = array(
+        lets_payplus_account_digits((string) get_user_meta($user->ID, LETS_ACCOUNT_PHONE_META, true)),
+        (string) get_user_meta($user->ID, LETS_ACCOUNT_PHONE_INDEX, true),
+    );
+
+    foreach ($stored as $candidate) {
+        if ('' !== $candidate && hash_equals($candidate, $digits)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Does the merchant send sign-in codes by email at all? (`email` or `both`.)
+ *
+ * @return bool
+ */
+function lets_payplus_account_email_channel_offered()
+{
+    $settings = lets_payplus_account_login_settings();
+    if (empty($settings['enabled'])) {
+        return false;
+    }
+
+    $channel = isset($settings['channel']) ? (string) $settings['channel'] : 'email';
+
+    return 'sms' !== $channel;
+}
+
+/**
+ * Record that this account just proved it owns its CURRENT email address.
+ *
+ * Callers: an email code that answered, an email registration ticket, and a
+ * Google token Google marked verified. Nothing else writes this.
+ *
+ * @param  WP_User  $user
+ */
+function lets_payplus_account_mark_email_proven($user)
+{
+    if (! $user || empty($user->ID) || empty($user->user_email)) {
+        return;
+    }
+
+    update_user_meta($user->ID, LETS_ACCOUNT_EMAIL_PROOF_META, strtolower(trim((string) $user->user_email)));
+
+    // The cached area was built without the address; the next view must ask again.
+    lets_payplus_account_flush_cache($user->ID);
+    delete_transient('lets_loyalty_url_' . (int) $user->ID);
+}
+
+/**
+ * Has this account proven the email address it carries NOW?
+ *
+ * WordPress (and WooCommerce's own "create an account") never verifies an
+ * address, so the address on a user is a claim. It counts as proof when:
+ *   - LETS recorded a proof for exactly this address (see mark_email_proven), or
+ *   - the account predates this release (legacy trust — so nobody loses their
+ *     subscriptions on upgrade; filterable off).
+ *
+ * @param  WP_User  $user
+ * @return bool
+ */
+function lets_payplus_account_email_is_proven($user)
+{
+    if (! $user || empty($user->ID) || empty($user->user_email)) {
+        return false;
+    }
+
+    $email = strtolower(trim((string) $user->user_email));
+    $proof = (string) get_user_meta($user->ID, LETS_ACCOUNT_EMAIL_PROOF_META, true);
+
+    if ('' !== $proof && hash_equals($proof, $email)) {
+        return true;
+    }
+
+    /**
+     * Filters whether accounts registered before this release keep being trusted
+     * on their email without a proof.
+     *
+     * @param  bool  $trust
+     * @param  WP_User  $user
+     */
+    if (! apply_filters('lets_payplus_account_trust_legacy_emails', true, $user)) {
+        return false;
+    }
+
+    $registered = strtotime((string) $user->user_registered . ' UTC');
+
+    return false !== $registered && $registered > 0 && $registered < lets_payplus_account_email_trust_cutoff();
+}
+
+/**
+ * The email the plugin may ASSERT to LETS for this user: their address when it
+ * is proven, '' otherwise.
+ *
+ * LETS matches guest and imported subscriptions (and a club membership) on the
+ * asserted address, so asserting an unproven one would hand whoever typed it
+ * into a registration form somebody else's subscriptions. Their own ones — the
+ * plans recorded under their WordPress user id — show either way.
+ *
+ * @param  WP_User|false|null  $user
+ * @return string
+ */
+function lets_payplus_account_asserted_email($user)
+{
+    return lets_payplus_account_email_is_proven($user) ? (string) $user->user_email : '';
+}
+
+/**
+ * When this release first ran; set once, on the first request after the upgrade.
+ *
+ * @return int
+ */
+function lets_payplus_account_email_trust_cutoff()
+{
+    $cutoff = (int) get_option(LETS_ACCOUNT_EMAIL_TRUST_OPT, 0);
+    if ($cutoff > 0) {
+        return $cutoff;
+    }
+
+    $cutoff = time();
+    add_option(LETS_ACCOUNT_EMAIL_TRUST_OPT, $cutoff, '', 'yes');
+
+    return $cutoff;
+}
+
+// Stamp the cutoff on the first request after the upgrade — not lazily on the
+// first sign-in, or every account opened in between would be trusted as legacy.
+add_action('init', 'lets_payplus_account_email_trust_cutoff');
 
 /**
  * May a verified stranger open an account here?
@@ -1725,6 +1975,12 @@ function lets_payplus_account_rest_code_register(WP_REST_Request $request)
     $user = get_userdata($user_id);
     if (! $user) {
         return rest_ensure_response(array('ok' => false, 'reason' => 'rejected'));
+    }
+
+    // Only the EMAIL ticket proved the address. On an SMS ticket the address was
+    // typed, and stays a claim until an email code (or Google) proves it.
+    if ('email' === $channel) {
+        lets_payplus_account_mark_email_proven($user);
     }
 
     return lets_payplus_account_sign_in($user, $request->get_param('redirect'));
@@ -1930,9 +2186,9 @@ function lets_payplus_account_sign_in($user, $redirect = null)
  * registration and calls it linking past orders; a passwordless sign-in is the
  * same moment for a store where most shoppers never register at all.
  *
- * SAFETY: matched on the user's OWN email, which WordPress already treats as
- * that account's identity — and every route into here has proven the address by
- * code first. wc_update_new_customer_past_orders() is WooCommerce's own helper
+ * SAFETY: matched on the user's OWN email, and only once that address is PROVEN
+ * (an email code or Google — lets_payplus_account_email_is_proven()). An SMS
+ * sign-in proves the handset, not the inbox, so it claims nothing on its own. wc_update_new_customer_past_orders() is WooCommerce's own helper
  * for exactly this: it claims the orders AND refreshes the customer's order
  * count and lifetime spend, so the merchant's reports agree with the change.
  *
@@ -1958,6 +2214,12 @@ function lets_payplus_account_claim_guest_orders($user)
     }
 
     if (! function_exists('wc_update_new_customer_past_orders') || empty($user->user_email)) {
+        return 0;
+    }
+
+    // An SMS sign-in proves the handset, not the inbox. Guest orders are matched
+    // on the address, so they are handed over only once the address is proven.
+    if (! lets_payplus_account_email_is_proven($user)) {
         return 0;
     }
 
@@ -2047,6 +2309,11 @@ function lets_payplus_account_rest_google(WP_REST_Request $request)
     $user = get_user_by('email', $email);
     if (! $user) {
         return rest_ensure_response(array('ok' => false, 'reason' => 'no_account'));
+    }
+
+    // Google marked the address verified (checked in google_email()).
+    if (! lets_payplus_account_is_privileged($user)) {
+        lets_payplus_account_mark_email_proven($user);
     }
 
     return lets_payplus_account_sign_in($user, $request->get_param('redirect'));
@@ -2396,6 +2663,29 @@ function lets_payplus_account_spend_budget($scope, $destination)
     }
 
     return lets_payplus_account_spend_window('lets_code_ip_' . md5($ip), LETS_ACCOUNT_IP_CODE_LIMIT);
+}
+
+/**
+ * Spend one unit of this visitor's hourly SEND allowance. False when it is gone.
+ *
+ * Keyed on the address alone, on purpose: it is the cap that does not care which
+ * handset or inbox is asked for.
+ *
+ * @return bool
+ */
+function lets_payplus_account_spend_send_budget()
+{
+    /**
+     * Filters how many codes one visitor address may have sent per hour.
+     *
+     * @param  int  $limit
+     */
+    $limit = (int) apply_filters('lets_payplus_account_ip_send_limit', LETS_ACCOUNT_IP_SEND_LIMIT);
+
+    return lets_payplus_account_spend_window(
+        'lets_code_send_' . md5(lets_payplus_account_client_ip()),
+        max(1, $limit)
+    );
 }
 
 /**
@@ -2884,6 +3174,8 @@ function lets_payplus_account_login_config()
             'email_taken'    => $he ? 'לכתובת הזו כבר יש חשבון — היכנסו איתה.' : 'That address already has an account — sign in with it.',
             'email_taken_cta' => $he ? 'כניסה עם המייל' : 'Sign in with that email',
             'ticket_expired' => $he ? 'האימות פג. נתחיל מחדש.' : 'That verification expired. Let us start again.',
+            'use_email'      => $he ? 'המספר הזה לא שמור בחשבון שלכם. כדי להיכנס, נשלח קוד למייל של החשבון.' : 'This number is not saved on your account. To sign in, we will send a code to your account email.',
+            'use_email_cta'  => $he ? 'כניסה עם קוד במייל' : 'Sign in with an email code',
             'no_account'     => $he ? 'לא מצאנו חשבון עם הכתובת הזו.' : 'We could not find an account for that email.',
             'google_error'   => $he ? 'הכניסה עם Google לא הצליחה. נסו שוב.' : 'Google sign-in did not go through. Please try again.',
             'unreachable'    => $he ? 'משהו השתבש. רעננו את העמוד ונסו שוב.' : 'Something went wrong. Refresh the page and try again.',
