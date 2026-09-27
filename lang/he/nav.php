@@ -46,4 +46,9 @@ return [
     'support' => [
         'chat' => "צ'אט תמיכה",
     ],
+    // the store card at the foot of the sidebar
+    'platform_name' => [
+        'shopify' => 'Shopify',
+        'woocommerce' => 'WooCommerce',
+    ],
 ];

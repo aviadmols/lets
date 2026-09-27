@@ -17,7 +17,7 @@
     border: 1px solid var(--rc-border);
     border-radius: var(--rc-radius-card);
     box-shadow: var(--rc-shadow-card);
-    padding: var(--rc-space-5);
+    padding: var(--rc-space-4) var(--rc-space-5);
     text-decoration: none;
     color: inherit;
     transition: box-shadow .15s ease, transform .15s ease;
@@ -59,13 +59,16 @@
     display: inline-flex;
     align-items: center;
     gap: var(--rc-space-1);
+    align-self: flex-start;
+    padding: 2px var(--rc-space-2);
+    border-radius: var(--rc-radius-pill);
     font: var(--rc-type-label);
     text-transform: none;
     letter-spacing: normal;
 }
-.rc-kpi__delta--up   { color: var(--rc-green-ink); }
-.rc-kpi__delta--down { color: var(--rc-red-ink); }
-.rc-kpi__delta--flat { color: var(--rc-ink-muted); }
+.rc-kpi__delta--up   { color: var(--rc-green-ink); background: var(--rc-green-bg); }
+.rc-kpi__delta--down { color: var(--rc-red-ink); background: var(--rc-red-bg); }
+.rc-kpi__delta--flat { color: var(--rc-gray-ink); background: var(--rc-gray-bg); }
 
 .rc-kpi__sub {
     font: var(--rc-type-caption);

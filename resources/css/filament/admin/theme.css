@@ -143,19 +143,23 @@
     border-block-end: 1px solid var(--rc-border);
 }
 
-/* Active nav item: blue-bg wash + a brand inline-start accent rail (flips in RTL). */
+/* Active nav item: a rounded pill in the accent wash with a 3px rail painted
+   INSIDE its start edge (inset shadow, so the label never shifts). */
+.fi-sidebar-item > .fi-sidebar-item-button {
+    border-radius: var(--rc-radius-control);
+}
 .fi-sidebar-item-active > .fi-sidebar-item-button {
     background-color: var(--rc-blue-bg);
-    border-inline-start: 3px solid var(--rc-blue);
+    box-shadow: inset 3px 0 0 var(--rc-blue);
     color: var(--rc-blue-600);
     font-weight: 600;
 }
-.fi-sidebar-item > .fi-sidebar-item-button {
-    border-inline-start: 3px solid transparent;
-    border-radius: 0 var(--rc-radius-control) var(--rc-radius-control) 0;
+[dir="rtl"] .fi-sidebar-item-active > .fi-sidebar-item-button {
+    box-shadow: inset -3px 0 0 var(--rc-blue);
 }
-[dir="rtl"] .fi-sidebar-item > .fi-sidebar-item-button {
-    border-radius: var(--rc-radius-control) 0 0 var(--rc-radius-control);
+.fi-sidebar-item-active > .fi-sidebar-item-button .fi-sidebar-item-icon,
+.fi-sidebar-item-active > .fi-sidebar-item-button .fi-sidebar-item-label {
+    color: var(--rc-blue-600);
 }
 
 /* The Settings group is always LAST (NAV_GROUP_ORDER) and holds one item — the

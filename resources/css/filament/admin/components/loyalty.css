@@ -11,6 +11,9 @@
     gap: var(--rc-space-5);
     align-items: start;
 }
+/* The KPI strip spans both columns, over the form and the preview. */
+.rc-loyalty__kpis { grid-column: 1 / -1; }
+
 @media (max-width: 1100px) {
     .rc-loyalty { grid-template-columns: 1fr; }
 }

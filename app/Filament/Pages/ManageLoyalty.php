@@ -5,6 +5,9 @@ namespace App\Filament\Pages;
 use App\Domain\Loyalty\Credit\ShopifyCreditScopeProbe;
 use App\Domain\Loyalty\TierResolver;
 use App\Filament\Concerns\ShopScopedScreen;
+use App\Models\LoyaltyAccount;
+use App\Models\LoyaltyPointEvent;
+use App\Models\LoyaltyReferral;
 use App\Models\LoyaltyTier;
 use App\Models\MerchantLoyaltySettings;
 use App\Models\Shop;
@@ -48,6 +51,9 @@ class ManageLoyalty extends Page implements HasForms
     protected static string $view = 'filament.pages.manage-loyalty';
     protected static ?string $slug = 'loyalty';
     protected static ?int $navigationSort = 30;
+
+    /** The KPI strip reads the last N days (joined, issued, redeemed, referrals). */
+    public const STATS_WINDOW_DAYS = 30;
 
     /** A ladder longer than this is a spreadsheet, not a club. */
     public const MAX_TIERS = 8;
@@ -524,6 +530,39 @@ class ManageLoyalty extends Page implements HasForms
 
         return $shop instanceof Shop
             && app(ShopifyCreditScopeProbe::class)->hasStoreCreditScope($shop) === false;
+    }
+
+    /**
+     * The club at a glance, for the KPI strip over the form (the approved sketch):
+     * members (+ joined in the window), points issued, money redeemed, referrals.
+     * Every read is tenant-scoped by BelongsToShop; the window is STATS_WINDOW_DAYS.
+     *
+     * @return array{members: int, joined: int, issued: int, redeemed: string, referrals: int}
+     */
+    public function clubStats(): array
+    {
+        $since = now()->subDays(self::STATS_WINDOW_DAYS);
+        $settings = MerchantLoyaltySettings::current();
+
+        $redeemedPoints = (int) abs((int) LoyaltyPointEvent::query()
+            ->where('kind', LoyaltyPointEvent::KIND_REDEEM)
+            ->where('created_at', '>=', $since)
+            ->sum('points'));
+
+        $perPoint = $settings->redeemRatePoints() > 0
+            ? $settings->redeemRateAmount() / $settings->redeemRatePoints()
+            : 0.0;
+
+        return [
+            'members' => LoyaltyAccount::query()->count(),
+            'joined' => LoyaltyAccount::query()->where('joined_at', '>=', $since)->count(),
+            'issued' => (int) LoyaltyPointEvent::query()
+                ->where('points', '>', 0)
+                ->where('created_at', '>=', $since)
+                ->sum('points'),
+            'redeemed' => Money::format($redeemedPoints * $perPoint),
+            'referrals' => LoyaltyReferral::query()->where('created_at', '>=', $since)->count(),
+        ];
     }
 
     /** A worked example of the redemption rate, for the Program tab. */

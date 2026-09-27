@@ -40,6 +40,21 @@
             },
         }"
     >
+        {{-- The club at a glance (the approved sketch): who is in it and what it moved. --}}
+        @php $stats = $this->clubStats(); @endphp
+        <div class="rc-kpi-grid rc-loyalty__kpis">
+            <x-rc.kpi label="loyalty.admin.kpi.members" :value="number_format($stats['members'])"
+                :sub="__('loyalty.admin.kpi.joined', ['count' => number_format($stats['joined']), 'days' => \App\Filament\Pages\ManageLoyalty::STATS_WINDOW_DAYS])"
+                href="{{ \App\Filament\Pages\LoyaltyMembers::getUrl() }}" />
+            <x-rc.kpi label="loyalty.admin.kpi.issued" :value="number_format($stats['issued'])"
+                :sub="__('loyalty.admin.kpi.window', ['days' => \App\Filament\Pages\ManageLoyalty::STATS_WINDOW_DAYS])" />
+            <x-rc.kpi label="loyalty.admin.kpi.redeemed" :value="$stats['redeemed']"
+                :sub="__('loyalty.admin.kpi.window', ['days' => \App\Filament\Pages\ManageLoyalty::STATS_WINDOW_DAYS])" />
+            <x-rc.kpi label="loyalty.admin.kpi.referrals" :value="number_format($stats['referrals'])"
+                :sub="__('loyalty.admin.kpi.window', ['days' => \App\Filament\Pages\ManageLoyalty::STATS_WINDOW_DAYS])"
+                href="{{ \App\Filament\Resources\LoyaltyReferralResource::getUrl() }}" />
+        </div>
+
         <form wire:submit="save" class="rc-stack">
             <p class="rc-muted">{{ $this->redeemExample() }}</p>
 

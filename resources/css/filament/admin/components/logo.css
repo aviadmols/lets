@@ -46,3 +46,44 @@
 .fi-sidebar-header .rc-logo {
     font-size: 1.35rem;
 }
+
+/* The store card at the foot of the sidebar (filament/partials/sidebar-shop):
+   a mark in the accent, the business name, and the platform under it. */
+.rc-sidebar-shop {
+    display: flex;
+    align-items: center;
+    gap: var(--rc-space-3);
+    margin: var(--rc-space-3);
+    padding-block-start: var(--rc-space-3);
+    border-block-start: 1px solid var(--rc-border);
+}
+.rc-sidebar-shop__mark {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 30px;
+    block-size: 30px;
+    border-radius: var(--rc-radius-pill);
+    background: var(--rc-blue);
+    color: var(--rc-ink-on-primary);
+    font: var(--rc-type-body-strong);
+    font-size: 13px;
+}
+.rc-sidebar-shop__text {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+}
+.rc-sidebar-shop__name {
+    font: var(--rc-type-body-strong);
+    font-size: 13px;
+    color: var(--rc-ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.rc-sidebar-shop__meta {
+    font: var(--rc-type-caption);
+    color: var(--rc-ink-muted);
+}

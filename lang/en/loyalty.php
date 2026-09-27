@@ -9,6 +9,14 @@ return [
         'title' => 'Loyalty club',
         'subtitle' => 'Reward the customers who keep coming back — points for what they spend and do.',
         'saved' => 'Loyalty program saved.',
+        'kpi' => [
+            'members' => 'Members',
+            'joined' => ':count joined in :days days',
+            'issued' => 'Points issued',
+            'redeemed' => 'Redeemed',
+            'referrals' => 'Referrals',
+            'window' => 'last :days days',
+        ],
         'save_cta' => 'Save',
         'embed_cta' => 'Where to put it in my store',
 

@@ -38,18 +38,44 @@
 /* simple plain table for schedule + ledger inside detail pages. */
 .rc-table { inline-size: 100%; border-collapse: collapse; }
 .rc-table th {
-    font: var(--rc-type-label); text-transform: uppercase; letter-spacing: .04em;
+    font: var(--rc-type-label); font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
     color: var(--rc-ink-muted); text-align: start;
     padding: var(--rc-space-2) var(--rc-space-3);
-    border-block-end: 1px solid var(--rc-border-strong);
+    background: var(--rc-surface-sunk);
+    border-block-end: 1px solid var(--rc-border);
 }
 [dir="rtl"] .rc-table th { text-transform: none; letter-spacing: normal; }
 .rc-table td {
     font: var(--rc-type-body); color: var(--rc-ink);
     padding: var(--rc-space-3);
+    border-block-end: 1px solid var(--rc-border-soft);
+}
+.rc-table tbody tr:last-child td { border-block-end: 0; }
+.rc-table tbody tr:hover { background: var(--rc-blue-bg); }
+
+/* Card anatomy (the approved sketch): a header bar on a hairline, then the body.
+   A section's own title — alone, or in a row with its controls — becomes that bar
+   by bleeding to the card edge; a table that is a direct child runs edge to edge
+   too, so rows line up with the header instead of floating in padding. */
+.rc-section > .rc-section__title,
+.rc-section > .rc-row--between:has(> .rc-section__title) {
+    margin: calc(-1 * var(--rc-space-5)) calc(-1 * var(--rc-space-5)) var(--rc-space-4);
+    padding: var(--rc-space-3) var(--rc-space-5);
     border-block-end: 1px solid var(--rc-border);
 }
-.rc-table tbody tr:hover { background: var(--rc-blue-bg); }
+.rc-section > .rc-table {
+    margin-inline: calc(-1 * var(--rc-space-5));
+    inline-size: calc(100% + 2 * var(--rc-space-5));
+}
+.rc-section > .rc-section__title + .rc-table,
+.rc-section > .rc-row--between:has(> .rc-section__title) + .rc-table {
+    margin-block-start: calc(-1 * var(--rc-space-4));
+}
+.rc-section > .rc-table:last-child { margin-block-end: calc(-1 * var(--rc-space-5)); }
+.rc-section > .rc-table th:first-child,
+.rc-section > .rc-table td:first-child { padding-inline-start: var(--rc-space-5); }
+.rc-section > .rc-table th:last-child,
+.rc-section > .rc-table td:last-child { padding-inline-end: var(--rc-space-5); }
 
 /* 70/30 detail split (--rc-split). Mirrors in RTL because grid columns follow
    the writing direction; no left/right used. Collapses to one column on narrow. */
