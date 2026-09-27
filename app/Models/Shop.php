@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Casts\EncryptedCredentials;
 use App\Casts\EncryptedString;
 use App\Domain\Billing\BillingPlan;
+use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusBaseUrl;
 use App\Services\Shopify\ShopifyToken;
 use App\Support\Ui\EmbeddedMenu;
 use Illuminate\Database\Eloquent\Casts\Attribute;
@@ -491,7 +492,9 @@ class Shop extends Model
             // Per-shop base_url override; falls back to the platform default. Use ?? so a
             // missing key (e.g. an undecryptable/empty bag) doesn't raise an "Undefined
             // array key" — which Laravel turns into an ErrorException and 500s the charge.
-            'base_url' => ($bag['base_url'] ?? null) ?: config('payplus.base_url'),
+            // Only PayPlus's own hosts: anything else stored falls back to production,
+            // so the merchant's API secret can never be sent to a host they chose.
+            'base_url' => PayPlusBaseUrl::resolve($bag['base_url'] ?? null),
         ];
     }
 

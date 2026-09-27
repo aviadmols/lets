@@ -2,6 +2,7 @@
 
 namespace App\Mail\Support;
 
+use App\Domain\Brand\SafeSiteFetcher;
 use App\Models\MerchantMailSettings;
 use App\Models\PlatformMailSettings;
 use App\Models\Shop;
@@ -42,6 +43,9 @@ final class MailTransport
     /** SendGrid's relay takes the literal username "apikey"; the key is the password. */
     private const SENDGRID_USERNAME = 'apikey';
 
+    /** The submission port, when the merchant names none. */
+    private const DEFAULT_SMTP_PORT = 587;
+
     /**
      * The mailer config array for this shop, or null for "the platform default
      * mailer, untouched".
@@ -52,12 +56,15 @@ final class MailTransport
     {
         $settings = self::settingsFor($shop);
 
-        // 1. The merchant's own relay.
-        if ($settings !== null && $settings->override_env_smtp && $settings->smtp_host) {
+        // 1. The merchant's own relay — unless its address is one the outbound
+        //    walls refuse (see merchantRelayRefusal), in which case it is treated
+        //    as not configured and the ladder moves on.
+        if ($settings !== null && $settings->override_env_smtp && $settings->smtp_host
+            && self::merchantRelayRefusal($settings) === null) {
             $config = [
                 'transport' => self::TRANSPORT,
                 'host' => (string) $settings->smtp_host,
-                'port' => $settings->smtp_port ? (int) $settings->smtp_port : 587,
+                'port' => self::merchantPort($settings),
                 'username' => $settings->smtp_username ?: null,
                 'password' => $settings->smtp_password ?: null,
                 'timeout' => null,
@@ -95,6 +102,35 @@ final class MailTransport
             // Both providers refuse a From on a domain they never authenticated.
             'from' => self::sendGridFrom($shop, $settings, $platform),
         ];
+    }
+
+    /**
+     * Why the merchant's SMTP relay may NOT be connected to — or null when it may.
+     *
+     * The host and port are merchant-typed, and the worker that connects sits on
+     * the platform's private network: "redis.railway.internal:6379" or
+     * 169.254.169.254 as a "mail server" is a port scan with our network's
+     * reach. So the relay goes through SafeSiteFetcher's address walls (the ONE
+     * definition of a public address) with the SMTP ports only.
+     *
+     * A name that does not resolve right now is NOT refused here: the send
+     * itself will fail and say so, exactly as before — only an address that
+     * resolves somewhere private is.
+     */
+    public static function merchantRelayRefusal(MerchantMailSettings $settings): ?string
+    {
+        $refusal = app(SafeSiteFetcher::class)->refusalForHost(
+            (string) $settings->smtp_host,
+            self::merchantPort($settings),
+            SafeSiteFetcher::SMTP_PORTS,
+        );
+
+        return $refusal === SafeSiteFetcher::REASON_UNREACHABLE ? null : $refusal;
+    }
+
+    private static function merchantPort(MerchantMailSettings $settings): int
+    {
+        return $settings->smtp_port ? (int) $settings->smtp_port : self::DEFAULT_SMTP_PORT;
     }
 
     /**

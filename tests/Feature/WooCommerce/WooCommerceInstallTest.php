@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\WooCommerce;
 
+use App\Http\Controllers\WooCommerce\InstallController;
 use App\Jobs\Products\ImportShopProductsJob;
 use App\Services\WooCommerce\WooCommerceShopProvisioner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -82,6 +83,53 @@ final class WooCommerceInstallTest extends TestCase
 
         // A valid signature, but the plugin reports a DIFFERENT site than the token's.
         $this->signedPost($key, $secret, ['base_url' => 'https://attacker.example.com'])->assertStatus(422);
+    }
+
+    public function test_a_base_url_that_normalizes_to_nothing_is_refused_not_skipped(): void
+    {
+        $result = (new WooCommerceShopProvisioner)->provision('store.example.com');
+        [$key, $secret] = $this->keys($result['connection_token']);
+
+        // Each of these used to slip past the domain check (parse_url yields no
+        // host, so the check was skipped) and was then stored verbatim.
+        foreach (['javascript:alert(document.domain)//x', 'https:///evil.com', 'https://javascript:alert(1)'] as $bad) {
+            $this->signedPost($key, $secret, ['base_url' => $bad])
+                ->assertStatus(422)
+                ->assertJsonPath('error', InstallController::ERROR_INVALID_BASE_URL);
+        }
+
+        $this->assertNull($result['shop']->fresh()->wc_shop_token);
+    }
+
+    public function test_an_insecure_or_decorated_base_url_is_refused(): void
+    {
+        $result = (new WooCommerceShopProvisioner)->provision('store.example.com');
+        [$key, $secret] = $this->keys($result['connection_token']);
+
+        foreach (['http://store.example.com', 'https://store.example.com/?q=', 'https://store.example.com:8443'] as $bad) {
+            $this->signedPost($key, $secret, ['base_url' => $bad])->assertStatus(422);
+        }
+    }
+
+    public function test_the_stored_base_url_is_the_canonical_form(): void
+    {
+        $result = (new WooCommerceShopProvisioner)->provision('store.example.com');
+        [$key, $secret] = $this->keys($result['connection_token']);
+
+        $this->signedPost($key, $secret, ['base_url' => 'https://www.store.example.com/shop/'])->assertOk();
+
+        $this->assertSame('https://www.store.example.com/shop', $result['shop']->fresh()->wooCredential('base_url'));
+    }
+
+    public function test_a_shop_without_a_minted_domain_cannot_connect(): void
+    {
+        $result = (new WooCommerceShopProvisioner)->provision('store.example.com');
+        [$key, $secret] = $this->keys($result['connection_token']);
+        $result['shop']->forceFill(['woocommerce_domain' => null])->save();
+
+        $this->signedPost($key, $secret, ['base_url' => 'https://anything.example.com'])
+            ->assertStatus(422)
+            ->assertJsonPath('error', InstallController::ERROR_NO_DOMAIN);
     }
 
     // === Helpers ===

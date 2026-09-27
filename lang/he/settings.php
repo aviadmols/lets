@@ -33,6 +33,7 @@ return [
         'test_fail' => 'החיבור נכשל: :reason',
         'save' => 'שמירת פרטים',
         'saved' => 'פרטי PayPlus נשמרו.',
+        'base_url_refused' => 'יש לבחור ייצור או סביבת בדיקות — אפשר להתחבר ל-PayPlus רק בכתובות שלה.',
         'status' => [
             'connected' => 'מחובר',
             'not_connected' => 'לא מחובר',

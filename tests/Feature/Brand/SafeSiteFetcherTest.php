@@ -102,6 +102,51 @@ final class SafeSiteFetcherTest extends TestCase
         $this->assertNull($this->fetcher()->refusalFor('https://shop.example.com/'));
     }
 
+    // === Ports, v4-in-v6 smuggling, and the pin that closes DNS rebinding ===
+
+    public function test_only_the_web_ports_are_reachable(): void
+    {
+        $fetcher = $this->fetcher();
+
+        $this->assertSame(SafeSiteFetcher::REASON_BLOCKED_HOST, $fetcher->refusalFor('http://shop.example.com:22/'));
+        $this->assertSame(SafeSiteFetcher::REASON_BLOCKED_HOST, $fetcher->refusalFor('https://shop.example.com:6379/'));
+        $this->assertNull($fetcher->refusalFor('https://shop.example.com:443/'));
+    }
+
+    public function test_nat64_and_6to4_addresses_cannot_smuggle_a_private_v4(): void
+    {
+        $fetcher = $this->fetcher([
+            'nat64.example.com' => ['64:ff9b::a00:5'],
+            'sixtofour.example.com' => ['2002:a00:5::1'],
+        ]);
+
+        $this->assertSame(SafeSiteFetcher::REASON_BLOCKED_HOST, $fetcher->refusalFor('https://nat64.example.com/'));
+        $this->assertSame(SafeSiteFetcher::REASON_BLOCKED_HOST, $fetcher->refusalFor('https://sixtofour.example.com/'));
+    }
+
+    public function test_the_connection_is_pinned_to_the_judged_address(): void
+    {
+        $vetted = $this->fetcher()->vet('https://shop.example.com/page');
+
+        $this->assertNull($vetted['reason']);
+        $this->assertSame(
+            ['shop.example.com:443:'.self::PUBLIC_IP],
+            $vetted['options']['curl'][CURLOPT_RESOLVE],
+        );
+    }
+
+    public function test_a_bare_relay_host_goes_through_the_same_walls(): void
+    {
+        $fetcher = $this->fetcher(['relay.inside.example.com' => ['10.0.0.9']]);
+
+        $this->assertNull($fetcher->refusalForHost('smtp.example.com', 587, SafeSiteFetcher::SMTP_PORTS));
+        $this->assertSame(SafeSiteFetcher::REASON_BLOCKED_HOST, $fetcher->refusalForHost('relay.inside.example.com', 587, SafeSiteFetcher::SMTP_PORTS));
+        $this->assertSame(SafeSiteFetcher::REASON_BLOCKED_HOST, $fetcher->refusalForHost('169.254.169.254', 587, SafeSiteFetcher::SMTP_PORTS));
+        $this->assertSame(SafeSiteFetcher::REASON_BLOCKED_HOST, $fetcher->refusalForHost('smtp.example.com', 6379, SafeSiteFetcher::SMTP_PORTS));
+        $this->assertSame(SafeSiteFetcher::REASON_INVALID_URL, $fetcher->refusalForHost('user@smtp.example.com', 587, SafeSiteFetcher::SMTP_PORTS));
+        $this->assertSame(SafeSiteFetcher::REASON_INVALID_URL, $fetcher->refusalForHost('smtp.example.com:25', 587, SafeSiteFetcher::SMTP_PORTS));
+    }
+
     // === The fetch itself ===
 
     public function test_a_redirect_to_the_metadata_service_is_refused_mid_flight(): void

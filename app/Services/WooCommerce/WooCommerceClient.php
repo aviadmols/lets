@@ -26,6 +26,14 @@ final class WooCommerceClient
      */
     private const EMAIL_LOOKUPS_AT_ONCE = 8;
 
+    /**
+     * The walled endpoint (canonical base + pinning options), judged once per
+     * client — see WooStoreEndpoint.
+     *
+     * @var array{base: string, options: array<string, mixed>}|null
+     */
+    private ?array $endpoint = null;
+
     public function __construct(
         private readonly string $baseUrl,
         private readonly string $consumerKey,
@@ -213,6 +221,7 @@ final class WooCommerceClient
         foreach (array_chunk($emails, self::EMAIL_LOOKUPS_AT_ONCE) as $chunk) {
             $responses = Http::pool(fn (Pool $pool): array => array_map(
                 fn (string $email) => $pool->as($email)
+                    ->withOptions($this->endpoint()['options'])
                     ->withBasicAuth($this->consumerKey, $this->consumerSecret)
                     ->timeout($this->timeout)
                     ->acceptJson()
@@ -478,13 +487,24 @@ final class WooCommerceClient
 
     private function client(): PendingRequest
     {
-        return Http::withBasicAuth($this->consumerKey, $this->consumerSecret)
+        return Http::withOptions($this->endpoint()['options'])
+            ->withBasicAuth($this->consumerKey, $this->consumerSecret)
             ->timeout($this->timeout)
             ->acceptJson();
     }
 
     private function url(string $path): string
     {
-        return rtrim($this->baseUrl, '/').'/wp-json/wc/v3/'.ltrim($path, '/');
+        return $this->endpoint()['base'].'/wp-json/wc/v3/'.ltrim($path, '/');
+    }
+
+    /**
+     * @return array{base: string, options: array<string, mixed>}
+     *
+     * @throws WooStoreRefused when the stored store URL or its address is refused
+     */
+    private function endpoint(): array
+    {
+        return $this->endpoint ??= WooStoreEndpoint::prepare($this->baseUrl);
     }
 }

@@ -6,6 +6,7 @@ use App\Domain\Campaigns\Models\GiftExportRow;
 use App\Domain\Campaigns\Models\GiftExportRun;
 use App\Domain\Campaigns\Models\GiftRecipient;
 use App\Models\Shop;
+use App\Support\CsvCell;
 
 /**
  * The gift list as a courier's sheet: name, phone, city, street, house,
@@ -192,7 +193,8 @@ final class GiftListExporter
      */
     private function put($handle, array $fields): void
     {
-        fputcsv($handle, $fields, self::SEPARATOR, self::ENCLOSURE, self::ESCAPE);
+        // Shopper-typed text must not become a spreadsheet formula (CsvCell).
+        fputcsv($handle, CsvCell::neutraliseRow($fields), self::SEPARATOR, self::ENCLOSURE, self::ESCAPE);
     }
 
     /**

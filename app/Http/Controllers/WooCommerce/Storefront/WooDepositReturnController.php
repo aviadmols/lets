@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\WooCommerce\Storefront;
 
 use App\Models\Shop;
+use App\Services\WooCommerce\WooStoreUrl;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 
@@ -33,7 +34,9 @@ final class WooDepositReturnController
             ->where('platform', Shop::PLATFORM_WOOCOMMERCE)
             ->first();
 
-        $backUrl = $shop !== null ? (string) ($shop->wooCredential('base_url') ?? '') : '';
+        // Only a canonical web URL is ever drawn into the href — base_url is
+        // plugin-reported, and a `javascript:` value would run on our origin.
+        $backUrl = $shop !== null ? (string) WooStoreUrl::canonical($shop->wooCredential('base_url')) : '';
 
         return view('storefront.installments.return', [
             'state' => $state,

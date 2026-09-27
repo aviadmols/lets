@@ -80,8 +80,8 @@
                 <div class="rc-kv">
                     <span class="rc-kv__k">{{ __('invoices.col.number') }}</span>
                     <span class="rc-kv__v rc-ltr">
-                        @if($document->document_url)
-                            <a href="{{ $document->document_url }}" target="_blank" rel="noopener">
+                        @if($docHref = \App\Support\SafeHref::web($document->document_url))
+                            <a href="{{ $docHref }}" target="_blank" rel="noopener">
                                 {{ $document->document_number ?: $document->provider_document_id }} ↗
                             </a>
                         @else

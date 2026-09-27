@@ -6,6 +6,7 @@ use App\Http\Middleware\VerifyWooCommerceSignature;
 use App\Jobs\Products\ImportShopProductsJob;
 use App\Models\Shop;
 use App\Services\WooCommerce\WooCommerceShopProvisioner;
+use App\Services\WooCommerce\WooStoreUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -14,8 +15,9 @@ use Illuminate\Support\Str;
  * The WooCommerce plugin connect handshake (completes the admin onboarding loop). The
  * request is already HMAC-verified + the shop bound by VerifyWooCommerceSignature; the
  * shop is derived ONLY from the verified key. This:
- *   1. verifies the plugin's reported site host matches the admin-entered
- *      woocommerce_domain (a token can only connect the store it was minted for),
+ *   1. verifies the plugin's reported site URL is a plain https URL ON the admin-entered
+ *      woocommerce_domain (a token can only connect the store it was minted for; a shop
+ *      with no domain cannot connect, and an unparseable URL is refused, never skipped),
  *   2. stores the connection (base_url + a per-shop wc_webhook_secret, plus the WC REST
  *      consumer key/secret when the plugin supplies them) in the encrypted bag,
  *   3. mints a wc_shop_token (the opaque segment future WC webhooks are delivered to),
@@ -23,19 +25,46 @@ use Illuminate\Support\Str;
  */
 final class InstallController
 {
+    // === CONSTANTS ===
+    /** Machine-readable refusals the plugin shows its admin. */
+    public const ERROR_NO_DOMAIN = 'no_store_domain';
+
+    public const ERROR_DOMAIN_MISMATCH = 'domain_mismatch';
+
+    public const ERROR_INVALID_BASE_URL = 'invalid_base_url';
+
     public function install(Request $request): JsonResponse
     {
         $shop = $this->shop($request);
 
-        // Domain binding: the reported host must match the minted-for domain.
-        $reported = app(WooCommerceShopProvisioner::class)->normalizeDomain((string) $request->input('base_url', ''));
+        // Domain binding. A token can only connect the store it was minted for,
+        // so a shop with no minted-for domain cannot connect at all — there is
+        // nothing to bind the reported URL to.
         $expected = (string) ($shop->woocommerce_domain ?? '');
-        if ($expected !== '' && $reported !== '' && $reported !== $expected) {
-            return response()->json(['error' => 'domain_mismatch', 'expected' => $expected], 422);
+        if ($expected === '') {
+            return response()->json(['error' => self::ERROR_NO_DOMAIN], 422);
         }
 
+        // The reported URL is merchant input that we later render into links and
+        // connect to: it must be a plain https URL on the minted-for domain, and a
+        // value that cannot even be parsed is REFUSED, never skipped.
         $creds = $shop->woocommerce_credentials ?: [];
-        $creds['base_url'] = (string) ($request->input('base_url') ?: ($creds['base_url'] ?? 'https://'.$expected));
+        $reportedRaw = trim((string) $request->input('base_url', ''));
+        if ($reportedRaw !== '') {
+            $reported = app(WooCommerceShopProvisioner::class)->normalizeDomain($reportedRaw);
+            if ($reported !== '' && $reported !== $expected) {
+                return response()->json(['error' => self::ERROR_DOMAIN_MISMATCH, 'expected' => $expected], 422);
+            }
+
+            $baseUrl = WooStoreUrl::forInstall($reportedRaw, $expected);
+            if ($baseUrl === null) {
+                return response()->json(['error' => self::ERROR_INVALID_BASE_URL, 'expected' => $expected], 422);
+            }
+        } else {
+            $baseUrl = WooStoreUrl::forInstall((string) ($creds['base_url'] ?? ''), $expected) ?? 'https://'.$expected;
+        }
+
+        $creds['base_url'] = $baseUrl;
         $creds['wc_webhook_secret'] = (string) ($creds['wc_webhook_secret'] ?? Str::random(48));
         if ($request->filled('consumer_key')) {
             $creds['consumer_key'] = (string) $request->input('consumer_key');

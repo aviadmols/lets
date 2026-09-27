@@ -99,9 +99,13 @@ final class WooConnectionTester
         }
 
         try {
-            $response = Http::timeout(self::PLUGIN_PROBE_TIMEOUT)
+            // Through the outbound walls: a refused address is "unreachable".
+            $endpoint = WooStoreEndpoint::prepare($base);
+
+            $response = Http::withOptions($endpoint['options'])
+                ->timeout(self::PLUGIN_PROBE_TIMEOUT)
                 ->acceptJson()
-                ->get(rtrim($base, '/').self::PLUGIN_STATUS_PATH);
+                ->get($endpoint['base'].self::PLUGIN_STATUS_PATH);
         } catch (\Throwable) {
             return ['state' => 'unreachable', 'version' => ''];
         }

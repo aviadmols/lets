@@ -82,7 +82,7 @@ trait UsesCustomMailTemplate
         return new Content(
             view: 'emails.user-template-wrapper',
             with: [
-                'renderedHtml' => TemplateRenderer::render($body, $vars),
+                'renderedHtml' => TemplateRenderer::renderHtml($body, $vars),
                 'businessName' => $this->resolveBusinessName($shop),
             ],
         );

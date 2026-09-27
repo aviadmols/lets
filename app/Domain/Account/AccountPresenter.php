@@ -23,6 +23,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Support\SafeHref;
 use App\Support\Tenant;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -924,6 +925,8 @@ final class AccountPresenter
         }
 
         return $documents
+            // Only a real web link reaches the shopper's page as an href.
+            ->filter(static fn (IssuedDocument $doc): bool => SafeHref::web($doc->document_url) !== null)
             ->map(function (IssuedDocument $doc) use ($titles): array {
                 $currency = strtoupper((string) ($doc->currency ?: 'ILS'));
 
@@ -1233,7 +1236,7 @@ final class AccountPresenter
         $map = [];
         foreach ($docs as $doc) {
             $uid = $uidByLedger[(int) $doc->ledger_id] ?? null;
-            if ($uid !== null) {
+            if ($uid !== null && SafeHref::web($doc->document_url) !== null) {
                 $map[(string) $uid] = (string) $doc->document_url;
             }
         }

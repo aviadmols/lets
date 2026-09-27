@@ -51,6 +51,7 @@ use Filament\Resources\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
+use App\Services\WooCommerce\WooStoreUrl;
 use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Locked;
 
@@ -1600,7 +1601,7 @@ class ViewSubscription extends Page
         if ($this->record->shop?->platform !== Shop::PLATFORM_WOOCOMMERCE) {
             return null;
         }
-        $base = rtrim((string) ($this->record->shop?->wooConfig()['base_url'] ?? ''), '/');
+        $base = (string) WooStoreUrl::canonical($this->record->shop?->wooConfig()['base_url'] ?? null);
         if ($base === '') {
             return null;
         }

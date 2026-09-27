@@ -6,6 +6,7 @@ use App\Filament\Clusters\Settings as SettingsCluster;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusAccountDiscovery;
+use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusBaseUrl;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
 use App\Support\Tenant;
 use App\Support\Ui\PanelAccess;
@@ -180,7 +181,7 @@ class ManagePayPlusConnection extends Page implements HasForms
 
         // Secrets stay blank (masked); plain discovered values are pre-filled.
         $this->form->fill([
-            'base_url' => $bag['base_url'] ?? config('payplus.base_url'),
+            'base_url' => PayPlusBaseUrl::resolve($bag['base_url'] ?? null),
             'terminal_uid' => $bag['terminal_uid'] ?? null,
             'payment_page_uid' => $bag['payment_page_uid'] ?? null,
             'cashier_uid' => $bag['cashier_uid'] ?? null,
@@ -493,9 +494,25 @@ class ManagePayPlusConnection extends Page implements HasForms
         // NOT getState(): the discovery section is conditionally visible, and hidden
         // Filament components are excluded from getState()/dehydration. The raw state
         // always holds the discovered terminal/page/cashier we set programmatically.
+        //
+        // base_url is the exception to "raw state is fine": it decides WHERE the
+        // merchant's secret is sent, and raw Livewire state is client-writable. It
+        // must be one of PayPlus's own hosts (the Radio's two options) — anything
+        // else is refused outright, never stored.
+        if (filled($this->data['base_url'] ?? null) && ! PayPlusBaseUrl::isAllowed((string) $this->data['base_url'])) {
+            Notification::make()
+                ->title(__('settings.payplus.base_url_refused'))
+                ->danger()
+                ->send();
+
+            return;
+        }
+
         foreach (self::PLAIN_KEYS as $key) {
             if (array_key_exists($key, $this->data)) {
-                $bag[$key] = $this->data[$key];
+                $bag[$key] = $key === 'base_url'
+                    ? PayPlusBaseUrl::resolve((string) $this->data[$key])
+                    : $this->data[$key];
             }
         }
         // Secrets overwrite only when a new value was typed (an empty secret field
@@ -569,7 +586,8 @@ class ManagePayPlusConnection extends Page implements HasForms
 
         $apiKey = (string) ($this->data['api_key'] ?? '') ?: (string) ($bag['api_key'] ?? '');
         $secretKey = (string) ($this->data['secret_key'] ?? '') ?: (string) ($bag['secret_key'] ?? '');
-        $baseUrl = (string) ($this->data['base_url'] ?? '') ?: (string) config('payplus.base_url');
+        // Client-writable state: only PayPlus's own hosts, whatever was sent.
+        $baseUrl = PayPlusBaseUrl::resolve((string) ($this->data['base_url'] ?? ''));
 
         return [$apiKey, $secretKey, $baseUrl];
     }
