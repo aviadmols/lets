@@ -12,6 +12,7 @@ use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Contracts\PayPlusGatewayInterface;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\GatewayResult;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
+use App\Services\WooCommerce\Orders\WooGatewayPageRegistry;
 use App\Services\WooCommerce\WooCommerceShopProvisioner;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -117,6 +118,7 @@ final class WooCommerceGatewayTest extends TestCase
 
         Http::assertSent(function (HttpRequest $req) {
             $b = $req->data();
+
             return str_contains($req->url(), '/wp-json/wc/v3/orders/4242')
                 && $req->method() === 'PUT'
                 && ($b['status'] ?? null) === 'processing'
@@ -514,6 +516,38 @@ final class WooCommerceGatewayTest extends TestCase
             $this->assertSame('tok-verify', $method->payplus_card_token_uid);
             $this->assertSame('42', $method->shopify_customer_id);
         });
+    }
+
+    /**
+     * The page WE opened for the order is the one PayPlus is asked about — the id the
+     * thank-you page names is ignored — and a list-shaped IPN with no `more_info`
+     * still confirms it, because the binding is our own stored page id.
+     */
+    public function test_verify_on_return_asks_about_our_own_page_and_reads_a_list_shaped_ipn(): void
+    {
+        Http::fake([
+            '*/PaymentPages/ipn' => Http::response([
+                'results' => ['status' => 'success'],
+                'data' => [[
+                    'uid' => 'txn-list', 'status_code' => '000', 'amount' => '1.00', 'currency' => 'ILS',
+                ]],
+            ], 200),
+            '*/wp-json/wc/v3/orders/8090' => Http::response([
+                'id' => 8090, 'status' => 'pending', 'total' => '1.00', 'customer_id' => 0, 'billing' => ['email' => 'l@e.com'],
+            ], 200),
+            '*/wp-json/wc/v3/orders/8090/notes' => Http::response(['id' => 1, 'note' => 'ok'], 201),
+        ]);
+        [$shop, $key, $secret] = $this->connectedShop('gw-own-page.example.com');
+        WooGatewayPageRegistry::remember($shop, '8090', 'PRU-OURS');
+
+        $this->signedPost($key, $secret, '/api/woocommerce/gateway/verify', [
+            'order_id' => '8090', 'page_request_uid' => 'PRU-SOMEONE-ELSES',
+        ])->assertOk()->assertJsonPath('paid', true);
+
+        Http::assertSent(fn (HttpRequest $req): bool => str_contains($req->url(), '/PaymentPages/ipn')
+            && ($req->data()['payment_request_uid'] ?? null) === 'PRU-OURS');
+        Http::assertNotSent(fn (HttpRequest $req): bool => str_contains($req->url(), '/PaymentPages/ipn')
+            && ($req->data()['payment_request_uid'] ?? null) === 'PRU-SOMEONE-ELSES');
     }
 
     /** A not-approved IPN must NOT mark paid or vault anything. */

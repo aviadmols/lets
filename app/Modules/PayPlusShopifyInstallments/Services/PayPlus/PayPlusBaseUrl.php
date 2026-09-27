@@ -2,6 +2,8 @@
 
 namespace App\Modules\PayPlusShopifyInstallments\Services\PayPlus;
 
+use Illuminate\Support\Facades\Log;
+
 /**
  * The PayPlus API hosts a shop may talk to: PayPlus's own production and
  * sandbox endpoints (config/payplus.php), and nothing else.
@@ -41,9 +43,17 @@ final class PayPlusBaseUrl
     /** The candidate when it is one of PayPlus's own hosts, else the production host. */
     public static function resolve(?string $candidate): string
     {
-        return self::isAllowed($candidate)
-            ? self::normalise((string) $candidate)
-            : self::normalise((string) config(self::CONFIG_PRODUCTION));
+        if (self::isAllowed($candidate)) {
+            return self::normalise((string) $candidate);
+        }
+
+        // A stored value that is not a PayPlus host is replaced — say so, since a
+        // sandbox key sent to production fails and the owner should know why.
+        if (trim((string) $candidate) !== '') {
+            Log::warning('payplus.base_url_replaced', ['stored_host' => parse_url((string) $candidate, PHP_URL_HOST)]);
+        }
+
+        return self::normalise((string) config(self::CONFIG_PRODUCTION));
     }
 
     private static function normalise(string $url): string

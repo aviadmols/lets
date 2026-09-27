@@ -2,6 +2,7 @@
 
 namespace App\Domain\Refunds;
 
+use App\Domain\Lifecycle\RefundService;
 use App\Domain\Refunds\Models\RefundRequest;
 use App\Models\PaymentLedger;
 use Illuminate\Support\Collection;
@@ -52,14 +53,21 @@ final readonly class RefundTarget
 
     /**
      * How much is still refundable on one charge — net of a refund that is at
-     * the gateway right now (RefundService's `refunding_amount` claim).
+     * the gateway right now (RefundService's `refunding_amount` claim). A claim
+     * older than the in-flight window is a crashed attempt RefundService will take
+     * over, so it does not shrink what may be offered.
      */
     public static function remainingOn(PaymentLedger $charge): float
     {
+        $startedAt = $charge->refunding_started_at;
+        $claim = $startedAt !== null && $startedAt->gt(now()->subMinutes(RefundService::IN_FLIGHT_MINUTES))
+            ? (float) ($charge->refunding_amount ?? 0)
+            : 0.0;
+
         return round(
             (float) $charge->amount
             - (float) ($charge->refunded_amount ?? 0)
-            - (float) ($charge->refunding_amount ?? 0),
+            - $claim,
             2,
         );
     }

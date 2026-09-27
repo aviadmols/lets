@@ -7,7 +7,6 @@ use App\Http\Middleware\EmbeddedAuthenticate;
 use App\Http\Middleware\SessionTokenAuth;
 use App\Http\Middleware\VerifyShopifyAppProxy;
 use App\Http\Middleware\VerifyShopifyWebhook;
-use App\Support\TrustedHostPatterns;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -93,13 +92,6 @@ return Application::configure(basePath: dirname(__DIR__))
                 | Request::HEADER_X_FORWARDED_PROTO
                 | Request::HEADER_X_FORWARDED_PREFIX,
         );
-
-        // …but only for hosts that are ours. Trusting X-Forwarded-Host from any
-        // peer let a client-supplied host steer generated URLs; now any Host
-        // outside TrustedHostPatterns is refused before a URL is built from it.
-        // The proxy list above stays '*': Railway's edge addresses are not a
-        // published, stable range, and guessing wrong would break every request.
-        $middleware->trustHosts(at: static fn (): array => TrustedHostPatterns::patterns(), subdomains: true);
 
         // Pin https in the browser (HSTS) so it never falls back to http and the
         // stale uPress vhost. Global so it covers admin + storefront + proxy. Only

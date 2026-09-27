@@ -10,6 +10,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\LedgerStatus;
 use App\Modules\PayPlusShopifyInstallments\Support\ResponseMasker;
 use App\Services\PayPlus\PayPlusCallbackVerifier;
 use App\Services\WooCommerce\Orders\WooGatewayFinalizer;
+use App\Services\WooCommerce\Orders\WooGatewayPageRegistry;
 use App\Services\WooCommerce\WooPluginNotifier;
 use App\Support\Tenant;
 use Illuminate\Http\JsonResponse;
@@ -83,7 +84,9 @@ final class WooGatewayCallbackController
 
         // What PayPlus itself says about the page this body names. The amount wall
         // (vs. the WC order total) is the finalizer's: only it reads the order.
-        $confirmation = $verifier->confirm($shop, $payload, $moreInfo, $signed);
+        // Ask PayPlus about the page WE opened for this order when we have it.
+        $ownPage = WooGatewayPageRegistry::pageFor($shop, substr($moreInfo, strlen(self::MORE_INFO_PREFIX)));
+        $confirmation = $verifier->confirm($shop, $payload, $moreInfo, $signed, $ownPage);
 
         if ($confirmation->unavailable()) {
             // PayPlus could not be asked — let it deliver again; verify-on-return also covers it.

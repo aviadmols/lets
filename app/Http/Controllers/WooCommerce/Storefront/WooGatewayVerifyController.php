@@ -4,6 +4,7 @@ namespace App\Http\Controllers\WooCommerce\Storefront;
 
 use App\Services\PayPlus\PayPlusCallbackVerifier;
 use App\Services\WooCommerce\Orders\WooGatewayFinalizer;
+use App\Services\WooCommerce\Orders\WooGatewayPageRegistry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -49,6 +50,8 @@ final class WooGatewayVerifyController extends WooStorefrontController
             callback: ['page_request_uid' => $pageRequestUid],
             expectedMoreInfo: WooGatewaySessionController::MORE_INFO_PREFIX.$orderId,
             signed: false,
+            // The page WE opened for this order wins over the one the thank-you page names.
+            ownPageRequestUid: WooGatewayPageRegistry::pageFor($shop, $orderId),
         );
 
         if (! $confirmation->confirmed()) {

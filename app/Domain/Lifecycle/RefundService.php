@@ -48,7 +48,7 @@ final class RefundService
      * How long a refund claim (refunding_amount) counts as IN FLIGHT. Longer
      * than the gateway's timeout by a wide margin; older is a dead request.
      */
-    private const IN_FLIGHT_MINUTES = 10;
+    public const IN_FLIGHT_MINUTES = 10;
 
     /**
      * @param  DocumentContext|null  $context  which paperwork this money is for.

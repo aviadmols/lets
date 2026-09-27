@@ -9,6 +9,7 @@ use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
 use App\Services\PayPlus\PayPlusPageOptions;
+use App\Services\WooCommerce\Orders\WooGatewayPageRegistry;
 use App\Support\Tenant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -169,6 +170,8 @@ final class WooGatewaySessionController extends WooStorefrontController
                 break;
             }
         }
+        WooGatewayPageRegistry::remember($shop, (string) $orderId, $pageRequestUid);
+
         if ($pageRequestUid === '') {
             Log::warning('woocommerce.gateway.no_page_request_uid', [
                 'shop_id' => $shop->getKey(),

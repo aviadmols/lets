@@ -68,9 +68,6 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
-    // Extra Host headers to answer to, comma-separated (App\Support\TrustedHostPatterns).
-    'trusted_hosts' => env('TRUSTED_HOSTS', ''),
-
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

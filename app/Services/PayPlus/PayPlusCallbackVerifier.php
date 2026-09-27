@@ -118,6 +118,25 @@ final class PayPlusCallbackVerifier
 
     public function __construct(private readonly WooDepositTokenResolver $tokens) {}
 
+    /**
+     * The IPN sometimes answers with a LIST of transactions under `data` (the
+     * reference engine met it). Fold the first one into the usual
+     * `data.transaction` shape, so every reader downstream — this wall, the
+     * finalizer's amount check, the card vault, the ledger row — sees one shape.
+     *
+     * @param  array<string, mixed>  $body
+     * @return array<string, mixed>
+     */
+    public static function normaliseIpn(array $body): array
+    {
+        $data = $body['data'] ?? null;
+        if (is_array($data) && array_is_list($data) && isset($data[0]) && is_array($data[0])) {
+            $body['data'] = ['transaction' => $data[0]];
+        }
+
+        return $body;
+    }
+
     // === Wall 1: the signature ===
 
     /** How the callback's `hash` header compares to the shop's secret. */
@@ -216,7 +235,7 @@ final class PayPlusCallbackVerifier
         }
 
         /** @var array<string, mixed> $ipn */
-        $ipn = $status['body'];
+        $ipn = self::normaliseIpn($status['body']);
 
         // BIND the page to the claim: PayPlus's record must carry OUR marker. A
         // record without one binds only when the page id is our own stored one,

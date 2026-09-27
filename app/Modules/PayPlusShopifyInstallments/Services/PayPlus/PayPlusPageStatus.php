@@ -50,6 +50,9 @@ final class PayPlusPageStatus
         'transaction.status_code',
         'status_code',
         'data.transactions.0.status_code',
+        // The IPN sometimes answers with a LIST under data (reference engine).
+        'data.0.transaction.status_code',
+        'data.0.status_code',
     ];
 
     public function __construct(
