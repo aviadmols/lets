@@ -14,9 +14,9 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PaymentType;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Jobs\ChargeJob;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
-use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusPageStatus;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Services\PayPlus\PayPlusPageOptions;
+use App\Services\PayPlus\PayPlusReturnRef;
 use App\Services\WooCommerce\Orders\WooDepositTokenResolver;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
@@ -41,10 +41,12 @@ use Throwable;
  * symbolic amount) and refund by policy. Both knobs are env flips, not code.
  *
  * TRUST: the callback rides the same rails as the deposit callback — the opaque
- * {wc_shop_token} resolves the shop before anything in the body is trusted, the
- * optional PayPlus `hash` signature fails closed when present, and the body can
- * only ever re-point plans of the customer its `more_info` names. Replay is
- * idempotent: the same token uid for the same customer reuses the same row.
+ * token resolves the shop, a present PayPlus `hash` signature fails closed, and
+ * PayPlusCallbackVerifier confirms with PayPlus's own IPN that the page it names
+ * was approved and carries OUR `cardupd:` marker before applyCallback() runs.
+ * The card attached is the one PayPlus reports for that page, never a token
+ * typed into a callback body. Replay is idempotent: the same token uid for the
+ * same customer reuses the same row.
  */
 final class CardUpdateService
 {
@@ -80,15 +82,6 @@ final class CardUpdateService
 
     /** The merchant revoked the link before the page came back — see applyCallback(). */
     public const NOT_SAVED_LINK_REVOKED = 'link_revoked';
-
-    /** Where the page request id sits in the callback, for the IPN fallback. */
-    private const PAGE_REQUEST_PATHS = [
-        'transaction.payment_page_request_uid',
-        'data.transaction.payment_page_request_uid',
-        'payment_page_request_uid',
-        'transaction.page_request_uid',
-        'page_request_uid',
-    ];
 
     /** How deep the no-token log maps the callback's keys (names only, never values). */
     private const SHAPE_DEPTH = 3;
@@ -178,7 +171,9 @@ final class CardUpdateService
      *
      * Runs under Tenant::run($shop) — every query below is tenant-scoped.
      *
-     * @param  array<string, mixed>  $payload  the raw PayPlus body
+     * @param  array<string, mixed>  $payload  the CONFIRMED PayPlus body
+     *                                         (PayPlusConfirmation::$body), never
+     *                                         the raw callback
      */
     public function applyCallback(
         Shop $shop,
@@ -297,9 +292,9 @@ final class CardUpdateService
     }
 
     /**
-     * The new card, from the callback — or, when the callback carried none, from
-     * PayPlus's own record of the page (the IPN), which returns the full
-     * transaction. Null only when neither holds a token.
+     * The new card, from the CONFIRMED body — PayPlus's own record of the page
+     * (PayPlusCallbackVerifier), never the raw callback. Null when it holds no
+     * token.
      *
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>|null
@@ -307,31 +302,8 @@ final class CardUpdateService
     private function resolveToken(Shop $shop, array $payload): ?array
     {
         $token = $this->tokens->resolveFromOrder($shop, [WooDepositTokenResolver::WRAP_KEY => $payload]);
-        if (($token['payplus_card_token_uid'] ?? null) !== null) {
-            return $token;
-        }
 
-        $pageRequestUid = '';
-        foreach (self::PAGE_REQUEST_PATHS as $path) {
-            $value = data_get($payload, $path);
-            if (is_string($value) && $value !== '') {
-                $pageRequestUid = $value;
-                break;
-            }
-        }
-
-        if ($pageRequestUid === '') {
-            return null;
-        }
-
-        $status = PayPlusPageStatus::for($shop)->status($pageRequestUid);
-        if (! $status['approved']) {
-            return null;
-        }
-
-        $pulled = $this->tokens->resolveFromOrder($shop, [WooDepositTokenResolver::WRAP_KEY => $status['body']]);
-
-        return ($pulled['payplus_card_token_uid'] ?? null) !== null ? $pulled : null;
+        return ($token['payplus_card_token_uid'] ?? null) !== null ? $token : null;
     }
 
     /** The page succeeded at PayPlus and the card is NOT on the plan — said on the plan. */
@@ -527,7 +499,8 @@ final class CardUpdateService
     private function returnUrl(Shop $shop, string $status): string
     {
         return route('payplus.cardupdate.return', [
-            'callback_token' => (string) $shop->callbackToken(),
+            // The browser sees this URL — a return ref, never the callback token.
+            'shop_ref' => PayPlusReturnRef::for($shop),
             'status' => $status,
             // The landing must speak the language the ACCOUNT spoke — decided
             // at mint time, when the tenant is bound, and carried in the URL so

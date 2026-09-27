@@ -7,6 +7,7 @@ use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
 use App\Services\Orders\PlatformInvoiceService;
 use App\Services\PayPlus\PayPlusPageOptions;
+use App\Services\PayPlus\PayPlusReturnRef;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
@@ -120,11 +121,13 @@ final class WooCommerceDepositInvoiceService implements PlatformInvoiceService
     /**
      * The shopper-facing return URL PayPlus redirects the browser to after the page
      * (carries the plan + the status; a thin "thank you / try again" landing page).
+     * Keyed on a PayPlusReturnRef, NEVER the callback token: this URL lands in the
+     * shopper's address bar, and the token is what routes a payment callback.
      */
     private function returnUrl(Shop $shop, string $publicId, string $status): string
     {
         return route('woocommerce.deposit.return', [
-            'wc_shop_token' => (string) $shop->wc_shop_token,
+            'shop_ref' => PayPlusReturnRef::for($shop),
             'plan' => $publicId,
             'status' => $status,
         ]);

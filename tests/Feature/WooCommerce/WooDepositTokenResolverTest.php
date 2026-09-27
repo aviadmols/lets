@@ -14,7 +14,9 @@ use App\Services\Orders\PlatformDepositTokenResolver;
 use App\Services\WooCommerce\Orders\WooDepositTokenResolver;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Tests\Concerns\FakesPayPlusIpn;
 use Tests\TestCase;
 
 /**
@@ -32,6 +34,7 @@ use Tests\TestCase;
  */
 final class WooDepositTokenResolverTest extends TestCase
 {
+    use FakesPayPlusIpn;
     use RefreshDatabase;
 
     protected function tearDown(): void
@@ -129,17 +132,16 @@ final class WooDepositTokenResolverTest extends TestCase
         $shop = $this->makeShop('tok-flow.example.com');
         $token = (string) $shop->wc_shop_token;
         $this->awaitingPlan($shop, 'PUB-TOK-FLOW');
+        // The card is PayPlus's record of the page, not whatever the body claims.
+        Http::fake($this->payplusIpn('PUB-TOK-FLOW', ['amount' => '100.00'], [
+            'customer_uid' => 'CUST-FLOW',
+            'card_information' => ['token' => 'TOKEN-FLOW', 'four_digits' => '1234', 'brand_name' => 'mastercard'],
+        ]));
 
-        $this->postJson('/woocommerce/deposit/callback/'.$token, [
-            'transaction' => [
-                'more_info' => 'PUB-TOK-FLOW',
-                'status_code' => '000',
-                'token_uid' => 'TOKEN-FLOW',
-                'customer_uid' => 'CUST-FLOW',
-                'four_digits' => '1234',
-                'brand_name' => 'mastercard',
-            ],
-        ])->assertOk()->assertJsonPath('activated', true);
+        $this->postJson('/woocommerce/deposit/callback/'.$token, $this->callbackFor([
+            'more_info' => 'PUB-TOK-FLOW',
+            'status_code' => '000',
+        ]))->assertOk()->assertJsonPath('activated', true);
 
         [$plan, $method] = Tenant::run($shop, function (): array {
             $plan = InstallmentPlan::query()->where('public_id', 'PUB-TOK-FLOW')->first();
@@ -160,10 +162,11 @@ final class WooDepositTokenResolverTest extends TestCase
         $shop = $this->makeShop('tok-flow-none.example.com');
         $token = (string) $shop->wc_shop_token;
         $this->awaitingPlan($shop, 'PUB-TOK-NONE');
+        Http::fake($this->payplusIpn('PUB-TOK-NONE', ['uid' => 'txn-none', 'amount' => '100.00']));
 
-        $this->postJson('/woocommerce/deposit/callback/'.$token, [
-            'transaction' => ['more_info' => 'PUB-TOK-NONE', 'status_code' => '000', 'uid' => 'txn-none'],
-        ])->assertOk()->assertJsonPath('activated', true);
+        $this->postJson('/woocommerce/deposit/callback/'.$token, $this->callbackFor([
+            'more_info' => 'PUB-TOK-NONE', 'status_code' => '000', 'uid' => 'txn-none',
+        ]))->assertOk()->assertJsonPath('activated', true);
 
         [$plan, $methodCount] = Tenant::run($shop, function (): array {
             $plan = InstallmentPlan::query()->where('public_id', 'PUB-TOK-NONE')->first();
@@ -180,9 +183,10 @@ final class WooDepositTokenResolverTest extends TestCase
     {
         $shopA = $this->makeShop('tok-iso-a.example.com');
         $this->awaitingPlan($shopA, 'PUB-ISO-A');
-        $this->postJson('/woocommerce/deposit/callback/'.$shopA->wc_shop_token, [
-            'transaction' => ['more_info' => 'PUB-ISO-A', 'status_code' => '000', 'token_uid' => 'TOK-A', 'customer_uid' => 'C-A'],
-        ])->assertOk();
+        Http::fake($this->payplusIpn('PUB-ISO-A', ['amount' => '100.00', 'token_uid' => 'TOK-A', 'customer_uid' => 'C-A']));
+        $this->postJson('/woocommerce/deposit/callback/'.$shopA->wc_shop_token, $this->callbackFor([
+            'more_info' => 'PUB-ISO-A', 'status_code' => '000',
+        ]))->assertOk()->assertJsonPath('activated', true);
 
         $shopB = $this->makeShop('tok-iso-b.example.com');
 

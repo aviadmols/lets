@@ -37,16 +37,19 @@ final class PayPlusPageStatus
     /** Status codes PayPlus uses for an approved transaction (mirror the gateway callback). */
     private const SUCCESS_CODES = ['000', '0', 'approved', 'success'];
 
-    /** Where an approved transaction's status_code can appear in the IPN body (searched in order). */
+    /**
+     * Where an approved transaction's status_code can appear in the IPN body (searched in order).
+     *
+     * TRANSACTION-level codes only. `results.status` is the API ENVELOPE ("success" = the lookup
+     * itself worked), and bare `status` / `data.status` are the same kind of word — reading them
+     * made an unpaid page whose record carried no transaction code look approved.
+     */
     private const STATUS_PATHS = [
         'data.transaction.status_code',
         'data.status_code',
         'transaction.status_code',
         'status_code',
         'data.transactions.0.status_code',
-        'results.status',
-        'data.status',
-        'status',
     ];
 
     public function __construct(
@@ -108,14 +111,7 @@ final class PayPlusPageStatus
 
         $body = (array) $response->json();
 
-        $statusCode = '';
-        foreach (self::STATUS_PATHS as $path) {
-            $value = data_get($body, $path);
-            if ($value !== null && $value !== '') {
-                $statusCode = strtolower((string) $value);
-                break;
-            }
-        }
+        $statusCode = self::statusCodeIn($body);
 
         // Help confirm the real PayPlus IPN shape against a live transaction (no secrets logged).
         // Emits a shallow key-map of the nested objects + whether a token/amount surfaced, so ONE
@@ -150,6 +146,33 @@ final class PayPlusPageStatus
             'status_code' => $statusCode,
             'body' => $body,
         ];
+    }
+
+    /**
+     * The transaction-level status code in a PayPlus body (lower-cased; '' when none).
+     *
+     * @param  array<string, mixed>  $body
+     */
+    public static function statusCodeIn(array $body): string
+    {
+        foreach (self::STATUS_PATHS as $path) {
+            $value = data_get($body, $path);
+            if ($value !== null && $value !== '' && ! is_array($value)) {
+                return strtolower((string) $value);
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Does this PayPlus body (the IPN, or a SIGNED callback) carry an approved transaction?
+     *
+     * @param  array<string, mixed>  $body
+     */
+    public static function approvedIn(array $body): bool
+    {
+        return in_array(self::statusCodeIn($body), self::SUCCESS_CODES, true);
     }
 
     /** Mirror PayPlusGateway::endpoint(): rtrim(base) . api_prefix . path. */

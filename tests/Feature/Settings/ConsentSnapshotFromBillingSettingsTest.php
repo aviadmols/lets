@@ -13,7 +13,9 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Services\Orders\PaidOrderPlanResolverFactory;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Tests\Concerns\FakesPayPlusIpn;
 use Tests\TestCase;
 
 /**
@@ -25,6 +27,7 @@ use Tests\TestCase;
  */
 final class ConsentSnapshotFromBillingSettingsTest extends TestCase
 {
+    use FakesPayPlusIpn;
     use RefreshDatabase;
 
     protected function tearDown(): void
@@ -47,10 +50,11 @@ final class ConsentSnapshotFromBillingSettingsTest extends TestCase
         });
 
         $this->awaitingPlan($shop, 'PUB-CONSENT-1', deposit: 100.0);
+        Http::fake($this->payplusIpn('PUB-CONSENT-1', ['uid' => 'txn-c1', 'amount' => '100.00']));
 
-        $this->postJson('/woocommerce/deposit/callback/'.$token, [
-            'transaction' => ['more_info' => 'PUB-CONSENT-1', 'status_code' => '000', 'uid' => 'txn-c1'],
-        ])->assertOk()->assertJsonPath('activated', true);
+        $this->postJson('/woocommerce/deposit/callback/'.$token, $this->callbackFor([
+            'more_info' => 'PUB-CONSENT-1', 'status_code' => '000', 'uid' => 'txn-c1',
+        ]))->assertOk()->assertJsonPath('activated', true);
 
         $consent = Tenant::run($shop, fn (): ?CustomerConsent => CustomerConsent::query()
             ->where('consent_context', CustomerConsent::CONTEXT_INSTALLMENTS)
@@ -65,10 +69,11 @@ final class ConsentSnapshotFromBillingSettingsTest extends TestCase
     {
         [$shop, $token] = $this->shopWithToken('consent-default.example.com');
         $this->awaitingPlan($shop, 'PUB-CONSENT-2', deposit: 100.0);
+        Http::fake($this->payplusIpn('PUB-CONSENT-2', ['uid' => 'txn-c2', 'amount' => '100.00']));
 
-        $this->postJson('/woocommerce/deposit/callback/'.$token, [
-            'transaction' => ['more_info' => 'PUB-CONSENT-2', 'status_code' => '000', 'uid' => 'txn-c2'],
-        ])->assertOk()->assertJsonPath('activated', true);
+        $this->postJson('/woocommerce/deposit/callback/'.$token, $this->callbackFor([
+            'more_info' => 'PUB-CONSENT-2', 'status_code' => '000', 'uid' => 'txn-c2',
+        ]))->assertOk()->assertJsonPath('activated', true);
 
         $consent = Tenant::run($shop, fn (): ?CustomerConsent => CustomerConsent::query()
             ->where('consent_context', CustomerConsent::CONTEXT_INSTALLMENTS)
@@ -88,10 +93,11 @@ final class ConsentSnapshotFromBillingSettingsTest extends TestCase
         // context must follow plan_kind.
         [$shop, $token] = $this->shopWithToken('recurring-consent.example.com');
         $this->awaitingRecurringPlan($shop, 'PUB-REC-1', cycle: 60.0);
+        Http::fake($this->payplusIpn('PUB-REC-1', ['uid' => 'txn-r1', 'amount' => '60.00']));
 
-        $this->postJson('/woocommerce/deposit/callback/'.$token, [
-            'transaction' => ['more_info' => 'PUB-REC-1', 'status_code' => '000', 'uid' => 'txn-r1'],
-        ])->assertOk()->assertJsonPath('activated', true);
+        $this->postJson('/woocommerce/deposit/callback/'.$token, $this->callbackFor([
+            'more_info' => 'PUB-REC-1', 'status_code' => '000', 'uid' => 'txn-r1',
+        ]))->assertOk()->assertJsonPath('activated', true);
 
         Tenant::run($shop, function (): void {
             // The recurring consent the engine's gate requires exists…
@@ -117,6 +123,8 @@ final class ConsentSnapshotFromBillingSettingsTest extends TestCase
         ]);
         $shop->wc_shop_token = $token;
         $shop->woocommerce_credentials = ['base_url' => 'https://'.$domain];
+        // The callback is confirmed against the shop's OWN PayPlus account.
+        $shop->payplus_credentials = ['api_key' => 'pk', 'secret_key' => 'sk', 'terminal_uid' => 't', 'payment_page_uid' => 'pp'];
         $shop->save();
 
         return [$shop->fresh(), $token];

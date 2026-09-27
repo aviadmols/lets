@@ -34,6 +34,7 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Livewire\Livewire;
+use Tests\Concerns\FakesPayPlusIpn;
 use Tests\TestCase;
 
 /**
@@ -50,6 +51,7 @@ use Tests\TestCase;
  */
 final class CardUpdateLinkTest extends TestCase
 {
+    use FakesPayPlusIpn;
     use RefreshDatabase;
 
     /** @var list<array{phone: string, message: string}> */
@@ -230,15 +232,12 @@ final class CardUpdateLinkTest extends TestCase
 
         $plan = Tenant::run($shop, static fn () => InstallmentPlan::query()->findOrFail($link->plan_id));
 
-        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), [
-            'transaction' => [
-                'status_code' => '000',
-                'more_info' => CardUpdateService::moreInfoFor($plan, $link),
-                'token_uid' => 'tok-new-card',
-                'four_digits' => '4242',
-                'brand_name' => 'Visa',
-            ],
-        ])->assertOk();
+        $card = ['token' => 'tok-new-card', 'four_digits' => '4242', 'brand_name' => 'Visa'];
+        $this->ipnMirrors($plan, $link, $card);
+
+        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $this->payplusBody($plan, $link, $card))
+            ->assertOk()
+            ->assertJson(['updated' => true]);
 
         $this->assertNotNull($link->fresh()->completed_at);
         $this->assertSame('completed', $link->fresh()->state());
@@ -263,15 +262,12 @@ final class CardUpdateLinkTest extends TestCase
 
         $plan = Tenant::run($shop, static fn () => InstallmentPlan::query()->findOrFail($link->plan_id));
 
-        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), [
-            'transaction' => [
-                'status_code' => '000',
-                'more_info' => CardUpdateService::moreInfoFor($plan, $link),
-                'token_uid' => 'tok-new-card',
-                'four_digits' => '4242',
-                'brand_name' => 'Visa',
-            ],
-        ])->assertOk();
+        $card = ['token' => 'tok-new-card', 'four_digits' => '4242', 'brand_name' => 'Visa'];
+        $this->ipnMirrors($plan, $link, $card);
+
+        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $this->payplusBody($plan, $link, $card))
+            ->assertOk()
+            ->assertJson(['updated' => true]);
 
         // The new card is asked for the owed cycle at once — on the worker, not
         // inside the callback — rather than the plan staying paused until a
@@ -316,10 +312,11 @@ final class CardUpdateLinkTest extends TestCase
             return [$plan->fresh(), app(CardUpdateLinks::class)->mint($shop, $plan)['link']];
         });
 
-        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $this->payplusBody($plan, $link, [
-            'token' => 'tok-fixed-quickly',
-            'four_digits' => '4318',
-        ]))->assertOk()->assertJson(['updated' => true]);
+        $card = ['token' => 'tok-fixed-quickly', 'four_digits' => '4318'];
+        $this->ipnMirrors($plan, $link, $card);
+
+        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $this->payplusBody($plan, $link, $card))
+            ->assertOk()->assertJson(['updated' => true]);
 
         Bus::assertDispatched(
             ChargeJob::class,
@@ -350,10 +347,11 @@ final class CardUpdateLinkTest extends TestCase
             return [$plan->fresh(), app(CardUpdateLinks::class)->mint($shop, $plan)['link']];
         });
 
-        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $this->payplusBody($plan, $link, [
-            'token' => 'tok-past-due',
-            'four_digits' => '9125',
-        ]))->assertOk()->assertJson(['updated' => true]);
+        $card = ['token' => 'tok-past-due', 'four_digits' => '9125'];
+        $this->ipnMirrors($plan, $link, $card);
+
+        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $this->payplusBody($plan, $link, $card))
+            ->assertOk()->assertJson(['updated' => true]);
 
         Bus::assertDispatched(
             ChargeJob::class,
@@ -382,10 +380,11 @@ final class CardUpdateLinkTest extends TestCase
             return [$plan->fresh(), app(CardUpdateLinks::class)->mint($shop, $plan)['link']];
         });
 
-        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $this->payplusBody($plan, $link, [
-            'token' => 'tok-paid-up',
-            'four_digits' => '9125',
-        ]))->assertOk()->assertJson(['updated' => true]);
+        $card = ['token' => 'tok-paid-up', 'four_digits' => '9125'];
+        $this->ipnMirrors($plan, $link, $card);
+
+        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $this->payplusBody($plan, $link, $card))
+            ->assertOk()->assertJson(['updated' => true]);
 
         Bus::assertNotDispatched(ChargeJob::class);
     }
@@ -402,15 +401,12 @@ final class CardUpdateLinkTest extends TestCase
 
         $plan = Tenant::run($shop, static fn () => InstallmentPlan::query()->findOrFail($link->plan_id));
 
-        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), [
-            'transaction' => [
-                'status_code' => '000',
-                'more_info' => CardUpdateService::moreInfoFor($plan, $link),
-                'token_uid' => 'tok-new-card',
-                'four_digits' => '4242',
-                'brand_name' => 'Visa',
-            ],
-        ])->assertOk();
+        $card = ['token' => 'tok-new-card', 'four_digits' => '4242', 'brand_name' => 'Visa'];
+        $this->ipnMirrors($plan, $link, $card);
+
+        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $this->payplusBody($plan, $link, $card))
+            ->assertOk()
+            ->assertJson(['updated' => true]);
 
         // Nothing is owed, so nothing is asked for: the next cycle bills on its
         // own date, exactly as it would have.
@@ -805,13 +801,17 @@ final class CardUpdateLinkTest extends TestCase
         $this->fakeGateway();
         [$plan, $link] = $this->planWithLink($shop);
 
-        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $this->payplusBody($plan, $link, [
+        $card = [
             'token' => 'tok-real-shape',
             'four_digits' => '2316',
             'expiry_month' => '11',
             'expiry_year' => '30',
             'brand_name' => 'Mastercard',
-        ]))->assertOk()->assertJson(['updated' => true]);
+        ];
+        $this->ipnMirrors($plan, $link, $card);
+
+        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $this->payplusBody($plan, $link, $card))
+            ->assertOk()->assertJson(['updated' => true]);
 
         $this->assertSame('completed', $link->fresh()->state());
 
@@ -839,7 +839,7 @@ final class CardUpdateLinkTest extends TestCase
         Http::fake(['*PaymentPages/ipn*' => Http::response([
             'results' => ['status' => 'success'],
             'data' => [
-                'transaction' => ['status_code' => '000'],
+                'transaction' => ['status_code' => '000', 'more_info' => CardUpdateService::moreInfoFor($plan, $link)],
                 'customer_uid' => 'cust-1',
                 'card_information' => ['token' => 'tok-from-ipn', 'four_digits' => '7777'],
             ],
@@ -861,7 +861,9 @@ final class CardUpdateLinkTest extends TestCase
         $this->fakeGateway();
         [$plan, $link] = $this->planWithLink($shop);
 
-        Http::fake(['*' => Http::response(['results' => ['status' => 'success'], 'data' => ['transaction' => ['status_code' => '000']]])]);
+        Http::fake(['*' => Http::response(['results' => ['status' => 'success'], 'data' => ['transaction' => [
+            'status_code' => '000', 'more_info' => CardUpdateService::moreInfoFor($plan, $link),
+        ]]])]);
 
         $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $this->payplusBody($plan, $link, []))
             ->assertOk()
@@ -896,10 +898,12 @@ final class CardUpdateLinkTest extends TestCase
 
         Tenant::run($shop, fn () => $link->fresh()->revoke());
 
-        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $this->payplusBody($plan, $link, [
-            'token' => 'tok-strangers-card',
-            'four_digits' => '9999',
-        ]))->assertOk()->assertJson(['updated' => false]);
+        // A GENUINE page PayPlus approved — and still refused, because the link was revoked.
+        $card = ['token' => 'tok-strangers-card', 'four_digits' => '9999'];
+        $this->ipnMirrors($plan, $link, $card);
+
+        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $this->payplusBody($plan, $link, $card))
+            ->assertOk()->assertJson(['updated' => false]);
 
         Tenant::run($shop, function () use ($plan): void {
             $this->assertNull($plan->fresh()->payment_method_id);
@@ -919,6 +923,7 @@ final class CardUpdateLinkTest extends TestCase
         $this->fakeGateway();
         [$plan, $link] = $this->planWithLink($shop);
 
+        $this->ipnMirrors($plan, $link, [], '003');
         $body = $this->payplusBody($plan, $link, ['token' => 'tok-x']);
         $body['transaction']['status_code'] = '003';
 
@@ -937,6 +942,38 @@ final class CardUpdateLinkTest extends TestCase
             Livewire::test(ViewSubscription::class, ['plan' => $plan->getKey()])
                 ->assertSee(__('card_update.outcome.failed_title'));
         });
+    }
+
+    /** A forged "000" for a page PayPlus holds no approval for attaches nothing, and says nothing on the plan. */
+    public function test_a_forged_callback_attaches_nothing_and_charges_nothing(): void
+    {
+        $shop = $this->shop();
+        $this->fakeGateway();
+        Bus::fake([ChargeJob::class]);
+        [$plan, $link] = $this->planWithLink($shop);
+        Tenant::run($shop, fn () => $plan->forceFill(['status' => PlanStatus::FAILED->value, 'next_charge_at' => null])->save());
+
+        Http::fake(['*PaymentPages/ipn*' => Http::response(['results' => ['status' => 'error'], 'data' => []])]);
+
+        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $this->payplusBody($plan, $link, [
+            'token' => 'tok-forged', 'four_digits' => '1234',
+        ]))->assertOk()->assertJson(['updated' => false]);
+
+        $this->assertNull($link->fresh()->completed_at, 'a forged callback does not close the merchant\'s link');
+        Tenant::run($shop, function () use ($plan): void {
+            $this->assertNull($plan->fresh()->payment_method_id);
+            $this->assertSame(0, InstallmentPaymentMethod::query()->count());
+        });
+        Bus::assertNotDispatched(ChargeJob::class);
+    }
+
+    /** PayPlus's record of the page, echoing our marker, with the card it vaulted. */
+    private function ipnMirrors(InstallmentPlan $plan, CardUpdateLink $link, array $card, string $statusCode = '000'): void
+    {
+        Http::fake($this->payplusIpn(CardUpdateService::moreInfoFor($plan, $link), [], array_filter([
+            'customer_uid' => 'cust-1',
+            'card_information' => $card !== [] ? $card : null,
+        ]), $statusCode));
     }
 
     /** @return array{0: InstallmentPlan, 1: CardUpdateLink} */

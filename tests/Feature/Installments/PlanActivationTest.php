@@ -29,10 +29,12 @@ use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
+use Tests\Concerns\FakesPayPlusIpn;
 use Tests\TestCase;
 
 /**
@@ -48,6 +50,7 @@ use Tests\TestCase;
  */
 final class PlanActivationTest extends TestCase
 {
+    use FakesPayPlusIpn;
     use RefreshDatabase;
 
     // === CONSTANTS ===
@@ -68,10 +71,11 @@ final class PlanActivationTest extends TestCase
         Bus::fake([SendPlanActivationLinkJob::class]);
         [$shop, $token] = $this->shopWithToken();
         $plan = $this->awaitingPaymentPlan($shop, requiresActivation: true);
+        Http::fake($this->payplusIpn((string) $plan->public_id, ['uid' => 'txn-a1', 'amount' => self::CYCLE]));
 
-        $this->postJson('/woocommerce/deposit/callback/'.$token, [
-            'transaction' => ['more_info' => $plan->public_id, 'status_code' => '000', 'uid' => 'txn-a1'],
-        ])->assertOk();
+        $this->postJson('/woocommerce/deposit/callback/'.$token, $this->callbackFor([
+            'more_info' => $plan->public_id, 'status_code' => '000', 'uid' => 'txn-a1',
+        ]))->assertOk();
 
         Tenant::run($shop, function () use ($plan): void {
             $fresh = $plan->fresh();
@@ -93,10 +97,11 @@ final class PlanActivationTest extends TestCase
         Bus::fake([SendPlanActivationLinkJob::class]);
         [$shop, $token] = $this->shopWithToken();
         $plan = $this->awaitingPaymentPlan($shop, requiresActivation: false);
+        Http::fake($this->payplusIpn((string) $plan->public_id, ['uid' => 'txn-a2', 'amount' => self::CYCLE]));
 
-        $this->postJson('/woocommerce/deposit/callback/'.$token, [
-            'transaction' => ['more_info' => $plan->public_id, 'status_code' => '000', 'uid' => 'txn-a2'],
-        ])->assertOk();
+        $this->postJson('/woocommerce/deposit/callback/'.$token, $this->callbackFor([
+            'more_info' => $plan->public_id, 'status_code' => '000', 'uid' => 'txn-a2',
+        ]))->assertOk();
 
         $fresh = Tenant::run($shop, fn () => $plan->fresh());
         $this->assertSame(PlanStatus::ACTIVE, $fresh->status);
@@ -270,6 +275,8 @@ final class PlanActivationTest extends TestCase
         ]);
         $shop->wc_shop_token = $token;
         $shop->woocommerce_credentials = ['base_url' => 'https://'.$domain];
+        // The checkout callback is confirmed against the shop's OWN PayPlus account.
+        $shop->payplus_credentials = ['api_key' => 'pk', 'secret_key' => 'sk', 'terminal_uid' => 't', 'payment_page_uid' => 'pp'];
         $shop->save();
 
         return [$shop->fresh(), $token];

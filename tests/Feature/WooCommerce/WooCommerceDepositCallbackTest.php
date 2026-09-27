@@ -13,7 +13,10 @@ use App\Services\Orders\PaidOrderPlanResolverFactory;
 use App\Services\WooCommerce\Orders\WooCommercePaidOrderPlanResolver;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request as HttpRequest;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Tests\Concerns\FakesPayPlusIpn;
 use Tests\TestCase;
 
 /**
@@ -27,6 +30,7 @@ use Tests\TestCase;
  */
 final class WooCommerceDepositCallbackTest extends TestCase
 {
+    use FakesPayPlusIpn;
     use RefreshDatabase;
 
     protected function tearDown(): void
@@ -46,11 +50,12 @@ final class WooCommerceDepositCallbackTest extends TestCase
 
     public function test_a_success_callback_activates_the_plan_once_and_is_replay_safe(): void
     {
+        Http::fake($this->payplusIpn('PUB-CB-1', ['uid' => 'txn-1', 'amount' => '100.00', 'currency' => 'ILS']));
         [$shop, $token] = $this->shopWithToken('cb.example.com');
         $plan = $this->awaitingPlan($shop, 'PUB-CB-1', deposit: 100.0);
 
         $path = '/woocommerce/deposit/callback/'.$token;
-        $body = ['transaction' => ['more_info' => 'PUB-CB-1', 'status_code' => '000', 'uid' => 'txn-1']];
+        $body = $this->callbackFor(['more_info' => 'PUB-CB-1', 'status_code' => '000', 'uid' => 'txn-1']);
 
         $first = $this->postJson($path, $body);
         $first->assertOk()->assertJsonPath('activated', true)->assertJsonPath('plan_public_id', 'PUB-CB-1');
@@ -107,7 +112,90 @@ final class WooCommerceDepositCallbackTest extends TestCase
         $this->assertSame(PlanStatus::AWAITING_FIRST_PAYMENT, $plan->status);
     }
 
+    // === A callback is a claim: only PayPlus's record of the page activates a plan ===
+
+    /** A "000" body for a page PayPlus never approved activates nothing and records no money. */
+    public function test_a_forged_success_callback_activates_nothing(): void
+    {
+        Http::fake(['*PaymentPages/ipn*' => Http::response(['results' => ['status' => 'error'], 'data' => []])]);
+        [$shop, $token] = $this->shopWithToken('cb-forged.example.com');
+        $this->awaitingPlan($shop, 'PUB-FORGED', deposit: 100.0);
+
+        $this->postJson('/woocommerce/deposit/callback/'.$token, $this->callbackFor([
+            'more_info' => 'PUB-FORGED', 'status_code' => '000', 'token_uid' => 'tok-forged',
+        ]))->assertOk()->assertJsonPath('activated', false);
+
+        $this->assertStillAwaiting($shop, 'PUB-FORGED');
+    }
+
+    /** PayPlus approved a page — but for LESS than the deposit the plan owes. */
+    public function test_a_page_paid_for_less_than_the_deposit_activates_nothing(): void
+    {
+        Http::fake($this->payplusIpn('PUB-SHORT', ['amount' => '1.00']));
+        [$shop, $token] = $this->shopWithToken('cb-short.example.com');
+        $this->awaitingPlan($shop, 'PUB-SHORT', deposit: 100.0);
+
+        $this->postJson('/woocommerce/deposit/callback/'.$token, $this->callbackFor([
+            'more_info' => 'PUB-SHORT', 'status_code' => '000',
+        ]))->assertOk()->assertJsonPath('activated', false);
+
+        $this->assertStillAwaiting($shop, 'PUB-SHORT');
+    }
+
+    /** A paid page of ANOTHER plan cannot be pointed at this one. */
+    public function test_a_paid_page_of_another_plan_activates_nothing(): void
+    {
+        Http::fake($this->payplusIpn('PUB-SOMEONE-ELSE', ['amount' => '100.00']));
+        [$shop, $token] = $this->shopWithToken('cb-other.example.com');
+        $this->awaitingPlan($shop, 'PUB-MINE', deposit: 100.0);
+
+        $this->postJson('/woocommerce/deposit/callback/'.$token, $this->callbackFor([
+            'more_info' => 'PUB-MINE', 'status_code' => '000',
+        ]))->assertOk()->assertJsonPath('activated', false);
+
+        $this->assertStillAwaiting($shop, 'PUB-MINE');
+    }
+
+    /**
+     * The page WE minted for the plan is the one PayPlus is asked about — not
+     * whatever page id the body names — and the card vaulted is the one PayPlus
+     * reports for it.
+     */
+    public function test_the_stored_page_is_asked_about_and_its_card_is_vaulted(): void
+    {
+        Http::fake($this->payplusIpn('PUB-OWN', ['amount' => '100.00'], [
+            'customer_uid' => 'cu-1', 'card_information' => ['token' => 'tok-from-payplus', 'four_digits' => '4242'],
+        ]));
+        [$shop, $token] = $this->shopWithToken('cb-own.example.com');
+        $plan = $this->awaitingPlan($shop, 'PUB-OWN', deposit: 100.0);
+        Tenant::run($shop, function () use ($plan): void {
+            $plan->meta = array_merge((array) $plan->meta, [DepositPlanService::META_DRAFT_GID => 'PRU-MINTED']);
+            $plan->save();
+        });
+
+        $this->postJson('/woocommerce/deposit/callback/'.$token, $this->callbackFor([
+            'more_info' => 'PUB-OWN', 'status_code' => '000', 'token_uid' => 'tok-typed-in-a-body',
+        ]))->assertOk()->assertJsonPath('activated', true);
+
+        Http::assertSent(fn (HttpRequest $req): bool => str_contains($req->url(), 'PaymentPages/ipn')
+            && ($req->data()['payment_request_uid'] ?? null) === 'PRU-MINTED');
+
+        Tenant::run($shop, function () use ($plan): void {
+            $this->assertSame('tok-from-payplus', $plan->fresh()->paymentMethod?->payplus_card_token_uid);
+        });
+    }
+
     // === Helpers ===
+
+    private function assertStillAwaiting(Shop $shop, string $publicId): void
+    {
+        Tenant::run($shop, function () use ($publicId): void {
+            $plan = InstallmentPlan::query()->where('public_id', $publicId)->sole();
+            $this->assertSame(PlanStatus::AWAITING_FIRST_PAYMENT, $plan->status);
+            $this->assertSame(0, PaymentLedger::query()->count());
+            $this->assertNull($plan->payment_method_id);
+        });
+    }
 
     /** @return array{0:Shop,1:string} [shop, wc_shop_token] */
     private function shopWithToken(string $domain): array
@@ -121,6 +209,8 @@ final class WooCommerceDepositCallbackTest extends TestCase
         ]);
         $shop->wc_shop_token = $token;
         $shop->woocommerce_credentials = ['base_url' => 'https://'.$domain];
+        // PayPlus creds: the callback is confirmed against the shop's OWN PayPlus account.
+        $shop->payplus_credentials = ['api_key' => 'pk', 'secret_key' => 'sk', 'terminal_uid' => 't', 'payment_page_uid' => 'pp'];
         $shop->save();
 
         return [$shop->fresh(), $token];

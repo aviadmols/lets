@@ -12,6 +12,7 @@ use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Tests\Concerns\FakesPayPlusIpn;
 use Tests\TestCase;
 
 /**
@@ -26,6 +27,7 @@ use Tests\TestCase;
  */
 final class WooCommerceCallbackSignatureEnforcementTest extends TestCase
 {
+    use FakesPayPlusIpn;
     use RefreshDatabase;
 
     /** The per-shop PayPlus secret the callbacks verify the `hash` header against. */
@@ -44,12 +46,29 @@ final class WooCommerceCallbackSignatureEnforcementTest extends TestCase
     public function test_default_false_still_processes_an_unsigned_deposit_callback(): void
     {
         // No flag set → default FALSE → current behaviour: unsigned callback processed.
+        // Unsigned is still ACCEPTED — as a pointer: PayPlus's own record of the page
+        // is what activates the plan.
+        Http::fake($this->payplusIpn('PUB-SIG-DEF', ['amount' => '100.00']));
         [$shop, $token] = $this->shopWithToken('sig-default.example.com');
         $this->awaitingPlan($shop, 'PUB-SIG-DEF');
 
-        $this->postJson('/woocommerce/deposit/callback/'.$token, [
-            'transaction' => ['more_info' => 'PUB-SIG-DEF', 'status_code' => '000'],
-        ])->assertOk()->assertJsonPath('activated', true);
+        $this->postJson('/woocommerce/deposit/callback/'.$token, $this->callbackFor([
+            'more_info' => 'PUB-SIG-DEF', 'status_code' => '000',
+        ]))->assertOk()->assertJsonPath('activated', true);
+    }
+
+    public function test_an_unsigned_deposit_callback_payplus_has_no_record_of_activates_nothing(): void
+    {
+        Http::fake(['*PaymentPages/ipn*' => Http::response(['results' => ['status' => 'error'], 'data' => []])]);
+        [$shop, $token] = $this->shopWithToken('sig-forged.example.com');
+        $this->awaitingPlan($shop, 'PUB-SIG-FORGED');
+
+        $this->postJson('/woocommerce/deposit/callback/'.$token, $this->callbackFor([
+            'more_info' => 'PUB-SIG-FORGED', 'status_code' => '000',
+        ]))->assertOk()->assertJsonPath('activated', false);
+
+        $plan = Tenant::run($shop, fn (): ?InstallmentPlan => InstallmentPlan::query()->where('public_id', 'PUB-SIG-FORGED')->first());
+        $this->assertSame(PlanStatus::AWAITING_FIRST_PAYMENT, $plan->status);
     }
 
     public function test_required_signature_rejects_an_unsigned_deposit_callback_401(): void
@@ -70,10 +89,11 @@ final class WooCommerceCallbackSignatureEnforcementTest extends TestCase
     public function test_required_signature_processes_a_correctly_signed_deposit_callback(): void
     {
         config()->set('woocommerce.require_callback_signature', true);
+        Http::fake($this->payplusIpn('PUB-SIG-OK', ['amount' => '100.00']));
         [$shop, $token] = $this->shopWithToken('sig-ok.example.com');
         $this->awaitingPlan($shop, 'PUB-SIG-OK');
 
-        $body = ['transaction' => ['more_info' => 'PUB-SIG-OK', 'status_code' => '000']];
+        $body = $this->callbackFor(['more_info' => 'PUB-SIG-OK', 'status_code' => '000']);
         $raw = (string) json_encode($body, JSON_UNESCAPED_SLASHES);
         $hash = base64_encode(hash_hmac('sha256', $raw, self::SECRET, true));
 
@@ -135,10 +155,13 @@ final class WooCommerceCallbackSignatureEnforcementTest extends TestCase
     public function test_required_signature_processes_a_correctly_signed_gateway_callback(): void
     {
         config()->set('woocommerce.require_callback_signature', true);
-        Http::fake(['*/wp-json/wc/v3/orders/4242' => Http::response(['id' => 4242, 'status' => 'processing'], 200)]);
+        Http::fake([
+            ...$this->payplusIpn('gw:4242', ['amount' => '10.00']),
+            '*/wp-json/wc/v3/orders/4242' => Http::response(['id' => 4242, 'status' => 'processing', 'total' => '10.00'], 200),
+        ]);
         [$shop, $token] = $this->shopWithToken('gw-sig-ok.example.com', connected: true);
 
-        $body = ['transaction' => ['more_info' => 'gw:4242', 'status_code' => '000']];
+        $body = $this->callbackFor(['more_info' => 'gw:4242', 'status_code' => '000']);
         $raw = (string) json_encode($body, JSON_UNESCAPED_SLASHES);
         $hash = base64_encode(hash_hmac('sha256', $raw, self::SECRET, true));
 
@@ -149,12 +172,15 @@ final class WooCommerceCallbackSignatureEnforcementTest extends TestCase
 
     public function test_default_false_still_processes_an_unsigned_gateway_callback(): void
     {
-        Http::fake(['*/wp-json/wc/v3/orders/4242' => Http::response(['id' => 4242, 'status' => 'processing'], 200)]);
+        Http::fake([
+            ...$this->payplusIpn('gw:4242', ['amount' => '10.00']),
+            '*/wp-json/wc/v3/orders/4242' => Http::response(['id' => 4242, 'status' => 'processing', 'total' => '10.00'], 200),
+        ]);
         [$shop, $token] = $this->shopWithToken('gw-sig-def.example.com', connected: true);
 
-        $this->postJson('/woocommerce/gateway/callback/'.$token, [
-            'transaction' => ['more_info' => 'gw:4242', 'status_code' => '000'],
-        ])->assertOk()->assertJsonPath('paid', true);
+        $this->postJson('/woocommerce/gateway/callback/'.$token, $this->callbackFor([
+            'more_info' => 'gw:4242', 'status_code' => '000',
+        ]))->assertOk()->assertJsonPath('paid', true);
     }
 
     // === Helpers ===

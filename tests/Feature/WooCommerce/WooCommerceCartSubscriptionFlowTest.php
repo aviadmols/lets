@@ -23,6 +23,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
+use Tests\Concerns\FakesPayPlusIpn;
 use Tests\TestCase;
 
 /**
@@ -34,6 +35,7 @@ use Tests\TestCase;
  */
 final class WooCommerceCartSubscriptionFlowTest extends TestCase
 {
+    use FakesPayPlusIpn;
     use RefreshDatabase;
 
     private const SESSION = '/api/woocommerce/gateway/session';
@@ -96,17 +98,20 @@ final class WooCommerceCartSubscriptionFlowTest extends TestCase
 
         // 2) PayPlus captures the first cycle → its callback marks the order paid. The WC order the
         //    finalizer fetches carries the plan ids as meta (what the plugin persisted) + the token.
-        Http::fake(['*/wp-json/wc/v3/orders/8500' => Http::response([
-            'id' => 8500, 'status' => 'processing', 'customer_id' => 55, 'billing' => ['email' => 'dana@example.com'],
-            'meta_data' => [['key' => 'lets_subscription_plan_ids', 'value' => [$planId]]],
-        ], 200)]);
+        Http::fake([
+            // PayPlus's own record of the page: approved for the order total, with the card.
+            ...$this->payplusIpn('gw:8500', [
+                'amount' => '90.00', 'token_uid' => 'tok-sub-1', 'customer_uid' => 'pp-c-1', 'four_digits' => '4242',
+            ]),
+            '*/wp-json/wc/v3/orders/8500' => Http::response([
+                'id' => 8500, 'status' => 'processing', 'total' => '90.00', 'customer_id' => 55, 'billing' => ['email' => 'dana@example.com'],
+                'meta_data' => [['key' => 'lets_subscription_plan_ids', 'value' => [$planId]]],
+            ], 200),
+        ]);
 
-        $this->postJson('/woocommerce/gateway/callback/'.(string) $shop->wc_shop_token, [
-            'transaction' => [
-                'more_info' => 'gw:8500', 'status_code' => '000',
-                'token_uid' => 'tok-sub-1', 'customer_uid' => 'pp-c-1', 'four_digits' => '4242',
-            ],
-        ])->assertOk()->assertJsonPath('paid', true);
+        $this->postJson('/woocommerce/gateway/callback/'.(string) $shop->wc_shop_token, $this->callbackFor([
+            'more_info' => 'gw:8500', 'status_code' => '000',
+        ]))->assertOk()->assertJsonPath('paid', true);
 
         Tenant::run($shop, function () use ($planId): void {
             $plan = InstallmentPlan::query()->where('public_id', $planId)->sole();
@@ -143,12 +148,15 @@ final class WooCommerceCartSubscriptionFlowTest extends TestCase
             'subscription_items' => [['product_id' => '501', 'variant_id' => '501', 'quantity' => 1]],
         ])->json('subscription_plan_ids.0');
 
-        Http::fake(['*/wp-json/wc/v3/orders/8600' => Http::response([
-            'id' => 8600, 'status' => 'processing', 'customer_id' => 9, 'billing' => ['email' => 'g@example.com'],
-            'meta_data' => [['key' => 'lets_subscription_plan_ids', 'value' => [$planId]]],
-        ], 200)]);
+        Http::fake([
+            ...$this->payplusIpn('gw:8600', ['amount' => '100.00', 'token_uid' => 'tok-r']),
+            '*/wp-json/wc/v3/orders/8600' => Http::response([
+                'id' => 8600, 'status' => 'processing', 'total' => '100.00', 'customer_id' => 9, 'billing' => ['email' => 'g@example.com'],
+                'meta_data' => [['key' => 'lets_subscription_plan_ids', 'value' => [$planId]]],
+            ], 200),
+        ]);
 
-        $body = ['transaction' => ['more_info' => 'gw:8600', 'status_code' => '000', 'token_uid' => 'tok-r']];
+        $body = $this->callbackFor(['more_info' => 'gw:8600', 'status_code' => '000']);
         $url = '/woocommerce/gateway/callback/'.(string) $shop->wc_shop_token;
 
         $this->postJson($url, $body)->assertOk();

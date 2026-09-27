@@ -4,6 +4,7 @@ namespace App\Http\Controllers\WooCommerce\Storefront;
 
 use App\Domain\Installments\CardUpdateService;
 use App\Models\Shop;
+use App\Services\PayPlus\PayPlusReturnRef;
 use App\Support\Tenant;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
@@ -25,18 +26,22 @@ final class WooCardUpdateReturnController
     /** The card-update flow's own copy namespace (lang/{en,he}/storefront.php). */
     public const KEY_PREFIX = 'storefront.card_update.return_';
 
-    public function __invoke(Request $request, string $callback_token): View
+    public function __invoke(Request $request, string $shop_ref): View
     {
         $state = (string) $request->query('status', 'success');
         if (! in_array($state, self::STATES, true)) {
             $state = 'success';
         }
 
-        // EITHER column — see the callback controller.
-        $shop = Shop::query()
-            ->where('callback_token', $callback_token)
-            ->orWhere('wc_shop_token', $callback_token)
-            ->first();
+        // A PayPlusReturnRef — never the callback token, which a browser must not
+        // see. A page PayPlus minted before the ref existed still carries the
+        // legacy token (EITHER column — see the callback controller); here it
+        // only builds a back link.
+        $shop = PayPlusReturnRef::resolve($shop_ref)
+            ?? Shop::query()
+                ->where('callback_token', $shop_ref)
+                ->orWhere('wc_shop_token', $shop_ref)
+                ->first();
 
         // The page speaks the account's language: the mint stamped it into the
         // URL; an old or stripped link falls back to the shop's own setting.
