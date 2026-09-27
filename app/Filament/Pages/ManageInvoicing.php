@@ -5,6 +5,7 @@ namespace App\Filament\Pages;
 use App\Domain\Invoicing\DocumentContext;
 use App\Domain\Invoicing\GreenInvoice\GreenInvoiceDocumentType;
 use App\Domain\Invoicing\InvoiceProviderFactory;
+use App\Filament\Clusters\Settings as SettingsCluster;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Models\MerchantInvoicingSettings;
 use App\Models\Shop;
@@ -54,7 +55,10 @@ class ManageInvoicing extends Page implements HasForms
     // === CONSTANTS ===
     protected static ?string $navigationIcon = 'heroicon-o-document-text';
     protected static string $view = 'filament.pages.invoicing';
-    protected static ?string $slug = 'settings/invoicing';
+    protected static ?string $slug = 'invoicing';
+
+    /** Behind the one Settings item: in-page left index, URL /admin/settings/{slug}. */
+    protected static ?string $cluster = SettingsCluster::class;
     protected static ?int $navigationSort = 20;
 
     /** Credential keys that are sensitive → masked after save, never re-shown. */
@@ -67,7 +71,7 @@ class ManageInvoicing extends Page implements HasForms
 
     public static function getNavigationGroup(): ?string
     {
-        return __('nav.group.settings');
+        return null; // the cluster index is flat
     }
 
     public static function getNavigationLabel(): string

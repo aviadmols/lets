@@ -48,6 +48,12 @@ class LoyaltyReferralResource extends Resource
         return __('nav.group.customers');
     }
 
+    /** Nested under Loyalty: the club is one sidebar item. */
+    public static function getNavigationParentItem(): ?string
+    {
+        return __('nav.loyalty');
+    }
+
     public static function getNavigationLabel(): string
     {
         return __(self::LANG.'.title');

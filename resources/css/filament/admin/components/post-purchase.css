@@ -60,7 +60,7 @@
     color: var(--rc-blue);
     flex: 0 0 auto;
 }
-.rc-pp-info--warning .rc-pp-info__icon { color: var(--rc-amber); }
+.rc-pp-info--warning .rc-pp-info__icon { color: var(--rc-amber-ink); }
 
 /* ------------------------------------------------------ Your flows card --- */
 .rc-pp-flows__head { margin-block-end: var(--rc-space-4); }
@@ -372,7 +372,7 @@
     color: var(--rc-ink-muted);
     cursor: pointer;
 }
-.rc-fb-node__delete:hover { border-color: var(--rc-red); color: var(--rc-red); background: var(--rc-red-bg); }
+.rc-fb-node__delete:hover { border-color: var(--rc-red); color: var(--rc-red-ink); background: var(--rc-red-bg); }
 .rc-fb-node__delete:focus-visible { outline: none; box-shadow: var(--rc-ring); }
 .rc-fb-node__delete-icon { inline-size: 15px; block-size: 15px; }
 
@@ -508,7 +508,7 @@ button.rc-fb-node:focus-visible {
     font: var(--rc-type-label);
     text-transform: uppercase;
     letter-spacing: .04em;
-    color: var(--rc-green);
+    color: var(--rc-green-ink);
     margin-block-end: var(--rc-space-2);
 }
 .rc-fb-node__type--offer { color: var(--rc-blue); }
@@ -520,7 +520,7 @@ button.rc-fb-node:focus-visible {
 .rc-fb-node__reason {
     margin-block-start: var(--rc-space-2);
     font: var(--rc-type-caption);
-    color: var(--rc-red);
+    color: var(--rc-red-ink);
 }
 
 .rc-fb-cond {
@@ -531,7 +531,7 @@ button.rc-fb-node:focus-visible {
     background: var(--rc-bg);
     border-radius: var(--rc-radius-control);
 }
-.rc-fb-cond--empty { color: var(--rc-red); }
+.rc-fb-cond--empty { color: var(--rc-red-ink); }
 
 /* Offer product card */
 .rc-fb-offer { display: flex; gap: var(--rc-space-3); align-items: flex-start; }
@@ -563,7 +563,7 @@ button.rc-fb-node:focus-visible {
     background: var(--rc-amber-bg);
     border-radius: var(--rc-radius-control);
     font: var(--rc-type-caption);
-    color: var(--rc-amber);
+    color: var(--rc-amber-ink);
 }
 
 /* Branch ports */
@@ -588,8 +588,8 @@ button.rc-fb-node:focus-visible {
     font: var(--rc-type-label);
     text-transform: none;
 }
-.rc-fb-branch--accept .rc-fb-branch__label { color: var(--rc-green); background: var(--rc-green-bg); }
-.rc-fb-branch--decline .rc-fb-branch__label { color: var(--rc-gray); background: var(--rc-gray-bg); }
+.rc-fb-branch--accept .rc-fb-branch__label { color: var(--rc-green-ink); background: var(--rc-green-bg); }
+.rc-fb-branch--decline .rc-fb-branch__label { color: var(--rc-gray-ink); background: var(--rc-gray-bg); }
 .rc-fb-branch__arrow { color: var(--rc-ink-muted); }
 [dir="rtl"] .rc-fb-branch__arrow { transform: scaleX(-1); }
 .rc-fb-branch__next { color: var(--rc-ink); font: var(--rc-type-body-strong); }
@@ -835,8 +835,8 @@ button.rc-fb-node:focus-visible {
     display: grid; place-items: center; border-radius: var(--rc-radius-pill);
     font: var(--rc-type-label);
 }
-.rc-diag__row--ok .rc-diag__mark { background: var(--rc-green-bg); color: var(--rc-green); }
-.rc-diag__row--problem .rc-diag__mark { background: var(--rc-red-bg); color: var(--rc-red); }
+.rc-diag__row--ok .rc-diag__mark { background: var(--rc-green-bg); color: var(--rc-green-ink); }
+.rc-diag__row--problem .rc-diag__mark { background: var(--rc-red-bg); color: var(--rc-red-ink); }
 .rc-diag__row--unknown .rc-diag__mark { background: var(--rc-gray-bg); color: var(--rc-ink-muted); }
 .rc-diag__body { display: flex; flex-direction: column; gap: 2px; }
 .rc-diag__title { font: var(--rc-type-body-strong); color: var(--rc-ink); }

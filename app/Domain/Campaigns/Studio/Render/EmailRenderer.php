@@ -39,7 +39,7 @@ final class EmailRenderer
     ];
 
     /** The preview-only selection outline. NEVER emitted into a compiled body. */
-    private const HIGHLIGHT_STYLE = 'outline:2px solid #7746EC;outline-offset:-2px;';
+    private const HIGHLIGHT_STYLE = 'outline:2px solid #3B5BDB;outline-offset:-2px;';
 
     /**
      * @param  string  $highlightBlockId  preview-only: the selected block gets an

@@ -16,7 +16,7 @@
     background: var(--rc-amber-bg);
     border: 1px solid var(--rc-amber);
     border-radius: var(--rc-radius-control);
-    color: var(--rc-amber);
+    color: var(--rc-amber-ink);
 }
 
 .rc-platform-banner__text {
@@ -27,7 +27,7 @@
 
 .rc-platform-banner__title {
     font: var(--rc-type-body-strong);
-    color: var(--rc-amber);
+    color: var(--rc-amber-ink);
 }
 
 .rc-platform-banner__note {
@@ -41,7 +41,7 @@
 
 .rc-platform-banner__exit {
     font: var(--rc-type-label);
-    color: var(--rc-amber);
+    color: var(--rc-amber-ink);
     background: transparent;
     border: 1px solid var(--rc-amber);
     border-radius: var(--rc-radius-pill);
@@ -132,7 +132,7 @@
     background: transparent;
     border: 0;
     border-radius: var(--rc-radius-control);
-    color: var(--rc-red);
+    color: var(--rc-red-ink);
     font: var(--rc-type-body);
     cursor: pointer;
 }

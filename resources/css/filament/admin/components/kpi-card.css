@@ -63,8 +63,8 @@
     text-transform: none;
     letter-spacing: normal;
 }
-.rc-kpi__delta--up   { color: var(--rc-green); }
-.rc-kpi__delta--down { color: var(--rc-red); }
+.rc-kpi__delta--up   { color: var(--rc-green-ink); }
+.rc-kpi__delta--down { color: var(--rc-red-ink); }
 .rc-kpi__delta--flat { color: var(--rc-ink-muted); }
 
 .rc-kpi__sub {

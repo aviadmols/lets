@@ -21,22 +21,23 @@
    ========================================================================== */
 
 :root {
-    /* --- 1.1 Brand + surface — re-skinned to the Laravel Horizon palette
-           (violet accent + Tailwind cool-gray surfaces). The var is still named
-           --rc-blue (the "brand accent" slot, referenced by every component); only
-           its VALUE changed to Horizon violet, so the whole admin re-skins at once. --- */
-    --rc-blue: #7746EC;          /* Horizon violet — brand accent */
-    --rc-blue-600: #5F38BD;      /* darker violet — hover / active text */
-    --rc-blue-bg: #F1ECFD;       /* light violet wash — active nav + row hover */
-    --rc-bg: #F3F4F6;            /* Horizon cool gray-100 page background */
+    /* --- 1.1 Brand + surface — the Recharge palette of docs/ux/00-design-system.md
+           (approved sketch, 2026-09-27): Recharge blue on a warm off-white canvas.
+           Every component reads these slots, so the whole admin re-skins here. --- */
+    --rc-blue: #3B5BDB;          /* Recharge blue — brand accent */
+    --rc-blue-600: #2F4BC4;      /* hover / active text */
+    --rc-blue-bg: #EEF2FE;       /* 10% wash — active nav, row hover, chips */
+    --rc-bg: #F8F8F5;            /* warm off-white canvas */
     --rc-card: #FFFFFF;
     --rc-surface: var(--rc-card);
-    --rc-border: #E5E7EB;        /* gray-200 (cool) */
-    --rc-border-strong: #D1D5DB; /* gray-300 */
+    --rc-surface-sunk: #FAFAF8;  /* table headers, inset panels */
+    --rc-border: #E6E6E1;        /* warm hairline */
+    --rc-border-soft: #F0F0EE;   /* row dividers inside a card */
+    --rc-border-strong: #D4D4CE; /* inputs, secondary buttons */
 
     /* --- 1.2 Text --- */
-    --rc-ink: #111827;           /* gray-900 */
-    --rc-ink-muted: #6B7280;     /* gray-500 */
+    --rc-ink: #1A1A1A;
+    --rc-ink-muted: #6B7280;
     --rc-ink-on-primary: #FFFFFF;
     --rc-link: var(--rc-blue);
 
@@ -47,23 +48,26 @@
     --rc-logo-blue: #0066FF;
     --rc-logo-orchid: #EE82EE;
 
-    /* --- 1.3 Status / semantic (Tailwind / Horizon semantic ramp) --- */
-    --rc-green: #10B981;   --rc-green-bg: #D1FAE5;
-    --rc-gray: #6B7280;    --rc-gray-bg: #F3F4F6;
-    --rc-teal: #14B8A6;    --rc-teal-bg: #CCFBF1;
-    --rc-red: #EF4444;     --rc-red-bg: #FEE2E2;
-    --rc-amber: #F59E0B;   --rc-amber-bg: #FEF3C7;
+    /* --- 1.3 Status / semantic. The base hue marks dots + fills; the -ink shade
+           is the TEXT on the -bg, one step darker than the spec so 12px badge
+           text holds 4.5:1. --- */
+    --rc-green: #1E9E6A;   --rc-green-bg: #E6F4EE;  --rc-green-ink: #157A52;
+    --rc-gray: #6B7280;    --rc-gray-bg: #F0F0EE;   --rc-gray-ink: #4B5563;
+    --rc-teal: #0FA3A3;    --rc-teal-bg: #E2F5F5;   --rc-teal-ink: #0B6E6E;
+    --rc-red: #D64545;     --rc-red-bg: #FBE9E9;    --rc-red-ink: #B93232;
+    --rc-amber: #C77700;   --rc-amber-bg: #FBF1E0;  --rc-amber-ink: #8A5300;
+    --rc-amber-border: #EED9AE;
 
-    /* --- 2. Typography scale (Figtree — Horizon's typeface) --- */
-    --rc-font: "Figtree", "Heebo", system-ui, -apple-system, "Segoe UI", sans-serif;
+    /* --- 2. Typography scale — Heebo carries Hebrew AND Latin (one face) --- */
+    --rc-font: "Heebo", system-ui, -apple-system, "Segoe UI", sans-serif;
     --rc-type-title: 700 22px/1.25 var(--rc-font);
     --rc-type-kpi: 600 28px/1.1 var(--rc-font);
     --rc-type-h: 600 18px/1.3 var(--rc-font);
     --rc-type-subh: 600 15px/1.35 var(--rc-font);
-    --rc-type-body: 450 14px/1.5 var(--rc-font);
+    --rc-type-body: 400 14px/1.5 var(--rc-font);
     --rc-type-body-strong: 600 14px/1.5 var(--rc-font);
     --rc-type-label: 600 12px/1.4 var(--rc-font);
-    --rc-type-caption: 450 12px/1.4 var(--rc-font);
+    --rc-type-caption: 400 12px/1.4 var(--rc-font);
     --rc-kpi-size: 28px;
 
     /* --- 3.1 Spacing scale --- */
@@ -79,7 +83,7 @@
     --rc-shadow-card: 0 1px 2px rgba(16, 24, 40, .06);
     --rc-shadow-hover: 0 4px 12px rgba(16, 24, 40, .10);
     --rc-shadow-pop: 0 8px 24px rgba(16, 24, 40, .12);
-    --rc-ring: 0 0 0 3px rgba(119, 70, 236, .30);
+    --rc-ring: 0 0 0 3px rgba(59, 91, 219, .30);
     /* Modal/drawer scrim (same ink base as the shadow tokens). */
     --rc-scrim: rgba(16, 24, 40, .35);
 
@@ -89,20 +93,33 @@
     --rc-gutter: var(--rc-space-6);
 
     /* --- Re-map Filament's own primary ramp onto the brand so native buttons,
-           links, toggles, active states inherit the Horizon violet for free.
+           links, toggles, active states inherit Recharge blue for free.
            Filament reads these RGB-triplet custom props. Ramp anchored on
-           Horizon's #7746EC at 500, with its own #5F38BD / #472A8E dark end. --- */
-    --primary-50:  245, 243, 255;
-    --primary-100: 237, 233, 254;
-    --primary-200: 221, 214, 254;
-    --primary-300: 196, 181, 253;
-    --primary-400: 167, 139, 250;
-    --primary-500: 119, 70, 236;
-    --primary-600: 109, 57, 227;
-    --primary-700: 95, 56, 189;
-    --primary-800: 71, 42, 142;
-    --primary-900: 59, 36, 117;
-    --primary-950: 37, 23, 71;
+           #3B5BDB at 500 / #2F4BC4 at 600. --- */
+    --primary-50:  238, 242, 254;
+    --primary-100: 224, 231, 253;
+    --primary-200: 196, 208, 250;
+    --primary-300: 155, 175, 244;
+    --primary-400: 104, 132, 234;
+    --primary-500: 59, 91, 219;
+    --primary-600: 47, 75, 196;
+    --primary-700: 39, 62, 163;
+    --primary-800: 33, 52, 133;
+    --primary-900: 29, 45, 107;
+    --primary-950: 19, 29, 69;
+
+    /* Filament's own neutral ramp, warmed to sit on the off-white canvas. */
+    --gray-50:  250, 250, 248;
+    --gray-100: 240, 240, 238;
+    --gray-200: 230, 230, 225;
+    --gray-300: 212, 212, 206;
+    --gray-400: 156, 160, 166;
+    --gray-500: 107, 114, 128;
+    --gray-600: 75, 85, 99;
+    --gray-700: 55, 60, 68;
+    --gray-800: 38, 40, 44;
+    --gray-900: 26, 26, 26;
+    --gray-950: 14, 14, 14;
 }
 
 /* === Filament panel surface re-skin (via stable .fi-* hooks) ============== */
@@ -142,6 +159,33 @@
     border-radius: var(--rc-radius-control) 0 0 var(--rc-radius-control);
 }
 
+/* The Settings group is always LAST (NAV_GROUP_ORDER) and holds one item — the
+   Settings cluster. Its header would just repeat the item, so the group shows as
+   a hairline + the item, the sketch's pinned footer entry. */
+.fi-sidebar-nav-groups > .fi-sidebar-group:last-child {
+    border-block-start: 1px solid var(--rc-border);
+    padding-block-start: var(--rc-space-3);
+}
+.fi-sidebar-nav-groups > .fi-sidebar-group:last-child > .fi-sidebar-group-button {
+    display: none;
+}
+
+/* Child items (Loyalty → members/referrals, Subscriptions → bulk edit). */
+.fi-sidebar-sub-group-items .fi-sidebar-item-label {
+    font: var(--rc-type-body);
+    font-size: 13px;
+}
+
+/* Cluster left index (Settings): the sketch's quiet list, active = wash. */
+.fi-page-sub-navigation-sidebar .fi-sidebar-item > .fi-sidebar-item-button {
+    border-inline-start: 0;
+    border-radius: var(--rc-radius-control);
+}
+.fi-page-sub-navigation-sidebar .fi-sidebar-item-active > .fi-sidebar-item-button {
+    border-inline-start: 0;
+    background-color: var(--rc-blue-bg);
+}
+
 .fi-sidebar-group-label {
     font: var(--rc-type-label);
     text-transform: uppercase;
@@ -171,13 +215,30 @@
 /* Table density + hairlines (skin only — never re-template Filament's table). */
 .fi-ta-header-cell {
     font: var(--rc-type-label);
+    font-size: 11px;
     text-transform: uppercase;
     letter-spacing: .04em;
     color: var(--rc-ink-muted);
-    border-block-end: 1px solid var(--rc-border-strong);
+    background-color: var(--rc-surface-sunk);
+    border-block-end: 1px solid var(--rc-border);
 }
 .fi-ta-row {
+    border-block-end: 1px solid var(--rc-border-soft);
+}
+
+/* Top bar: white strip on a hairline, like the sidebar. */
+.fi-topbar > nav {
+    background-color: var(--rc-card);
     border-block-end: 1px solid var(--rc-border);
+    box-shadow: none;
+}
+
+/* Section headers sit on a hairline, content below (the sketch's card head). */
+.fi-section-header {
+    border-block-end: 1px solid var(--rc-border);
+}
+.fi-section-header-heading {
+    font: var(--rc-type-subh);
 }
 .fi-ta-row:hover {
     background-color: var(--rc-blue-bg);
@@ -333,15 +394,15 @@
     background: currentColor;
 }
 
-.rc-badge--green   { color: var(--rc-green); background: var(--rc-green-bg); }
-.rc-badge--gray    { color: var(--rc-gray);  background: var(--rc-gray-bg); }
-.rc-badge--neutral { color: var(--rc-gray);  background: var(--rc-gray-bg); }
-.rc-badge--teal    { color: var(--rc-teal);  background: var(--rc-teal-bg); }
-.rc-badge--red     { color: var(--rc-red);   background: var(--rc-red-bg); }
-.rc-badge--danger  { color: var(--rc-red);   background: var(--rc-red-bg); }
-.rc-badge--amber   { color: var(--rc-amber); background: var(--rc-amber-bg); }
-.rc-badge--warning { color: var(--rc-amber); background: var(--rc-amber-bg); }
-.rc-badge--success { color: var(--rc-green); background: var(--rc-green-bg); }
+.rc-badge--green   { color: var(--rc-green-ink); background: var(--rc-green-bg); }
+.rc-badge--gray    { color: var(--rc-gray-ink);  background: var(--rc-gray-bg); }
+.rc-badge--neutral { color: var(--rc-gray-ink);  background: var(--rc-gray-bg); }
+.rc-badge--teal    { color: var(--rc-teal-ink);  background: var(--rc-teal-bg); }
+.rc-badge--red     { color: var(--rc-red-ink);   background: var(--rc-red-bg); }
+.rc-badge--danger  { color: var(--rc-red-ink);   background: var(--rc-red-bg); }
+.rc-badge--amber   { color: var(--rc-amber-ink); background: var(--rc-amber-bg); }
+.rc-badge--warning { color: var(--rc-amber-ink); background: var(--rc-amber-bg); }
+.rc-badge--success { color: var(--rc-green-ink); background: var(--rc-green-bg); }
 
 /* Standalone payment-status dot (Customers list §1.3). */
 .rc-dot {
@@ -397,7 +458,7 @@
 .rc-cta--danger {
     background: var(--rc-card);
     border-color: var(--rc-red);
-    color: var(--rc-red);
+    color: var(--rc-red-ink);
     box-shadow: none;
 }
 .rc-cta--danger:hover { background: var(--rc-red-bg); }
@@ -1103,8 +1164,8 @@ select.rc-input {
     font: var(--rc-type-label); text-transform: uppercase; letter-spacing: .04em;
 }
 [dir="rtl"] .rc-chip { text-transform: none; letter-spacing: normal; }
-.rc-chip--scheduled { background: var(--rc-amber-bg); color: var(--rc-amber); }
-.rc-chip--paid { background: var(--rc-green-bg); color: var(--rc-green); }
+.rc-chip--scheduled { background: var(--rc-amber-bg); color: var(--rc-amber-ink); }
+.rc-chip--paid { background: var(--rc-green-bg); color: var(--rc-green-ink); }
 
 /* === Sidebar cards ======================================================== */
 /* Sidebar stacks a touch tighter than the main column. */
@@ -1182,7 +1243,7 @@ select.rc-input {
     box-shadow: var(--rc-shadow-card);
     padding: var(--rc-space-5);
 }
-.rc-section__title { font: var(--rc-type-h); color: var(--rc-ink); margin-block-end: var(--rc-space-4); }
+.rc-section__title { font: var(--rc-type-subh); color: var(--rc-ink); margin-block-end: var(--rc-space-4); }
 .rc-section__subtitle { font: var(--rc-type-subh); color: var(--rc-ink); }
 
 .rc-label { font: var(--rc-type-label); text-transform: uppercase; letter-spacing: .04em; color: var(--rc-ink-muted); }
@@ -1194,6 +1255,9 @@ select.rc-input {
 .rc-kv__k { font: var(--rc-type-label); text-transform: uppercase; letter-spacing: .04em; color: var(--rc-ink-muted); }
 [dir="rtl"] .rc-kv__k { text-transform: none; letter-spacing: normal; }
 .rc-kv__v { font: var(--rc-type-body-strong); color: var(--rc-ink); }
+/* Narrow columns (a detail side rail): each label sits above its value. */
+.rc-kv--stacked { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+.rc-kv--stacked .rc-kv__v { margin-block-end: var(--rc-space-2); overflow-wrap: anywhere; }
 
 /* monospace / LTR-locked numeric + masked refs inside RTL rows. */
 .rc-ltr { direction: ltr; unicode-bidi: isolate; text-align: start; }
@@ -1222,8 +1286,16 @@ select.rc-input {
     gap: var(--rc-space-5);
     align-items: start;
 }
+/* Two cards side by side, wider first (Home: upcoming orders | recent activity). */
+.rc-duo {
+    display: grid;
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    gap: var(--rc-space-4);
+    align-items: start;
+}
 @media (max-width: 900px) {
     .rc-detail { grid-template-columns: 1fr; }
+    .rc-duo { grid-template-columns: 1fr; }
 }
 
 /* anchor-as-card reset for clickable subscription rows. */
@@ -1260,7 +1332,7 @@ a.rc-railed:hover { background: var(--rc-blue-bg); }
     display: inline-flex; align-items: center; gap: var(--rc-space-2);
     padding-block: 2px; padding-inline: var(--rc-space-3);
     border-radius: var(--rc-radius-pill);
-    background: var(--rc-amber-bg); color: var(--rc-amber);
+    background: var(--rc-amber-bg); color: var(--rc-amber-ink);
     font: var(--rc-type-label); text-transform: none; letter-spacing: normal;
 }
 
@@ -1568,8 +1640,8 @@ html:has(meta[name="lets-embedded"]) .fi-user-menu {
     text-transform: none;
     letter-spacing: normal;
 }
-.rc-kpi__delta--up   { color: var(--rc-green); }
-.rc-kpi__delta--down { color: var(--rc-red); }
+.rc-kpi__delta--up   { color: var(--rc-green-ink); }
+.rc-kpi__delta--down { color: var(--rc-red-ink); }
 .rc-kpi__delta--flat { color: var(--rc-ink-muted); }
 
 .rc-kpi__sub {
@@ -2208,7 +2280,7 @@ html:has(meta[name="lets-embedded"]) .fi-user-menu {
     background: var(--rc-amber-bg);
     border: 1px solid var(--rc-amber);
     border-radius: var(--rc-radius-control);
-    color: var(--rc-amber);
+    color: var(--rc-amber-ink);
 }
 
 .rc-platform-banner__text {
@@ -2219,7 +2291,7 @@ html:has(meta[name="lets-embedded"]) .fi-user-menu {
 
 .rc-platform-banner__title {
     font: var(--rc-type-body-strong);
-    color: var(--rc-amber);
+    color: var(--rc-amber-ink);
 }
 
 .rc-platform-banner__note {
@@ -2233,7 +2305,7 @@ html:has(meta[name="lets-embedded"]) .fi-user-menu {
 
 .rc-platform-banner__exit {
     font: var(--rc-type-label);
-    color: var(--rc-amber);
+    color: var(--rc-amber-ink);
     background: transparent;
     border: 1px solid var(--rc-amber);
     border-radius: var(--rc-radius-pill);
@@ -2324,7 +2396,7 @@ html:has(meta[name="lets-embedded"]) .fi-user-menu {
     background: transparent;
     border: 0;
     border-radius: var(--rc-radius-control);
-    color: var(--rc-red);
+    color: var(--rc-red-ink);
     font: var(--rc-type-body);
     cursor: pointer;
 }
@@ -2392,7 +2464,7 @@ html:has(meta[name="lets-embedded"]) .fi-user-menu {
     color: var(--rc-blue);
     flex: 0 0 auto;
 }
-.rc-pp-info--warning .rc-pp-info__icon { color: var(--rc-amber); }
+.rc-pp-info--warning .rc-pp-info__icon { color: var(--rc-amber-ink); }
 
 /* ------------------------------------------------------ Your flows card --- */
 .rc-pp-flows__head { margin-block-end: var(--rc-space-4); }
@@ -2704,7 +2776,7 @@ html:has(meta[name="lets-embedded"]) .fi-user-menu {
     color: var(--rc-ink-muted);
     cursor: pointer;
 }
-.rc-fb-node__delete:hover { border-color: var(--rc-red); color: var(--rc-red); background: var(--rc-red-bg); }
+.rc-fb-node__delete:hover { border-color: var(--rc-red); color: var(--rc-red-ink); background: var(--rc-red-bg); }
 .rc-fb-node__delete:focus-visible { outline: none; box-shadow: var(--rc-ring); }
 .rc-fb-node__delete-icon { inline-size: 15px; block-size: 15px; }
 
@@ -2840,7 +2912,7 @@ button.rc-fb-node:focus-visible {
     font: var(--rc-type-label);
     text-transform: uppercase;
     letter-spacing: .04em;
-    color: var(--rc-green);
+    color: var(--rc-green-ink);
     margin-block-end: var(--rc-space-2);
 }
 .rc-fb-node__type--offer { color: var(--rc-blue); }
@@ -2852,7 +2924,7 @@ button.rc-fb-node:focus-visible {
 .rc-fb-node__reason {
     margin-block-start: var(--rc-space-2);
     font: var(--rc-type-caption);
-    color: var(--rc-red);
+    color: var(--rc-red-ink);
 }
 
 .rc-fb-cond {
@@ -2863,7 +2935,7 @@ button.rc-fb-node:focus-visible {
     background: var(--rc-bg);
     border-radius: var(--rc-radius-control);
 }
-.rc-fb-cond--empty { color: var(--rc-red); }
+.rc-fb-cond--empty { color: var(--rc-red-ink); }
 
 /* Offer product card */
 .rc-fb-offer { display: flex; gap: var(--rc-space-3); align-items: flex-start; }
@@ -2895,7 +2967,7 @@ button.rc-fb-node:focus-visible {
     background: var(--rc-amber-bg);
     border-radius: var(--rc-radius-control);
     font: var(--rc-type-caption);
-    color: var(--rc-amber);
+    color: var(--rc-amber-ink);
 }
 
 /* Branch ports */
@@ -2920,8 +2992,8 @@ button.rc-fb-node:focus-visible {
     font: var(--rc-type-label);
     text-transform: none;
 }
-.rc-fb-branch--accept .rc-fb-branch__label { color: var(--rc-green); background: var(--rc-green-bg); }
-.rc-fb-branch--decline .rc-fb-branch__label { color: var(--rc-gray); background: var(--rc-gray-bg); }
+.rc-fb-branch--accept .rc-fb-branch__label { color: var(--rc-green-ink); background: var(--rc-green-bg); }
+.rc-fb-branch--decline .rc-fb-branch__label { color: var(--rc-gray-ink); background: var(--rc-gray-bg); }
 .rc-fb-branch__arrow { color: var(--rc-ink-muted); }
 [dir="rtl"] .rc-fb-branch__arrow { transform: scaleX(-1); }
 .rc-fb-branch__next { color: var(--rc-ink); font: var(--rc-type-body-strong); }
@@ -3167,8 +3239,8 @@ button.rc-fb-node:focus-visible {
     display: grid; place-items: center; border-radius: var(--rc-radius-pill);
     font: var(--rc-type-label);
 }
-.rc-diag__row--ok .rc-diag__mark { background: var(--rc-green-bg); color: var(--rc-green); }
-.rc-diag__row--problem .rc-diag__mark { background: var(--rc-red-bg); color: var(--rc-red); }
+.rc-diag__row--ok .rc-diag__mark { background: var(--rc-green-bg); color: var(--rc-green-ink); }
+.rc-diag__row--problem .rc-diag__mark { background: var(--rc-red-bg); color: var(--rc-red-ink); }
 .rc-diag__row--unknown .rc-diag__mark { background: var(--rc-gray-bg); color: var(--rc-ink-muted); }
 .rc-diag__body { display: flex; flex-direction: column; gap: 2px; }
 .rc-diag__title { font: var(--rc-type-body-strong); color: var(--rc-ink); }
@@ -3312,9 +3384,9 @@ button.rc-fb-node:focus-visible {
     white-space: nowrap;
 }
 [dir="rtl"] .rc-sfel__status { text-transform: none; letter-spacing: normal; }
-.rc-sfel__status--ready { background: var(--rc-green-bg); color: var(--rc-green); }
+.rc-sfel__status--ready { background: var(--rc-green-bg); color: var(--rc-green-ink); }
 .rc-sfel__status--auto { background: var(--rc-blue-bg); color: var(--rc-blue-600); }
-.rc-sfel__status--needs_setup { background: var(--rc-amber-bg); color: var(--rc-amber); }
+.rc-sfel__status--needs_setup { background: var(--rc-amber-bg); color: var(--rc-amber-ink); }
 
 .rc-sfel__hint { margin: 0; }
 

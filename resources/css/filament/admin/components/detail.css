@@ -28,7 +28,7 @@
     display: inline-flex; align-items: center; gap: var(--rc-space-2);
     padding-block: 2px; padding-inline: var(--rc-space-3);
     border-radius: var(--rc-radius-pill);
-    background: var(--rc-amber-bg); color: var(--rc-amber);
+    background: var(--rc-amber-bg); color: var(--rc-amber-ink);
     font: var(--rc-type-label); text-transform: none; letter-spacing: normal;
 }
 

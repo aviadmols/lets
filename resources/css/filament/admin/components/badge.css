@@ -25,15 +25,15 @@
     background: currentColor;
 }
 
-.rc-badge--green   { color: var(--rc-green); background: var(--rc-green-bg); }
-.rc-badge--gray    { color: var(--rc-gray);  background: var(--rc-gray-bg); }
-.rc-badge--neutral { color: var(--rc-gray);  background: var(--rc-gray-bg); }
-.rc-badge--teal    { color: var(--rc-teal);  background: var(--rc-teal-bg); }
-.rc-badge--red     { color: var(--rc-red);   background: var(--rc-red-bg); }
-.rc-badge--danger  { color: var(--rc-red);   background: var(--rc-red-bg); }
-.rc-badge--amber   { color: var(--rc-amber); background: var(--rc-amber-bg); }
-.rc-badge--warning { color: var(--rc-amber); background: var(--rc-amber-bg); }
-.rc-badge--success { color: var(--rc-green); background: var(--rc-green-bg); }
+.rc-badge--green   { color: var(--rc-green-ink); background: var(--rc-green-bg); }
+.rc-badge--gray    { color: var(--rc-gray-ink);  background: var(--rc-gray-bg); }
+.rc-badge--neutral { color: var(--rc-gray-ink);  background: var(--rc-gray-bg); }
+.rc-badge--teal    { color: var(--rc-teal-ink);  background: var(--rc-teal-bg); }
+.rc-badge--red     { color: var(--rc-red-ink);   background: var(--rc-red-bg); }
+.rc-badge--danger  { color: var(--rc-red-ink);   background: var(--rc-red-bg); }
+.rc-badge--amber   { color: var(--rc-amber-ink); background: var(--rc-amber-bg); }
+.rc-badge--warning { color: var(--rc-amber-ink); background: var(--rc-amber-bg); }
+.rc-badge--success { color: var(--rc-green-ink); background: var(--rc-green-bg); }
 
 /* Standalone payment-status dot (Customers list §1.3). */
 .rc-dot {

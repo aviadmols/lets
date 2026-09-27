@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Clusters\Settings as SettingsCluster;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusAccountDiscovery;
@@ -50,7 +51,12 @@ class ManagePayPlusConnection extends Page implements HasForms
 
     protected static string $view = 'filament.pages.payplus-connection';
 
-    protected static ?string $slug = 'settings/payplus';
+    protected static ?string $slug = 'payplus';
+
+
+    /** Behind the one Settings item: in-page left index, URL /admin/settings/{slug}. */
+
+    protected static ?string $cluster = SettingsCluster::class;
 
     protected static ?int $navigationSort = 10;
 
@@ -131,7 +137,7 @@ class ManagePayPlusConnection extends Page implements HasForms
 
     public static function getNavigationGroup(): ?string
     {
-        return __('nav.group.settings');
+        return null; // the cluster index is flat
     }
 
     public static function getNavigationLabel(): string

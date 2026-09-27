@@ -13,9 +13,9 @@
     white-space: nowrap;
 }
 [dir="rtl"] .rc-sfel__status { text-transform: none; letter-spacing: normal; }
-.rc-sfel__status--ready { background: var(--rc-green-bg); color: var(--rc-green); }
+.rc-sfel__status--ready { background: var(--rc-green-bg); color: var(--rc-green-ink); }
 .rc-sfel__status--auto { background: var(--rc-blue-bg); color: var(--rc-blue-600); }
-.rc-sfel__status--needs_setup { background: var(--rc-amber-bg); color: var(--rc-amber); }
+.rc-sfel__status--needs_setup { background: var(--rc-amber-bg); color: var(--rc-amber-ink); }
 
 .rc-sfel__hint { margin: 0; }
 

@@ -21,7 +21,7 @@ class AdminDesignSystemTest extends TestCase
         $this->assertContains('filament.admin.resources.subscriptions.view', $names);
         $this->assertContains('filament.admin.resources.payments.index', $names);
         $this->assertContains('filament.admin.pages.customers', $names);
-        $this->assertContains('filament.admin.pages.settings.payplus', $names);
+        $this->assertContains('filament.admin.settings.pages.payplus', $names);
     }
 
     public function test_status_badge_map_covers_every_canonical_status(): void
@@ -69,8 +69,9 @@ class AdminDesignSystemTest extends TestCase
         $this->assertFileExists($path, 'Run `npm run build` to publish the theme asset.');
 
         $css = file_get_contents($path);
-        // The brand accent token is published (re-skinned to the Horizon violet).
-        $this->assertStringContainsString('--rc-blue: #7746EC', $css);
+        // The brand accent token is published (Recharge blue, docs/ux/00-design-system.md).
+        $this->assertStringContainsString('--rc-blue: #3B5BDB', $css);
+        $this->assertStringContainsString('"Heebo"', $css);
     }
 
     /** @return list<string> dot-flattened key paths */

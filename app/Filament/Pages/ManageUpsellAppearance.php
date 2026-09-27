@@ -6,6 +6,7 @@ use App\Domain\Upsell\Http\Controllers\PostPurchaseController;
 use App\Domain\Upsell\Models\UpsellFlowOffer;
 use App\Domain\Upsell\Rendering\PostPurchasePresenter;
 use App\Domain\Upsell\Rendering\UpsellCardPresenter;
+use App\Filament\Clusters\Settings as SettingsCluster;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Models\MerchantUpsellAppearance;
 use App\Models\Shop;
@@ -48,7 +49,10 @@ class ManageUpsellAppearance extends Page implements HasForms
     // === CONSTANTS ===
     protected static ?string $navigationIcon = 'heroicon-o-swatch';
     protected static string $view = 'filament.pages.upsell-appearance';
-    protected static ?string $slug = 'settings/upsell-appearance';
+    protected static ?string $slug = 'upsell-appearance';
+
+    /** Behind the one Settings item: in-page left index, URL /admin/settings/{slug}. */
+    protected static ?string $cluster = SettingsCluster::class;
     protected static ?int $navigationSort = 40;
 
     /** @var array<string, mixed> form state (statePath: data). */
@@ -56,7 +60,7 @@ class ManageUpsellAppearance extends Page implements HasForms
 
     public static function getNavigationGroup(): ?string
     {
-        return __('nav.group.settings');
+        return null; // the cluster index is flat
     }
 
     public static function getNavigationLabel(): string

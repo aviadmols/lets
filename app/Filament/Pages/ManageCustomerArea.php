@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Clusters\Settings as SettingsCluster;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Models\MerchantPortalAppearance;
 use App\Models\MerchantSmsSettings;
@@ -52,7 +53,12 @@ class ManageCustomerArea extends Page implements HasForms
 
     protected static string $view = 'filament.pages.customer-area';
 
-    protected static ?string $slug = 'settings/customer-area';
+    protected static ?string $slug = 'customer-area';
+
+
+    /** Behind the one Settings item: in-page left index, URL /admin/settings/{slug}. */
+
+    protected static ?string $cluster = SettingsCluster::class;
 
     protected static ?int $navigationSort = 45;
 
@@ -61,7 +67,7 @@ class ManageCustomerArea extends Page implements HasForms
 
     public static function getNavigationGroup(): ?string
     {
-        return __('nav.group.settings');
+        return null; // the cluster index is flat
     }
 
     public static function getNavigationLabel(): string

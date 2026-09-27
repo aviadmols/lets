@@ -134,41 +134,44 @@
             </div>
         @endif
 
-        {{-- Upcoming orders — the next scheduled charges (subscriptions + installments), soonest first.
-             Rows are precomputed by upcomingCharges(); each links to the subscription. --}}
-        <div class="rc-section">
-            <div class="rc-section__title">{{ __('dashboard.upcoming.title') }}</div>
-            @php $upcoming = $this->upcomingCharges(); @endphp
-            <table class="rc-table">
-                <thead>
-                    <tr>
-                        <th>{{ __('dashboard.upcoming.customer') }}</th>
-                        <th>{{ __('dashboard.upcoming.type') }}</th>
-                        <th>{{ __('dashboard.upcoming.amount') }}</th>
-                        <th>{{ __('dashboard.upcoming.date') }}</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @forelse($upcoming as $row)
+        {{-- Upcoming orders | Recent activity, side by side (7/5; stacks under 900px). --}}
+        <div class="rc-duo">
+            {{-- Upcoming orders — the next scheduled charges (subscriptions + installments), soonest first.
+                 Rows are precomputed by upcomingCharges(); each links to the subscription. --}}
+            <div class="rc-section">
+                <div class="rc-section__title">{{ __('dashboard.upcoming.title') }}</div>
+                @php $upcoming = $this->upcomingCharges(); @endphp
+                <table class="rc-table">
+                    <thead>
                         <tr>
-                            <td class="rc-strong"><a class="rc-link" href="{{ $row['url'] }}" wire:navigate>{{ $row['customer'] }}</a></td>
-                            <td>{{ $row['kind'] }}</td>
-                            <td class="rc-ltr">{{ $row['amount'] }}</td>
-                            <td class="rc-ltr">{{ $row['date'] }}</td>
+                            <th>{{ __('dashboard.upcoming.customer') }}</th>
+                            <th>{{ __('dashboard.upcoming.type') }}</th>
+                            <th>{{ __('dashboard.upcoming.amount') }}</th>
+                            <th>{{ __('dashboard.upcoming.date') }}</th>
                         </tr>
-                    @empty
-                        <tr>
-                            <td colspan="4" class="rc-muted">{{ __('dashboard.upcoming.empty') }}</td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
+                    </thead>
+                    <tbody>
+                        @forelse($upcoming as $row)
+                            <tr>
+                                <td class="rc-strong"><a class="rc-link" href="{{ $row['url'] }}" wire:navigate>{{ $row['customer'] }}</a></td>
+                                <td>{{ $row['kind'] }}</td>
+                                <td class="rc-ltr">{{ $row['amount'] }}</td>
+                                <td class="rc-ltr">{{ $row['date'] }}</td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="4" class="rc-muted">{{ __('dashboard.upcoming.empty') }}</td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
 
-        {{-- Recent activity feed --}}
-        <div class="rc-section">
-            <div class="rc-section__title">{{ __('dashboard.activity.title') }}</div>
-            <x-rc.timeline :events="$this->recentActivity()" />
+            {{-- Recent activity feed --}}
+            <div class="rc-section">
+                <div class="rc-section__title">{{ __('dashboard.activity.title') }}</div>
+                <x-rc.timeline :events="$this->recentActivity()" />
+            </div>
         </div>
     </div>
 </x-filament-panels::page>

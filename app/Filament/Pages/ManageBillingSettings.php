@@ -5,6 +5,7 @@ namespace App\Filament\Pages;
 use App\Domain\Billing\ChargeLineDescription;
 use App\Domain\Billing\ChargingResumeService;
 use App\Domain\ShopifySubscriptions\Jobs\BackfillContractsJob;
+use App\Filament\Clusters\Settings as SettingsCluster;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Jobs\Shopify\RegisterShopifyWebhooksJob;
 use App\Models\InstallmentPlan;
@@ -57,7 +58,12 @@ class ManageBillingSettings extends Page implements HasForms
 
     protected static string $view = 'filament.pages.billing-settings';
 
-    protected static ?string $slug = 'settings/billing';
+    protected static ?string $slug = 'billing';
+
+
+    /** Behind the one Settings item: in-page left index, URL /admin/settings/{slug}. */
+
+    protected static ?string $cluster = SettingsCluster::class;
 
     protected static ?int $navigationSort = 30;
 
@@ -74,7 +80,7 @@ class ManageBillingSettings extends Page implements HasForms
 
     public static function getNavigationGroup(): ?string
     {
-        return __('nav.group.settings');
+        return null; // the cluster index is flat
     }
 
     public static function getNavigationLabel(): string

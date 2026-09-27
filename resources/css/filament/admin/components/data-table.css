@@ -16,7 +16,7 @@
     box-shadow: var(--rc-shadow-card);
     padding: var(--rc-space-5);
 }
-.rc-section__title { font: var(--rc-type-h); color: var(--rc-ink); margin-block-end: var(--rc-space-4); }
+.rc-section__title { font: var(--rc-type-subh); color: var(--rc-ink); margin-block-end: var(--rc-space-4); }
 .rc-section__subtitle { font: var(--rc-type-subh); color: var(--rc-ink); }
 
 .rc-label { font: var(--rc-type-label); text-transform: uppercase; letter-spacing: .04em; color: var(--rc-ink-muted); }
@@ -28,6 +28,9 @@
 .rc-kv__k { font: var(--rc-type-label); text-transform: uppercase; letter-spacing: .04em; color: var(--rc-ink-muted); }
 [dir="rtl"] .rc-kv__k { text-transform: none; letter-spacing: normal; }
 .rc-kv__v { font: var(--rc-type-body-strong); color: var(--rc-ink); }
+/* Narrow columns (a detail side rail): each label sits above its value. */
+.rc-kv--stacked { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+.rc-kv--stacked .rc-kv__v { margin-block-end: var(--rc-space-2); overflow-wrap: anywhere; }
 
 /* monospace / LTR-locked numeric + masked refs inside RTL rows. */
 .rc-ltr { direction: ltr; unicode-bidi: isolate; text-align: start; }
@@ -56,8 +59,16 @@
     gap: var(--rc-space-5);
     align-items: start;
 }
+/* Two cards side by side, wider first (Home: upcoming orders | recent activity). */
+.rc-duo {
+    display: grid;
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    gap: var(--rc-space-4);
+    align-items: start;
+}
 @media (max-width: 900px) {
     .rc-detail { grid-template-columns: 1fr; }
+    .rc-duo { grid-template-columns: 1fr; }
 }
 
 /* anchor-as-card reset for clickable subscription rows. */

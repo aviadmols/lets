@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Clusters\Settings as SettingsCluster;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Filament\Resources\TeamMemberResource\Pages;
 use App\Models\User;
@@ -45,6 +46,9 @@ class TeamMemberResource extends Resource
 
     protected static ?string $slug = 'team';
 
+    /** Behind the one Settings item: in-page left index, URL /admin/settings/{slug}. */
+    protected static ?string $cluster = SettingsCluster::class;
+
     protected static ?string $navigationIcon = 'heroicon-o-users';
 
     protected static ?int $navigationSort = 90;
@@ -54,7 +58,7 @@ class TeamMemberResource extends Resource
 
     public static function getNavigationGroup(): ?string
     {
-        return __('nav.group.settings');
+        return null; // the cluster index is flat
     }
 
     public static function getNavigationLabel(): string

@@ -69,8 +69,8 @@
     font: var(--rc-type-label); text-transform: uppercase; letter-spacing: .04em;
 }
 [dir="rtl"] .rc-chip { text-transform: none; letter-spacing: normal; }
-.rc-chip--scheduled { background: var(--rc-amber-bg); color: var(--rc-amber); }
-.rc-chip--paid { background: var(--rc-green-bg); color: var(--rc-green); }
+.rc-chip--scheduled { background: var(--rc-amber-bg); color: var(--rc-amber-ink); }
+.rc-chip--paid { background: var(--rc-green-bg); color: var(--rc-green-ink); }
 
 /* === Sidebar cards ======================================================== */
 /* Sidebar stacks a touch tighter than the main column. */

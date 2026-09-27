@@ -3,6 +3,7 @@
 namespace App\Filament\Pages;
 
 use App\Domain\Observability\ObservabilityMetrics;
+use App\Filament\Clusters\Settings as SettingsCluster;
 use App\Support\Ui\Money;
 use App\Support\Ui\PanelAccess;
 use Filament\Pages\Page;
@@ -34,6 +35,11 @@ class ObservabilityDashboard extends Page
 
     protected static ?string $slug = 'observability';
 
+
+    /** Behind the one Settings item: in-page left index, URL /admin/settings/{slug}. */
+
+    protected static ?string $cluster = SettingsCluster::class;
+
     protected static ?int $navigationSort = 90;
 
     /** Charge-health windows surfaced as hero cards + the table header. */
@@ -63,7 +69,7 @@ class ObservabilityDashboard extends Page
 
     public static function getNavigationGroup(): ?string
     {
-        return __('nav.group.settings');
+        return null; // the cluster index is flat
     }
 
     public static function getNavigationLabel(): string

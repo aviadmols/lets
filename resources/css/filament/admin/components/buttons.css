@@ -40,7 +40,7 @@
 .rc-cta--danger {
     background: var(--rc-card);
     border-color: var(--rc-red);
-    color: var(--rc-red);
+    color: var(--rc-red-ink);
     box-shadow: none;
 }
 .rc-cta--danger:hover { background: var(--rc-red-bg); }

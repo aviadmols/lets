@@ -20,22 +20,23 @@
    ========================================================================== */
 
 :root {
-    /* --- 1.1 Brand + surface — re-skinned to the Laravel Horizon palette
-           (violet accent + Tailwind cool-gray surfaces). The var is still named
-           --rc-blue (the "brand accent" slot, referenced by every component); only
-           its VALUE changed to Horizon violet, so the whole admin re-skins at once. --- */
-    --rc-blue: #7746EC;          /* Horizon violet — brand accent */
-    --rc-blue-600: #5F38BD;      /* darker violet — hover / active text */
-    --rc-blue-bg: #F1ECFD;       /* light violet wash — active nav + row hover */
-    --rc-bg: #F3F4F6;            /* Horizon cool gray-100 page background */
+    /* --- 1.1 Brand + surface — the Recharge palette of docs/ux/00-design-system.md
+           (approved sketch, 2026-09-27): Recharge blue on a warm off-white canvas.
+           Every component reads these slots, so the whole admin re-skins here. --- */
+    --rc-blue: #3B5BDB;          /* Recharge blue — brand accent */
+    --rc-blue-600: #2F4BC4;      /* hover / active text */
+    --rc-blue-bg: #EEF2FE;       /* 10% wash — active nav, row hover, chips */
+    --rc-bg: #F8F8F5;            /* warm off-white canvas */
     --rc-card: #FFFFFF;
     --rc-surface: var(--rc-card);
-    --rc-border: #E5E7EB;        /* gray-200 (cool) */
-    --rc-border-strong: #D1D5DB; /* gray-300 */
+    --rc-surface-sunk: #FAFAF8;  /* table headers, inset panels */
+    --rc-border: #E6E6E1;        /* warm hairline */
+    --rc-border-soft: #F0F0EE;   /* row dividers inside a card */
+    --rc-border-strong: #D4D4CE; /* inputs, secondary buttons */
 
     /* --- 1.2 Text --- */
-    --rc-ink: #111827;           /* gray-900 */
-    --rc-ink-muted: #6B7280;     /* gray-500 */
+    --rc-ink: #1A1A1A;
+    --rc-ink-muted: #6B7280;
     --rc-ink-on-primary: #FFFFFF;
     --rc-link: var(--rc-blue);
 
@@ -46,23 +47,26 @@
     --rc-logo-blue: #0066FF;
     --rc-logo-orchid: #EE82EE;
 
-    /* --- 1.3 Status / semantic (Tailwind / Horizon semantic ramp) --- */
-    --rc-green: #10B981;   --rc-green-bg: #D1FAE5;
-    --rc-gray: #6B7280;    --rc-gray-bg: #F3F4F6;
-    --rc-teal: #14B8A6;    --rc-teal-bg: #CCFBF1;
-    --rc-red: #EF4444;     --rc-red-bg: #FEE2E2;
-    --rc-amber: #F59E0B;   --rc-amber-bg: #FEF3C7;
+    /* --- 1.3 Status / semantic. The base hue marks dots + fills; the -ink shade
+           is the TEXT on the -bg, one step darker than the spec so 12px badge
+           text holds 4.5:1. --- */
+    --rc-green: #1E9E6A;   --rc-green-bg: #E6F4EE;  --rc-green-ink: #157A52;
+    --rc-gray: #6B7280;    --rc-gray-bg: #F0F0EE;   --rc-gray-ink: #4B5563;
+    --rc-teal: #0FA3A3;    --rc-teal-bg: #E2F5F5;   --rc-teal-ink: #0B6E6E;
+    --rc-red: #D64545;     --rc-red-bg: #FBE9E9;    --rc-red-ink: #B93232;
+    --rc-amber: #C77700;   --rc-amber-bg: #FBF1E0;  --rc-amber-ink: #8A5300;
+    --rc-amber-border: #EED9AE;
 
-    /* --- 2. Typography scale (Figtree — Horizon's typeface) --- */
-    --rc-font: "Figtree", "Heebo", system-ui, -apple-system, "Segoe UI", sans-serif;
+    /* --- 2. Typography scale — Heebo carries Hebrew AND Latin (one face) --- */
+    --rc-font: "Heebo", system-ui, -apple-system, "Segoe UI", sans-serif;
     --rc-type-title: 700 22px/1.25 var(--rc-font);
     --rc-type-kpi: 600 28px/1.1 var(--rc-font);
     --rc-type-h: 600 18px/1.3 var(--rc-font);
     --rc-type-subh: 600 15px/1.35 var(--rc-font);
-    --rc-type-body: 450 14px/1.5 var(--rc-font);
+    --rc-type-body: 400 14px/1.5 var(--rc-font);
     --rc-type-body-strong: 600 14px/1.5 var(--rc-font);
     --rc-type-label: 600 12px/1.4 var(--rc-font);
-    --rc-type-caption: 450 12px/1.4 var(--rc-font);
+    --rc-type-caption: 400 12px/1.4 var(--rc-font);
     --rc-kpi-size: 28px;
 
     /* --- 3.1 Spacing scale --- */
@@ -78,7 +82,7 @@
     --rc-shadow-card: 0 1px 2px rgba(16, 24, 40, .06);
     --rc-shadow-hover: 0 4px 12px rgba(16, 24, 40, .10);
     --rc-shadow-pop: 0 8px 24px rgba(16, 24, 40, .12);
-    --rc-ring: 0 0 0 3px rgba(119, 70, 236, .30);
+    --rc-ring: 0 0 0 3px rgba(59, 91, 219, .30);
     /* Modal/drawer scrim (same ink base as the shadow tokens). */
     --rc-scrim: rgba(16, 24, 40, .35);
 
@@ -88,20 +92,33 @@
     --rc-gutter: var(--rc-space-6);
 
     /* --- Re-map Filament's own primary ramp onto the brand so native buttons,
-           links, toggles, active states inherit the Horizon violet for free.
+           links, toggles, active states inherit Recharge blue for free.
            Filament reads these RGB-triplet custom props. Ramp anchored on
-           Horizon's #7746EC at 500, with its own #5F38BD / #472A8E dark end. --- */
-    --primary-50:  245, 243, 255;
-    --primary-100: 237, 233, 254;
-    --primary-200: 221, 214, 254;
-    --primary-300: 196, 181, 253;
-    --primary-400: 167, 139, 250;
-    --primary-500: 119, 70, 236;
-    --primary-600: 109, 57, 227;
-    --primary-700: 95, 56, 189;
-    --primary-800: 71, 42, 142;
-    --primary-900: 59, 36, 117;
-    --primary-950: 37, 23, 71;
+           #3B5BDB at 500 / #2F4BC4 at 600. --- */
+    --primary-50:  238, 242, 254;
+    --primary-100: 224, 231, 253;
+    --primary-200: 196, 208, 250;
+    --primary-300: 155, 175, 244;
+    --primary-400: 104, 132, 234;
+    --primary-500: 59, 91, 219;
+    --primary-600: 47, 75, 196;
+    --primary-700: 39, 62, 163;
+    --primary-800: 33, 52, 133;
+    --primary-900: 29, 45, 107;
+    --primary-950: 19, 29, 69;
+
+    /* Filament's own neutral ramp, warmed to sit on the off-white canvas. */
+    --gray-50:  250, 250, 248;
+    --gray-100: 240, 240, 238;
+    --gray-200: 230, 230, 225;
+    --gray-300: 212, 212, 206;
+    --gray-400: 156, 160, 166;
+    --gray-500: 107, 114, 128;
+    --gray-600: 75, 85, 99;
+    --gray-700: 55, 60, 68;
+    --gray-800: 38, 40, 44;
+    --gray-900: 26, 26, 26;
+    --gray-950: 14, 14, 14;
 }
 
 /* === Filament panel surface re-skin (via stable .fi-* hooks) ============== */
@@ -141,6 +158,33 @@
     border-radius: var(--rc-radius-control) 0 0 var(--rc-radius-control);
 }
 
+/* The Settings group is always LAST (NAV_GROUP_ORDER) and holds one item — the
+   Settings cluster. Its header would just repeat the item, so the group shows as
+   a hairline + the item, the sketch's pinned footer entry. */
+.fi-sidebar-nav-groups > .fi-sidebar-group:last-child {
+    border-block-start: 1px solid var(--rc-border);
+    padding-block-start: var(--rc-space-3);
+}
+.fi-sidebar-nav-groups > .fi-sidebar-group:last-child > .fi-sidebar-group-button {
+    display: none;
+}
+
+/* Child items (Loyalty → members/referrals, Subscriptions → bulk edit). */
+.fi-sidebar-sub-group-items .fi-sidebar-item-label {
+    font: var(--rc-type-body);
+    font-size: 13px;
+}
+
+/* Cluster left index (Settings): the sketch's quiet list, active = wash. */
+.fi-page-sub-navigation-sidebar .fi-sidebar-item > .fi-sidebar-item-button {
+    border-inline-start: 0;
+    border-radius: var(--rc-radius-control);
+}
+.fi-page-sub-navigation-sidebar .fi-sidebar-item-active > .fi-sidebar-item-button {
+    border-inline-start: 0;
+    background-color: var(--rc-blue-bg);
+}
+
 .fi-sidebar-group-label {
     font: var(--rc-type-label);
     text-transform: uppercase;
@@ -170,13 +214,30 @@
 /* Table density + hairlines (skin only — never re-template Filament's table). */
 .fi-ta-header-cell {
     font: var(--rc-type-label);
+    font-size: 11px;
     text-transform: uppercase;
     letter-spacing: .04em;
     color: var(--rc-ink-muted);
-    border-block-end: 1px solid var(--rc-border-strong);
+    background-color: var(--rc-surface-sunk);
+    border-block-end: 1px solid var(--rc-border);
 }
 .fi-ta-row {
+    border-block-end: 1px solid var(--rc-border-soft);
+}
+
+/* Top bar: white strip on a hairline, like the sidebar. */
+.fi-topbar > nav {
+    background-color: var(--rc-card);
     border-block-end: 1px solid var(--rc-border);
+    box-shadow: none;
+}
+
+/* Section headers sit on a hairline, content below (the sketch's card head). */
+.fi-section-header {
+    border-block-end: 1px solid var(--rc-border);
+}
+.fi-section-header-heading {
+    font: var(--rc-type-subh);
 }
 .fi-ta-row:hover {
     background-color: var(--rc-blue-bg);

@@ -146,6 +146,12 @@ class BulkEditSubscriptions extends Page
         return __('nav.group.customers');
     }
 
+    /** Nested under Subscriptions: shown in the sidebar only while that section is open. */
+    public static function getNavigationParentItem(): ?string
+    {
+        return __('nav.subscriptions');
+    }
+
     public static function getNavigationLabel(): string
     {
         return __('subscriptions.bulk.nav');

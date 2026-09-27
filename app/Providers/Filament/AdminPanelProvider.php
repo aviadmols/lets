@@ -79,6 +79,24 @@ class AdminPanelProvider extends PanelProvider
 
     public const LOCALES = ['en', 'he'];
 
+    /** Recharge blue — the one brand accent (theme.css --rc-blue). */
+    public const BRAND_ACCENT = '#3B5BDB';
+
+    /** Warm neutral ramp (RGB triplets, Filament's format) — theme.css --gray-*. */
+    public const WARM_GRAY = [
+        50 => '250, 250, 248',
+        100 => '240, 240, 238',
+        200 => '230, 230, 225',
+        300 => '212, 212, 206',
+        400 => '156, 160, 166',
+        500 => '107, 114, 128',
+        600 => '75, 85, 99',
+        700 => '55, 60, 68',
+        800 => '38, 40, 44',
+        900 => '26, 26, 26',
+        950 => '14, 14, 14',
+    ];
+
     /**
      * Sidebar nav-group order (docs/ux/01-navigation.md). Resources/pages declare
      * their group by the *translated* label; the panel renders groups in this
@@ -141,7 +159,7 @@ class AdminPanelProvider extends PanelProvider
             URL::forceScheme('https');
         }
 
-        // The brand blue: re-map Filament's primary onto #3B5BDB so native
+        // The brand blue: re-map Filament's primary onto BRAND_ACCENT so native
         // components inherit it. The full --rc-* ramp is re-pointed in theme.css.
         FilamentAsset::register([
             Css::make(self::THEME_ASSET_ID, self::themeAssetUrl()),
@@ -165,12 +183,14 @@ class AdminPanelProvider extends PanelProvider
             ->brandLogo(fn (): View => view('components.rc.logo'))
             ->favicon(asset(self::MARK_PATH))
             ->colors([
-                // Horizon palette: violet primary + Tailwind's cool "gray" ramp
-                // (#6B7280 / #111827 — exactly Horizon's neutrals).
-                'primary' => Color::hex('#7746EC'),
-                'gray' => Color::Gray,
+                // Recharge palette (docs/ux/00-design-system.md): blue primary +
+                // a warm neutral ramp that sits on the #F8F8F5 canvas. theme.css
+                // declares the same ramps; this keeps Filament's inline vars equal.
+                'primary' => Color::hex(self::BRAND_ACCENT),
+                'gray' => self::WARM_GRAY,
             ])
-            ->font('Figtree')
+            // Heebo carries Hebrew and Latin in one face, so EN and HE match.
+            ->font('Heebo')
             // SPA navigation (wire:navigate): swap only the page content over AJAX +
             // keep the shell, assets, fonts, and (when embedded) App Bridge alive across
             // tab switches — instead of a FULL page reload per navigation (re-downloading
@@ -276,6 +296,8 @@ class AdminPanelProvider extends PanelProvider
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
+            // Settings is ONE sidebar item with an in-page index (Clusters\Settings).
+            ->discoverClusters(in: app_path('Filament/Clusters'), for: 'App\\Filament\\Clusters')
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,

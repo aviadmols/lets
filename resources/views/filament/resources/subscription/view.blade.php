@@ -34,276 +34,285 @@
             </div>
         </div>
 
-        {{-- Contact details — the plan's own record of who it reaches. For an
-             imported member this is the ONLY place their address exists (their
-             legacy person-id resolves to no store account), and it is editable
-             via the "Edit contact details" header action. --}}
-        @php $contact = $this->contactDetails(); @endphp
-        <div class="rc-section">
-            <div class="rc-section__title">{{ __('subscriptions.detail.contact.title') }}</div>
-            <div class="rc-kv">
-                <span class="rc-kv__k">{{ __('subscriptions.detail.contact.name') }}</span>
-                <span class="rc-kv__v">{{ $contact['name'] ?? '—' }}</span>
+        {{-- 70/30: the money story in the main column, who-it-is in the side rail
+             (the approved Recharge sketch; stacks under 900px). --}}
+        <div class="rc-detail">
+            <div class="rc-stack">
 
-                <span class="rc-kv__k">{{ __('subscriptions.detail.contact.email') }}</span>
-                <span class="rc-kv__v rc-ltr">{{ $contact['email'] ?? '—' }}</span>
+                {{-- Billing schedule: two renderings by plan_kind --}}
+                <div class="rc-section">
+                    <div class="rc-section__title">{{ __('subscriptions.detail.billing_schedule') }}</div>
 
-                <span class="rc-kv__k">{{ __('subscriptions.detail.contact.phone') }}</span>
-                <span class="rc-kv__v rc-ltr">{{ $contact['phone'] ?? '—' }}</span>
+                    @if($this->isInstallments())
+                        {{-- paid-of-total progress (width via a step class — no inline CSS) --}}
+                        <div class="rc-progress">
+                            <div class="rc-progress__track">
+                                <div class="rc-progress__fill rc-progress__fill--{{ $this->progressStep() }}"></div>
+                            </div>
+                            <div class="rc-progress__meta">
+                                <span class="rc-ltr">{{ \App\Support\Ui\Money::format($record->total_charged) }} / {{ \App\Support\Ui\Money::format($record->total_amount) }}</span>
+                                <span class="rc-ltr">{{ $this->progressPercent() }}%</span>
+                            </div>
+                        </div>
 
-                @if($contact['national_id'])
-                    <span class="rc-kv__k">{{ __('subscriptions.detail.contact.national_id') }}</span>
-                    <span class="rc-kv__v rc-ltr">{{ $contact['national_id'] }}</span>
-                @endif
-
-                <span class="rc-kv__k">{{ __('subscriptions.detail.contact.address') }}</span>
-                <span class="rc-kv__v">{{ $contact['address'] ?? '—' }}</span>
-            </div>
-        </div>
-
-        {{-- Billing schedule: two renderings by plan_kind --}}
-        <div class="rc-section">
-            <div class="rc-section__title">{{ __('subscriptions.detail.billing_schedule') }}</div>
-
-            @if($this->isInstallments())
-                {{-- paid-of-total progress (width via a step class — no inline CSS) --}}
-                <div class="rc-progress">
-                    <div class="rc-progress__track">
-                        <div class="rc-progress__fill rc-progress__fill--{{ $this->progressStep() }}"></div>
-                    </div>
-                    <div class="rc-progress__meta">
-                        <span class="rc-ltr">{{ \App\Support\Ui\Money::format($record->total_charged) }} / {{ \App\Support\Ui\Money::format($record->total_amount) }}</span>
-                        <span class="rc-ltr">{{ $this->progressPercent() }}%</span>
-                    </div>
-                </div>
-
-                @if($this->isFulfillmentLocked())
-                    <div class="rc-row">
-                        <span class="rc-lock">
-                            <x-heroicon-o-lock-closed class="rc-icon-sm" />
-                            {{ __('subscriptions.detail.fulfillment_locked') }}
-                        </span>
-                    </div>
-                @else
-                    <x-rc.badge tone="green" label="subscriptions.detail.order_released" />
-                @endif
-            @else
-                {{-- recurring rendering --}}
-                <div class="rc-kv">
-                    <span class="rc-kv__k">{{ __('subscriptions.list.col.amount_balance') }}</span>
-                    <span class="rc-kv__v rc-ltr">{{ \App\Filament\Resources\SubscriptionResource::amountBalance($record) }}</span>
-                    <span class="rc-kv__k">{{ __('subscriptions.detail.next_cycle') }}</span>
-                    <span class="rc-kv__v rc-ltr">{{ optional($record->next_charge_at)->format('d M Y') ?? '—' }}</span>
-                    <span class="rc-kv__k">{{ __('subscriptions.detail.started') }}</span>
-                    <span class="rc-kv__v rc-ltr">{{ optional($record->created_at)->format('d M Y') }}</span>
-
-                    {{--
-                        WHEN IT ENDS — and "it does not" is an answer, not a gap.
-                        Most recurring plans bill until somebody cancels, so the
-                        row says so in words rather than leaving a dash the
-                        merchant has to interpret. A date appears only when the
-                        subscription genuinely stops (see InstallmentPlan::expiresAt).
-                    --}}
-                    <span class="rc-kv__k">{{ __('subscriptions.detail.expires') }}</span>
-                    @php $expires = $record->expiresAt(); @endphp
-                    <span class="rc-kv__v {{ $expires ? 'rc-ltr' : '' }}">
-                        {{ $expires ? $expires->format('d M Y') : __('subscriptions.detail.no_expiry') }}
-                    </span>
-                    @php $checkout = $this->checkoutOrder(); @endphp
-                    @if($checkout)
-                        <span class="rc-kv__k">{{ __('subscriptions.detail.checkout_order') }}</span>
-                        <span class="rc-kv__v rc-ltr">
-                            @if($checkout['url'])
-                                <a href="{{ $checkout['url'] }}" target="_blank" rel="noopener">#{{ $checkout['id'] }} ↗</a>
-                            @else
-                                #{{ $checkout['id'] }}
-                            @endif
-                        </span>
-                    @endif
-                    @php $coupon = $this->checkoutDiscount(); @endphp
-                    @if($coupon)
-                        <span class="rc-kv__k">{{ __('subscriptions.detail.coupon_applied') }}</span>
-                        <span class="rc-kv__v">
-                            <span class="rc-ltr">{{ $coupon['codes'] }}</span>
-                            @if($coupon['amount'])
-                                <span class="rc-ltr">(-{{ $coupon['amount'] }})</span>
-                            @endif
-                        </span>
-                    @endif
-                    @php $intro = $this->introWindow(); @endphp
-                    @if($intro)
-                        <span class="rc-kv__k">{{ __('subscriptions.detail.intro_window') }}</span>
-                        <span class="rc-kv__v">
-                            {{ $intro['ended']
-                                ? __('subscriptions.detail.intro_window_ended')
-                                : __('subscriptions.detail.intro_window_status', ['used' => $intro['used'], 'total' => $intro['total']]) }}
-                        </span>
-                    @endif
-                    @php $card = $this->paymentCard(); @endphp
-                    @if($card && ($card['brand'] || $card['last_four']))
-                        <span class="rc-kv__k">{{ __('shopify_subscriptions.payment.title') }}</span>
-                        <span class="rc-kv__v rc-ltr">
-                            {{ strtoupper((string) ($card['brand'] ?? '')) }} •••• {{ $card['last_four'] ?? '' }}
-                            @if($card['exp'])
-                                · {{ __('shopify_subscriptions.payment.expires') }} {{ $card['exp'] }}
-                            @endif
-                        </span>
-                    @endif
-                </div>
-            @endif
-        </div>
-
-        {{-- Next order (recurring, non-terminal): the products the next charge will bill, editable via
-             the "Edit next charge" header action. Shows the one-time override when set, else the plan's
-             normal single line. All values precomputed on the page; the Blade only renders. --}}
-        @if($this->isRecurring() && ! $record->status->isTerminal())
-            <div class="rc-section">
-                <div class="rc-row rc-row--between">
-                    <div class="rc-section__title">{{ __('subscriptions.detail.next_order') }}</div>
-                    @if($this->nextOrderIsCustomised())
-                        <x-rc.badge tone="teal" label="subscriptions.detail.next_order_customised" />
-                    @endif
-                </div>
-                <table class="rc-table">
-                    <thead>
-                        <tr>
-                            <th>{{ __('subscriptions.detail.col.product') }}</th>
-                            <th>{{ __('subscriptions.detail.col.qty') }}</th>
-                            <th>{{ __('subscriptions.detail.col.amount') }}</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($this->nextOrderRows() as $row)
-                            <tr>
-                                <td>{{ $row['name'] }}</td>
-                                <td class="rc-ltr">{{ $row['quantity'] }}</td>
-                                <td class="rc-ltr">{{ $row['amount'] }}</td>
-                            </tr>
-                        @endforeach
-                        <tr>
-                            <td class="rc-strong">{{ __('subscriptions.detail.total') }}</td>
-                            <td></td>
-                            <td class="rc-ltr rc-strong">{{ $this->nextOrderTotal() }}</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        @endif
-
-        {{-- Past cycle orders (recurring) — each billed cycle's WooCommerce order. --}}
-        @php $pastOrders = $this->isRecurring() ? $this->pastCycleOrders() : []; @endphp
-        @if(count($pastOrders) > 0)
-            <div class="rc-section">
-                <div class="rc-section__title">{{ __('subscriptions.detail.cycle_orders') }}</div>
-                <div class="rc-row">
-                    @foreach($pastOrders as $order)
-                        @if($order['url'])
-                            <a class="rc-ltr" href="{{ $order['url'] }}" target="_blank" rel="noopener">#{{ $order['id'] }} ↗</a>
+                        @if($this->isFulfillmentLocked())
+                            <div class="rc-row">
+                                <span class="rc-lock">
+                                    <x-heroicon-o-lock-closed class="rc-icon-sm" />
+                                    {{ __('subscriptions.detail.fulfillment_locked') }}
+                                </span>
+                            </div>
                         @else
-                            <span class="rc-ltr rc-muted">#{{ $order['id'] }}</span>
+                            <x-rc.badge tone="green" label="subscriptions.detail.order_released" />
                         @endif
-                    @endforeach
+                    @else
+                        {{-- recurring rendering --}}
+                        <div class="rc-kv">
+                            <span class="rc-kv__k">{{ __('subscriptions.list.col.amount_balance') }}</span>
+                            <span class="rc-kv__v rc-ltr">{{ \App\Filament\Resources\SubscriptionResource::amountBalance($record) }}</span>
+                            <span class="rc-kv__k">{{ __('subscriptions.detail.next_cycle') }}</span>
+                            <span class="rc-kv__v rc-ltr">{{ optional($record->next_charge_at)->format('d M Y') ?? '—' }}</span>
+                            <span class="rc-kv__k">{{ __('subscriptions.detail.started') }}</span>
+                            <span class="rc-kv__v rc-ltr">{{ optional($record->created_at)->format('d M Y') }}</span>
+
+                            {{--
+                                WHEN IT ENDS — and "it does not" is an answer, not a gap.
+                                Most recurring plans bill until somebody cancels, so the
+                                row says so in words rather than leaving a dash the
+                                merchant has to interpret. A date appears only when the
+                                subscription genuinely stops (see InstallmentPlan::expiresAt).
+                            --}}
+                            <span class="rc-kv__k">{{ __('subscriptions.detail.expires') }}</span>
+                            @php $expires = $record->expiresAt(); @endphp
+                            <span class="rc-kv__v {{ $expires ? 'rc-ltr' : '' }}">
+                                {{ $expires ? $expires->format('d M Y') : __('subscriptions.detail.no_expiry') }}
+                            </span>
+                            @php $checkout = $this->checkoutOrder(); @endphp
+                            @if($checkout)
+                                <span class="rc-kv__k">{{ __('subscriptions.detail.checkout_order') }}</span>
+                                <span class="rc-kv__v rc-ltr">
+                                    @if($checkout['url'])
+                                        <a href="{{ $checkout['url'] }}" target="_blank" rel="noopener">#{{ $checkout['id'] }} ↗</a>
+                                    @else
+                                        #{{ $checkout['id'] }}
+                                    @endif
+                                </span>
+                            @endif
+                            @php $coupon = $this->checkoutDiscount(); @endphp
+                            @if($coupon)
+                                <span class="rc-kv__k">{{ __('subscriptions.detail.coupon_applied') }}</span>
+                                <span class="rc-kv__v">
+                                    <span class="rc-ltr">{{ $coupon['codes'] }}</span>
+                                    @if($coupon['amount'])
+                                        <span class="rc-ltr">(-{{ $coupon['amount'] }})</span>
+                                    @endif
+                                </span>
+                            @endif
+                            @php $intro = $this->introWindow(); @endphp
+                            @if($intro)
+                                <span class="rc-kv__k">{{ __('subscriptions.detail.intro_window') }}</span>
+                                <span class="rc-kv__v">
+                                    {{ $intro['ended']
+                                        ? __('subscriptions.detail.intro_window_ended')
+                                        : __('subscriptions.detail.intro_window_status', ['used' => $intro['used'], 'total' => $intro['total']]) }}
+                                </span>
+                            @endif
+                            @php $card = $this->paymentCard(); @endphp
+                            @if($card && ($card['brand'] || $card['last_four']))
+                                <span class="rc-kv__k">{{ __('shopify_subscriptions.payment.title') }}</span>
+                                <span class="rc-kv__v rc-ltr">
+                                    {{ strtoupper((string) ($card['brand'] ?? '')) }} •••• {{ $card['last_four'] ?? '' }}
+                                    @if($card['exp'])
+                                        · {{ __('shopify_subscriptions.payment.expires') }} {{ $card['exp'] }}
+                                    @endif
+                                </span>
+                            @endif
+                        </div>
+                    @endif
                 </div>
-            </div>
-        @endif
 
-        {{-- Payment Schedule (installments only): per-slot status, attempts, and a
-             plain-language admin note. All values precomputed on the page; the
-             Timeline below remains the canonical attempted/succeeded feed. --}}
-        @if($this->isInstallments())
-            <div class="rc-section">
-                <div class="rc-section__title">{{ __('subscriptions.detail.payment_schedule') }}</div>
-                @php $scheduleRows = $this->scheduleRows(); @endphp
-                @if(count($scheduleRows) === 0)
-                    <p class="rc-muted">{{ __('subscriptions.detail.schedule_empty') }}</p>
-                @else
-                    <table class="rc-table">
-                        <thead>
-                            <tr>
-                                <th>{{ __('subscriptions.detail.col.sequence') }}</th>
-                                <th>{{ __('subscriptions.detail.col.amount') }}</th>
-                                <th>{{ __('subscriptions.detail.col.scheduled_for') }}</th>
-                                <th>{{ __('subscriptions.detail.col.status') }}</th>
-                                <th>{{ __('subscriptions.detail.col.attempts') }}</th>
-                                <th>{{ __('subscriptions.detail.col.charged_at') }}</th>
-                                <th>{{ __('subscriptions.detail.col.note') }}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach($scheduleRows as $row)
+                {{-- Next order (recurring, non-terminal): the products the next charge will bill, editable via
+                     the "Edit next charge" header action. Shows the one-time override when set, else the plan's
+                     normal single line. All values precomputed on the page; the Blade only renders. --}}
+                @if($this->isRecurring() && ! $record->status->isTerminal())
+                    <div class="rc-section">
+                        <div class="rc-row rc-row--between">
+                            <div class="rc-section__title">{{ __('subscriptions.detail.next_order') }}</div>
+                            @if($this->nextOrderIsCustomised())
+                                <x-rc.badge tone="teal" label="subscriptions.detail.next_order_customised" />
+                            @endif
+                        </div>
+                        <table class="rc-table">
+                            <thead>
                                 <tr>
-                                    <td>{{ $row['sequence_label'] }}</td>
-                                    <td class="rc-ltr">{{ $row['amount'] }}</td>
-                                    <td class="rc-ltr">{{ $row['scheduled_for'] }}</td>
-                                    <td><x-rc.badge :status="$row['status']" :label="$row['status_label_key']" /></td>
-                                    <td class="rc-ltr">{{ $row['attempts'] }}</td>
-                                    <td class="rc-ltr">{{ $row['charged_at'] }}</td>
-                                    <td class="rc-muted">{{ $row['admin_note'] }}</td>
+                                    <th>{{ __('subscriptions.detail.col.product') }}</th>
+                                    <th>{{ __('subscriptions.detail.col.qty') }}</th>
+                                    <th>{{ __('subscriptions.detail.col.amount') }}</th>
                                 </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                @foreach($this->nextOrderRows() as $row)
+                                    <tr>
+                                        <td>{{ $row['name'] }}</td>
+                                        <td class="rc-ltr">{{ $row['quantity'] }}</td>
+                                        <td class="rc-ltr">{{ $row['amount'] }}</td>
+                                    </tr>
+                                @endforeach
+                                <tr>
+                                    <td class="rc-strong">{{ __('subscriptions.detail.total') }}</td>
+                                    <td></td>
+                                    <td class="rc-ltr rc-strong">{{ $this->nextOrderTotal() }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 @endif
+
+                {{-- Past cycle orders (recurring) — each billed cycle's WooCommerce order. --}}
+                @php $pastOrders = $this->isRecurring() ? $this->pastCycleOrders() : []; @endphp
+                @if(count($pastOrders) > 0)
+                    <div class="rc-section">
+                        <div class="rc-section__title">{{ __('subscriptions.detail.cycle_orders') }}</div>
+                        <div class="rc-row">
+                            @foreach($pastOrders as $order)
+                                @if($order['url'])
+                                    <a class="rc-ltr" href="{{ $order['url'] }}" target="_blank" rel="noopener">#{{ $order['id'] }} ↗</a>
+                                @else
+                                    <span class="rc-ltr rc-muted">#{{ $order['id'] }}</span>
+                                @endif
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
+
+                {{-- Payment Schedule (installments only): per-slot status, attempts, and a
+                     plain-language admin note. All values precomputed on the page; the
+                     Timeline below remains the canonical attempted/succeeded feed. --}}
+                @if($this->isInstallments())
+                    <div class="rc-section">
+                        <div class="rc-section__title">{{ __('subscriptions.detail.payment_schedule') }}</div>
+                        @php $scheduleRows = $this->scheduleRows(); @endphp
+                        @if(count($scheduleRows) === 0)
+                            <p class="rc-muted">{{ __('subscriptions.detail.schedule_empty') }}</p>
+                        @else
+                            <table class="rc-table">
+                                <thead>
+                                    <tr>
+                                        <th>{{ __('subscriptions.detail.col.sequence') }}</th>
+                                        <th>{{ __('subscriptions.detail.col.amount') }}</th>
+                                        <th>{{ __('subscriptions.detail.col.scheduled_for') }}</th>
+                                        <th>{{ __('subscriptions.detail.col.status') }}</th>
+                                        <th>{{ __('subscriptions.detail.col.attempts') }}</th>
+                                        <th>{{ __('subscriptions.detail.col.charged_at') }}</th>
+                                        <th>{{ __('subscriptions.detail.col.note') }}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach($scheduleRows as $row)
+                                        <tr>
+                                            <td>{{ $row['sequence_label'] }}</td>
+                                            <td class="rc-ltr">{{ $row['amount'] }}</td>
+                                            <td class="rc-ltr">{{ $row['scheduled_for'] }}</td>
+                                            <td><x-rc.badge :status="$row['status']" :label="$row['status_label_key']" /></td>
+                                            <td class="rc-ltr">{{ $row['attempts'] }}</td>
+                                            <td class="rc-ltr">{{ $row['charged_at'] }}</td>
+                                            <td class="rc-muted">{{ $row['admin_note'] }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        @endif
+                    </div>
+                @endif
+
+                {{-- Card-update links: sent → opened → updated, and the revoke lever --}}
+                @include("filament.resources.subscription.card-update-links")
+
+                {{-- Payment ledger (this plan) — immutable money truth. No raw token / invoice_url. --}}
+                <div class="rc-section">
+                    <div class="rc-section__title">{{ __('subscriptions.detail.payment_ledger') }}</div>
+                    @php $rows = $this->ledgerRows(); @endphp
+                    @if(count($rows) === 0)
+                        <p class="rc-muted">{{ __('subscriptions.detail.ledger_empty') }}</p>
+                    @else
+                        <table class="rc-table">
+                            <thead>
+                                <tr>
+                                    <th>{{ __('subscriptions.detail.col.date') }}</th>
+                                    <th>{{ __('subscriptions.detail.col.context') }}</th>
+                                    <th>{{ __('subscriptions.detail.col.amount') }}</th>
+                                    <th>{{ __('subscriptions.detail.col.status') }}</th>
+                                    <th>{{ __('subscriptions.detail.col.tx') }}</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($rows as $row)
+                                    <tr>
+                                        <td class="rc-ltr">{{ optional($row->created_at)->format('d M Y, H:i') }}</td>
+                                        <td>{{ __('billing.charge_context.' . $row->charge_context) }}</td>
+                                        <td class="rc-ltr">{{ \App\Support\Ui\Money::format($row->amount, $row->currency) }}</td>
+                                        <td><x-rc.badge :status="$row->status" :label="'billing.ledger_status.' . $row->status" /></td>
+                                        <td class="rc-ltr rc-muted">{{ $row->payplus_transaction_uid ? '••••' . \Illuminate\Support\Str::substr($row->payplus_transaction_uid, -4) : '—' }}</td>
+                                        {{-- Through to the payment's own page, which owns the
+                                             refund/cancel drawer. A LINK rather than a second
+                                             drawer here: this plan's cycles all share the
+                                             original checkout order, so an order-scoped refund
+                                             opened from this table would sweep every cycle the
+                                             customer ever paid. --}}
+                                        <td class="rc-ltr">
+                                            <a href="{{ \App\Filament\Resources\PaymentLedgerResource\Pages\ViewPayment::getUrl(['payment' => $row->getKey()]) }}">
+                                                {{ __('refunds.action.open') }}
+                                            </a>
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    @endif
+                </div>
+
+                {{-- Timeline (this plan). previewAction wires the per-row "Preview email"
+                     trigger to the page's previewEmailAction; the action resolves the event
+                     scoped to THIS plan + shop before rendering the isolated-iframe preview. --}}
+                <x-rc.accordion
+                    title="subscriptions.detail.timeline"
+                    :open="true"
+                    action="addNote"
+                    actionLabel="subscriptions.action.note.label"
+                >
+                    <x-rc.timeline :events="$this->timelineEvents()" previewAction="previewEmail" />
+                </x-rc.accordion>
             </div>
-        @endif
 
-        {{-- Card-update links: sent → opened → updated, and the revoke lever --}}
-        @include("filament.resources.subscription.card-update-links")
+            <aside class="rc-stack">
+                {{-- Contact details — the plan's own record of who it reaches. For an
+                     imported member this is the ONLY place their address exists (their
+                     legacy person-id resolves to no store account), and it is editable
+                     via the "Edit contact details" header action. --}}
+                @php $contact = $this->contactDetails(); @endphp
+                <div class="rc-section">
+                    <div class="rc-section__title">{{ __('subscriptions.detail.contact.title') }}</div>
+                    <div class="rc-kv rc-kv--stacked">
+                        <span class="rc-kv__k">{{ __('subscriptions.detail.contact.name') }}</span>
+                        <span class="rc-kv__v">{{ $contact['name'] ?? '—' }}</span>
 
-        {{-- Payment ledger (this plan) — immutable money truth. No raw token / invoice_url. --}}
-        <div class="rc-section">
-            <div class="rc-section__title">{{ __('subscriptions.detail.payment_ledger') }}</div>
-            @php $rows = $this->ledgerRows(); @endphp
-            @if(count($rows) === 0)
-                <p class="rc-muted">{{ __('subscriptions.detail.ledger_empty') }}</p>
-            @else
-                <table class="rc-table">
-                    <thead>
-                        <tr>
-                            <th>{{ __('subscriptions.detail.col.date') }}</th>
-                            <th>{{ __('subscriptions.detail.col.context') }}</th>
-                            <th>{{ __('subscriptions.detail.col.amount') }}</th>
-                            <th>{{ __('subscriptions.detail.col.status') }}</th>
-                            <th>{{ __('subscriptions.detail.col.tx') }}</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($rows as $row)
-                            <tr>
-                                <td class="rc-ltr">{{ optional($row->created_at)->format('d M Y, H:i') }}</td>
-                                <td>{{ __('billing.charge_context.' . $row->charge_context) }}</td>
-                                <td class="rc-ltr">{{ \App\Support\Ui\Money::format($row->amount, $row->currency) }}</td>
-                                <td><x-rc.badge :status="$row->status" :label="'billing.ledger_status.' . $row->status" /></td>
-                                <td class="rc-ltr rc-muted">{{ $row->payplus_transaction_uid ? '••••' . \Illuminate\Support\Str::substr($row->payplus_transaction_uid, -4) : '—' }}</td>
-                                {{-- Through to the payment's own page, which owns the
-                                     refund/cancel drawer. A LINK rather than a second
-                                     drawer here: this plan's cycles all share the
-                                     original checkout order, so an order-scoped refund
-                                     opened from this table would sweep every cycle the
-                                     customer ever paid. --}}
-                                <td class="rc-ltr">
-                                    <a href="{{ \App\Filament\Resources\PaymentLedgerResource\Pages\ViewPayment::getUrl(['payment' => $row->getKey()]) }}">
-                                        {{ __('refunds.action.open') }}
-                                    </a>
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            @endif
+                        <span class="rc-kv__k">{{ __('subscriptions.detail.contact.email') }}</span>
+                        <span class="rc-kv__v rc-ltr">{{ $contact['email'] ?? '—' }}</span>
+
+                        <span class="rc-kv__k">{{ __('subscriptions.detail.contact.phone') }}</span>
+                        <span class="rc-kv__v rc-ltr">{{ $contact['phone'] ?? '—' }}</span>
+
+                        @if($contact['national_id'])
+                            <span class="rc-kv__k">{{ __('subscriptions.detail.contact.national_id') }}</span>
+                            <span class="rc-kv__v rc-ltr">{{ $contact['national_id'] }}</span>
+                        @endif
+
+                        <span class="rc-kv__k">{{ __('subscriptions.detail.contact.address') }}</span>
+                        <span class="rc-kv__v">{{ $contact['address'] ?? '—' }}</span>
+                    </div>
+                </div>
+            </aside>
         </div>
-
-        {{-- Timeline (this plan). previewAction wires the per-row "Preview email"
-             trigger to the page's previewEmailAction; the action resolves the event
-             scoped to THIS plan + shop before rendering the isolated-iframe preview. --}}
-        <x-rc.accordion
-            title="subscriptions.detail.timeline"
-            :open="true"
-            action="addNote"
-            actionLabel="subscriptions.action.note.label"
-        >
-            <x-rc.timeline :events="$this->timelineEvents()" previewAction="previewEmail" />
-        </x-rc.accordion>
     </div>
 </x-filament-panels::page>
