@@ -2,8 +2,12 @@
 
 namespace App\Http\Controllers\WooCommerce\Storefront;
 
+use App\Domain\Installments\DepositPlanService;
 use App\Domain\Installments\PlanActivationService;
+use App\Models\InstallmentPlan;
 use App\Models\Shop;
+use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Services\PayPlus\PayPlusCallbackVerifier;
 use App\Services\WooCommerce\Orders\WooCommercePaidOrderPlanResolver;
 use App\Support\Tenant;
 use Illuminate\Http\JsonResponse;
@@ -19,22 +23,26 @@ use Symfony\Component\HttpFoundation\Response;
  * as the WC webhook delivery URL.
  *
  * Trust model (defense-in-depth, no single trusted field):
- *   1. The {wc_shop_token} segment is a per-shop secret (ULID, never exposed publicly).
- *      An unknown/blank token → 404; we never reveal which shops exist.
+ *   1. The {wc_shop_token} segment routes the callback to a shop. An unknown/blank
+ *      token → 404; we never reveal which shops exist. It is NOT treated as proof
+ *      of payment: until the return URLs stopped carrying it, any paying shopper
+ *      could read it.
  *   2. If PayPlus signs the body (the `hash` header = base64(HMAC-SHA256(rawBody,
- *      secret_key)) on accounts that emit it), we verify it against the shop's PayPlus
- *      secret_key and FAIL CLOSED (401) on mismatch. When no hash header is present we
- *      do NOT 401 (not all PayPlus accounts sign callbacks) — instead the body is treated
- *      as a HINT and money is gated below.
- *   3. Money is NEVER taken from the callback body: PlanActivationService records the
- *      deposit at the plan's STORED quote amount (DepositPlanService::META_DEPOSIT_AMOUNT),
- *      not what the callback claims, and is idempotent on the plan's deposit key — a
- *      replayed (or forged) callback activates a plan AT MOST once, for the exact amount
- *      we already computed server-side. Only a `success` status_code activates.
+ *      secret_key))), we verify it against the shop's PayPlus secret_key and FAIL
+ *      CLOSED (401) on mismatch. An ABSENT signature is refused only when
+ *      config('woocommerce.require_callback_signature') is on.
+ *   3. The body's "status 000" is a claim. PayPlusCallbackVerifier asks PayPlus's own
+ *      IPN about the page WE minted for this plan (the page id stored at mint time)
+ *      and activates only when PayPlus holds an APPROVED transaction carrying this
+ *      plan's public_id, for at least the stored first-payment amount, in the plan's
+ *      currency. The card vaulted is the one PayPlus reports for that page.
+ *   4. Money is NEVER taken from the callback body: PlanActivationService records the
+ *      deposit at the plan's STORED quote amount and is idempotent on the plan's
+ *      deposit key — a replayed callback activates a plan AT MOST once.
  *
- * Tenant law: the shop comes ONLY from the verified token segment; the tenant is bound
- * for the activation and cleared after. Money law: ledger-before-charge holds — the
- * PayPlus page already collected the deposit; we only RECORD it.
+ * Tenant law: the shop comes ONLY from the token segment; the tenant is bound for the
+ * lookup + activation and cleared after. Money law: ledger-before-charge holds — the
+ * PayPlus page already collected the deposit; we only RECORD it, once PayPlus says so.
  */
 final class WooDepositCallbackController
 {
@@ -42,18 +50,12 @@ final class WooDepositCallbackController
     /** PayPlus success status code on the callback / transaction (legacy "000" + worded "approved"). */
     private const SUCCESS_CODES = ['000', '0', 'approved', 'success'];
 
-    /** The header PayPlus uses to sign the raw callback body (when the account emits it). */
-    private const HASH_HEADER = 'hash';
+    private const LOG_PREFIX = 'woocommerce.deposit';
 
-    /**
-     * Config flag: when TRUE, a callback WITHOUT a valid signature is rejected (401);
-     * when FALSE (default), the signature is verified only when present (today's
-     * behaviour). Flip to TRUE only once the owner has confirmed PayPlus signs WC
-     * callbacks on this terminal. @see config/woocommerce.php
-     */
-    private const CONFIG_REQUIRE_SIGNATURE = 'woocommerce.require_callback_signature';
+    /** Only a plan still waiting for its first payment can be activated by a page. */
+    private const ACTIVATABLE = [PlanStatus::DRAFT, PlanStatus::AWAITING_FIRST_PAYMENT];
 
-    public function __invoke(Request $request, string $wc_shop_token): JsonResponse
+    public function __invoke(Request $request, string $wc_shop_token, PayPlusCallbackVerifier $verifier): JsonResponse
     {
         $shop = Shop::query()
             ->where('wc_shop_token', $wc_shop_token)
@@ -65,50 +67,21 @@ final class WooDepositCallbackController
             return response()->json(['error' => 'not_found'], Response::HTTP_NOT_FOUND);
         }
 
-        // Signature check. Two modes, selected by config('woocommerce.require_callback_signature'):
-        //
-        //   OPTIONAL (default, FALSE): verify only when PayPlus sent a hash header. A
-        //   present-but-wrong signature fails closed; an ABSENT one falls through to the
-        //   money-gated activation (the body can only ever activate the plan it names, once).
-        //
-        //   MANDATORY (TRUE — once the owner confirms PayPlus signs WC callbacks): a
-        //   callback that LACKS a valid signature is rejected. An absent/empty signature
-        //   → 401; an empty per-shop secret (cannot verify) → 503 (fail-closed).
-        $raw = $request->getContent();
-        $sentHash = (string) $request->header(self::HASH_HEADER, '');
-        $secret = (string) ($shop->payplusCredential('secret_key') ?? '');
-        $requireSignature = (bool) config(self::CONFIG_REQUIRE_SIGNATURE, false);
-
-        if ($requireSignature && $secret === '') {
-            // Cannot verify what we are told to enforce → refuse rather than trust.
-            Log::error('woocommerce.deposit.callback_missing_secret', ['shop_id' => $shop->getKey()]);
-
-            return response()->json(['error' => 'service_unavailable'], Response::HTTP_SERVICE_UNAVAILABLE);
+        $signature = $verifier->signature($request, $shop);
+        if (($refusal = $verifier->refusal($signature, $shop, self::LOG_PREFIX)) !== null) {
+            return $refusal;
         }
-
-        if ($requireSignature && $sentHash === '') {
-            Log::warning('woocommerce.deposit.callback_unsigned_rejected', ['shop_id' => $shop->getKey()]);
-
-            return response()->json(['error' => 'unauthorized'], Response::HTTP_UNAUTHORIZED);
-        }
-
-        if ($sentHash !== '' && $secret !== '') {
-            $expected = base64_encode(hash_hmac('sha256', $raw, $secret, true));
-            if (! hash_equals($expected, $sentHash)) {
-                Log::warning('woocommerce.deposit.callback_bad_signature', ['shop_id' => $shop->getKey()]);
-
-                return response()->json(['error' => 'unauthorized'], Response::HTTP_UNAUTHORIZED);
-            }
-        }
+        $signed = $signature === PayPlusCallbackVerifier::SIGNATURE_VALID;
 
         $payload = (array) $request->json()->all();
         $publicId = $this->moreInfo($payload);
         $statusCode = strtolower((string) ($this->statusCode($payload)));
 
-        Log::info('woocommerce.deposit.callback', [
+        Log::info(self::LOG_PREFIX.'.callback', [
             'shop_id' => $shop->getKey(),
             'plan_public_id' => $publicId,
             'status_code' => $statusCode,
+            'signed' => $signed,
         ]);
 
         // Only a SUCCESS callback activates; a failure/cancel callback is acknowledged
@@ -117,14 +90,66 @@ final class WooDepositCallbackController
             return response()->json(['ok' => true, 'activated' => false]);
         }
 
+        // Tenant-scoped: a public_id of another shop's plan finds nothing here.
+        $plan = Tenant::run($shop, static fn (): ?InstallmentPlan => InstallmentPlan::query()
+            ->where('public_id', $publicId)
+            ->first());
+
+        if ($plan === null) {
+            return response()->json(['ok' => true, 'activated' => false]);
+        }
+
+        // Already active ⇒ a replayed callback; PlanActivationService is a no-op for it,
+        // so there is nothing to confirm and nothing to change.
+        if (! in_array($plan->status, self::ACTIVATABLE, true)) {
+            return response()->json(['ok' => true, 'activated' => true, 'plan_public_id' => $plan->public_id]);
+        }
+
+        // An amount we cannot state is an amount we cannot check — never a free pass.
+        $owed = $this->owedAmount($plan);
+        if ($owed <= 0) {
+            Log::warning(self::LOG_PREFIX.'.callback_no_owed_amount', [
+                'shop_id' => $shop->getKey(), 'plan_public_id' => $publicId,
+            ]);
+
+            return response()->json(['ok' => true, 'activated' => false]);
+        }
+
+        $confirmation = $verifier->confirm(
+            shop: $shop,
+            callback: $payload,
+            expectedMoreInfo: (string) $plan->public_id,
+            signed: $signed,
+            ownPageRequestUid: (string) (data_get($plan->meta, DepositPlanService::META_DRAFT_GID) ?? ''),
+            minAmount: $owed,
+            currency: (string) $plan->currency,
+        );
+
+        if ($confirmation->unavailable()) {
+            // PayPlus could not be asked — let it deliver again rather than lose a payment.
+            return response()->json(['error' => 'confirmation_unavailable'], Response::HTTP_SERVICE_UNAVAILABLE);
+        }
+
+        if (! $confirmation->confirmed()) {
+            Log::warning(self::LOG_PREFIX.'.callback_unconfirmed', [
+                'shop_id' => $shop->getKey(),
+                'plan_public_id' => $publicId,
+                'reason' => $confirmation->reason,
+            ]);
+
+            return response()->json(['ok' => true, 'activated' => false]);
+        }
+
         // Normalize the activation payload: the resolver finds the plan by plan_public_id;
-        // PlanActivation 's amount comes from the plan's stored quote (depositAmountFor
+        // PlanActivation's amount comes from the plan's stored quote (depositAmountFor
         // falls back to META_DEPOSIT_AMOUNT when total_price is absent), so we deliberately
-        // do NOT pass the callback's amount as the authoritative total.
+        // do NOT pass any PayPlus amount as the authoritative total. The token source is
+        // PayPlus's CONFIRMED record of the page, never the raw callback.
+        $confirmed = $confirmation->body;
         $activationPayload = [
             WooCommercePaidOrderPlanResolver::KEY_PLAN_PUBLIC_ID => $publicId,
-            'id' => (string) ($this->transactionUid($payload) ?: $publicId),
-            'payplus' => $payload,
+            'id' => (string) ($this->transactionUid($confirmed) ?: $publicId),
+            'payplus' => $confirmed,
         ];
 
         $plan = Tenant::run($shop, function () use ($shop, $activationPayload) {
@@ -136,6 +161,18 @@ final class WooDepositCallbackController
             'activated' => $plan !== null,
             'plan_public_id' => $plan?->public_id,
         ]);
+    }
+
+    /**
+     * What the page was minted to collect: the stored first-payment amount (the deposit
+     * slice, or a subscription's first cycle — both under META_DEPOSIT_AMOUNT), else the
+     * per-cycle amount. Zero means "unknown" and the caller refuses it.
+     */
+    private function owedAmount(InstallmentPlan $plan): float
+    {
+        $stored = (float) (data_get($plan->meta, DepositPlanService::META_DEPOSIT_AMOUNT) ?? 0);
+
+        return round($stored > 0 ? $stored : (float) $plan->installment_amount, 2);
     }
 
     /** The echoed more_info (= plan public_id), tolerant of nested/flat PayPlus shapes. */
@@ -161,13 +198,14 @@ final class WooDepositCallbackController
         );
     }
 
-    /** The PayPlus transaction uid, tolerant of nested/flat shapes. */
+    /** The PayPlus transaction uid, tolerant of the IPN + callback shapes. */
     private function transactionUid(array $payload): string
     {
         return (string) (
-            data_get($payload, 'transaction.uid')
-            ?? data_get($payload, 'transaction_uid')
+            data_get($payload, 'data.transaction.uid')
             ?? data_get($payload, 'data.transaction_uid')
+            ?? data_get($payload, 'transaction.uid')
+            ?? data_get($payload, 'transaction_uid')
             ?? ''
         );
     }

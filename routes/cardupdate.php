@@ -12,7 +12,10 @@ use Illuminate\Support\Facades\Route;
  *
  *   /c/card/{token}                              the landing (GET) + start (POST)
  *   /payplus/cardupdate/callback/{callback_token}  PayPlus → us, server-to-server
- *   /payplus/cardupdate/return/{callback_token}    the shopper's landing after
+ *   /payplus/cardupdate/return/{shop_ref}          the shopper's landing after
+ *                                                (a PayPlusReturnRef — never the
+ *                                                callback token, which a browser
+ *                                                must not see)
  *
  * The callback and return routes used to live under `/woocommerce/` keyed on
  * `wc_shop_token`, which quietly made this whole flow unavailable to a SHOPIFY
@@ -40,6 +43,6 @@ Route::prefix('payplus/cardupdate')->group(function (): void {
     Route::post('/callback/{callback_token}', WooCardUpdateCallbackController::class)
         ->name('payplus.cardupdate.callback');
 
-    Route::get('/return/{callback_token}', WooCardUpdateReturnController::class)
+    Route::get('/return/{shop_ref}', WooCardUpdateReturnController::class)
         ->name('payplus.cardupdate.return');
 });

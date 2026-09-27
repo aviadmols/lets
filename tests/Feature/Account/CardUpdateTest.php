@@ -14,11 +14,16 @@ use App\Modules\PayPlusShopifyInstallments\Contracts\PayPlusGatewayInterface;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Modules\PayPlusShopifyInstallments\Jobs\ChargeJob;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\GatewayResult;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
+use App\Services\PayPlus\PayPlusReturnRef;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Http;
+use Tests\Concerns\FakesPayPlusIpn;
 use Tests\TestCase;
 
 /**
@@ -32,6 +37,7 @@ use Tests\TestCase;
  */
 final class CardUpdateTest extends TestCase
 {
+    use FakesPayPlusIpn;
     use RefreshDatabase;
 
     /** What the fake gateway captured, for payload assertions. */
@@ -180,7 +186,12 @@ final class CardUpdateTest extends TestCase
             // callback tests below still post to them, because PayPlus can be
             // holding a page URL minted before the move.
             $this->assertStringContainsString('/payplus/cardupdate/callback/'.$shop->callbackToken(), $payload['refURL_callback']);
-            $this->assertStringContainsString('/payplus/cardupdate/return/'.$shop->callbackToken(), $payload['refURL_success']);
+            // The shopper's browser lands on a return REF — the callback token
+            // must never ride in a URL a browser sees.
+            foreach (['refURL_success', 'refURL_failure', 'refURL_cancel'] as $key) {
+                $this->assertStringContainsString('/payplus/cardupdate/return/'.PayPlusReturnRef::for($shop), $payload[$key]);
+                $this->assertStringNotContainsString((string) $shop->callbackToken(), $payload[$key]);
+            }
         });
     }
 
@@ -191,6 +202,7 @@ final class CardUpdateTest extends TestCase
         $shop = $this->connectedShop('card-cb.example.com');
 
         [$plan] = Tenant::run($shop, fn (): array => [$this->plan($shop, 'c5', 'five@example.com')]);
+        $this->fakeIpnFor($plan, 'tok-new-1');
 
         $response = $this->postJson(
             '/woocommerce/cardupdate/callback/'.$shop->wc_shop_token,
@@ -243,6 +255,7 @@ final class CardUpdateTest extends TestCase
 
             return [$plan, $sibling, $stranger, $old];
         });
+        $this->fakeIpnFor($plan, 'tok-new-2');
 
         $this->postJson(
             '/woocommerce/cardupdate/callback/'.$shop->wc_shop_token,
@@ -266,6 +279,7 @@ final class CardUpdateTest extends TestCase
         $shop = $this->connectedShop('card-replay.example.com');
 
         [$plan] = Tenant::run($shop, fn (): array => [$this->plan($shop, 'c7', 'seven@example.com')]);
+        $this->fakeIpnFor($plan, 'tok-new-3');
 
         $body = $this->callbackBody($plan, tokenUid: 'tok-new-3');
 
@@ -287,6 +301,7 @@ final class CardUpdateTest extends TestCase
             $this->callbackBody($plan, tokenUid: 'tok-x'),
         )->assertNotFound();
 
+        Http::fake($this->payplusIpn(CardUpdateService::MORE_INFO_PREFIX.$plan->public_id, statusCode: 'failed'));
         $failure = $this->callbackBody($plan, tokenUid: 'tok-x');
         $failure['transaction']['status_code'] = 'failed';
 
@@ -317,6 +332,7 @@ final class CardUpdateTest extends TestCase
     {
         $shop = $this->connectedShop('card-return.example.com');
 
+        // A page minted before the return ref still carries the legacy token.
         $this->get('/woocommerce/cardupdate/return/'.$shop->wc_shop_token.'?status=success')
             ->assertOk()
             ->assertSee(__('storefront.card_update.return_success_title'));
@@ -324,6 +340,67 @@ final class CardUpdateTest extends TestCase
         $this->get('/woocommerce/cardupdate/return/'.$shop->wc_shop_token.'?status=failure')
             ->assertOk()
             ->assertSee(__('storefront.card_update.return_failure_title'));
+
+        // Today's pages carry the return ref, and it builds the way back to the store.
+        $this->get('/payplus/cardupdate/return/'.PayPlusReturnRef::for($shop).'?status=success')
+            ->assertOk()
+            ->assertSee(__('storefront.card_update.return_success_title'))
+            ->assertSee('card-return.example.com/my-account/lets-subscriptions/', false);
+    }
+
+    // === A callback is a claim: only PayPlus's record of the page attaches a card ===
+
+    /** A "000" body naming a page PayPlus never approved attaches nothing and queues no charge. */
+    public function test_a_forged_callback_attaches_no_card(): void
+    {
+        Bus::fake([ChargeJob::class]);
+        $shop = $this->connectedShop('card-forged.example.com');
+        [$plan] = Tenant::run($shop, fn (): array => [$this->plan($shop, 'c10', 'ten@example.com')]);
+        Http::fake(['*PaymentPages/ipn*' => Http::response(['results' => ['status' => 'error'], 'data' => []])]);
+
+        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $this->callbackBody($plan, tokenUid: 'tok-forged'))
+            ->assertOk()
+            ->assertJson(['updated' => false]);
+
+        Tenant::run($shop, function () use ($plan): void {
+            $this->assertNull($plan->fresh()->payment_method_id);
+            $this->assertSame(0, InstallmentPaymentMethod::query()->count());
+        });
+        Bus::assertNotDispatched(ChargeJob::class);
+    }
+
+    /** A genuine card-update page of ANOTHER plan cannot be pointed at this one. */
+    public function test_another_plans_page_attaches_no_card(): void
+    {
+        $shop = $this->connectedShop('card-other.example.com');
+        [$victim, $mine] = Tenant::run($shop, fn (): array => [
+            $this->plan($shop, 'victim', 'victim@example.com'),
+            $this->plan($shop, 'mine', 'mine@example.com'),
+        ]);
+        // PayPlus's record: the approved page was for MY plan.
+        $this->fakeIpnFor($mine, 'tok-mine');
+
+        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $this->callbackBody($victim, tokenUid: 'tok-mine'))
+            ->assertOk()
+            ->assertJson(['updated' => false]);
+
+        Tenant::run($shop, fn () => $this->assertNull($victim->fresh()->payment_method_id));
+    }
+
+    /** The card attached is the one PAYPLUS reports for the page, not one typed into the body. */
+    public function test_the_card_comes_from_payplus_not_the_body(): void
+    {
+        $shop = $this->connectedShop('card-source.example.com');
+        [$plan] = Tenant::run($shop, fn (): array => [$this->plan($shop, 'c11', 'eleven@example.com')]);
+        $this->fakeIpnFor($plan, 'tok-from-payplus');
+
+        $this->postJson('/payplus/cardupdate/callback/'.$shop->callbackToken(), $this->callbackBody($plan, tokenUid: 'tok-typed-in'))
+            ->assertOk()
+            ->assertJson(['updated' => true]);
+
+        Tenant::run($shop, function () use ($plan): void {
+            $this->assertSame('tok-from-payplus', $plan->fresh()->paymentMethod?->payplus_card_token_uid);
+        });
     }
 
     // === helpers ===
@@ -384,11 +461,24 @@ final class CardUpdateTest extends TestCase
         );
     }
 
+    /** PayPlus's own record of this plan's card-update page: approved, with the new card. */
+    private function fakeIpnFor(InstallmentPlan $plan, string $tokenUid): void
+    {
+        Http::fake($this->payplusIpn(CardUpdateService::MORE_INFO_PREFIX.$plan->public_id, [], [
+            'customer_uid' => 'cust-uid-1',
+            'card_information' => [
+                'token' => $tokenUid, 'four_digits' => '4242', 'brand_name' => 'visa',
+                'expiry_month' => '12', 'expiry_year' => '30',
+            ],
+        ]));
+    }
+
     /** @return array<string, mixed> the raw PayPlus body shape */
     private function callbackBody(InstallmentPlan $plan, string $tokenUid): array
     {
         return [
             'transaction' => [
+                'payment_page_request_uid' => self::IPN_PAGE_UID,
                 'status_code' => '000',
                 'more_info' => CardUpdateService::MORE_INFO_PREFIX.$plan->public_id,
                 'uid' => 'txn-'.$tokenUid,

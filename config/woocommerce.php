@@ -35,15 +35,17 @@ return [
     | require_callback_signature  (FOLLOW-UP 1 — defensive, default FALSE)
     |--------------------------------------------------------------------------
     |
-    | PayPlus → SaaS callbacks (deposit + gateway "mode B") carry an OPTIONAL `hash`
+    | PayPlus → SaaS callbacks (deposit, gateway "mode B", card update) carry an OPTIONAL `hash`
     | header = base64(HMAC-SHA256(rawBody, secret_key)). Today we verify it ONLY when
     | present (a present-but-WRONG signature fails closed; an ABSENT one falls through
     | to the money-gated activation, because not every PayPlus account is known to sign
     | WC callbacks yet).
     |
     |   FALSE (default, current behaviour): optional-HMAC — a callback with NO `hash`
-    |          header is still processed (money stays gated server-side; a callback can
-    |          only ever activate the plan it names, once, for the amount we computed).
+    |          header is still processed, but ONLY as a pointer: PayPlusCallbackVerifier
+    |          asks PayPlus's own IPN about the page and acts only on an APPROVED
+    |          transaction carrying our marker (and, for money, the amount owed). That
+    |          wall applies to EVERY callback (card update too), signed or not.
     |
     |   TRUE  (verified-enforce): MANDATORY-HMAC — a callback that LACKS a valid
     |          signature is rejected 401 and never processed. Flip this ONLY after the

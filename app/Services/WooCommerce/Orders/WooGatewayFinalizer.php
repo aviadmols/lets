@@ -11,6 +11,7 @@ use App\Models\PaymentLedger;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\LedgerStatus;
 use App\Modules\PayPlusShopifyInstallments\Support\ResponseMasker;
+use App\Services\PayPlus\PayPlusCallbackVerifier;
 use App\Services\WooCommerce\WooClientFactory;
 use App\Support\Tenant;
 use Illuminate\Support\Facades\Log;
@@ -42,12 +43,17 @@ use Illuminate\Support\Facades\Log;
  */
 final class WooGatewayFinalizer
 {
+    // === CONSTANTS ===
+    /** A cent of slack for float round-trips; paying MORE than the total (credit interest) is fine. */
+    private const AMOUNT_TOLERANCE = 0.01;
+
     public function __construct(private readonly WooDepositTokenResolver $tokenResolver) {}
 
     /**
-     * @param  array<string, mixed>  $payplusBody  the PayPlus body carrying the token + card
-     *                                             meta — the raw callback body, or the IPN/
-     *                                             transaction body from a verify-on-return pull.
+     * @param  array<string, mixed>  $payplusBody  the PayPlus body carrying the amount, token
+     *                                             + card meta — ALWAYS PayPlus's confirmed
+     *                                             record of the page (PayPlusCallbackVerifier),
+     *                                             never a raw, unauthenticated callback body.
      * @return bool true when the order is (now, or already) marked paid
      */
     public function finalizePaid(Shop $shop, string $orderId, array $payplusBody): bool
@@ -58,6 +64,14 @@ final class WooGatewayFinalizer
 
         return Tenant::run($shop, function () use ($shop, $orderId, $payplusBody): bool {
             try {
+                // THE AMOUNT WALL: what PayPlus collected must cover what the order
+                // costs, read from WooCommerce itself. A genuine page for less than
+                // the order (a cheaper page re-used, a cart grown after the page was
+                // minted) never marks it paid.
+                if (! $this->coversOrder($shop, $orderId, $payplusBody)) {
+                    return false;
+                }
+
                 $order = WooClientFactory::for($shop)->updateOrder($orderId, [
                     'status' => 'processing',
                     'set_paid' => true,
@@ -129,6 +143,60 @@ final class WooGatewayFinalizer
                 return false;
             }
         });
+    }
+
+    /**
+     * Does PayPlus's confirmed amount (in the order's currency) cover the WC order total?
+     * Fails closed: an unreadable order, a missing amount, or a currency that differs is a
+     * no. A shortfall leaves a merchant-visible order note, so the order does not just
+     * silently stay pending.
+     *
+     * @param  array<string, mixed>  $payplusBody  the CONFIRMED PayPlus body
+     */
+    private function coversOrder(Shop $shop, string $orderId, array $payplusBody): bool
+    {
+        $client = WooClientFactory::for($shop);
+        $order = $client->fetchOrder($orderId);
+        $context = ['shop_id' => $shop->getKey(), 'order_id' => $orderId];
+
+        if ($order === null || ! is_numeric($order['total'] ?? null)) {
+            Log::warning('woocommerce.gateway.order_unreadable', $context);
+
+            return false;
+        }
+
+        $paid = $this->pick($payplusBody, [
+            'data.transaction.amount', 'transaction.amount', 'data.amount', 'amount',
+        ]);
+        $total = round((float) $order['total'], 2);
+        $paidCurrency = strtoupper($this->pick($payplusBody, [
+            'data.transaction.currency', 'data.transaction.currency_code', 'transaction.currency',
+            'transaction.currency_code', 'data.currency', 'currency', 'currency_code',
+        ]));
+        $orderCurrency = strtoupper((string) ($order['currency'] ?? ''));
+
+        $currencyOk = preg_match(PayPlusCallbackVerifier::ISO_CURRENCY, $paidCurrency) !== 1
+            || preg_match(PayPlusCallbackVerifier::ISO_CURRENCY, $orderCurrency) !== 1
+            || $paidCurrency === $orderCurrency;
+        if (is_numeric($paid) && (float) $paid + self::AMOUNT_TOLERANCE >= $total && $currencyOk) {
+            return true;
+        }
+
+        Log::warning('woocommerce.gateway.amount_mismatch', $context + [
+            'paid' => $paid, 'order_total' => $total,
+            'paid_currency' => $paidCurrency, 'order_currency' => $orderCurrency,
+        ]);
+
+        try {
+            $client->addOrderNote($orderId, sprintf(
+                'LETS did NOT mark this order paid: PayPlus confirmed %s %s, the order total is %s %s.',
+                $paid !== '' ? $paid : '?', $paidCurrency, number_format($total, 2, '.', ''), $orderCurrency,
+            ), false);
+        } catch (\Throwable) {
+            // The log line above already says it; a note failure changes nothing.
+        }
+
+        return false;
     }
 
     /**

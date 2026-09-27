@@ -11,6 +11,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\GatewayResult;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
 use App\Services\Orders\PlatformInvoiceServiceFactory;
+use App\Services\PayPlus\PayPlusReturnRef;
 use App\Services\WooCommerce\Orders\WooCommerceDepositInvoiceService;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -75,6 +76,29 @@ final class WooCommerceDepositInvoiceServiceTest extends TestCase
         $this->assertSame('PUB-INV-1', $payload['more_info']);
         $this->assertArrayHasKey('refURL_callback', $payload);
         $this->assertArrayHasKey('refURL_success', $payload);
+
+        // The callback token routes PayPlus's server-to-server call and nothing else:
+        // the three URLs the SHOPPER'S BROWSER lands on carry a return ref instead.
+        $this->assertStringContainsString((string) $shop->wc_shop_token, $payload['refURL_callback']);
+        foreach (['refURL_success', 'refURL_failure', 'refURL_cancel'] as $key) {
+            $this->assertStringNotContainsString((string) $shop->wc_shop_token, $payload[$key]);
+            $this->assertStringContainsString('/woocommerce/deposit/return/'.PayPlusReturnRef::for($shop), $payload[$key]);
+        }
+
+        // …and the ref still finds the way back to the store.
+        $this->get(parse_url($payload['refURL_success'], PHP_URL_PATH).'?status=success')
+            ->assertOk()
+            ->assertSee((string) $shop->wooCredential('base_url'), false);
+    }
+
+    public function test_a_return_ref_that_was_not_minted_resolves_no_shop(): void
+    {
+        $shop = $this->makeShop();
+
+        $this->assertSame((int) $shop->getKey(), (int) PayPlusReturnRef::resolve(PayPlusReturnRef::for($shop))?->getKey());
+        $this->assertNull(PayPlusReturnRef::resolve($shop->getKey().'.0000000000000000deadbeef'));
+        $this->assertNull(PayPlusReturnRef::resolve((string) $shop->wc_shop_token));
+        $this->assertNull(PayPlusReturnRef::resolve(''));
     }
 
     public function test_a_failed_generate_link_throws(): void

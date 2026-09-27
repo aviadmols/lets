@@ -8,6 +8,7 @@ use App\Models\PaymentLedger;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\LedgerStatus;
 use App\Modules\PayPlusShopifyInstallments\Support\ResponseMasker;
+use App\Services\PayPlus\PayPlusCallbackVerifier;
 use App\Services\WooCommerce\Orders\WooGatewayFinalizer;
 use App\Services\WooCommerce\WooPluginNotifier;
 use App\Support\Tenant;
@@ -23,31 +24,29 @@ use Symfony\Component\HttpFoundation\Response;
  * success status carrying our gateway more_info (gw:{order_id}), we mark the WC order paid
  * via the WC REST API (status processing, set_paid=true).
  *
- * Trust model mirrors WooDepositCallbackController: token segment (per-shop secret) + an
- * OPTIONAL PayPlus `hash` header verified against the shop's PayPlus secret_key (fail
- * closed when present-but-wrong; not all accounts sign). Marking an order paid is
- * idempotent at WooCommerce's side (set_paid on an already-paid order is a no-op), so a
- * replayed callback is safe. The ledger row for a successful payment is written at finalize
- * time by WooGatewayFinalizer (context `gateway` — see its docblock for the design reversal);
- * a FAILED attempt is recorded here, since the finalizer only ever sees successes.
+ * Trust model mirrors WooDepositCallbackController: the token segment routes to a shop;
+ * a PayPlus `hash` header is verified against the shop's secret_key (fail closed when
+ * present-but-wrong; mandatory when config says so); and — the wall that holds whether
+ * or not PayPlus signed — PayPlusCallbackVerifier asks PayPlus's own IPN about the page
+ * and only a transaction PayPlus reports APPROVED, carrying this order's `gw:` marker,
+ * reaches the finalizer. The finalizer then checks what PayPlus collected against the WC
+ * order total before marking anything paid. Marking an order paid is idempotent at
+ * WooCommerce's side (set_paid on an already-paid order is a no-op), so a replayed
+ * callback is safe. The ledger row for a successful payment is written at finalize time by
+ * WooGatewayFinalizer (context `gateway` — see its docblock for the design reversal); a
+ * FAILED attempt is recorded here, since the finalizer only ever sees successes — and only
+ * for a page that is provably ours (signed, or held by PayPlus's own record).
  */
 final class WooGatewayCallbackController
 {
     // === CONSTANTS ===
     private const SUCCESS_CODES = ['000', '0', 'approved', 'success'];
 
-    private const HASH_HEADER = 'hash';
-
     private const MORE_INFO_PREFIX = 'gw:';
 
-    /**
-     * Config flag: when TRUE, a callback WITHOUT a valid signature is rejected (401);
-     * when FALSE (default), the signature is verified only when present (today's
-     * behaviour). @see config/woocommerce.php
-     */
-    private const CONFIG_REQUIRE_SIGNATURE = 'woocommerce.require_callback_signature';
+    private const LOG_PREFIX = 'woocommerce.gateway';
 
-    public function __invoke(Request $request, string $wc_shop_token): JsonResponse
+    public function __invoke(Request $request, string $wc_shop_token, PayPlusCallbackVerifier $verifier): JsonResponse
     {
         $shop = Shop::query()
             ->where('wc_shop_token', $wc_shop_token)
@@ -58,34 +57,11 @@ final class WooGatewayCallbackController
             return response()->json(['error' => 'not_found'], Response::HTTP_NOT_FOUND);
         }
 
-        // Signature check, selected by config('woocommerce.require_callback_signature'):
-        //   OPTIONAL (default, FALSE): verify only when PayPlus sent a hash header.
-        //   MANDATORY (TRUE): a callback that LACKS a valid signature is rejected (401);
-        //   an empty per-shop secret (cannot verify) → 503 (fail-closed).
-        $sentHash = (string) $request->header(self::HASH_HEADER, '');
-        $secret = (string) ($shop->payplusCredential('secret_key') ?? '');
-        $requireSignature = (bool) config(self::CONFIG_REQUIRE_SIGNATURE, false);
-
-        if ($requireSignature && $secret === '') {
-            Log::error('woocommerce.gateway.callback_missing_secret', ['shop_id' => $shop->getKey()]);
-
-            return response()->json(['error' => 'service_unavailable'], Response::HTTP_SERVICE_UNAVAILABLE);
+        $signature = $verifier->signature($request, $shop);
+        if (($refusal = $verifier->refusal($signature, $shop, self::LOG_PREFIX)) !== null) {
+            return $refusal;
         }
-
-        if ($requireSignature && $sentHash === '') {
-            Log::warning('woocommerce.gateway.callback_unsigned_rejected', ['shop_id' => $shop->getKey()]);
-
-            return response()->json(['error' => 'unauthorized'], Response::HTTP_UNAUTHORIZED);
-        }
-
-        if ($sentHash !== '' && $secret !== '') {
-            $expected = base64_encode(hash_hmac('sha256', $request->getContent(), $secret, true));
-            if (! hash_equals($expected, $sentHash)) {
-                Log::warning('woocommerce.gateway.callback_bad_signature', ['shop_id' => $shop->getKey()]);
-
-                return response()->json(['error' => 'unauthorized'], Response::HTTP_UNAUTHORIZED);
-            }
-        }
+        $signed = $signature === PayPlusCallbackVerifier::SIGNATURE_VALID;
 
         $payload = (array) $request->json()->all();
         $moreInfo = (string) (
@@ -105,11 +81,30 @@ final class WooGatewayCallbackController
             return response()->json(['ok' => true, 'paid' => false]);
         }
 
+        // What PayPlus itself says about the page this body names. The amount wall
+        // (vs. the WC order total) is the finalizer's: only it reads the order.
+        $confirmation = $verifier->confirm($shop, $payload, $moreInfo, $signed);
+
+        if ($confirmation->unavailable()) {
+            // PayPlus could not be asked — let it deliver again; verify-on-return also covers it.
+            return response()->json(['error' => 'confirmation_unavailable'], Response::HTTP_SERVICE_UNAVAILABLE);
+        }
+
         // A FAILED gateway payment (send_failure_callback made PayPlus call us on decline too).
         // Until W16 this returned silently; now we log it and notify the plugin so the site
         // admin gets an email + the activity log records it. Never a charge, never marks paid.
         if (! in_array($statusCode, self::SUCCESS_CODES, true)) {
             $failedOrderId = substr($moreInfo, strlen(self::MORE_INFO_PREFIX));
+
+            // A decline nobody can tie to a genuine page of ours writes no ledger row
+            // and emails nobody — a forged "failed" is as unwelcome as a forged "paid".
+            if (! $signed && ! $confirmation->bound()) {
+                Log::warning('woocommerce.gateway.payment_failed_unconfirmed', [
+                    'shop_id' => $shop->getKey(), 'order_id' => $failedOrderId, 'reason' => $confirmation->reason,
+                ]);
+
+                return response()->json(['ok' => true, 'paid' => false]);
+            }
             Log::warning('woocommerce.gateway.payment_failed', [
                 'shop_id' => $shop->getKey(),
                 'order_id' => $failedOrderId,
@@ -122,7 +117,13 @@ final class WooGatewayCallbackController
             // illegal ledger transition and a later retry that succeeds must land
             // on a fresh row. Fail-soft: recording must never change the outcome.
             try {
-                $this->recordFailedAttempt($shop, $failedOrderId, $statusCode, $payload);
+                // PayPlus's record of the page when we hold it; else the SIGNED body.
+                $this->recordFailedAttempt(
+                    $shop,
+                    $failedOrderId,
+                    $statusCode,
+                    $confirmation->bound() ? $confirmation->body : $payload,
+                );
             } catch (\Throwable $e) {
                 Log::warning('woocommerce.gateway.failed_ledger_failed', [
                     'shop_id' => $shop->getKey(), 'order_id' => $failedOrderId, 'error' => $e->getMessage(),
@@ -149,8 +150,17 @@ final class WooGatewayCallbackController
 
         $orderId = substr($moreInfo, strlen(self::MORE_INFO_PREFIX));
 
-        // Mark paid + vault the token (shared with the verify-on-return pull path).
-        $paid = app(WooGatewayFinalizer::class)->finalizePaid($shop, $orderId, $payload);
+        if (! $confirmation->confirmed()) {
+            Log::warning('woocommerce.gateway.callback_unconfirmed', [
+                'shop_id' => $shop->getKey(), 'order_id' => $orderId, 'reason' => $confirmation->reason,
+            ]);
+
+            return response()->json(['ok' => true, 'paid' => false]);
+        }
+
+        // Mark paid + vault the token (shared with the verify-on-return pull path) — from
+        // PayPlus's CONFIRMED record of the page, never the raw callback body.
+        $paid = app(WooGatewayFinalizer::class)->finalizePaid($shop, $orderId, $confirmation->body);
 
         return response()->json(['ok' => true, 'paid' => $paid]);
     }
@@ -166,7 +176,8 @@ final class WooGatewayCallbackController
     private function recordFailedAttempt(Shop $shop, string $orderId, string $statusCode, array $payload): void
     {
         $shopId = (int) $shop->getKey();
-        $txnUid = (string) (data_get($payload, 'transaction.uid')
+        $txnUid = (string) (data_get($payload, 'data.transaction.uid')
+            ?? data_get($payload, 'transaction.uid')
             ?? data_get($payload, 'transaction.transaction_uid')
             ?? data_get($payload, 'uid') ?? '');
 
@@ -182,8 +193,10 @@ final class WooGatewayCallbackController
                 shopId: $shopId,
                 chargeContext: PaymentLedger::CONTEXT_GATEWAY,
                 idempotencyKey: IdempotencyKey::gatewayFailure($shopId, $orderId, $ref),
-                amount: (float) (data_get($payload, 'transaction.amount') ?? data_get($payload, 'amount') ?? 0),
-                currency: (string) (data_get($payload, 'transaction.currency')
+                amount: (float) (data_get($payload, 'data.transaction.amount')
+                    ?? data_get($payload, 'transaction.amount') ?? data_get($payload, 'amount') ?? 0),
+                currency: (string) (data_get($payload, 'data.transaction.currency')
+                    ?? data_get($payload, 'transaction.currency')
                     ?? data_get($payload, 'currency')
                     ?? config('payplus.currency', 'ILS')),
                 attributes: [
@@ -194,7 +207,8 @@ final class WooGatewayCallbackController
 
             Ledger::transition($row, LedgerStatus::FAILED, [
                 'failure_code' => $statusCode ?: null,
-                'failure_message' => ((string) (data_get($payload, 'transaction.status_description')
+                'failure_message' => ((string) (data_get($payload, 'data.transaction.status_description')
+                    ?? data_get($payload, 'transaction.status_description')
                     ?? data_get($payload, 'status_description') ?? '')) ?: null,
                 'raw_response_masked' => ResponseMasker::mask($payload),
             ]);

@@ -283,13 +283,15 @@ Route::middleware(VerifyWooCommerceSignature::class)
  * not the plugin, calls them): the opaque {wc_shop_token} path segment resolves the shop
  * BEFORE any field in the body is trusted (the same fail-closed pattern as the WC webhook
  * delivery URL). The callback is server-to-server (CSRF-exempt in bootstrap/app.php);
- * activation records the paid deposit at the plan's STORED amount and is idempotent, so a
- * replayed/forged callback activates a plan at most once.
+ * its body is only a pointer — PayPlusCallbackVerifier confirms the page with PayPlus's
+ * own IPN (approved, our marker, the amount owed) before anything is activated or paid,
+ * and activation records the deposit at the plan's STORED amount, idempotently.
  */
 Route::prefix('woocommerce')->group(function () {
     Route::post('/deposit/callback/{wc_shop_token}', WooDepositCallbackController::class)
         ->name('woocommerce.deposit.callback');
-    Route::get('/deposit/return/{wc_shop_token}', WooDepositReturnController::class)
+    // The shopper's landing: keyed on a PayPlusReturnRef, never the callback token.
+    Route::get('/deposit/return/{shop_ref}', WooDepositReturnController::class)
         ->name('woocommerce.deposit.return');
 
     // Full PayPlus gateway (mode B): PayPlus marks the plain WC order paid here. Same
@@ -308,6 +310,6 @@ Route::prefix('woocommerce')->group(function () {
     // named for what it now is — the controllers accept either column.
     Route::post('/cardupdate/callback/{callback_token}', WooCardUpdateCallbackController::class)
         ->name('woocommerce.cardupdate.callback');
-    Route::get('/cardupdate/return/{callback_token}', WooCardUpdateReturnController::class)
+    Route::get('/cardupdate/return/{shop_ref}', WooCardUpdateReturnController::class)
         ->name('woocommerce.cardupdate.return');
 });
