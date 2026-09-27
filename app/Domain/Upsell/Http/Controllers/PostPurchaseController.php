@@ -3,6 +3,7 @@
 namespace App\Domain\Upsell\Http\Controllers;
 
 use App\Domain\Upsell\Enums\OfferEventType;
+use App\Domain\Upsell\Models\UpsellFlow;
 use App\Domain\Upsell\Models\UpsellFlowOffer;
 use App\Domain\Upsell\Models\UpsellOfferEvent;
 use App\Domain\Upsell\PostPurchase\ChangesetSigner;
@@ -10,6 +11,7 @@ use App\Domain\Upsell\PostPurchase\PostPurchaseTokenVerifier;
 use App\Domain\Upsell\PurchaseContext;
 use App\Domain\Upsell\Rendering\PostPurchasePresenter;
 use App\Domain\Upsell\Rendering\UpsellCardPresenter;
+use App\Domain\Upsell\UpsellOfferEligibility;
 use App\Domain\Upsell\UpsellResolver;
 use App\Http\Controllers\Controller;
 use App\Models\MerchantUpsellAppearance;
@@ -55,6 +57,7 @@ final class PostPurchaseController extends Controller
         private readonly ChangesetSigner $signer,
         private readonly UpsellCardPresenter $card,
         private readonly PostPurchasePresenter $presenter,
+        private readonly UpsellOfferEligibility $eligibility,
     ) {}
 
     /** POST /post-purchase/offer — resolve the offer for the just-completed checkout. */
@@ -140,6 +143,16 @@ final class PostPurchaseController extends Controller
             $offer = UpsellFlowOffer::query()->find((int) $request->input('offer_id'));
             if ($offer === null) {
                 return response()->json(['ok' => false, 'reason' => 'unknown_offer'], Response::HTTP_NOT_FOUND);
+            }
+
+            // ...and only an offer that is LIVE and was actually offered for THIS
+            // checkout: /offer recorded its impression under this reference id after
+            // the flow's triggers matched the verified purchase. A paused, draft or
+            // untriggered offer — a deeper discount the shopper was never shown — is
+            // refused, not signed.
+            $flow = UpsellFlow::query()->find((int) $offer->flow_id);
+            if ($flow === null || ! $this->eligibility->allows($flow, $offer, $referenceId)) {
+                return response()->json(['ok' => false, 'reason' => 'offer_not_eligible'], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
 
             $variantId = $this->variantNumericId($offer);

@@ -9,6 +9,10 @@
     // Pick the result copy + visual modifier from the charge outcome.
     [$modifier, $icon, $title, $body] = match (true) {
         $declined => ['', '👍', __('upsell.declined_title'), __('upsell.declined_body')],
+        $result->result === UpsellChargeResult::RESULT_IN_FLIGHT
+            => ['', '…', __('upsell.in_progress_title'), __('upsell.in_progress_body')],
+        $result->result === UpsellChargeResult::RESULT_NOT_ELIGIBLE
+            => ['ppu--failed', '•', __('upsell.not_eligible_title'), __('upsell.not_eligible_body')],
         $result->result === UpsellChargeResult::RESULT_NO_CONSENT
             => ['ppu--failed', '🔒', __('upsell.no_consent_title'), __('upsell.no_consent_body')],
         $result->result === UpsellChargeResult::RESULT_FAILED || $result->result === UpsellChargeResult::RESULT_NO_METHOD

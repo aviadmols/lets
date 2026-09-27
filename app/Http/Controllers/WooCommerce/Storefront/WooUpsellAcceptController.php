@@ -7,6 +7,7 @@ use App\Domain\Upsell\Models\UpsellFlow;
 use App\Domain\Upsell\Models\UpsellFlowOffer;
 use App\Domain\Upsell\UpsellChargeResult;
 use App\Domain\Upsell\UpsellChargeService;
+use App\Domain\Upsell\Verification\WooParentOrderVerifier;
 use App\Services\WooCommerce\Orders\WooUpsellChildOrderService;
 use App\Support\Tenant;
 use Illuminate\Http\JsonResponse;
@@ -31,9 +32,14 @@ use Symfony\Component\HttpFoundation\Response;
  */
 final class WooUpsellAcceptController extends WooStorefrontController
 {
+    // === CONSTANTS ===
+    /** The parent order is not one LETS recorded as paid by this customer, recently. */
+    public const ERROR_UNVERIFIED_ORDER = 'unverified_order';
+
     public function __construct(
         private readonly UpsellChargeService $charges,
         private readonly WooUpsellChildOrderService $childOrders,
+        private readonly WooParentOrderVerifier $orders,
     ) {}
 
     public function __invoke(Request $request): JsonResponse
@@ -54,12 +60,25 @@ final class WooUpsellAcceptController extends WooStorefrontController
                 return response()->json(['error' => 'offer_not_found'], Response::HTTP_NOT_FOUND);
             }
 
+            // WHOSE CARD: rebuilt from what LETS recorded when this order's PayPlus
+            // payment was confirmed — the HMAC proves the store sent this, not that the
+            // order/customer pair is the shopper who just paid. A pair LETS never saw
+            // paid, or naming a different customer, is refused (never "corrected").
+            $purchase = $this->orders->verify(
+                $shop,
+                (string) $request->input('parent_order', ''),
+                (string) $request->input('customer', ''),
+            );
+            if ($purchase === null) {
+                return response()->json(['error' => self::ERROR_UNVERIFIED_ORDER], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
             $req = new AcceptUpsellRequest(
                 flow: $flow,
                 offer: $offer,
-                parentOrderId: (string) $request->input('parent_order', ''),
-                customerRef: (string) $request->input('customer', ''),
-                customerEmail: $this->cleanEmail($request->input('email')),
+                parentOrderId: $purchase->parentOrderId,
+                customerRef: $purchase->customerRef,
+                customerEmail: $purchase->customerEmail ?? $this->cleanEmail($request->input('email')),
                 // The bundle pick exactly as sent. Coerced to ints and nothing more: the OFFER
                 // decides whether it is a valid pick, so garbage is refused, not tidied up.
                 selectedProductIds: array_values(array_map('intval', (array) $request->input('product_ids', []))),
@@ -100,6 +119,8 @@ final class WooUpsellAcceptController extends WooStorefrontController
             UpsellChargeResult::RESULT_CHARGED,
             UpsellChargeResult::RESULT_ALREADY => Response::HTTP_OK,
             UpsellChargeResult::RESULT_EXPIRED => Response::HTTP_GONE,
+            UpsellChargeResult::RESULT_IN_FLIGHT => Response::HTTP_CONFLICT,
+            UpsellChargeResult::RESULT_NOT_ELIGIBLE,
             UpsellChargeResult::RESULT_NO_CONSENT,
             UpsellChargeResult::RESULT_NO_METHOD,
             UpsellChargeResult::RESULT_INVALID_SELECTION => Response::HTTP_UNPROCESSABLE_ENTITY,

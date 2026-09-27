@@ -2,7 +2,8 @@
 
 {{--
   The one-click thank-you-page upsell offer. Price is server-computed (passed in);
-  the accept/decline links are SIGNED (the signature is the auth). The consent
+  the accept/decline links are SIGNED (the signature is the auth). Accept is a
+  POSTed form; this same view is the confirm page GET /upsell/accept renders. The consent
   disclosure is REQUIRED — it states the amount, that the SAVED payment method is
   charged, and that it is a one-time charge with no card re-entry.
 
@@ -33,7 +34,12 @@
         </div>
 
         <div class="ppu__actions">
-            <a class="ppu__btn ppu__btn--accept" href="{{ $acceptUrl }}" rel="nofollow">{{ $acceptLabel }}</a>
+            {{-- A POST with the session's CSRF token: a charge is never a GET a link
+                 scanner or prefetcher could fire. The signed URL stays the auth. --}}
+            <form class="ppu__form" method="POST" action="{{ $acceptUrl }}">
+                @csrf
+                <button type="submit" class="ppu__btn ppu__btn--accept">{{ $acceptLabel }}</button>
+            </form>
             <a class="ppu__btn ppu__btn--decline" href="{{ $declineUrl }}" rel="nofollow">{{ $declineLabel }}</a>
         </div>
 

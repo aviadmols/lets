@@ -5,6 +5,7 @@ namespace App\Http\Controllers\WooCommerce\Storefront;
 use App\Domain\Upsell\PurchaseContext;
 use App\Domain\Upsell\Rendering\UpsellCardPresenter;
 use App\Domain\Upsell\UpsellResolver;
+use App\Domain\Upsell\Verification\WooParentOrderVerifier;
 use App\Models\MerchantUpsellAppearance;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -32,9 +33,13 @@ final class WooUpsellOfferController extends WooStorefrontController
     /** Default display currency when neither offer nor config pins one. */
     private const DEFAULT_CURRENCY = 'ILS';
 
+    /** The parent order is not one LETS recorded as paid by this customer, recently. */
+    private const REASON_UNVERIFIED_ORDER = 'unverified_order';
+
     public function __construct(
         private readonly UpsellResolver $resolver,
         private readonly UpsellCardPresenter $presenter,
+        private readonly WooParentOrderVerifier $orders,
     ) {}
 
     public function __invoke(Request $request): JsonResponse
@@ -44,15 +49,29 @@ final class WooUpsellOfferController extends WooStorefrontController
             return response()->json(['offer' => null, 'reason' => 'unauthorized'], Response::HTTP_UNAUTHORIZED);
         }
 
+        // The GET query sits OUTSIDE the request HMAC, so the order/customer pair is
+        // bound to what LETS recorded when that order was paid — before resolve(),
+        // which records an impression and may place a hold. Not LETS-paid, not
+        // recent, or a different customer → no offer.
+        $purchase = $this->orders->verify(
+            $shop,
+            (string) $request->query('parent_order', ''),
+            (string) $request->query('customer', ''),
+        );
+        if ($purchase === null) {
+            return response()->json(['offer' => null, 'reason' => self::REASON_UNVERIFIED_ORDER], Response::HTTP_OK);
+        }
+
         $context = new PurchaseContext(
             shopId: (int) $shop->getKey(),
-            parentOrderId: (string) $request->query('parent_order', ''),
-            customerRef: (string) $request->query('customer', ''),
+            parentOrderId: $purchase->parentOrderId,
+            customerRef: $purchase->customerRef,
             orderSubtotal: (float) $request->query('subtotal', 0),
             purchasedProductGids: $this->csv($request->query('products')),
             purchasedCollectionGids: $this->csv($request->query('collections')),
             purchasedTags: $this->csv($request->query('tags')),
-            customerEmail: $request->query('email') !== null ? (string) $request->query('email') : null,
+            customerEmail: $purchase->customerEmail
+                ?? ($request->query('email') !== null ? (string) $request->query('email') : null),
         );
 
         $resolution = $this->resolver->resolve($context);

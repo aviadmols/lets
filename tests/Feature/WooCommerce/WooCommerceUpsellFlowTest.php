@@ -32,6 +32,7 @@ use Tests\TestCase;
 final class WooCommerceUpsellFlowTest extends TestCase
 {
     use RefreshDatabase;
+    use SeedsWooUpsellPurchase;
 
     private const OFFER = '/api/woocommerce/upsell/offer';
     private const ACCEPT = '/api/woocommerce/upsell/accept';
@@ -86,6 +87,7 @@ final class WooCommerceUpsellFlowTest extends TestCase
     {
         [$shop, $key, $secret] = $this->connectedShop('up-offer.example.com');
         Tenant::run($shop, fn () => $this->makeFlow($shop, 'gid://shopify/Product/1', 50.0));
+        $this->paidParentOrder($shop, 'WC-1', 'cust-1');
 
         $query = http_build_query(['parent_order' => 'WC-1', 'customer' => 'cust-1', 'products' => 'gid://shopify/Product/1', 'subtotal' => '120']);
         $response = $this->signedGet($key, $secret, self::OFFER, $query);
@@ -113,6 +115,7 @@ final class WooCommerceUpsellFlowTest extends TestCase
 
             return [$flow, $flow->offers()->first()];
         });
+        $this->purchasedAndShown($shop, $offer, 'WC-1', 'cust-1');
 
         $body = ['flow_id' => $flow->id, 'offer_id' => $offer->id, 'parent_order' => 'WC-1', 'customer' => 'cust-1', 'email' => 'x@y.com'];
 
@@ -125,6 +128,7 @@ final class WooCommerceUpsellFlowTest extends TestCase
 
         $this->assertSame(1, $this->payplusCalls, 'Exactly one charge across two accepts.');
         $succeeded = Tenant::run($shop, fn (): int => PaymentLedger::query()
+            ->where('charge_context', PaymentLedger::CONTEXT_UPSELL)
             ->where('status', LedgerStatus::SUCCEEDED->value)->count());
         $this->assertSame(1, $succeeded);
 
@@ -168,6 +172,7 @@ final class WooCommerceUpsellFlowTest extends TestCase
 
             return [$flow, $flow->offers()->first()];
         });
+        $this->purchasedAndShown($shop, $offer, 'WC-9', 'cust-1');
 
         $this->signedPost($key, $secret, self::ACCEPT, [
             'flow_id' => $flow->id, 'offer_id' => $offer->id,
@@ -206,6 +211,7 @@ final class WooCommerceUpsellFlowTest extends TestCase
 
             return [$flow, $flow->offers()->first()];
         });
+        $this->purchasedAndShown($shop, $offer, 'WC-1', 'cust-1');
 
         $this->signedPost($key, $secret, self::ACCEPT, [
             'flow_id' => $flow->id, 'offer_id' => $offer->id, 'parent_order' => 'WC-1', 'customer' => 'cust-1',
@@ -228,6 +234,7 @@ final class WooCommerceUpsellFlowTest extends TestCase
 
             return [$flow, $flow->offers()->first()];
         });
+        $this->shownOn($shop, $offer, 'WC-1');
 
         $this->signedPost($key, $secret, '/api/woocommerce/upsell/decline', [
             'flow_id' => $flow->id, 'offer_id' => $offer->id, 'parent_order' => 'WC-1', 'customer' => 'cust-1',
@@ -252,6 +259,7 @@ final class WooCommerceUpsellFlowTest extends TestCase
 
             return [$flow, $flow->offers()->first()];
         });
+        $this->purchasedAndShown($shop, $offer, 'WC-1', 'cust-1');
 
         $this->signedPost($key, $secret, self::ACCEPT, [
             'flow_id' => $flow->id, 'offer_id' => $offer->id, 'parent_order' => 'WC-1', 'customer' => 'cust-1',
@@ -281,6 +289,92 @@ final class WooCommerceUpsellFlowTest extends TestCase
         ])->assertStatus(404);
 
         $this->assertSame(0, $this->payplusCalls);
+    }
+
+    /**
+     * BINDING: the plugin's HMAC proves the store sent the request, not whose card it
+     * names. An order LETS never recorded as paid is refused — no charge, no order edit.
+     */
+    public function test_accept_for_an_order_lets_never_saw_paid_is_refused_without_a_charge(): void
+    {
+        Http::fake();
+        [$shop, $key, $secret] = $this->connectedShop('up-unpaid.example.com');
+
+        [$flow, $offer] = Tenant::run($shop, function () use ($shop): array {
+            $flow = $this->makeFlow($shop, 'gid://shopify/Product/1', 50.0);
+            $this->makeConsentAndToken($shop, 'cust-1');
+
+            return [$flow, $flow->offers()->first()];
+        });
+        $this->shownOn($shop, $offer, 'WC-404'); // shown, but never paid through LETS
+
+        $this->signedPost($key, $secret, self::ACCEPT, [
+            'flow_id' => $flow->id, 'offer_id' => $offer->id, 'parent_order' => 'WC-404', 'customer' => 'cust-1',
+        ])->assertStatus(422)->assertJsonPath('error', 'unverified_order');
+
+        $this->assertSame(0, $this->payplusCalls);
+        Http::assertNothingSent();
+    }
+
+    /** The customer on the paid order is the only card that may be charged — never "corrected" to another. */
+    public function test_accept_naming_another_customer_than_the_paid_order_is_refused(): void
+    {
+        Http::fake();
+        [$shop, $key, $secret] = $this->connectedShop('up-mismatch.example.com');
+
+        [$flow, $offer] = Tenant::run($shop, function () use ($shop): array {
+            $flow = $this->makeFlow($shop, 'gid://shopify/Product/1', 50.0);
+            // A victim with a vaulted card, and the order actually paid by someone else.
+            $this->makeConsentAndToken($shop, 'victim-7');
+
+            return [$flow, $flow->offers()->first()];
+        });
+        $this->purchasedAndShown($shop, $offer, 'WC-1', 'buyer-1');
+
+        $this->signedPost($key, $secret, self::ACCEPT, [
+            'flow_id' => $flow->id, 'offer_id' => $offer->id, 'parent_order' => 'WC-1', 'customer' => 'victim-7',
+        ])->assertStatus(422)->assertJsonPath('error', 'unverified_order');
+
+        $this->assertSame(0, $this->payplusCalls);
+        $this->assertSame(0, Tenant::run($shop, fn (): int => PaymentLedger::query()
+            ->where('charge_context', PaymentLedger::CONTEXT_UPSELL)->count()));
+    }
+
+    /** ELIGIBILITY: the client names the offer; the server decides whether this order was offered it. */
+    public function test_accept_of_an_offer_never_shown_on_the_order_is_refused(): void
+    {
+        Http::fake();
+        [$shop, $key, $secret] = $this->connectedShop('up-unshown.example.com');
+
+        [$flow, $offer] = Tenant::run($shop, function () use ($shop): array {
+            $flow = $this->makeFlow($shop, 'gid://shopify/Product/1', 50.0);
+            $this->makeConsentAndToken($shop, 'cust-1');
+
+            return [$flow, $flow->offers()->first()];
+        });
+        $this->paidParentOrder($shop, 'WC-1', 'cust-1'); // paid — but the offer was never shown
+
+        $this->signedPost($key, $secret, self::ACCEPT, [
+            'flow_id' => $flow->id, 'offer_id' => $offer->id, 'parent_order' => 'WC-1', 'customer' => 'cust-1',
+        ])->assertStatus(422)->assertJsonPath('result', 'not_eligible');
+
+        $this->assertSame(0, $this->payplusCalls);
+    }
+
+    public function test_the_offer_for_an_unrecorded_order_is_nothing_and_records_no_impression(): void
+    {
+        Http::fake();
+        [$shop, $key, $secret] = $this->connectedShop('up-offer-unpaid.example.com');
+        Tenant::run($shop, fn () => $this->makeFlow($shop, 'gid://shopify/Product/1', 50.0));
+        $this->paidParentOrder($shop, 'WC-1', 'cust-1');
+
+        foreach ([['WC-2', 'cust-1'], ['WC-1', 'someone-else']] as [$order, $customer]) {
+            $this->signedGet($key, $secret, self::OFFER, http_build_query([
+                'parent_order' => $order, 'customer' => $customer, 'products' => 'gid://shopify/Product/1',
+            ]))->assertOk()->assertJsonPath('offer', null)->assertJsonPath('reason', 'unverified_order');
+        }
+
+        $this->assertSame(0, Tenant::run($shop, fn (): int => \App\Domain\Upsell\Models\UpsellOfferEvent::query()->count()));
     }
 
     // === Helpers ===
@@ -318,6 +412,7 @@ final class WooCommerceUpsellFlowTest extends TestCase
 
             return $this->makeFlow($shop, 'gid://shopify/Product/1', 50.0);
         });
+        $this->paidParentOrder($shop, 'WC-9', 'c');
 
         $this->signedGet($key, $secret, self::OFFER, http_build_query([
             'parent_order' => 'WC-9', 'customer' => 'c', 'subtotal' => '120',
@@ -338,6 +433,7 @@ final class WooCommerceUpsellFlowTest extends TestCase
         Http::fake();
         [$shop, $key, $secret] = $this->connectedShop('up-card.example.com');
         Tenant::run($shop, fn () => $this->makeFlow($shop, 'gid://shopify/Product/1', 50.0));
+        $this->paidParentOrder($shop, 'WC-1', 'c');
 
         $response = $this->signedGet($key, $secret, self::OFFER, http_build_query([
             'parent_order' => 'WC-1', 'customer' => 'c', 'subtotal' => '120',
@@ -381,6 +477,7 @@ final class WooCommerceUpsellFlowTest extends TestCase
 
             return [$flow, $flow->offers()->first()];
         });
+        $this->purchasedAndShown($shop, $offer, 'WC-1', 'buyer@example.com');
 
         $this->signedPost($key, $secret, self::ACCEPT, [
             'flow_id' => $flow->id, 'offer_id' => $offer->id,

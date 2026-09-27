@@ -23,6 +23,12 @@ final class UpsellChargeResult
     /** A bundle accept whose pick is not exactly what the bundle allows. Nothing charged. */
     public const RESULT_INVALID_SELECTION = 'invalid_selection';
 
+    /** A charge for this key is still unsettled (at PayPlus, or awaiting reconcile). Nothing charged. */
+    public const RESULT_IN_FLIGHT = 'in_progress';
+
+    /** The offer is not live, or was never put in front of this order. Nothing charged. */
+    public const RESULT_NOT_ELIGIBLE = 'not_eligible';
+
     private function __construct(
         public readonly string $result,
         public readonly string $idempotencyKey,
@@ -59,6 +65,16 @@ final class UpsellChargeResult
     public static function invalidSelection(string $key): self
     {
         return new self(self::RESULT_INVALID_SELECTION, $key);
+    }
+
+    public static function inFlight(string $key): self
+    {
+        return new self(self::RESULT_IN_FLIGHT, $key);
+    }
+
+    public static function notEligible(string $key): self
+    {
+        return new self(self::RESULT_NOT_ELIGIBLE, $key);
     }
 
     public static function failed(string $key, ?string $errorCode): self

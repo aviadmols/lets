@@ -25,6 +25,8 @@ use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Services\Shopify\Orders\ShopifyDraftOrderService;
 use App\Services\Shopify\ShopifyClientFactory;
 use App\Support\Tenant;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -59,6 +61,16 @@ use Throwable;
  */
 final class UpsellChargeService
 {
+    // === CONSTANTS ===
+    /** Serialises the decide-and-open phase per idempotency key (see accept()). */
+    private const ACCEPT_LOCK_PREFIX = 'upsell:accept:';
+
+    /** Longer than phase 1 can ever take; released explicitly in finally. */
+    private const ACCEPT_LOCK_SECONDS = 30;
+
+    /** A Shopify vault row may name its customer by bare id or by gid. */
+    private const SHOPIFY_CUSTOMER_GID_PREFIX = 'gid://shopify/Customer/';
+
     /**
      * @param  (callable(Shop): ShopifyDraftOrderService)|null  $draftOrderFactory
      *                                                                              Builds the per-shop draft-order service. Null in production = build from
@@ -83,6 +95,21 @@ final class UpsellChargeService
             $req->customerRef,
         );
 
+        // ELIGIBILITY, server-side: the offer must be live and must have been put in
+        // front of THIS order (shown by the resolver, or reached through a branch the
+        // shopper answered). The client only says which offer it answered. A replay
+        // of a charge that already landed still answers "already" below.
+        if (! $this->eligibility()->allows($req->flow, $offer, $req->parentOrderId)
+            && ! Ledger::hasSucceeded($shopId, $key)) {
+            Log::notice('upsell.accept.not_eligible', [
+                'shop_id' => $shopId,
+                'flow_id' => $req->flow->getKey(),
+                'offer_id' => $offer->getKey(),
+            ]);
+
+            return UpsellChargeResult::notEligible($key);
+        }
+
         // Record the accept intent (funnel: impression → ACCEPTED → charge_*).
         UpsellOfferEvent::record([
             'shop_id' => $shopId,
@@ -102,102 +129,28 @@ final class UpsellChargeService
         // that really happened left NOTHING to reconcile. The row is committed
         // first, the money moves outside every transaction, and the outcome is
         // recorded in a second short one.
-        $prepared = DB::transaction(function () use ($shopId, $req, $offer, $key): UpsellChargeResult|array {
-            // Idempotent short-circuit FIRST: a succeeded ledger row for this key
-            // means the customer already accepted — never charge twice. The next
-            // branch offer is still returned so a double-click lands on the same
-            // next step (not an error).
-            if (Ledger::hasSucceeded($shopId, $key)) {
-                return UpsellChargeResult::already($key, $this->nextOfferOnAccept($req));
-            }
+        //
+        // THE IN-FLIGHT WALL. A succeeded row is not the only row that must stop a
+        // second charge: a PENDING (or retry_scheduled) row means a charge for this
+        // key is at PayPlus right now, or died there and awaits reconciliation.
+        // Reusing it would send the card a second charge that lands on the same row
+        // (succeeded → succeeded is a silent no-op), so the ledger would show one
+        // charge while the card shows two. Such a row is refused, never reused.
+        // The per-key lock serialises this whole phase, so two taps that both find
+        // NO row cannot both open one and both charge.
+        $lock = Cache::lock(self::ACCEPT_LOCK_PREFIX.$key, self::ACCEPT_LOCK_SECONDS);
+        if (! $lock->get()) {
+            return $this->inFlight($shopId, $key, $offer);
+        }
 
-            // The add-on window, on the offer's own clock. AFTER the short-circuit above on
-            // purpose: a double-click that already charged answers "already accepted"
-            // however late its second click lands.
-            if ($offer->windowClosed($req->parentOrderId, UpsellFlowOffer::WINDOW_ACCEPT_GRACE_SECONDS)) {
-                return UpsellChargeResult::expired($key);
-            }
-
-            // A bundle charges only for exactly the pick it allows. A bundle-mode offer the
-            // merchant has not finished configuring accepts nothing — it never falls back
-            // to charging a single product's price.
-            if ($offer->product_selection_mode === UpsellFlowOffer::PRODUCT_BUNDLE
-                && ! $offer->acceptsSelection($req->selectedProductIds)) {
-                return UpsellChargeResult::invalidSelection($key);
-            }
-
-            // Resolve the saved vault token for THIS customer (tenant-scoped).
-            $method = $this->resolvePaymentMethod($req->customerRef);
-            if ($method === null) {
-                Timeline::record(
-                    kind: 'upsell_no_payment_method',
-                    details: ['key' => $key, 'offer_id' => $offer->getKey()],
-                    shopId: $shopId,
-                );
-
-                // Observability (W18): the no-method path wrote only a Timeline row, so a misconfigured
-                // store (create_token OFF → no vaulted card → every upsell 422s) was invisible in the
-                // logs. The overwhelmingly common cause is card-saving being disabled at checkout.
-                Log::warning('upsell.no_payment_method', [
-                    'shop_id' => $shopId,
-                    'offer_id' => $offer->getKey(),
-                    'customer_ref' => $req->customerRef,
-                    'likely_cause' => 'no vaulted card token — enable "Save the customer\'s card" (create_token) at checkout',
-                ]);
-
-                return UpsellChargeResult::noMethod($key);
-            }
-
-            // The "Add to my order" click IS the authorization: the shopper was shown the
-            // exact price and told it goes on the card they just used, and they clicked.
-            // Record that consent NOW — before any gateway call — so the money-safety law
-            // below is satisfied by an explicit, auditable act. (Nothing in production ever
-            // wrote an UPSELL consent row, so accept() always failed closed with no_consent
-            // and the one-click upsell could never charge.)
-            $this->recordUpsellConsent($shopId, $req, $offer, $method);
-
-            // Money-safety law: NO saved-token charge without a stored UPSELL
-            // consent row. Fail closed — no ledger row, no gateway call.
-            if (! $this->hasUpsellConsent($shopId, $req->customerRef, $method)) {
-                UpsellOfferEvent::record([
-                    'shop_id' => $shopId,
-                    'flow_id' => $req->flow->getKey(),
-                    'offer_id' => $offer->getKey(),
-                    'event_type' => OfferEventType::CHARGE_FAILED,
-                    'parent_order_id' => $req->parentOrderId,
-                    'customer_ref' => $req->customerRef,
-                    'context' => ['reason' => 'no_consent'],
-                ]);
-                Timeline::record(
-                    kind: Timeline::KIND_CONSENT_MISSING,
-                    details: ['key' => $key, 'consent_context' => CustomerConsent::CONTEXT_UPSELL],
-                    shopId: $shopId,
-                );
-
-                return UpsellChargeResult::noConsent($key);
-            }
-
-            $amount = $offer->discountedPrice();
-            $currency = (string) ($method->currency ?? config('payplus.currency', 'ILS'));
-
-            // Open the PENDING ledger row BEFORE the side effect.
-            $ledger = Ledger::open(
-                shopId: $shopId,
-                chargeContext: PaymentLedger::CONTEXT_UPSELL,
-                idempotencyKey: $key,
-                amount: $amount,
-                currency: $currency,
-                attributes: [
-                    'plan_id' => null, // upsell is a context, not a plan
-                    'payment_method_id' => $method->getKey(),
-                    'customer_id' => $method->customer_id,
-                    'shopify_customer_id' => $method->shopify_customer_id,
-                    'parent_order_id' => $req->parentOrderId,
-                ],
-            );
-
-            return ['ledger' => $ledger, 'method' => $method, 'amount' => $amount, 'currency' => $currency];
-        });
+        try {
+            $prepared = DB::transaction(fn (): UpsellChargeResult|array => $this->prepare($shopId, $req, $offer, $key));
+        } catch (UniqueConstraintViolationException) {
+            // Another request opened the row between our read and our insert.
+            return $this->inFlight($shopId, $key, $offer);
+        } finally {
+            $lock->release();
+        }
 
         // A settled answer (already charged / no card / no consent) — done.
         if ($prepared instanceof UpsellChargeResult) {
@@ -227,6 +180,141 @@ final class UpsellChargeService
             : $this->onFailure($shopId, $req, $offer, $ledger, $result, $key));
     }
 
+    /**
+     * PHASE 1 body: decide, and open the pending ledger row. Runs inside the
+     * caller's transaction and under the per-key lock.
+     *
+     * @return UpsellChargeResult|array{ledger: PaymentLedger, method: InstallmentPaymentMethod, amount: float, currency: string}
+     */
+    private function prepare(int $shopId, AcceptUpsellRequest $req, UpsellFlowOffer $offer, string $key): UpsellChargeResult|array
+    {
+        // Idempotent short-circuit FIRST: a succeeded ledger row for this key
+        // means the customer already accepted — never charge twice. The next
+        // branch offer is still returned so a double-click lands on the same
+        // next step (not an error).
+        if (Ledger::hasSucceeded($shopId, $key)) {
+            return UpsellChargeResult::already($key, $this->nextOfferOnAccept($req));
+        }
+
+        $existing = Ledger::find($shopId, $key);
+        $existingStatus = $existing !== null ? LedgerStatus::tryFrom((string) $existing->status) : null;
+
+        // In flight (or died in flight): never a second call for this key.
+        if ($existingStatus === LedgerStatus::PENDING || $existingStatus === LedgerStatus::RETRY_SCHEDULED) {
+            return $this->inFlight($shopId, $key, $offer);
+        }
+
+        // Charged and refunded: that sale is closed. Charging again would reach
+        // PayPlus and then have no legal row to land on.
+        if ($existingStatus === LedgerStatus::REFUNDED) {
+            return UpsellChargeResult::already($key, null);
+        }
+
+        // The add-on window, on the offer's own clock. AFTER the short-circuit above on
+        // purpose: a double-click that already charged answers "already accepted"
+        // however late its second click lands.
+        if ($offer->windowClosed($req->parentOrderId, UpsellFlowOffer::WINDOW_ACCEPT_GRACE_SECONDS)) {
+            return UpsellChargeResult::expired($key);
+        }
+
+        // A bundle charges only for exactly the pick it allows. A bundle-mode offer the
+        // merchant has not finished configuring accepts nothing — it never falls back
+        // to charging a single product's price.
+        if ($offer->product_selection_mode === UpsellFlowOffer::PRODUCT_BUNDLE
+            && ! $offer->acceptsSelection($req->selectedProductIds)) {
+            return UpsellChargeResult::invalidSelection($key);
+        }
+
+        // Resolve the saved vault token for THIS customer (tenant-scoped).
+        $method = $this->resolvePaymentMethod($req->customerRef);
+        if ($method === null) {
+            Timeline::record(
+                kind: 'upsell_no_payment_method',
+                details: ['key' => $key, 'offer_id' => $offer->getKey()],
+                shopId: $shopId,
+            );
+
+            // Observability (W18): the no-method path wrote only a Timeline row, so a misconfigured
+            // store (create_token OFF → no vaulted card → every upsell 422s) was invisible in the
+            // logs. The overwhelmingly common cause is card-saving being disabled at checkout.
+            Log::warning('upsell.no_payment_method', [
+                'shop_id' => $shopId,
+                'offer_id' => $offer->getKey(),
+                'customer_ref' => $req->customerRef,
+                'likely_cause' => 'no vaulted card token — enable "Save the customer\'s card" (create_token) at checkout',
+            ]);
+
+            return UpsellChargeResult::noMethod($key);
+        }
+
+        // The "Add to my order" click IS the authorization: the shopper was shown the
+        // exact price and told it goes on the card they just used, and they clicked.
+        // Record that consent NOW — before any gateway call — so the money-safety law
+        // below is satisfied by an explicit, auditable act. (Nothing in production ever
+        // wrote an UPSELL consent row, so accept() always failed closed with no_consent
+        // and the one-click upsell could never charge.)
+        $this->recordUpsellConsent($shopId, $req, $offer, $method);
+
+        // Money-safety law: NO saved-token charge without a stored UPSELL
+        // consent row. Fail closed — no ledger row, no gateway call.
+        if (! $this->hasUpsellConsent($shopId, $req->customerRef, $method)) {
+            UpsellOfferEvent::record([
+                'shop_id' => $shopId,
+                'flow_id' => $req->flow->getKey(),
+                'offer_id' => $offer->getKey(),
+                'event_type' => OfferEventType::CHARGE_FAILED,
+                'parent_order_id' => $req->parentOrderId,
+                'customer_ref' => $req->customerRef,
+                'context' => ['reason' => 'no_consent'],
+            ]);
+            Timeline::record(
+                kind: Timeline::KIND_CONSENT_MISSING,
+                details: ['key' => $key, 'consent_context' => CustomerConsent::CONTEXT_UPSELL],
+                shopId: $shopId,
+            );
+
+            return UpsellChargeResult::noConsent($key);
+        }
+
+        $amount = $offer->discountedPrice();
+        $currency = (string) ($method->currency ?? config('payplus.currency', 'ILS'));
+
+        // Open the PENDING ledger row BEFORE the side effect.
+        $ledger = Ledger::open(
+            shopId: $shopId,
+            chargeContext: PaymentLedger::CONTEXT_UPSELL,
+            idempotencyKey: $key,
+            amount: $amount,
+            currency: $currency,
+            attributes: [
+                'plan_id' => null, // upsell is a context, not a plan
+                'payment_method_id' => $method->getKey(),
+                'customer_id' => $method->customer_id,
+                'shopify_customer_id' => $method->shopify_customer_id,
+                'parent_order_id' => $req->parentOrderId,
+            ],
+        );
+
+        return ['ledger' => $ledger, 'method' => $method, 'amount' => $amount, 'currency' => $currency];
+    }
+
+    /** Refuse a second charge while one for this key is unsettled. */
+    private function inFlight(int $shopId, string $key, UpsellFlowOffer $offer): UpsellChargeResult
+    {
+        Log::warning('upsell.accept.in_flight', [
+            'shop_id' => $shopId,
+            'offer_id' => $offer->getKey(),
+            'key' => $key,
+        ]);
+
+        return UpsellChargeResult::inFlight($key);
+    }
+
+    private function eligibility(): UpsellOfferEligibility
+    {
+        return new UpsellOfferEligibility($this->resolver);
+    }
+
     public function decline(int $shopId, AcceptUpsellRequest $req): UpsellChargeResult
     {
         $key = IdempotencyKey::upsell(
@@ -236,6 +324,12 @@ final class UpsellChargeService
             $req->parentOrderId,
             $req->customerRef,
         );
+
+        // A decline unlocks the decline branch, so it is gated exactly like an
+        // accept: only an offer actually put in front of this order may be declined.
+        if (! $this->eligibility()->allows($req->flow, $req->offer, $req->parentOrderId)) {
+            return UpsellChargeResult::notEligible($key);
+        }
 
         UpsellOfferEvent::record([
             'shop_id' => $shopId,
@@ -521,19 +615,18 @@ final class UpsellChargeService
             return null; // fail closed: no customer identity = no token match
         }
 
+        // The ref is the PLATFORM's customer id (Shopify customer, WooCommerce customer id
+        // or guest email) — the column the vault writes it to. Never the local customers
+        // PK: those are sequential, and matching one would let a ref that merely LOOKS
+        // like a number select an unrelated shopper's card.
+        $refs = [$customerRef];
+        if (ctype_digit($customerRef)) {
+            $refs[] = self::SHOPIFY_CUSTOMER_GID_PREFIX.$customerRef;
+        }
+
         return InstallmentPaymentMethod::query()
             ->where('status', InstallmentPaymentMethod::STATUS_ACTIVE)
-            ->where(function ($q) use ($customerRef): void {
-                // shopify_customer_id is a STRING (holds the WC customer id OR a guest email);
-                // customer_id is a BIGINT. Comparing the bigint column to an email string is a
-                // Postgres error (SQLSTATE 22P02) — so only match customer_id when the ref is
-                // numeric. (sqlite is loosely typed, which is why this passed tests but 500'd
-                // in production on a guest/email ref.)
-                $q->where('shopify_customer_id', $customerRef);
-                if (ctype_digit($customerRef)) {
-                    $q->orWhere('customer_id', (int) $customerRef);
-                }
-            })
+            ->whereIn('shopify_customer_id', $refs)
             ->latest('id')
             ->first();
     }

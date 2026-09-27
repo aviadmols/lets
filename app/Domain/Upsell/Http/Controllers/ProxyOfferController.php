@@ -28,6 +28,10 @@ use Illuminate\Http\Request;
  */
 final class ProxyOfferController extends Controller
 {
+    // === CONSTANTS ===
+    /** Added + signed by Shopify's App Proxy; empty for a shopper who is not logged in. */
+    private const PARAM_LOGGED_IN_CUSTOMER = 'logged_in_customer_id';
+
     public function __construct(private readonly OfferResponder $responder) {}
 
     public function __invoke(Request $request): JsonResponse
@@ -40,8 +44,18 @@ final class ProxyOfferController extends Controller
             return response()->json(['offer' => null, 'reason' => 'no_tenant'], 200);
         }
 
-        // The shared responder builds the context, resolves under the bound tenant
-        // (recording the impression), and shapes the offer JSON + signed URLs.
-        return response()->json($this->responder->respond($request, $shop), 200);
+        // WHO is asking: Shopify appends `logged_in_customer_id` to every proxied
+        // request and covers it with the proxy signature, so it is the shopper's
+        // proven identity. The `customer` query param is NOT: the proxy signs
+        // whatever the browser sent, so it proves nothing about who sent it.
+        $customerId = (string) $request->query(self::PARAM_LOGGED_IN_CUSTOMER, '');
+
+        // The shared responder verifies the order is this shopper's, resolves under
+        // the bound tenant (recording the impression), and shapes the offer JSON +
+        // signed URLs.
+        return response()->json(
+            $this->responder->respond($request, $shop, ctype_digit($customerId) ? $customerId : ''),
+            200,
+        );
     }
 }

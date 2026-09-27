@@ -25,6 +25,7 @@ use Tests\TestCase;
  */
 final class ProxyOfferEndpointTest extends TestCase
 {
+    use FakesShopifyParentOrder;
     use RefreshDatabase;
 
     // === CONSTANTS ===
@@ -42,6 +43,7 @@ final class ProxyOfferEndpointTest extends TestCase
 
     protected function tearDown(): void
     {
+        $this->clearShopifyParentOrderFake();
         Tenant::clear();
         parent::tearDown();
     }
@@ -50,10 +52,11 @@ final class ProxyOfferEndpointTest extends TestCase
     {
         $shop = $this->makeShop('alpha.myshopify.com');
         $offer = $this->makeMatchingFlowWithDiscount($shop, base: 100.0, percent: 10);
+        $this->fakeShopifyParentOrder('100', '501');
 
         $response = $this->getSignedOffer($shop->shopify_domain, [
-            'parent_order' => 'P-100',
-            'customer' => 'cust-1',
+            'parent_order' => 'gid://shopify/Order/100',
+            'logged_in_customer_id' => '501',
             'subtotal' => '250',
             'products' => 'gid://shopify/Product/1',
         ]);
@@ -78,15 +81,96 @@ final class ProxyOfferEndpointTest extends TestCase
             ->count());
     }
 
+    /**
+     * IDENTITY LAW. The App Proxy signs every query param the BROWSER chose, so a
+     * `customer` param proves nothing. The accept URL is signed for the shopper
+     * Shopify logged in (logged_in_customer_id) and the order Shopify says is theirs.
+     */
+    public function test_the_accept_url_is_signed_for_the_verified_shopper_never_the_query_customer(): void
+    {
+        $shop = $this->makeShop('alpha.myshopify.com');
+        $this->makeMatchingFlowWithDiscount($shop, base: 100.0, percent: 0);
+        $this->fakeShopifyParentOrder('100', '501');
+
+        $response = $this->getSignedOffer($shop->shopify_domain, [
+            'parent_order' => '100',
+            'logged_in_customer_id' => '501',
+            'customer' => '777', // someone else's id — must be ignored
+            'products' => 'gid://shopify/Product/1',
+        ]);
+
+        $response->assertOk();
+        parse_str((string) parse_url((string) $response->json('accept_api_url'), PHP_URL_QUERY), $signed);
+        $this->assertSame('501', $signed['customer']);
+        $this->assertSame('100', $signed['parent_order']);
+
+        // The order was looked up in the store, as the order the shopper named.
+        $this->assertSame('gid://shopify/Order/100', $this->orderLookupClient->graphqlCalls[0]['variables']['id']);
+    }
+
+    public function test_a_query_customer_with_no_logged_in_shopper_gets_no_offer_and_no_impression(): void
+    {
+        $shop = $this->makeShop('alpha.myshopify.com');
+        $this->makeMatchingFlowWithDiscount($shop, base: 100.0, percent: 0);
+        $this->fakeShopifyParentOrder('100', '501');
+
+        $response = $this->getSignedOffer($shop->shopify_domain, [
+            'parent_order' => '100',
+            'customer' => '501',
+            'products' => 'gid://shopify/Product/1',
+        ]);
+
+        $response->assertOk()->assertJsonPath('offer', null)->assertJsonPath('reason', 'no_verified_customer');
+        $this->assertNull($response->json('accept_api_url'));
+        $this->assertSame(0, UpsellOfferEvent::withoutGlobalScopes()->count());
+        $this->assertSame([], $this->orderLookupClient->graphqlCalls);
+    }
+
+    public function test_an_order_that_is_not_the_shoppers_gets_no_offer_and_no_impression(): void
+    {
+        $shop = $this->makeShop('alpha.myshopify.com');
+        $this->makeMatchingFlowWithDiscount($shop, base: 100.0, percent: 0);
+        $this->fakeShopifyParentOrder('100', '999'); // the order belongs to customer 999
+
+        $response = $this->getSignedOffer($shop->shopify_domain, [
+            'parent_order' => '100',
+            'logged_in_customer_id' => '501',
+            'products' => 'gid://shopify/Product/1',
+        ]);
+
+        $response->assertOk()->assertJsonPath('offer', null)->assertJsonPath('reason', 'unverified_order');
+        $this->assertSame(0, UpsellOfferEvent::withoutGlobalScopes()->count());
+    }
+
+    public function test_an_old_or_cancelled_order_gets_no_offer(): void
+    {
+        $shop = $this->makeShop('alpha.myshopify.com');
+        $this->makeMatchingFlowWithDiscount($shop, base: 100.0, percent: 0);
+        $params = ['parent_order' => '100', 'logged_in_customer_id' => '501', 'products' => 'gid://shopify/Product/1'];
+
+        $this->fakeShopifyParentOrder('100', '501', createdAt: now()->subDays(5)->toIso8601String());
+        $this->getSignedOffer($shop->shopify_domain, $params)->assertJsonPath('reason', 'unverified_order');
+
+        $this->fakeShopifyParentOrder('100', '501', cancelledAt: now()->toIso8601String());
+        $this->getSignedOffer($shop->shopify_domain, $params)->assertJsonPath('reason', 'unverified_order');
+
+        // A made-up order id never reaches the store at all.
+        $this->fakeShopifyParentOrder('100', '501');
+        $this->getSignedOffer($shop->shopify_domain, ['parent_order' => 'anything1'] + $params)
+            ->assertJsonPath('reason', 'unverified_order');
+        $this->assertSame([], $this->orderLookupClient->graphqlCalls);
+    }
+
     public function test_returns_null_offer_when_nothing_matches(): void
     {
         $shop = $this->makeShop('alpha.myshopify.com');
         // A flow that only matches Product/999 — the purchase is Product/1.
         $this->makeMatchingFlowWithDiscount($shop, base: 50.0, percent: 0, productGid: 'gid://shopify/Product/999');
+        $this->fakeShopifyParentOrder('1', '501');
 
         $response = $this->getSignedOffer($shop->shopify_domain, [
-            'parent_order' => 'P-1',
-            'customer' => 'c',
+            'parent_order' => '1',
+            'logged_in_customer_id' => '501',
             'subtotal' => '10',
             'products' => 'gid://shopify/Product/1',
         ]);
@@ -132,9 +216,10 @@ final class ProxyOfferEndpointTest extends TestCase
         Tenant::clear();
 
         // Shop A signs a request for the SAME purchased product — gets nothing.
+        $this->fakeShopifyParentOrder('1', '501');
         $response = $this->getSignedOffer($shopA->shopify_domain, [
-            'parent_order' => 'P-1',
-            'customer' => 'c',
+            'parent_order' => '1',
+            'logged_in_customer_id' => '501',
             'subtotal' => '500',
             'products' => 'gid://shopify/Product/1',
         ]);
@@ -173,6 +258,8 @@ final class ProxyOfferEndpointTest extends TestCase
             'shopify_domain' => $domain,
             'name' => $domain,
             'status' => Shop::STATUS_INSTALLED,
+            // A Shopify connection: the order is verified against the store itself.
+            'shopify_access_token' => 'shpat_token',
         ]);
 
         // This endpoint feeds the PayPlus-token rail, which offers nothing to a

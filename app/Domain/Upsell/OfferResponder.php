@@ -2,6 +2,8 @@
 
 namespace App\Domain\Upsell;
 
+use App\Domain\Upsell\Verification\ShopifyParentOrderVerifier;
+use App\Domain\Upsell\Verification\VerifiedPurchase;
 use App\Models\Shop;
 use Illuminate\Http\Request;
 
@@ -27,9 +29,16 @@ final class OfferResponder
     /** Default display currency when neither offer nor config pins one. */
     private const DEFAULT_CURRENCY = 'ILS';
 
+    /** No shopper was authenticated by the caller (a guest, or no proof of who is asking). */
+    public const REASON_NO_CUSTOMER = 'no_verified_customer';
+
+    /** The order is not this shopper's, not in this store, cancelled, or not recent. */
+    public const REASON_UNVERIFIED_ORDER = 'unverified_order';
+
     public function __construct(
         private readonly UpsellResolver $resolver,
         private readonly UpsellSignedUrlService $urls,
+        private readonly ShopifyParentOrderVerifier $orders,
     ) {}
 
     /**
@@ -37,9 +46,17 @@ final class OfferResponder
      * the JSON payload (offer + SIGNED action URLs), or `['offer' => null]` when
      * nothing matches. The caller has already bound $shop as the tenant.
      *
+     * IDENTITY LAW: the accept URL this mints charges a saved card, so the customer
+     * and parent order inside it NEVER come from the query string. $verifiedCustomerId
+     * is the shopper the CALLER's auth proved (the App Proxy's signed
+     * logged_in_customer_id, or the session token's `sub`), and the parent order is
+     * only signed after Shopify confirms it belongs to that shopper. No verified
+     * shopper, or an order that is not theirs → no offer, no impression, no hold.
+     *
+     * @param  string  $verifiedCustomerId  numeric Shopify customer id, '' when none
      * @return array<string, mixed>
      */
-    public function respond(Request $request, Shop $shop): array
+    public function respond(Request $request, Shop $shop, string $verifiedCustomerId): array
     {
         // This responder feeds the PAYPLUS-TOKEN rail (the App-Proxy widget and the
         // thank-you / order-status extensions). Accepting one of these offers
@@ -59,7 +76,19 @@ final class OfferResponder
             return ['offer' => null, 'reason' => 'no_payplus_rail'];
         }
 
-        $context = $this->buildContext($request, $shop);
+        if ($verifiedCustomerId === '') {
+            return ['offer' => null, 'reason' => self::REASON_NO_CUSTOMER];
+        }
+
+        // BEFORE resolve(): resolving records an impression and may place a
+        // fulfillment hold, and neither may happen on an order that is not this
+        // shopper's.
+        $purchase = $this->orders->verify($shop, (string) $request->query('parent_order', ''), $verifiedCustomerId);
+        if ($purchase === null) {
+            return ['offer' => null, 'reason' => self::REASON_UNVERIFIED_ORDER];
+        }
+
+        $context = $this->buildContext($request, $shop, $purchase);
         $resolution = $this->resolver->resolve($context);
 
         if ($resolution === null) {
@@ -92,17 +121,22 @@ final class OfferResponder
         ];
     }
 
-    private function buildContext(Request $request, Shop $shop): PurchaseContext
+    /**
+     * Identity (order + customer + email) from the VERIFIED purchase; only the
+     * trigger inputs (products, collections, tags, subtotal) are read from the query,
+     * and those decide WHICH offer is shown — never whose card pays for it.
+     */
+    private function buildContext(Request $request, Shop $shop, VerifiedPurchase $purchase): PurchaseContext
     {
         return new PurchaseContext(
             shopId: (int) $shop->getKey(),
-            parentOrderId: (string) $request->query('parent_order', ''),
-            customerRef: (string) $request->query('customer', ''),
+            parentOrderId: $purchase->parentOrderId,
+            customerRef: $purchase->customerRef,
             orderSubtotal: (float) $request->query('subtotal', 0),
             purchasedProductGids: $this->csv($request->query('products')),
             purchasedCollectionGids: $this->csv($request->query('collections')),
             purchasedTags: $this->csv($request->query('tags')),
-            customerEmail: $request->query('email') !== null ? (string) $request->query('email') : null,
+            customerEmail: $purchase->customerEmail,
         );
     }
 

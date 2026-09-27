@@ -14,13 +14,21 @@ use Illuminate\Support\Facades\URL;
  * customer so the controller can rebuild the deterministic idempotency key
  * WITHOUT trusting any unsigned request input.
  *
+ * Callers sign only a VERIFIED pair: the parent order and customer must come from
+ * the platform's own record of the order (see Verification\*), never from the
+ * query string — the signature proves the server minted the link, so the server
+ * must know whose card the link charges.
+ *
  * Mirrors the reference SignedUrlService pattern (URL::temporarySignedRoute) but
  * scoped to the upsell pillar. The portal's own signed URLs land in Phase 6.5.
  */
 final class UpsellSignedUrlService
 {
     // === CONSTANTS ===
+    /** GET: the confirm page (no money moves). */
     public const ROUTE_ACCEPT = 'upsell.accept';
+    /** POST to the same signed URL: the charge. */
+    public const ROUTE_ACCEPT_STORE = 'upsell.accept.store';
     public const ROUTE_DECLINE = 'upsell.decline';
     /** JSON twin of ROUTE_ACCEPT for the checkout/post-purchase extensions. */
     public const ROUTE_ACCEPT_API = 'upsell.accept.api';

@@ -42,6 +42,7 @@ use Tests\TestCase;
 final class WooCommerceUpsellBundleTest extends TestCase
 {
     use RefreshDatabase;
+    use SeedsWooUpsellPurchase;
 
     // === CONSTANTS ===
     private const OFFER = '/api/woocommerce/upsell/offer';
@@ -139,7 +140,9 @@ final class WooCommerceUpsellBundleTest extends TestCase
         $this->accept($key, $secret, $offer, $pick)->assertOk();
 
         $this->assertSame([100.0], $this->charged);
-        $this->assertSame(1, Tenant::run($shop, fn (): int => PaymentLedger::query()->where('status', LedgerStatus::SUCCEEDED->value)->count()));
+        $this->assertSame(1, Tenant::run($shop, fn (): int => PaymentLedger::query()
+            ->where('charge_context', PaymentLedger::CONTEXT_UPSELL)
+            ->where('status', LedgerStatus::SUCCEEDED->value)->count()));
 
         // Every book is its own line on the shopper's order, in the merchant's order, and the
         // lines add up to exactly what the card was charged — ₪100 over three is not ₪99.99.
@@ -188,8 +191,10 @@ final class WooCommerceUpsellBundleTest extends TestCase
     public function test_a_bundle_short_of_a_product_is_not_shown_and_cannot_be_bought(): void
     {
         [$shop, $key, $secret, $offer, $books] = $this->bundleShop();
+        // Shown while it was whole…
+        $this->shownOn($shop, $offer, self::ORDER);
 
-        // One of the three listed books left the catalogue: a pick of three is impossible.
+        // …then one of the three listed books left the catalogue: a pick of three is impossible.
         Tenant::run($shop, fn () => $books['B']->delete());
 
         $this->fetchOffer($key, $secret)->assertOk()->assertJsonPath('offer', null);
@@ -207,6 +212,7 @@ final class WooCommerceUpsellBundleTest extends TestCase
         // The merchant chose "bundle" but never set a price — and the offer still carries an
         // old single-product base price that must not become the charge.
         Tenant::run($shop, fn () => $offer->forceFill(['bundle_price' => null, 'base_price' => 49])->save());
+        $this->shownOn($shop, $offer, self::ORDER);
 
         $this->accept($key, $secret, $offer, [$books['A']->id, $books['B']->id, $books['C']->id])
             ->assertStatus(422)
@@ -229,6 +235,9 @@ final class WooCommerceUpsellBundleTest extends TestCase
 
     public function test_the_window_is_counted_from_the_first_view_and_a_reload_does_not_reset_it(): void
     {
+        // Second-precision clock: without a frozen one, a second ticking over between
+        // the impression and the countdown reads 299.
+        $this->freezeTime();
         [, $key, $secret] = $this->bundleShop(timerMinutes: 5);
 
         $this->assertSame(300, $this->fetchOffer($key, $secret)->json('offer.card.content.timer_seconds'));
@@ -349,6 +358,9 @@ final class WooCommerceUpsellBundleTest extends TestCase
 
             return [$offer, $books];
         });
+
+        // The shopper's order, as LETS recorded it paid — what every accept is bound to.
+        $this->paidParentOrder($shop, self::ORDER, self::CUSTOMER);
 
         return [$shop->fresh(), (string) $data['k'], (string) $data['s'], $offer, $books];
     }
