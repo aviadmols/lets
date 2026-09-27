@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.54.0
+Stable tag: 0.54.1
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,11 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.54.1 =
+* The grid layout no longer collapses to one word per line when the store's theme puts the
+  thank-you content in a flex or grid column: the offer's mount now claims the full width of
+  whatever column it sits in.
 
 = 0.54.0 =
 * The thank-you offer has a GRID layout for an offer with many products: every product on

@@ -81,4 +81,20 @@ final class UpsellCardLayoutTest extends TestCase
         $this->assertStringContainsString('media_side', $js);
         $this->assertStringContainsString('[data-layout="media_side"]', $css);
     }
+
+    public function test_the_mount_claims_its_column_so_the_grid_cannot_collapse(): void
+    {
+        $css = (string) file_get_contents(base_path(self::PLUGIN_CSS));
+
+        // The grid layout is an inline-size container: size containment gives it NO
+        // intrinsic width, so inside a shrink-to-fit parent (a flex cell, the admin
+        // preview's centring host) the mount collapsed and every word wrapped alone.
+        // The mount itself must therefore hold a definite width, whatever wraps it.
+        $this->assertStringContainsString('container-type: inline-size', $css);
+        $this->assertMatchesRegularExpression(
+            '/\[data-lets-upsell\]\s*\{[^}]*inline-size:\s*100%/s',
+            $css,
+            'the renderer mount must claim 100% of its column, or a flex parent collapses the grid',
+        );
+    }
 }

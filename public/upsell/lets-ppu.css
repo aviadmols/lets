@@ -32,6 +32,22 @@
   box-sizing: border-box;
 }
 
+/* The MOUNT the renderer fills (the plugin's .lets-pp-upsell, the admin preview's
+   frame). It must own a definite width whatever the page put it in: the grid
+   layout below is an inline-size container, and size containment makes it
+   contribute NO intrinsic width — inside a shrink-to-fit parent (a flex or grid
+   cell, an inline-block, a centring flex host) the mount collapsed to nothing and
+   every word wrapped on its own line. 100% of the parent resolves in every
+   formatting context, so the module always gets the column it sits in. */
+[data-lets-upsell] {
+  display: block;
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+[data-lets-upsell][hidden] {
+  display: none;
+}
+
 .lets-ppu {
   /* --- palette (light) --- */
   --lets-ppu-ink: #14161a;

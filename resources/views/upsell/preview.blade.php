@@ -40,10 +40,12 @@
     <link href="{{ $asset('upsell/lets-ppu.css') }}" rel="stylesheet">
     <style>
         html, body { margin: 0; padding: 0; }
+        /* A plain block host, like a store's content column: the card centres itself
+           (margin-inline auto + its own max width). A flex host shrink-wrapped the
+           mount, and the grid layout — an inline-size container, so no intrinsic
+           width — collapsed to one word per line. */
         .lets-preview {
-            display: flex;
-            align-items: flex-start;
-            justify-content: center;
+            display: block;
             min-height: 100vh;
             padding: 28px 18px;
             background: #f4f4f5;
