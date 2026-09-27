@@ -459,15 +459,32 @@
                                     </div>
                                 </div>
 
-                                <div class="rc-field">
-                                    <label class="rc-field__label" for="rc-bundle-columns">{{ __('upsell.admin.configure.bundle_columns') }}</label>
-                                    <select id="rc-bundle-columns" class="rc-pp-select rc-field__control" wire:model="bundleColumns">
-                                        @foreach(range(\App\Domain\Upsell\Models\UpsellFlowOffer::BUNDLE_MIN_COLUMNS, \App\Domain\Upsell\Models\UpsellFlowOffer::BUNDLE_MAX_COLUMNS) as $columns)
-                                            <option value="{{ $columns }}">{{ $columns }}</option>
-                                        @endforeach
-                                    </select>
-                                    <p class="rc-muted">{{ __('upsell.admin.configure.bundle_columns_hint') }}</p>
-                                </div>
+                                {{-- The layout (slider vs grid) is a SHOP setting shared by every
+                                     offer, so it is not a field here: the drawer states which one is
+                                     on and links to the one place it changes. "Products per slide"
+                                     only matters to the slider, so the grid hides it. --}}
+                                @if($this->cardLayoutIsGrid())
+                                    <div class="rc-field">
+                                        <span class="rc-field__label">{{ __('upsell.admin.configure.layout') }}</span>
+                                        <p class="rc-muted">
+                                            {{ __('upsell.admin.configure.layout_grid', ['columns' => $this->cardGridColumns()]) }}
+                                            <a class="rc-link" href="{{ $this->cardLayoutUrl() }}" wire:navigate>{{ __('upsell.admin.configure.layout_change') }}</a>
+                                        </p>
+                                    </div>
+                                @else
+                                    <div class="rc-field">
+                                        <label class="rc-field__label" for="rc-bundle-columns">{{ __('upsell.admin.configure.bundle_columns') }}</label>
+                                        <select id="rc-bundle-columns" class="rc-pp-select rc-field__control" wire:model="bundleColumns">
+                                            @foreach(range(\App\Domain\Upsell\Models\UpsellFlowOffer::BUNDLE_MIN_COLUMNS, \App\Domain\Upsell\Models\UpsellFlowOffer::BUNDLE_MAX_COLUMNS) as $columns)
+                                                <option value="{{ $columns }}">{{ $columns }}</option>
+                                            @endforeach
+                                        </select>
+                                        <p class="rc-muted">
+                                            {{ __('upsell.admin.configure.layout_slider') }}
+                                            <a class="rc-link" href="{{ $this->cardLayoutUrl() }}" wire:navigate>{{ __('upsell.admin.configure.layout_switch_grid') }}</a>
+                                        </p>
+                                    </div>
+                                @endif
                             @endif
                         </fieldset>
 

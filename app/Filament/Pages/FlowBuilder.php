@@ -12,6 +12,7 @@ use App\Domain\Upsell\PostPurchaseDiagnostic;
 use App\Domain\Upsell\Rendering\UpsellCardPresenter;
 use App\Filament\Concerns\PicksProducts;
 use App\Filament\Concerns\ShopScopedScreen;
+use App\Models\MerchantUpsellAppearance;
 use App\Models\Product;
 use App\Models\Shop;
 use App\Support\Tenant;
@@ -1004,6 +1005,26 @@ class FlowBuilder extends Page
         $shop = Tenant::current();
 
         return $shop instanceof Shop && $shop->platform === Shop::PLATFORM_WOOCOMMERCE;
+    }
+
+    /**
+     * The card layout is a SHOP setting (Settings → Upsell card design), shared by
+     * every offer — the drawer cannot change it, so it says which one is on and
+     * links to the switch instead of hinting at it in a sentence.
+     */
+    public function cardLayoutIsGrid(): bool
+    {
+        return MerchantUpsellAppearance::current()->layout() === MerchantUpsellAppearance::LAYOUT_GRID;
+    }
+
+    public function cardGridColumns(): int
+    {
+        return MerchantUpsellAppearance::current()->gridColumns();
+    }
+
+    public function cardLayoutUrl(): string
+    {
+        return ManageUpsellAppearance::getUrl();
     }
 
     /** Add a picked product to the bundle — tenant-scoped, once, up to the maximum. */
