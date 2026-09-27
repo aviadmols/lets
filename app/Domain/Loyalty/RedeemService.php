@@ -6,20 +6,24 @@ use App\Domain\Loyalty\Credit\CreditIssuer;
 use App\Domain\Loyalty\Credit\ShopifyStoreCreditIssuer;
 use App\Domain\Loyalty\Credit\WooCouponIssuer;
 use App\Models\LoyaltyAccount;
+use App\Models\LoyaltyPointEvent;
 use App\Models\MerchantLoyaltySettings;
 use App\Models\Shop;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use RuntimeException;
 
 /**
- * Points → credit, in the only order that is safe.
+ * Points → credit: RESERVE, then issue, then settle.
  *
- * The platform is asked to issue the credit FIRST, and points are deducted only
- * once it has. The reverse order is the tempting one — deduct, then issue — and
- * it is how a customer loses points to a network timeout and has no way to prove
- * it. Here a failure costs nobody anything: the balance is untouched and the
- * page says "not right now".
+ * 1. The points are reserved (deducted) under the account's row lock, with the
+ *    balance check inside the same transaction. This is what makes redemption
+ *    spend-once: an earlier version checked an UNLOCKED balance and deducted
+ *    only after issuing, so N parallel requests all saw the same balance and
+ *    the platform issued credit N times (only one deduct could succeed).
+ * 2. The platform issues the credit.
+ * 3. If the platform refuses or the call throws, the reservation is released
+ *    by its own ledger event (redeem_reversed) — so a timeout still costs the
+ *    customer nothing, which is the promise the old issue-first order kept.
  *
  * The amount is derived from the merchant's rate, rounded DOWN to whole
  * chunks, so a partial chunk stays as points rather than rounding in either
@@ -50,6 +54,8 @@ final class RedeemService
             return $this->fail(self::ERR_DISABLED);
         }
 
+        // Cheap early answers for the page. NOT the wall — the reservation
+        // below re-checks the same things under the row lock.
         $balance = (int) $account->points_balance;
         if ($balance < $settings->minRedeemPoints()) {
             return $this->fail(self::ERR_BELOW_MINIMUM);
@@ -65,50 +71,75 @@ final class RedeemService
             return $this->fail(self::ERR_UNAVAILABLE);
         }
 
-        // 1) The platform moves the money. A throw here ends the story with the
-        //    customer's points exactly where they were.
+        // 1) Reserve, locked: the check and the spend are one step.
+        $reservation = $this->points->reserveRedemption(
+            $account,
+            $settings->minRedeemPoints(),
+            static fn (int $locked): array => $settings->creditFor($locked),
+            'redeem:'.Str::uuid()->toString(),
+            ['currency' => $currency],
+        );
+
+        if (! $reservation['ok'] || ! $reservation['event'] instanceof LoyaltyPointEvent) {
+            return $this->fail($reservation['reason'] === self::ERR_BELOW_MINIMUM
+                ? self::ERR_BELOW_MINIMUM
+                : self::ERR_NOTHING_TO_REDEEM);
+        }
+
+        // 2) The platform moves the money. A throw gives the points back.
         try {
-            $code = $issuer->issue($shop, $account, $credit['amount'], $currency);
-        } catch (RuntimeException $e) {
+            $code = $issuer->issue($shop, $account, $reservation['amount'], $currency);
+        } catch (\Throwable $e) {
             Log::info('loyalty.redeem.issue_failed', [
                 'shop_id' => $shop->getKey(),
                 'account_id' => $account->getKey(),
                 'reason' => $e->getMessage(),
             ]);
 
+            $this->release($shop, $account, $reservation['event']);
+
             return $this->fail(self::ERR_FAILED);
         }
 
-        // 2) Only now do the points leave. If THIS throws the customer has credit
-        //    they did not fully pay for — the generous direction, and loud in the
-        //    log rather than silent in a balance.
-        try {
-            $this->points->deduct(
-                $account,
-                $credit['points'],
-                'redeem:'.Str::uuid()->toString(),
-                array_filter([
-                    'amount' => $credit['amount'],
-                    'currency' => $currency,
-                    'code' => $code,
-                ]),
-            );
-        } catch (\Throwable $e) {
-            Log::error('loyalty.redeem.deduct_failed_after_issue', [
-                'shop_id' => $shop->getKey(),
-                'account_id' => $account->getKey(),
-                'amount' => $credit['amount'],
-                'error' => $e->getMessage(),
-            ]);
-        }
+        // 3) Settle: note what was issued on the reservation (best-effort —
+        //    the money truth is already recorded).
+        $this->noteIssued($reservation['event'], $code);
 
         return [
             'ok' => true,
             'reason' => null,
-            'amount' => $credit['amount'],
-            'points' => $credit['points'],
+            'amount' => $reservation['amount'],
+            'points' => $reservation['points'],
             'code' => $code,
         ];
+    }
+
+    /** Give a reservation back; loud if even that fails, because points are then lost. */
+    private function release(Shop $shop, LoyaltyAccount $account, LoyaltyPointEvent $reservation): void
+    {
+        try {
+            $this->points->releaseRedemption($account, $reservation, ['reason' => 'issue_failed']);
+        } catch (\Throwable $e) {
+            Log::error('loyalty.redeem.release_failed', [
+                'shop_id' => $shop->getKey(),
+                'account_id' => $account->getKey(),
+                'reservation_id' => $reservation->getKey(),
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /** Stamp the issued code on the reservation row. Only a note — never fails the redemption. */
+    private function noteIssued(LoyaltyPointEvent $reservation, ?string $code): void
+    {
+        try {
+            $reservation->forceFill([
+                'meta' => array_filter(array_merge((array) $reservation->meta, ['code' => $code, 'reserved' => false]),
+                    static fn ($v): bool => $v !== null),
+            ])->save();
+        } catch (\Throwable) {
+            // The points and the credit are both already right.
+        }
     }
 
     /** The issuer this shop's platform uses, or null when neither fits. */

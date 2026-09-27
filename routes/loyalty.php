@@ -3,6 +3,7 @@
 use App\Domain\Loyalty\Http\Controllers\LoyaltyActionController;
 use App\Domain\Loyalty\Http\Controllers\LoyaltyPageController;
 use App\Domain\Loyalty\Http\Controllers\LoyaltyRedeemController;
+use App\Domain\Loyalty\LoyaltyServiceProvider;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -31,5 +32,7 @@ Route::prefix('loyalty/{shop}')
         Route::post('/join', [LoyaltyActionController::class, 'join'])->name('loyalty.signed.join');
         Route::post('/birthday', [LoyaltyActionController::class, 'birthday'])->name('loyalty.signed.birthday');
         Route::post('/social', [LoyaltyActionController::class, 'social'])->name('loyalty.signed.social');
-        Route::post('/redeem', [LoyaltyRedeemController::class, 'redeem'])->name('loyalty.signed.redeem');
+        Route::post('/redeem', [LoyaltyRedeemController::class, 'redeem'])
+            ->middleware('throttle:'.LoyaltyServiceProvider::LIMITER_REDEEM)
+            ->name('loyalty.signed.redeem');
     });

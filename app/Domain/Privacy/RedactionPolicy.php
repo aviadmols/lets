@@ -84,6 +84,7 @@ final class RedactionPolicy
         'customer_phone', 'phone',
         'customer_ip', 'ip', 'user_agent',
         'address', 'address1', 'address2', 'city', 'zip',
+        'street', 'postcode', 'postal', 'apartment',
         // National identity numbers. An Israeli ת.ז / ח.פ reaches us through the
         // invoicing client block (Green Invoice `taxId`) and is echoed back in the
         // stored provider response — it is the single most identifying field we hold.
@@ -100,6 +101,15 @@ final class RedactionPolicy
     public static function scrubJson(array $data): array
     {
         foreach ($data as $key => $value) {
+            // A PII key whose value is a whole BLOCK (an address object with
+            // street / house / floor / entrance…) goes as one: recursing would
+            // only catch the sub-keys this list happens to name.
+            if (is_array($value) && is_string($key) && self::isPiiKey($key) && $value !== []) {
+                $data[$key] = self::SENTINEL;
+
+                continue;
+            }
+
             if (is_array($value)) {
                 $data[$key] = self::scrubJson($value);
 

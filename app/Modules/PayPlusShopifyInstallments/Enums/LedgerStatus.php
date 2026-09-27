@@ -10,6 +10,8 @@ namespace App\Modules\PayPlusShopifyInstallments\Enums;
  *   pending → succeeded · pending → failed
  *   succeeded → refunded
  *   failed → retry_scheduled · retry_scheduled → succeeded · retry_scheduled → failed
+ *   retry_scheduled → pending   (a retry ATTEMPT is starting — Ledger::open
+ *                                reopens the row so the in-flight wall sees it)
  */
 enum LedgerStatus: string
 {
@@ -26,7 +28,7 @@ enum LedgerStatus: string
             self::PENDING->value => [self::SUCCEEDED, self::FAILED],
             self::SUCCEEDED->value => [self::REFUNDED],
             self::FAILED->value => [self::RETRY_SCHEDULED],
-            self::RETRY_SCHEDULED->value => [self::SUCCEEDED, self::FAILED],
+            self::RETRY_SCHEDULED->value => [self::SUCCEEDED, self::FAILED, self::PENDING],
             self::REFUNDED->value => [],
         ];
     }

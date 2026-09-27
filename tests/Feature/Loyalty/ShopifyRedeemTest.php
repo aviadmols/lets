@@ -102,7 +102,7 @@ final class ShopifyRedeemTest extends TestCase
         $this->assertFalse($result['ok']);
         $this->assertSame(RedeemService::ERR_FAILED, $result['reason']);
         $this->assertSame(300, (int) $account->refresh()->points_balance, 'A refused credit must cost the customer nothing.');
-        $this->assertSame(0, LoyaltyPointEvent::query()->where('kind', LoyaltyPointEvent::KIND_REDEEM)->count());
+        $this->assertSame(0, (int) LoyaltyPointEvent::query()->sum('points') - (int) LoyaltyPointEvent::query()->whereNotIn('kind', [LoyaltyPointEvent::KIND_REDEEM, LoyaltyPointEvent::KIND_REDEEM_REVERSED])->sum('points'), 'The reservation was released by its own event: net zero.');
     }
 
     public function test_a_transport_failure_costs_the_customer_nothing(): void

@@ -111,6 +111,7 @@ return [
         'not_refundable' => 'את החיוב הזה אי אפשר לזכות.',
         'no_transaction' => 'לחיוב הזה אין עסקה בסליקה להחזיר.',
         'exceeds_remaining' => 'זה יותר ממה שנותר בחיוב הזה.',
+        'refund_in_flight' => 'החזר אחר של החיוב הזה מתבצע כרגע. נסו שוב בעוד כמה דקות.',
         'already_refunded' => 'כבר זוכה.',
         'refund_failed' => 'הסליקה דחתה את הזיכוי הזה.',
         'store_exception' => 'החנות לא ענתה.',

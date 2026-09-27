@@ -40,17 +40,20 @@ api_version = "2026-04"
 # and rejects the deploy if they appear under `topics`. They route to the same
 # /shopify/webhooks endpoint and are HMAC-verified by VerifyShopifyWebhook.
 #
-# RE-ENABLE BEFORE APP STORE SUBMISSION: deploying these requires "Protected
-# customer data access" to be GRANTED first in the Partner Dashboard
-# (Apps → app 382947852289 → API access requests → Protected customer data access
-# → Request access; same gate also covers read_customers / read_orders). Until that
-# approval lands, Shopify rejects the version ("This app is not approved to
-# subscribe to webhook topics containing protected customer data"). The handlers +
-# per-shop Admin-API registration already exist; this is purely the deploy-time
-# declaration, re-added once access is approved.
-# [[webhooks.subscriptions]]
-# compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
-# uri = "/shopify/webhooks"
+# DECLARED (2026-09-27). Compliance topics CANNOT be subscribed per-shop through
+# the Admin API — the toml (or the Partner Dashboard) is the only way Shopify ever
+# delivers them, so leaving this commented meant redaction and data requests never
+# reached the app. Same three topics as config('shopify.webhook_topics') and
+# WebhookRouter (→ HandlePrivacyWebhookJob).
+#
+# DEPLOY NOTE: if `shopify app deploy` rejects this version with "not approved to
+# subscribe to webhook topics containing protected customer data", grant
+# "Protected customer data access" first in the Partner Dashboard
+# (Apps → app 382947852289 → API access requests → Protected customer data access),
+# then deploy again. Do NOT re-comment the block to get a deploy through.
+[[webhooks.subscriptions]]
+compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
+uri = "/shopify/webhooks"
 
 # Operational webhooks (also registered per-shop via the Admin API on install).
 [[webhooks.subscriptions]]

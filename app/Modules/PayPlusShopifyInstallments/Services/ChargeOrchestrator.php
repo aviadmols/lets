@@ -520,8 +520,12 @@ final class ChargeOrchestrator
     {
         $minutes = max(1, (int) config('payplus.charge_in_flight_minutes', self::IN_FLIGHT_MINUTES));
 
-        return $row->created_at !== null
-            && $row->created_at->gt(now()->subMinutes($minutes));
+        // The CURRENT attempt's start: a retry reopens an old row to pending,
+        // and its created_at is the first attempt's, days ago.
+        $startedAt = $row->attempt_started_at ?? $row->created_at;
+
+        return $startedAt !== null
+            && $startedAt->gt(now()->subMinutes($minutes));
     }
 
     /**

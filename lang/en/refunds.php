@@ -112,6 +112,7 @@ return [
         'not_refundable' => 'This charge cannot be refunded.',
         'no_transaction' => 'This charge has no gateway transaction to reverse.',
         'exceeds_remaining' => 'That is more than is left on this charge.',
+        'refund_in_flight' => 'Another refund of this charge is in progress. Try again in a few minutes.',
         'already_refunded' => 'Already refunded.',
         'refund_failed' => 'The gateway refused this refund.',
         'store_exception' => 'The store did not answer.',

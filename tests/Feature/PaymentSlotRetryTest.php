@@ -36,9 +36,18 @@ final class PaymentSlotRetryTest extends TestCase
 
     public int $callCount = 0;
 
+    /** Runs INSIDE the gateway call — a sibling trigger arriving mid-charge. */
+    public ?\Closure $duringCharge = null;
+
     public function nextResult(): GatewayResult
     {
         $this->callCount++;
+
+        if ($this->duringCharge !== null) {
+            $sibling = $this->duringCharge;
+            $this->duringCharge = null;
+            $sibling();
+        }
 
         if ($this->firstCallFails && $this->callCount === 1) {
             return GatewayResult::fromResponse([
@@ -129,6 +138,46 @@ final class PaymentSlotRetryTest extends TestCase
         $this->assertSame(1, PaymentLedger::where('shop_id', $shop->id)->count());
         // And only one payment slot total (reused, not a fresh slot per attempt).
         $this->assertSame(1, InstallmentPayment::where('plan_id', $plan->id)->count());
+    }
+
+    /**
+     * A RETRY in flight is visible to the wall. The scheduler's retry is at
+     * PayPlus when a merchant presses "Charge now": the retry_scheduled row is
+     * reopened to pending with a fresh attempt stamp, so the second trigger is
+     * refused as in-flight instead of reaching the gateway beside it.
+     */
+    public function test_a_retry_attempt_in_flight_refuses_a_sibling_charge(): void
+    {
+        [$shop, $plan] = $this->makeRecurringPlanWithConsent();
+        Tenant::set($shop);
+
+        $cycle = $plan->next_charge_at;
+        $orchestrator = app(ChargeOrchestrator::class);
+
+        $this->assertSame('failed', $orchestrator->charge($plan->id, PaymentType::RECURRING)->result);
+        $this->assertSame(
+            LedgerStatus::RETRY_SCHEDULED->value,
+            PaymentLedger::where('shop_id', $shop->id)->value('status'),
+        );
+
+        $plan->refresh();
+        $plan->forceFill(['next_charge_at' => $cycle])->save();
+
+        // Age the row: the in-flight wall must judge the CURRENT attempt, not
+        // the first one's created_at.
+        PaymentLedger::where('shop_id', $shop->id)->update(['created_at' => now()->subDays(2)]);
+
+        $siblingOutcome = null;
+        $this->duringCharge = function () use ($orchestrator, $plan, &$siblingOutcome): void {
+            $siblingOutcome = $orchestrator->charge($plan->id, PaymentType::RECURRING);
+        };
+
+        $retry = $orchestrator->charge($plan->id, PaymentType::RECURRING);
+
+        $this->assertTrue($retry->isSucceeded());
+        $this->assertSame('charge_in_flight', $siblingOutcome?->reason);
+        $this->assertSame(2, $this->callCount, 'The sibling never reached PayPlus.');
+        $this->assertSame(1, PaymentLedger::where('shop_id', $shop->id)->count());
     }
 
     /** @return array{0: Shop, 1: InstallmentPlan} */

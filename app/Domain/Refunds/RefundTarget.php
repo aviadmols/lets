@@ -50,9 +50,17 @@ final readonly class RefundTarget
         return $this->charges->isEmpty() && round($this->refundable, 2) <= 0;
     }
 
-    /** How much is still refundable on one charge. */
+    /**
+     * How much is still refundable on one charge — net of a refund that is at
+     * the gateway right now (RefundService's `refunding_amount` claim).
+     */
     public static function remainingOn(PaymentLedger $charge): float
     {
-        return round((float) $charge->amount - (float) ($charge->refunded_amount ?? 0), 2);
+        return round(
+            (float) $charge->amount
+            - (float) ($charge->refunded_amount ?? 0)
+            - (float) ($charge->refunding_amount ?? 0),
+            2,
+        );
     }
 }

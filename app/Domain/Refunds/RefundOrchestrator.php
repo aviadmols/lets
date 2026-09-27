@@ -10,6 +10,7 @@ use App\Domain\Invoicing\Jobs\IssueDocumentJob;
 use App\Domain\Lifecycle\OrderRefundService;
 use App\Domain\Lifecycle\RefundService;
 use App\Domain\Refunds\Models\RefundRequest;
+use App\Events\LedgerRowRefunded;
 use App\Models\ActivityEvent;
 use App\Models\PaymentLedger;
 use App\Models\Shop;
@@ -17,6 +18,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\LedgerStatus;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Support\Tenant;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -651,28 +653,46 @@ final class RefundOrchestrator
                 break;
             }
 
-            $slice = min(RefundTarget::remainingOn($charge), $left);
+            // The slice is decided UNDER the lock, from the row as it is now —
+            // not from the unlocked read above, which a concurrent refund of the
+            // same charge may already have moved.
+            $slice = DB::transaction(function () use ($charge, $left, $request): float {
+                $row = PaymentLedger::query()->lockForUpdate()->find($charge->getKey());
+                if ($row === null) {
+                    return 0.0;
+                }
+
+                $slice = round(min(RefundTarget::remainingOn($row), $left), 2);
+                if ($slice <= 0) {
+                    return 0.0;
+                }
+
+                $refundedTotal = round((float) ($row->refunded_amount ?? 0) + $slice, 2);
+
+                $row->forceFill([
+                    'refunded_amount' => $refundedTotal,
+                    'refund_request_id' => (int) $request->getKey(),
+                ])->save();
+
+                if ($refundedTotal >= round((float) $row->amount - self::EPSILON, 2)) {
+                    Ledger::transition($row, LedgerStatus::REFUNDED);
+                }
+
+                LedgerRowRefunded::afterCommit(
+                    (int) $row->shop_id,
+                    $row,
+                    $slice,
+                    'external:'.(int) $request->getKey().':'.(int) $row->getKey(),
+                );
+
+                return $slice;
+            });
+
             if ($slice <= 0) {
                 continue;
             }
 
-            $row = PaymentLedger::query()->lockForUpdate()->find($charge->getKey());
-            if ($row === null) {
-                continue;
-            }
-
-            $refundedTotal = round((float) ($row->refunded_amount ?? 0) + $slice, 2);
-
-            $row->forceFill([
-                'refunded_amount' => $refundedTotal,
-                'refund_request_id' => (int) $request->getKey(),
-            ])->save();
-
-            if ($refundedTotal >= round((float) $row->amount - self::EPSILON, 2)) {
-                Ledger::transition($row, LedgerStatus::REFUNDED);
-            }
-
-            $applied[(int) $row->getKey()] = round($slice, 2);
+            $applied[(int) $charge->getKey()] = $slice;
             $left = round($left - $slice, 2);
         }
 

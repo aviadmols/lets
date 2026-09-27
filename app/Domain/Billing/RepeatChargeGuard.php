@@ -75,13 +75,17 @@ final class RepeatChargeGuard
             ->where('plan_id', $plan->getKey())
             ->where('status', PaymentLedger::STATUS_PENDING)
             ->whereIn('charge_context', self::CYCLE_TYPES)
-            ->where('created_at', '>=', $since)
+            // A reopened retry is pending again with an OLD created_at; its
+            // current attempt's start is what makes it recent.
+            ->where(static fn (Builder $q) => $q
+                ->where('created_at', '>=', $since)
+                ->orWhere('attempt_started_at', '>=', $since))
             ->latest('id')
             ->first();
 
         return $pending === null
             ? null
-            : ['at' => $pending->created_at, 'amount' => (float) $pending->amount, 'in_flight' => true];
+            : ['at' => $pending->attempt_started_at ?? $pending->created_at, 'amount' => (float) $pending->amount, 'in_flight' => true];
     }
 
     /**
