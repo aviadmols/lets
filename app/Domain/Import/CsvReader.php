@@ -2,6 +2,7 @@
 
 namespace App\Domain\Import;
 
+use App\Support\CsvCell;
 use Generator;
 use RuntimeException;
 
@@ -62,7 +63,9 @@ final class CsvReader
 
                 $values = [];
                 foreach ($this->map as $column => $index) {
-                    $values[$column] = trim((string) ($fields[$index] ?? ''));
+                    // restore(): our own export guards formula-like cells with a
+                    // leading apostrophe; a re-imported file must not keep it.
+                    $values[$column] = trim((string) CsvCell::restore($fields[$index] ?? ''));
                 }
 
                 yield ['line' => $line, 'values' => $values];

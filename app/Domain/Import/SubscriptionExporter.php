@@ -8,6 +8,7 @@ use App\Models\InstallmentPlan;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use App\Support\CsvCell;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -321,6 +322,7 @@ final class SubscriptionExporter
      */
     private function put($handle, array $fields): void
     {
-        fputcsv($handle, $fields, self::SEPARATOR, self::ENCLOSURE, self::ESCAPE);
+        // Shopper-typed text must not become a spreadsheet formula (CsvCell).
+        fputcsv($handle, CsvCell::neutraliseRow($fields), self::SEPARATOR, self::ENCLOSURE, self::ESCAPE);
     }
 }

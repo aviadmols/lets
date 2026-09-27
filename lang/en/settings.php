@@ -33,6 +33,7 @@ return [
         'test_fail' => 'Connection failed: :reason',
         'save' => 'Save credentials',
         'saved' => 'PayPlus credentials saved.',
+        'base_url_refused' => 'Choose Production or Sandbox — PayPlus can only be reached at its own addresses.',
         'status' => [
             'connected' => 'Connected',
             'not_connected' => 'Not connected',

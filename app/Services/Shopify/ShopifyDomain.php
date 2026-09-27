@@ -11,8 +11,12 @@ namespace App\Services\Shopify;
 final class ShopifyDomain
 {
     // === CONSTANTS ===
-    /** A valid permanent shop domain: lowercase, ends in .myshopify.com. */
-    public const DOMAIN_REGEX = '/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/';
+    /**
+     * A valid permanent shop domain: lowercase, ends in .myshopify.com.
+     * Anchored with \A…\z, not ^…$: `$` also matches before a trailing newline,
+     * and this is the gate in front of an outbound request.
+     */
+    public const DOMAIN_REGEX = '/\A[a-z0-9][a-z0-9-]*\.myshopify\.com\z/';
 
     /** Normalise + validate a shop domain. Returns '' when invalid. */
     public static function normalize(string $shop): string

@@ -33,7 +33,7 @@ final class CampaignPreview
 
             return [
                 'subject' => TemplateRenderer::render($subject, $vars),
-                'html' => TemplateRenderer::render($body, $vars),
+                'html' => TemplateRenderer::renderHtml($body, $vars),
             ];
         });
     }

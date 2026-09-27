@@ -97,7 +97,7 @@ final class CampaignMail extends Mailable
             text: trim($this->textTemplate) !== '' ? 'emails.user-template-text' : null,
             with: [
                 // strtr-substituted, then handed to a wrapper that ONLY echoes it.
-                'renderedHtml' => TemplateRenderer::render($this->bodyTemplate, $this->vars),
+                'renderedHtml' => TemplateRenderer::renderHtml($this->bodyTemplate, $this->vars),
                 'renderedText' => TemplateRenderer::render($this->textTemplate, $this->vars),
                 'businessName' => $this->resolveBusinessName($this->shop),
             ],

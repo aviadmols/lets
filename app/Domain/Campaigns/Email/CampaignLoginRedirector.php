@@ -6,6 +6,7 @@ use App\Domain\Campaigns\Email\Http\HostedAccountSession;
 use App\Domain\Campaigns\Email\Models\CustomerLoginToken;
 use App\Domain\Customers\ImpersonationTicket;
 use App\Models\Shop;
+use App\Services\WooCommerce\WooStoreUrl;
 
 /**
  * Where a shopper goes AFTER their emailed token is spent — the one platform
@@ -40,7 +41,7 @@ final class CampaignLoginRedirector
     public function destination(Shop $shop, CustomerLoginToken $token): string
     {
         if ($shop->platform === Shop::PLATFORM_WOOCOMMERCE) {
-            $base = rtrim(trim((string) ($shop->wooConfig()['base_url'] ?? '')), '/');
+            $base = (string) WooStoreUrl::canonical($shop->wooConfig()['base_url'] ?? null);
 
             if ($base !== '' && str_starts_with(strtolower($base), 'https://')) {
                 $ticket = ImpersonationTicket::issue(

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\WooCommerce\Storefront;
 
 use App\Domain\Installments\CardUpdateService;
 use App\Models\Shop;
+use App\Services\WooCommerce\WooStoreUrl;
 use App\Support\Tenant;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
@@ -50,8 +51,9 @@ final class WooCardUpdateReturnController
 
         // Back to where their subscriptions live: the Woo My Account page when
         // the shop has one, else nothing (the hosted shopper closes the tab).
-        $base = $shop !== null ? trim((string) ($shop->wooCredential('base_url') ?? '')) : '';
-        $backUrl = $base !== '' ? rtrim($base, '/').'/my-account/lets-subscriptions/' : '';
+        // Only a canonical web URL is ever drawn into the href (see WooStoreUrl).
+        $base = $shop !== null ? (string) WooStoreUrl::canonical($shop->wooCredential('base_url')) : '';
+        $backUrl = $base !== '' ? $base.'/my-account/lets-subscriptions/' : '';
 
         return view('storefront.installments.return', [
             'state' => $state,

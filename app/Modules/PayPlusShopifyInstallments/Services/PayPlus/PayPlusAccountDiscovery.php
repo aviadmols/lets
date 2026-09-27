@@ -65,7 +65,8 @@ final class PayPlusAccountDiscovery
         return new self(
             apiKey: $apiKey,
             secretKey: $secretKey,
-            baseUrl: $baseUrl !== '' ? $baseUrl : (string) config('payplus.base_url'),
+            // PayPlus's own hosts only — the typed keys are sent with every call.
+            baseUrl: PayPlusBaseUrl::resolve($baseUrl),
             apiPrefix: (string) config('payplus.api_prefix', '/api/v1.0'),
             timeout: (int) config('payplus.timeout', 30),
         );

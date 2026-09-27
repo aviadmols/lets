@@ -27,6 +27,7 @@ use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Contracts\View\View;
+use App\Services\WooCommerce\WooStoreUrl;
 use Livewire\Attributes\Locked;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
@@ -253,7 +254,7 @@ class CustomerDetail extends Page
         $this->loginAsUrl = null;
 
         $shop = $this->wooShop();
-        $base = rtrim((string) ($shop?->wooConfig()['base_url'] ?? ''), '/');
+        $base = (string) WooStoreUrl::canonical($shop?->wooConfig()['base_url'] ?? null);
 
         if ($shop === null || $base === '') {
             Notification::make()->title(__('customers.detail.login_as.unavailable'))->danger()->send();

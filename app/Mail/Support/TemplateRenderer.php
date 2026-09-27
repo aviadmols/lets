@@ -35,6 +35,12 @@ final class TemplateRenderer
 
     private const CLOSE = '}';
 
+    /**
+     * Tokens whose value is markup WE built, already escaped cell by cell
+     * (OrderUpdatedNotifier's items table). renderHtml() leaves only these raw.
+     */
+    public const HTML_TOKENS = ['items_table'];
+
     /** Default product label when a plan has no product title. */
     private const FALLBACK_PRODUCT = 'your order';
 
@@ -80,6 +86,30 @@ final class TemplateRenderer
         }
 
         return strtr($template, $map);
+    }
+
+    /**
+     * The same strtr substitution for an HTML BODY: every value is HTML-escaped
+     * first, because the values are customer and store data (a name, a product
+     * title, a decline reason) and the body is echoed raw into the mail. A
+     * shopper named `<a href=…>Pay here</a>` must arrive as text, not as a link
+     * in the merchant's branded email.
+     *
+     * The subject and the plain-text twin are NOT HTML and keep render().
+     * HTML_TOKENS are values WE pre-render as markup (every cell already
+     * escaped at build time) and are substituted as-is.
+     *
+     * @param  array<string, scalar|null>  $vars
+     */
+    public static function renderHtml(string $template, array $vars): string
+    {
+        foreach ($vars as $key => $value) {
+            if (! in_array($key, self::HTML_TOKENS, true)) {
+                $vars[$key] = htmlspecialchars(self::stringify($value), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            }
+        }
+
+        return self::render($template, $vars);
     }
 
     /**

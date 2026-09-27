@@ -7,6 +7,7 @@ use App\Models\InstallmentPlan;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusTokenDiscovery;
+use App\Support\CsvCell;
 use App\Support\Tenant;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
@@ -162,7 +163,8 @@ final class RecoverImportedTokens extends Command
                         $failures[] = $plan;
                     }
 
-                    fputcsv($csv, [
+                    // Customer-typed names reach this sheet too (CsvCell).
+                    fputcsv($csv, CsvCell::neutraliseRow([
                         $plan->getKey(),
                         (string) $plan->public_id,
                         (string) $plan->customer_name,
@@ -175,7 +177,7 @@ final class RecoverImportedTokens extends Command
                         $outcome['detail'],
                         $ok ? 'yes' : 'no',
                         $outcome['recurring_live'] ? 'yes' : 'no',
-                    ]);
+                    ]));
 
                     if ($seen % self::TICK === 0) {
                         $this->line("  … {$seen} / {$total} · recovered {$recovered}");

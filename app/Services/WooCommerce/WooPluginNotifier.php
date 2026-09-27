@@ -85,14 +85,19 @@ final class WooPluginNotifier
         $signature = base64_encode(hash_hmac('sha256', $ts.'POST'.self::PATH.$body, $secret, true));
 
         try {
-            Http::withHeaders([
+            // The store's address goes through the outbound walls first — a
+            // refusal is just another unreachable store (logged below).
+            $endpoint = WooStoreEndpoint::prepare($baseUrl);
+
+            Http::withOptions($endpoint['options'])
+                ->withHeaders([
                 'Content-Type' => 'application/json',
                 'X-LETS-Timestamp' => $ts,
                 'X-LETS-Signature' => $signature,
             ])
                 ->timeout(self::TIMEOUT_SECONDS)
                 ->withBody($body, 'application/json')
-                ->post(rtrim($baseUrl, '/').self::PATH);
+                ->post($endpoint['base'].self::PATH);
         } catch (\Throwable $e) {
             Log::warning('woocommerce.notify.transport_error', [
                 'shop_id' => $shop->getKey(), 'error' => $e->getMessage(),

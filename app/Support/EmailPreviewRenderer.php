@@ -91,7 +91,7 @@ final class EmailPreviewRenderer
             return [
                 // strtr — identical to the production substitution path. No Blade.
                 'subject' => TemplateRenderer::render($subjectTemplate, $vars),
-                'html' => TemplateRenderer::render($bodyTemplate, $vars),
+                'html' => TemplateRenderer::renderHtml($bodyTemplate, $vars),
                 'is_custom' => $customBody !== null,
             ];
         });
@@ -171,7 +171,7 @@ final class EmailPreviewRenderer
 
             return [
                 'subject' => TemplateRenderer::render($customSubject ?? DefaultEmailTemplates::subject($template), $vars),
-                'html' => TemplateRenderer::render($customBody ?? DefaultEmailTemplates::body($template), $vars),
+                'html' => TemplateRenderer::renderHtml($customBody ?? DefaultEmailTemplates::body($template), $vars),
                 'is_custom' => $customBody !== null,
             ];
         });

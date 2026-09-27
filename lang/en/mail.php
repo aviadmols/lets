@@ -80,6 +80,8 @@ return [
         'password_saved' => 'Saved — paste a new value to replace it.',
         'from_address' => 'From address',
         'from_name' => 'From name',
+        'host_refused' => 'This SMTP server cannot be used: enter the public host name of your mail provider (not an IP on a private network).',
+        'port_refused' => 'Use one of the standard mail ports: :ports.',
     ],
 
     'portal' => [

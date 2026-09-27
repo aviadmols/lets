@@ -176,7 +176,7 @@ class NewsletterStudio extends Page
 
         $rendered = (new EmailRenderer)->render($this->document(), $this->selectedBlockId);
 
-        return TemplateRenderer::render(
+        return TemplateRenderer::renderHtml(
             $rendered->html,
             CampaignMailVars::sample($shop instanceof Shop ? $shop : null),
         );

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Domain\Brand\SafeSiteFetcher;
 use App\Domain\Mail\SenderDomains;
 use App\Domain\Mail\SendGrid\SendGridClient;
 use App\Filament\Clusters\Settings as SettingsCluster;
@@ -40,6 +41,7 @@ use Illuminate\Mail\Mailables\Address;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\HtmlString;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 /**
@@ -484,8 +486,12 @@ class ManageMailSettings extends Page implements HasForms
                 Grid::make()
                     ->visible(fn (Get $get): bool => (bool) $get('override_env_smtp'))
                     ->schema([
-                        TextInput::make('smtp_host')->label(__('mail.smtp.host')),
-                        TextInput::make('smtp_port')->label(__('mail.smtp.port'))->numeric(),
+                        TextInput::make('smtp_host')->label(__('mail.smtp.host'))->maxLength(253),
+                        TextInput::make('smtp_port')
+                            ->label(__('mail.smtp.port'))
+                            ->numeric()
+                            ->in(SafeSiteFetcher::SMTP_PORTS)
+                            ->validationMessages(['in' => __('mail.smtp.port_refused', ['ports' => implode(', ', SafeSiteFetcher::SMTP_PORTS)])]),
                         Select::make('smtp_encryption')
                             ->label(__('mail.smtp.encryption'))
                             ->options($this->encryptionOptions())
@@ -599,6 +605,15 @@ class ManageMailSettings extends Page implements HasForms
         // Secret: overwrite only when a new value was typed (mirrors PayPlus creds).
         if (! empty($input['smtp_password'])) {
             $settings->smtp_password = $input['smtp_password'];
+        }
+
+        // The relay's address must be one the outbound walls allow — refused at
+        // save, so the merchant hears it here and not as silent platform delivery.
+        if ($settings->override_env_smtp && $settings->smtp_host !== null
+            && MailTransport::merchantRelayRefusal($settings) !== null) {
+            throw ValidationException::withMessages([
+                'data.smtp_host' => __('mail.smtp.host_refused'),
+            ]);
         }
 
         $settings->save();
@@ -767,6 +782,15 @@ class ManageMailSettings extends Page implements HasForms
         // went. A green toast that does not name its transport is how "sent"
         // and "written to a logfile" become indistinguishable — and how a
         // support thread starts with no facts at all.
+        // A merchant relay the outbound walls refuse is never connected to — say
+        // so, rather than quietly testing through the platform's relay instead.
+        if ($settings->override_env_smtp && $settings->smtp_host
+            && MailTransport::merchantRelayRefusal($settings) !== null) {
+            Notification::make()->title(__('mail.smtp.host_refused'))->danger()->persistent()->send();
+
+            return;
+        }
+
         $chosen = MailTransport::for($shop);
         $relay = $chosen !== null
             ? (string) ($chosen['config']['host'] ?? config('mail.default'))
