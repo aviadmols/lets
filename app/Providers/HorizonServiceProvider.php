@@ -33,7 +33,12 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
         Gate::define('viewHorizon', function ($user = null): bool {
             return $user !== null
                 && method_exists($user, 'isPlatformAdmin')
-                && $user->isPlatformAdmin();
+                && $user->isPlatformAdmin()
+                // /horizon sits outside the panel, so the panel's enrolment
+                // redirect never runs here: an admin without a second factor
+                // does not get the queue dashboard either.
+                && method_exists($user, 'hasTwoFactorEnabled')
+                && $user->hasTwoFactorEnabled();
         });
     }
 }

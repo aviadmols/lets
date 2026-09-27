@@ -5,6 +5,9 @@ namespace App\Providers\Filament;
 use App\Domain\Loyalty\Http\Controllers\AdminLoyaltyPreviewController;
 use App\Domain\Upsell\Http\Controllers\AdminUpsellPreviewController;
 use App\Domain\Upsell\Http\Controllers\PostPurchaseController;
+use App\Filament\Pages\Auth\Login;
+use App\Filament\Pages\Auth\TwoFactorChallenge;
+use App\Filament\Pages\TwoFactorSecurity;
 use App\Domain\Upsell\Rendering\UpsellCardPresenter;
 use App\Http\Controllers\Admin\AdminAccountPreviewController;
 use App\Http\Controllers\Admin\AdminCustomerAccountViewController;
@@ -14,6 +17,7 @@ use App\Http\Middleware\DevAutoLogin;
 use App\Http\Middleware\EmbeddedAuthenticate;
 use App\Http\Middleware\EnsureEmbeddedSession;
 use App\Http\Middleware\PersistEmbeddedContext;
+use App\Http\Middleware\RequireTwoFactorEnrollment;
 use App\Http\Middleware\SetAdminLocale;
 use App\Support\Ui\PanelAccess;
 use BezhanSalleh\FilamentLanguageSwitch\LanguageSwitch;
@@ -22,6 +26,7 @@ use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Filament\Navigation\NavigationGroup;
+use Filament\Navigation\MenuItem;
 use Filament\Navigation\NavigationItem;
 use Filament\Panel;
 use Filament\PanelProvider;
@@ -81,6 +86,13 @@ class AdminPanelProvider extends PanelProvider
 
     /** Recharge blue — the one brand accent (theme.css --rc-blue). */
     public const BRAND_ACCENT = '#3B5BDB';
+
+    /** Status hues — theme.css --rc-green / --rc-amber / --rc-red. */
+    public const STATUS_SUCCESS = '#1E9E6A';
+
+    public const STATUS_WARNING = '#C77700';
+
+    public const STATUS_DANGER = '#D64545';
 
     /** Warm neutral ramp (RGB triplets, Filament's format) — theme.css --gray-*. */
     public const WARM_GRAY = [
@@ -175,7 +187,17 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->path('admin')
-            ->login()
+            // Password login with a second step for users who enabled an
+            // authenticator app (Pages\Auth\Login → TwoFactorChallenge).
+            ->login(Login::class)
+            // Account → Security (two-factor) lives in the user menu: it belongs
+            // to the person, not the shop, so it is not a sidebar item.
+            ->userMenuItems([
+                MenuItem::make()
+                    ->label(fn (): string => __('two_factor.page.menu'))
+                    ->icon('heroicon-o-shield-check')
+                    ->url(fn (): string => TwoFactorSecurity::getUrl()),
+            ])
             ->brandName(self::BRAND_NAME)
             // The brand slot renders the LETS lockup (inline SVG mark + wordmark in
             // the panel font) instead of the app name as text — brandName stays as
@@ -188,6 +210,12 @@ class AdminPanelProvider extends PanelProvider
                 // declares the same ramps; this keeps Filament's inline vars equal.
                 'primary' => Color::hex(self::BRAND_ACCENT),
                 'gray' => self::WARM_GRAY,
+                // Filament's own badges, toggles and notifications speak the
+                // same status palette as the rc-badge (theme.css 1.3).
+                'success' => Color::hex(self::STATUS_SUCCESS),
+                'warning' => Color::hex(self::STATUS_WARNING),
+                'danger' => Color::hex(self::STATUS_DANGER),
+                'info' => Color::hex(self::BRAND_ACCENT),
             ])
             // Heebo carries Hebrew and Latin in one face, so EN and HE match.
             ->font('Heebo')
@@ -224,6 +252,14 @@ class AdminPanelProvider extends PanelProvider
                 PanelsRenderHook::HEAD_END,
                 fn (): View => ViewFacade::make('filament.embedded.woocommerce'),
             )
+            // The store this session works on, pinned at the foot of the sidebar
+            // (the approved sketch): its name and platform, so a platform admin
+            // entered into a shop — or a merchant with two — never loses track.
+            // Renders nothing without a bound tenant. rc-token classes only.
+            ->renderHook(
+                PanelsRenderHook::SIDEBAR_FOOTER,
+                fn (): View => ViewFacade::make('filament.partials.sidebar-shop'),
+            )
             // Platform-admin SHOP SWITCHER in the top bar, just left of the user menu.
             // The Blade renders nothing for a merchant (one shop, no switching), so only
             // the owner sees it. Lets the owner see + change which shop they are entered
@@ -245,6 +281,13 @@ class AdminPanelProvider extends PanelProvider
             // it did.
             //   → GET /admin/upsell/preview/{platform}/{offer}  (name filament.admin.upsell.preview)
             ->routes(function (): void {
+                // Step two of the password login: the authenticator-app code. A
+                // GUEST route (nobody is logged in until the code passes); the
+                // page itself refuses anyone without a pending password step.
+                //   → GET /admin/two-factor-challenge  (name filament.admin.auth.two-factor-challenge)
+                Route::get(TwoFactorChallenge::ROUTE_SLUG, TwoFactorChallenge::class)
+                    ->name('auth.two-factor-challenge');
+
                 Route::get('upsell/preview/{platform}/{offer}', AdminUpsellPreviewController::class)
                     ->middleware(Authenticate::class)
                     ->whereIn('platform', [
@@ -342,6 +385,9 @@ class AdminPanelProvider extends PanelProvider
                 // a dev-only no-op once a real tenant is bound.
                 BindTenantFromUser::class,
                 BindDevTenant::class,
+                // Platform admins must enrol an authenticator app before any other
+                // page opens (merchants opt in). Persistent, after auth is known.
+                RequireTwoFactorEnrollment::class,
             ])
             ->authMiddleware([
                 // Require an authenticated user (redirects to login otherwise). The

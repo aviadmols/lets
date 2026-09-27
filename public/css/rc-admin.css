@@ -144,19 +144,23 @@
     border-block-end: 1px solid var(--rc-border);
 }
 
-/* Active nav item: blue-bg wash + a brand inline-start accent rail (flips in RTL). */
+/* Active nav item: a rounded pill in the accent wash with a 3px rail painted
+   INSIDE its start edge (inset shadow, so the label never shifts). */
+.fi-sidebar-item > .fi-sidebar-item-button {
+    border-radius: var(--rc-radius-control);
+}
 .fi-sidebar-item-active > .fi-sidebar-item-button {
     background-color: var(--rc-blue-bg);
-    border-inline-start: 3px solid var(--rc-blue);
+    box-shadow: inset 3px 0 0 var(--rc-blue);
     color: var(--rc-blue-600);
     font-weight: 600;
 }
-.fi-sidebar-item > .fi-sidebar-item-button {
-    border-inline-start: 3px solid transparent;
-    border-radius: 0 var(--rc-radius-control) var(--rc-radius-control) 0;
+[dir="rtl"] .fi-sidebar-item-active > .fi-sidebar-item-button {
+    box-shadow: inset -3px 0 0 var(--rc-blue);
 }
-[dir="rtl"] .fi-sidebar-item > .fi-sidebar-item-button {
-    border-radius: var(--rc-radius-control) 0 0 var(--rc-radius-control);
+.fi-sidebar-item-active > .fi-sidebar-item-button .fi-sidebar-item-icon,
+.fi-sidebar-item-active > .fi-sidebar-item-button .fi-sidebar-item-label {
+    color: var(--rc-blue-600);
 }
 
 /* The Settings group is always LAST (NAV_GROUP_ORDER) and holds one item — the
@@ -1265,18 +1269,44 @@ select.rc-input {
 /* simple plain table for schedule + ledger inside detail pages. */
 .rc-table { inline-size: 100%; border-collapse: collapse; }
 .rc-table th {
-    font: var(--rc-type-label); text-transform: uppercase; letter-spacing: .04em;
+    font: var(--rc-type-label); font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
     color: var(--rc-ink-muted); text-align: start;
     padding: var(--rc-space-2) var(--rc-space-3);
-    border-block-end: 1px solid var(--rc-border-strong);
+    background: var(--rc-surface-sunk);
+    border-block-end: 1px solid var(--rc-border);
 }
 [dir="rtl"] .rc-table th { text-transform: none; letter-spacing: normal; }
 .rc-table td {
     font: var(--rc-type-body); color: var(--rc-ink);
     padding: var(--rc-space-3);
+    border-block-end: 1px solid var(--rc-border-soft);
+}
+.rc-table tbody tr:last-child td { border-block-end: 0; }
+.rc-table tbody tr:hover { background: var(--rc-blue-bg); }
+
+/* Card anatomy (the approved sketch): a header bar on a hairline, then the body.
+   A section's own title — alone, or in a row with its controls — becomes that bar
+   by bleeding to the card edge; a table that is a direct child runs edge to edge
+   too, so rows line up with the header instead of floating in padding. */
+.rc-section > .rc-section__title,
+.rc-section > .rc-row--between:has(> .rc-section__title) {
+    margin: calc(-1 * var(--rc-space-5)) calc(-1 * var(--rc-space-5)) var(--rc-space-4);
+    padding: var(--rc-space-3) var(--rc-space-5);
     border-block-end: 1px solid var(--rc-border);
 }
-.rc-table tbody tr:hover { background: var(--rc-blue-bg); }
+.rc-section > .rc-table {
+    margin-inline: calc(-1 * var(--rc-space-5));
+    inline-size: calc(100% + 2 * var(--rc-space-5));
+}
+.rc-section > .rc-section__title + .rc-table,
+.rc-section > .rc-row--between:has(> .rc-section__title) + .rc-table {
+    margin-block-start: calc(-1 * var(--rc-space-4));
+}
+.rc-section > .rc-table:last-child { margin-block-end: calc(-1 * var(--rc-space-5)); }
+.rc-section > .rc-table th:first-child,
+.rc-section > .rc-table td:first-child { padding-inline-start: var(--rc-space-5); }
+.rc-section > .rc-table th:last-child,
+.rc-section > .rc-table td:last-child { padding-inline-end: var(--rc-space-5); }
 
 /* 70/30 detail split (--rc-split). Mirrors in RTL because grid columns follow
    the writing direction; no left/right used. Collapses to one column on narrow. */
@@ -1594,7 +1624,7 @@ html:has(meta[name="lets-embedded"]) .fi-user-menu {
     border: 1px solid var(--rc-border);
     border-radius: var(--rc-radius-card);
     box-shadow: var(--rc-shadow-card);
-    padding: var(--rc-space-5);
+    padding: var(--rc-space-4) var(--rc-space-5);
     text-decoration: none;
     color: inherit;
     transition: box-shadow .15s ease, transform .15s ease;
@@ -1636,13 +1666,16 @@ html:has(meta[name="lets-embedded"]) .fi-user-menu {
     display: inline-flex;
     align-items: center;
     gap: var(--rc-space-1);
+    align-self: flex-start;
+    padding: 2px var(--rc-space-2);
+    border-radius: var(--rc-radius-pill);
     font: var(--rc-type-label);
     text-transform: none;
     letter-spacing: normal;
 }
-.rc-kpi__delta--up   { color: var(--rc-green-ink); }
-.rc-kpi__delta--down { color: var(--rc-red-ink); }
-.rc-kpi__delta--flat { color: var(--rc-ink-muted); }
+.rc-kpi__delta--up   { color: var(--rc-green-ink); background: var(--rc-green-bg); }
+.rc-kpi__delta--down { color: var(--rc-red-ink); background: var(--rc-red-bg); }
+.rc-kpi__delta--flat { color: var(--rc-gray-ink); background: var(--rc-gray-bg); }
 
 .rc-kpi__sub {
     font: var(--rc-type-caption);
@@ -1813,6 +1846,47 @@ html:has(meta[name="lets-embedded"]) .fi-user-menu {
     font-size: 1.35rem;
 }
 
+/* The store card at the foot of the sidebar (filament/partials/sidebar-shop):
+   a mark in the accent, the business name, and the platform under it. */
+.rc-sidebar-shop {
+    display: flex;
+    align-items: center;
+    gap: var(--rc-space-3);
+    margin: var(--rc-space-3);
+    padding-block-start: var(--rc-space-3);
+    border-block-start: 1px solid var(--rc-border);
+}
+.rc-sidebar-shop__mark {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 30px;
+    block-size: 30px;
+    border-radius: var(--rc-radius-pill);
+    background: var(--rc-blue);
+    color: var(--rc-ink-on-primary);
+    font: var(--rc-type-body-strong);
+    font-size: 13px;
+}
+.rc-sidebar-shop__text {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+}
+.rc-sidebar-shop__name {
+    font: var(--rc-type-body-strong);
+    font-size: 13px;
+    color: var(--rc-ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.rc-sidebar-shop__meta {
+    font: var(--rc-type-caption);
+    color: var(--rc-ink-muted);
+}
+
 /* loyalty.css — the loyalty admin: the settings form beside a live preview of
    the real members page.
    TOKENS: --rc-card --rc-border --rc-radius-card --rc-shadow-card --rc-space-*
@@ -1826,6 +1900,9 @@ html:has(meta[name="lets-embedded"]) .fi-user-menu {
     gap: var(--rc-space-5);
     align-items: start;
 }
+/* The KPI strip spans both columns, over the form and the preview. */
+.rc-loyalty__kpis { grid-column: 1 / -1; }
+
 @media (max-width: 1100px) {
     .rc-loyalty { grid-template-columns: 1fr; }
 }
@@ -3473,6 +3550,92 @@ button.rc-fb-node:focus-visible {
 .rc-empty__icon { color: var(--rc-ink-muted); inline-size: 40px; block-size: 40px; }
 .rc-empty__title { font: var(--rc-type-subh); color: var(--rc-ink); }
 .rc-empty__body { font: var(--rc-type-body); color: var(--rc-ink-muted); max-inline-size: 380px; }
+
+/* ============================================================
+   Two-factor sign-in — Account → Security page + the login challenge.
+   TOKENS: --rc-space-*, --rc-radius-*, --rc-border*, --rc-surface-sunk,
+   --rc-ink*, --rc-type-*. Logical properties only (RTL-safe).
+   ============================================================ */
+
+.rc-two-factor { max-inline-size: 720px; }
+
+.rc-two-factor__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--rc-space-4);
+}
+.rc-two-factor__head .rc-stack { gap: var(--rc-space-1); }
+.rc-two-factor__head .rc-section__title { margin-block-end: 0; }
+
+.rc-two-factor__steps {
+    margin: 0;
+    padding-inline-start: var(--rc-space-5);
+    list-style: decimal;
+    font: var(--rc-type-body);
+    color: var(--rc-ink);
+}
+
+.rc-two-factor__enrol {
+    display: flex;
+    align-items: center;
+    gap: var(--rc-space-5);
+    flex-wrap: wrap;
+}
+.rc-two-factor__qr {
+    flex-shrink: 0;
+    padding: var(--rc-space-3);
+    background: var(--rc-card); /* the QR's quiet zone: white in the light theme */
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    line-height: 0;
+}
+.rc-two-factor__enrol .rc-stack { gap: var(--rc-space-2); min-inline-size: 0; }
+
+.rc-two-factor__secret {
+    display: inline-block;
+    padding: var(--rc-space-2) var(--rc-space-3);
+    background: var(--rc-surface-sunk);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    font: 600 14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: 0.04em;
+    word-break: break-all;
+    direction: ltr;
+    unicode-bidi: isolate;
+}
+
+.rc-two-factor__form {
+    gap: var(--rc-space-3);
+    max-inline-size: 360px;
+}
+
+.rc-two-factor__codes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--rc-space-2);
+    margin: 0;
+    padding: var(--rc-space-4);
+    list-style: none;
+    background: var(--rc-surface-sunk);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    direction: ltr;
+}
+.rc-two-factor__codes code {
+    font: 600 14px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--rc-ink);
+}
+
+/* The login challenge (simple layout). */
+.rc-two-factor__submit { inline-size: 100%; }
+.rc-two-factor__switch {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--rc-space-3);
+    margin-block-start: var(--rc-space-4);
+    font: var(--rc-type-caption);
+}
 
 /* upsell-appearance.css — Settings → Upsell card design (Phase 3).
    TOKENS: --rc-space-4/5 --rc-radius-control --rc-bg --rc-border-strong --rc-ink-muted

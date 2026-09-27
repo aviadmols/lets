@@ -1,0 +1,48 @@
+<?php
+
+// Two-factor sign-in with an authenticator app — Account → Security + the
+// login challenge. lang/he/two_factor.php mirrors every key.
+return [
+    'page' => [
+        'menu' => 'Security',
+        'title' => 'Security',
+        'app_title' => 'Authenticator app',
+        'app_text' => 'After your password, sign-in asks for a 6-digit code from an app on your phone (Google Authenticator, Microsoft Authenticator, Authy, 1Password…). Someone who learns your password still can\'t get in.',
+        'status_on' => 'On',
+        'status_off' => 'Off',
+        'start' => 'Set up authenticator app',
+        'step_install' => 'Install an authenticator app on your phone, if you don\'t have one.',
+        'step_scan' => 'In the app, add an account and scan this QR code.',
+        'qr_label' => 'QR code to scan with your authenticator app',
+        'manual_key' => 'Can\'t scan? Type this key into the app instead:',
+        'step_confirm' => 'Enter the 6-digit code the app now shows, to confirm it works.',
+        'code_label' => 'Code from the app',
+        'confirm' => 'Confirm and turn on',
+        'cancel' => 'Cancel',
+        'enabled_toast' => 'Two-factor sign-in is on.',
+        'disabled_toast' => 'Two-factor sign-in is off.',
+        'invalid_code' => 'That code didn\'t work. Check the app and try the current code.',
+        'recovery_left' => '{0} No recovery codes left — make new ones below.|{1} 1 recovery code left.|[2,*] :count recovery codes left.',
+        'change_help' => 'Enter a current code from the app to change these settings.',
+        'regenerate' => 'Make new recovery codes',
+        'disable' => 'Turn off',
+        'codes_title' => 'Your recovery codes',
+        'codes_text' => 'Save these somewhere safe, away from your phone. Each one signs you in once if you lose the phone. They won\'t be shown again.',
+        'mandatory_title' => 'Two-factor sign-in is required for your account',
+        'mandatory_text' => 'Platform admins can reach every store, so the admin opens only after you set up an authenticator app.',
+    ],
+    'challenge' => [
+        'title' => 'Two-step verification',
+        'code_help' => 'Enter the 6-digit code from your authenticator app.',
+        'recovery_help' => 'Enter one of the recovery codes you saved when you turned this on.',
+        'code_label' => 'Code',
+        'recovery_label' => 'Recovery code',
+        'submit' => 'Verify',
+        'invalid' => 'That code didn\'t work.',
+        'throttled' => 'Too many attempts. Try again in :seconds seconds.',
+        'locked' => 'Too many wrong codes. Sign in again in a few minutes.',
+        'use_recovery' => 'Use a recovery code',
+        'use_app' => 'Use the app code',
+        'back' => 'Back to sign in',
+    ],
+];

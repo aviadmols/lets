@@ -1,0 +1,85 @@
+/* ============================================================
+   Two-factor sign-in — Account → Security page + the login challenge.
+   TOKENS: --rc-space-*, --rc-radius-*, --rc-border*, --rc-surface-sunk,
+   --rc-ink*, --rc-type-*. Logical properties only (RTL-safe).
+   ============================================================ */
+
+.rc-two-factor { max-inline-size: 720px; }
+
+.rc-two-factor__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--rc-space-4);
+}
+.rc-two-factor__head .rc-stack { gap: var(--rc-space-1); }
+.rc-two-factor__head .rc-section__title { margin-block-end: 0; }
+
+.rc-two-factor__steps {
+    margin: 0;
+    padding-inline-start: var(--rc-space-5);
+    list-style: decimal;
+    font: var(--rc-type-body);
+    color: var(--rc-ink);
+}
+
+.rc-two-factor__enrol {
+    display: flex;
+    align-items: center;
+    gap: var(--rc-space-5);
+    flex-wrap: wrap;
+}
+.rc-two-factor__qr {
+    flex-shrink: 0;
+    padding: var(--rc-space-3);
+    background: var(--rc-card); /* the QR's quiet zone: white in the light theme */
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    line-height: 0;
+}
+.rc-two-factor__enrol .rc-stack { gap: var(--rc-space-2); min-inline-size: 0; }
+
+.rc-two-factor__secret {
+    display: inline-block;
+    padding: var(--rc-space-2) var(--rc-space-3);
+    background: var(--rc-surface-sunk);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    font: 600 14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: 0.04em;
+    word-break: break-all;
+    direction: ltr;
+    unicode-bidi: isolate;
+}
+
+.rc-two-factor__form {
+    gap: var(--rc-space-3);
+    max-inline-size: 360px;
+}
+
+.rc-two-factor__codes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--rc-space-2);
+    margin: 0;
+    padding: var(--rc-space-4);
+    list-style: none;
+    background: var(--rc-surface-sunk);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    direction: ltr;
+}
+.rc-two-factor__codes code {
+    font: 600 14px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--rc-ink);
+}
+
+/* The login challenge (simple layout). */
+.rc-two-factor__submit { inline-size: 100%; }
+.rc-two-factor__switch {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--rc-space-3);
+    margin-block-start: var(--rc-space-4);
+    font: var(--rc-type-caption);
+}

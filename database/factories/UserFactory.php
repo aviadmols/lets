@@ -11,6 +11,10 @@ use Illuminate\Support\Str;
  */
 class UserFactory extends Factory
 {
+    // === CONSTANTS ===
+    /** A fixed base32 TOTP secret, so a test can compute the current code. */
+    public const TWO_FACTOR_TEST_SECRET = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP';
+
     /**
      * The current password being used by the factory.
      */
@@ -58,15 +62,38 @@ class UserFactory extends Factory
      * The platform owner: no single shop, may reach the audited cross-tenant path.
      * is_platform_admin is GUARDED on the model, so the constructor's fill() drops
      * it — set it via forceFill after making (mirrors how production seeds it).
+     *
+     * ENROLLED in two-factor by default: for a platform admin that is mandatory,
+     * so an un-enrolled one can open nothing but Account → Security. Tests of the
+     * enrolment wall itself use withoutTwoFactor().
      */
     public function platformAdmin(): static
     {
         return $this->state(fn (array $attributes) => [
             'shop_id' => null,
-        ])->afterMaking(function (\App\Models\User $user): void {
+        ])->withTwoFactor()->afterMaking(function (\App\Models\User $user): void {
             $user->forceFill(['is_platform_admin' => true]);
         })->afterCreating(function (\App\Models\User $user): void {
             $user->forceFill(['is_platform_admin' => true])->save();
         });
+    }
+
+    /** An authenticator app confirmed, with TWO_FACTOR_TEST_SECRET as the shared secret. */
+    public function withTwoFactor(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'two_factor_secret' => self::TWO_FACTOR_TEST_SECRET,
+            'two_factor_recovery_codes' => [],
+            'two_factor_confirmed_at' => now(),
+        ]);
+    }
+
+    public function withoutTwoFactor(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'two_factor_secret' => null,
+            'two_factor_recovery_codes' => null,
+            'two_factor_confirmed_at' => null,
+        ]);
     }
 }

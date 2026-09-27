@@ -63,6 +63,8 @@ class User extends Authenticatable implements FilamentUser
     protected $hidden = [
         'password',
         'remember_token',
+        'two_factor_secret',
+        'two_factor_recovery_codes',
     ];
 
     /**
@@ -74,6 +76,12 @@ class User extends Authenticatable implements FilamentUser
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_platform_admin' => 'boolean',
+            // TOTP secret: encrypted at rest with APP_KEY, never rendered back.
+            'two_factor_secret' => 'encrypted',
+            // sha256 hashes only; the plain recovery codes are shown once.
+            'two_factor_recovery_codes' => 'array',
+            'two_factor_confirmed_at' => 'datetime',
+            'two_factor_last_timestep' => 'integer',
         ];
     }
 
@@ -86,6 +94,22 @@ class User extends Authenticatable implements FilamentUser
     public function isPlatformAdmin(): bool
     {
         return (bool) $this->is_platform_admin;
+    }
+
+    /** Two-factor is ON only once the owner confirmed a code from the app. */
+    public function hasTwoFactorEnabled(): bool
+    {
+        return $this->two_factor_confirmed_at !== null && filled($this->two_factor_secret);
+    }
+
+    /**
+     * Platform admins reach every shop's money and customers, so for them the
+     * second factor is MANDATORY (TwoFactorEnrollment middleware). For a
+     * merchant it is an opt-in on the Security page.
+     */
+    public function mustUseTwoFactor(): bool
+    {
+        return $this->isPlatformAdmin();
     }
 
     /** A merchant user that is bound to exactly one shop. */
