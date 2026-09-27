@@ -22,3 +22,16 @@ Re-review: not required
 - #6 per-shop Shopify frame-ancestors: `*.myshopify.com` kept so a first load
   before the tenant is bound is never refused a frame; tighten once verified live.
 - #7 operational: enrol every platform admin right after deploy.
+
+## 2026-09-27 — security-fix merges 0627074..26e4b9d — VERDICT: BLOCKED
+Reviewer: code-review-gatekeeper
+Blocking: #1 migrations-before-workers, #2 IPN shape/list paths + gateway own page id, #3 X-Forwarded-Host vs trustHosts, #4 guest shoppers get no Shopify upsell (needs sign-off)
+Suggestions: post-purchase iss/iat live check, stale refund claim in remainingOn, plugin key wall on verify, IDN store hosts, base_url fallback logging, card-update own page id, toml compliance deploy
+Re-review: required
+
+## 2026-09-27 — re-review (914d8b7) — VERDICT: PASS-WITH-SUGGESTIONS
+Reviewer: code-review-gatekeeper
+Clears: #1 bounded fail-closed wait in predeploy for worker/scheduler; #2 own-page binding (WooGatewayPageRegistry) + normaliseIpn; #3 trustHosts reverted, no dangling refs; #4 user chose to keep guests off the Shopify thank-you offer
+Suggestions (applied same day): nested data[0].transaction folded; several pages kept per order (older tab pays); an unsigned decline recorded only when PayPlus's own record carries a transaction code
+Verified separately: Shopify's post-purchase JWT spec states iss is always the literal "shopify"
+Re-review: not required

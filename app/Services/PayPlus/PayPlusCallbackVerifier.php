@@ -131,10 +131,24 @@ final class PayPlusCallbackVerifier
     {
         $data = $body['data'] ?? null;
         if (is_array($data) && array_is_list($data) && isset($data[0]) && is_array($data[0])) {
-            $body['data'] = ['transaction' => $data[0]];
+            $first = $data[0];
+            $body['data'] = ['transaction' => is_array($first['transaction'] ?? null) ? $first['transaction'] : $first];
         }
 
         return $body;
+    }
+
+    /** The page id a callback body names, or '' — for choosing among our own pages. */
+    public static function pageRequestUidIn(array $body): string
+    {
+        foreach (self::PAGE_REQUEST_PATHS as $path) {
+            $value = data_get($body, $path);
+            if (is_string($value) && $value !== '') {
+                return $value;
+            }
+        }
+
+        return '';
     }
 
     // === Wall 1: the signature ===

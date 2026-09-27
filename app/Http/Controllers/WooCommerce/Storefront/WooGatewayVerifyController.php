@@ -51,7 +51,7 @@ final class WooGatewayVerifyController extends WooStorefrontController
             expectedMoreInfo: WooGatewaySessionController::MORE_INFO_PREFIX.$orderId,
             signed: false,
             // The page WE opened for this order wins over the one the thank-you page names.
-            ownPageRequestUid: WooGatewayPageRegistry::pageFor($shop, $orderId),
+            ownPageRequestUid: WooGatewayPageRegistry::pageFor($shop, $orderId, $pageRequestUid),
         );
 
         if (! $confirmation->confirmed()) {

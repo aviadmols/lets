@@ -12,6 +12,7 @@ use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Contracts\PayPlusGatewayInterface;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\GatewayResult;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
+use App\Services\PayPlus\PayPlusCallbackVerifier;
 use App\Services\WooCommerce\Orders\WooGatewayPageRegistry;
 use App\Services\WooCommerce\WooCommerceShopProvisioner;
 use App\Support\Tenant;
@@ -548,6 +549,29 @@ final class WooCommerceGatewayTest extends TestCase
             && ($req->data()['payment_request_uid'] ?? null) === 'PRU-OURS');
         Http::assertNotSent(fn (HttpRequest $req): bool => str_contains($req->url(), '/PaymentPages/ipn')
             && ($req->data()['payment_request_uid'] ?? null) === 'PRU-SOMEONE-ELSES');
+    }
+
+    /** Paid in an OLDER tab: the named page is ours, so it is the one PayPlus is asked about. */
+    public function test_an_older_page_of_ours_is_the_one_asked_about(): void
+    {
+        [$shop] = $this->connectedShop('gw-two-tabs.example.com');
+        WooGatewayPageRegistry::remember($shop, '8095', 'PRU-FIRST');
+        WooGatewayPageRegistry::remember($shop, '8095', 'PRU-SECOND');
+
+        $this->assertSame('PRU-FIRST', WooGatewayPageRegistry::pageFor($shop, '8095', 'PRU-FIRST'));
+        $this->assertSame('PRU-SECOND', WooGatewayPageRegistry::pageFor($shop, '8095', 'PRU-NOT-OURS'));
+        $this->assertSame('PRU-SECOND', WooGatewayPageRegistry::pageFor($shop, '8095'));
+        $this->assertNull(WooGatewayPageRegistry::pageFor($shop, '9999'));
+    }
+
+    /** Both list shapes the IPN has been seen in fold into data.transaction. */
+    public function test_list_shaped_ipn_bodies_are_normalised(): void
+    {
+        $flat = PayPlusCallbackVerifier::normaliseIpn(['data' => [['status_code' => '000']]]);
+        $nested = PayPlusCallbackVerifier::normaliseIpn(['data' => [['transaction' => ['status_code' => '000']]]]);
+
+        $this->assertSame('000', data_get($flat, 'data.transaction.status_code'));
+        $this->assertSame('000', data_get($nested, 'data.transaction.status_code'));
     }
 
     /** A not-approved IPN must NOT mark paid or vault anything. */

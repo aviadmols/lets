@@ -7,6 +7,7 @@ use App\Domain\Billing\Ledger;
 use App\Models\PaymentLedger;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\LedgerStatus;
+use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusPageStatus;
 use App\Modules\PayPlusShopifyInstallments\Support\ResponseMasker;
 use App\Services\PayPlus\PayPlusCallbackVerifier;
 use App\Services\WooCommerce\Orders\WooGatewayFinalizer;
@@ -85,7 +86,11 @@ final class WooGatewayCallbackController
         // What PayPlus itself says about the page this body names. The amount wall
         // (vs. the WC order total) is the finalizer's: only it reads the order.
         // Ask PayPlus about the page WE opened for this order when we have it.
-        $ownPage = WooGatewayPageRegistry::pageFor($shop, substr($moreInfo, strlen(self::MORE_INFO_PREFIX)));
+        $ownPage = WooGatewayPageRegistry::pageFor(
+            $shop,
+            substr($moreInfo, strlen(self::MORE_INFO_PREFIX)),
+            PayPlusCallbackVerifier::pageRequestUidIn($payload),
+        );
         $confirmation = $verifier->confirm($shop, $payload, $moreInfo, $signed, $ownPage);
 
         if ($confirmation->unavailable()) {
@@ -101,7 +106,12 @@ final class WooGatewayCallbackController
 
             // A decline nobody can tie to a genuine page of ours writes no ledger row
             // and emails nobody — a forged "failed" is as unwelcome as a forged "paid".
-            if (! $signed && ! $confirmation->bound()) {
+            // Unsigned, it counts only when PayPlus's OWN record of our page carries a
+            // transaction code: a page still being paid has none, so a guessed order
+            // id cannot record a decline (or email the admin) mid-checkout.
+            $payplusSaysDeclined = $confirmation->bound()
+                && PayPlusPageStatus::statusCodeIn($confirmation->body) !== '';
+            if (! $signed && ! $payplusSaysDeclined) {
                 Log::warning('woocommerce.gateway.payment_failed_unconfirmed', [
                     'shop_id' => $shop->getKey(), 'order_id' => $failedOrderId, 'reason' => $confirmation->reason,
                 ]);
