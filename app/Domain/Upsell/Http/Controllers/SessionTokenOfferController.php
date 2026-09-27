@@ -5,6 +5,8 @@ namespace App\Domain\Upsell\Http\Controllers;
 use App\Domain\Upsell\OfferResponder;
 use App\Http\Controllers\Controller;
 use App\Models\Shop;
+use App\Services\Shopify\SessionTokenVerifier;
+use App\Services\Shopify\ShopifyApps;
 use App\Support\Tenant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -36,7 +38,14 @@ use Illuminate\Http\Request;
  */
 final class SessionTokenOfferController extends Controller
 {
-    public function __construct(private readonly OfferResponder $responder) {}
+    // === CONSTANTS ===
+    /** Only a Customer gid in `sub` names a shopper; a staff token's bare id never does. */
+    private const CUSTOMER_GID_PREFIX = 'gid://shopify/Customer/';
+
+    public function __construct(
+        private readonly OfferResponder $responder,
+        private readonly SessionTokenVerifier $verifier,
+    ) {}
 
     public function __invoke(Request $request): JsonResponse
     {
@@ -49,8 +58,36 @@ final class SessionTokenOfferController extends Controller
             return response()->json(['offer' => null, 'reason' => 'no_tenant'], 200);
         }
 
-        // The shared responder builds the context, resolves under the bound tenant
-        // (recording the impression), and shapes the offer JSON + signed URLs.
-        return response()->json($this->responder->respond($request, $shop), 200);
+        // The shared responder verifies the order is the token's shopper's, resolves
+        // under the bound tenant (recording the impression), and shapes the offer
+        // JSON + signed URLs.
+        return response()->json($this->responder->respond($request, $shop, $this->verifiedCustomerId($request, $shop)), 200);
+    }
+
+    /**
+     * The shopper the session token proves: its `sub`, which Shopify sets to the
+     * buyer's Customer gid when they are logged in. The `customer` query param is
+     * never consulted — any shopper's token would otherwise mint a charge link for
+     * anyone. Re-verified here (the middleware verified it but keeps no claims), and
+     * the token must be for the SAME shop the middleware bound.
+     */
+    private function verifiedCustomerId(Request $request, Shop $shop): string
+    {
+        // The same two places SessionTokenAuth reads the token from.
+        $jwt = (string) ($request->bearerToken() ?: $request->query('id_token', ''));
+        $verified = $jwt !== '' ? ShopifyApps::verifySessionToken($this->verifier, $jwt) : null;
+        if ($verified === null
+            || $this->verifier->shopDomainFromClaims($verified['claims']) !== (string) $shop->shopify_domain) {
+            return '';
+        }
+
+        $sub = (string) ($verified['claims']['sub'] ?? '');
+        if (! str_starts_with($sub, self::CUSTOMER_GID_PREFIX)) {
+            return '';
+        }
+
+        $id = substr($sub, strlen(self::CUSTOMER_GID_PREFIX));
+
+        return ctype_digit($id) ? $id : '';
     }
 }

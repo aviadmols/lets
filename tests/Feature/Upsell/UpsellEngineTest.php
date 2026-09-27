@@ -173,6 +173,7 @@ final class UpsellEngineTest extends TestCase
 
         Tenant::run($shop, function () use ($shop): void {
             [$flow, $offer, $method] = $this->makeFlowWithConsent($shop, customerRef: 'cust-42', base: 100.0);
+            $this->shown($flow, $offer, 'P-900');
 
             $req = new AcceptUpsellRequest(
                 flow: $flow,
@@ -231,6 +232,7 @@ final class UpsellEngineTest extends TestCase
             // Flow + saved token, and NO pre-existing consent row.
             [$flow, $offer] = $this->makeFlowAndOffer($shop, base: 50.0);
             $this->makeActiveToken($shop, 'cust-77');
+            $this->shown($flow, $offer, 'P-1');
             $this->assertSame(0, CustomerConsent::where('consent_context', CustomerConsent::CONTEXT_UPSELL)->count());
 
             $req = new AcceptUpsellRequest($flow, $offer, 'P-1', 'cust-77', 'x@y.com');
@@ -261,6 +263,7 @@ final class UpsellEngineTest extends TestCase
         Tenant::run($shop, function () use ($shop): void {
             // Flow, but NO vaulted payment method for this customer.
             [$flow, $offer] = $this->makeFlowAndOffer($shop, base: 50.0);
+            $this->shown($flow, $offer, 'P-1');
 
             $req = new AcceptUpsellRequest($flow, $offer, 'P-1', 'cust-none', 'x@y.com');
             $result = $this->chargeService()->accept($shop, $req);
@@ -279,6 +282,7 @@ final class UpsellEngineTest extends TestCase
 
         Tenant::run($shop, function () use ($shop): void {
             [$flow, $offer] = $this->makeFlowAndOffer($shop, base: 50.0);
+            $this->shown($flow, $offer, 'P-2');
 
             $req = new AcceptUpsellRequest($flow, $offer, 'P-2', 'cust-9');
             $result = $this->chargeService()->decline((int) $shop->getKey(), $req);
@@ -411,6 +415,21 @@ final class UpsellEngineTest extends TestCase
         ]);
 
         return [$flow, $offer, $method];
+    }
+
+    /**
+     * The resolver showed $offer on $parentOrderId — the impression every accept and
+     * decline is checked against (UpsellOfferEligibility).
+     */
+    private function shown(UpsellFlow $flow, UpsellFlowOffer $offer, string $parentOrderId): void
+    {
+        UpsellOfferEvent::record([
+            'flow_id' => $flow->id,
+            'offer_id' => $offer->id,
+            'event_type' => OfferEventType::IMPRESSION,
+            'parent_order_id' => $parentOrderId,
+            'currency' => 'ILS',
+        ]);
     }
 
     private function makeActiveToken(Shop $shop, string $customerRef): InstallmentPaymentMethod

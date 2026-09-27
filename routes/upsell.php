@@ -23,22 +23,25 @@ Route::middleware(['signed'])->prefix('upsell')->group(function () {
     // The thank-you widget: resolve + render the offer for a purchase.
     Route::get('/widget', ThankYouUpsellController::class)->name('upsell.widget');
 
-    // One-click action links rendered inside the widget.
-    Route::get('/accept', AcceptUpsellController::class)->name(UpsellSignedUrlService::ROUTE_ACCEPT);
+    // Accept: the signed link OPENS a confirm page (GET moves no money — a link
+    // scanner or prefetcher that follows it charges nothing); the button POSTs to
+    // the same signed URL with the session's CSRF token, and only that charges.
+    Route::get('/accept', [AcceptUpsellController::class, 'show'])->name(UpsellSignedUrlService::ROUTE_ACCEPT);
+    Route::post('/accept', [AcceptUpsellController::class, 'store'])->name(UpsellSignedUrlService::ROUTE_ACCEPT_STORE);
     Route::get('/decline', DeclineUpsellController::class)->name(UpsellSignedUrlService::ROUTE_DECLINE);
 });
 
 // JSON twin of /accept for the checkout/post-purchase EXTENSIONS (they consume
 // JSON, not an HTML view). Same signed-link auth, same UpsellChargeService, same
-// idempotency — only the response shape differs. GET + POST so an extension can
-// fetch() with either verb against the one signed URL.
+// idempotency — only the response shape differs. POST ONLY: a charge is never a
+// GET (the extension already POSTs; OPTIONS is the CORS preflight).
 //
 // extension.cors runs BEFORE `signed` (route-middleware order) so the CROSS-ORIGIN
 // OPTIONS preflight short-circuits in CORS — it carries no signature, so it must
 // not reach the `signed` gate. The real GET/POST still passes through `signed`
 // (the URL signature is the auth). The extension runs in a sandboxed worker
 // origin, not app.lets.co.il, hence the cross-origin handling.
-Route::match(['get', 'post', 'options'], 'upsell/accept-api', AcceptUpsellApiController::class)
+Route::match(['post', 'options'], 'upsell/accept-api', AcceptUpsellApiController::class)
     ->middleware(['extension.cors', 'signed'])
     ->name(UpsellSignedUrlService::ROUTE_ACCEPT_API);
 

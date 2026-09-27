@@ -81,6 +81,8 @@ final class PostPurchaseChangesetTest extends TestCase
     {
         $shop = $this->shopWithOffer();
         $offer = Tenant::run($shop, fn () => UpsellFlowOffer::query()->firstOrFail());
+        // The extension's lifecycle: /offer shows it (recording the impression) first.
+        $this->postJson(self::OFFER_ENDPOINT, ['token' => $this->token($shop->shopify_domain)])->assertOk();
 
         $response = $this->postJson(self::SIGN_ENDPOINT, [
             'token' => $this->token($shop->shopify_domain),
@@ -123,7 +125,100 @@ final class PostPurchaseChangesetTest extends TestCase
         ])->assertNotFound()->assertJson(['ok' => false]);
     }
 
+    /**
+     * ELIGIBILITY. The shopper holds the token and may replay /sign with any offer id;
+     * only the offer /offer actually showed for THIS checkout is signed. A deeper
+     * discount in another flow, a paused flow, or an offer never shown is refused.
+     */
+    public function test_only_the_offer_shown_for_this_checkout_can_be_signed(): void
+    {
+        $shop = $this->shopWithOffer();
+        $shown = Tenant::run($shop, fn () => UpsellFlowOffer::query()->firstOrFail());
+
+        // A 90%-off offer in a lower-priority flow: it matches, but is never the one shown.
+        $vip = Tenant::run($shop, fn (): UpsellFlowOffer => $this->flowWithOffer($shop, priority: 9, discount: 90));
+        // The same deep discount on an INACTIVE (paused) flow.
+        $paused = Tenant::run($shop, fn (): UpsellFlowOffer => $this->flowWithOffer($shop, priority: 0, discount: 90, status: UpsellFlowStatus::INACTIVE));
+
+        $token = $this->token($shop->shopify_domain);
+
+        // Nothing shown yet: even the right offer is not signed.
+        $this->postJson(self::SIGN_ENDPOINT, ['token' => $token, 'offer_id' => $shown->getKey()])
+            ->assertStatus(422)->assertJsonPath('reason', 'offer_not_eligible');
+
+        $this->postJson(self::OFFER_ENDPOINT, ['token' => $token])->assertOk()->assertJsonPath('offer.offer_id', $shown->getKey());
+
+        foreach ([$vip, $paused] as $other) {
+            $this->postJson(self::SIGN_ENDPOINT, ['token' => $token, 'offer_id' => $other->getKey()])
+                ->assertStatus(422)->assertJsonPath('reason', 'offer_not_eligible');
+        }
+
+        // A DIFFERENT checkout cannot borrow this one's impression.
+        $this->postJson(self::SIGN_ENDPOINT, [
+            'token' => $this->token($shop->shopify_domain, override: [
+                'sub' => 'ref-other',
+                'input_data' => ['shop' => ['domain' => $shop->shopify_domain], 'initialPurchase' => ['referenceId' => 'ref-other']],
+            ]),
+            'offer_id' => $shown->getKey(),
+        ])->assertStatus(422);
+
+        $this->postJson(self::SIGN_ENDPOINT, ['token' => $token, 'offer_id' => $shown->getKey()])
+            ->assertOk()->assertJsonPath('price', 75);
+    }
+
+    /**
+     * The verifier accepts only Shopify's POST-PURCHASE token: issuer pinned, audience
+     * (when present) this app, the purchase present and matching `sub`, and an expiry —
+     * `exp`, or a bounded age from `iat` (Shopify's own tokens carry no `exp`).
+     */
+    public function test_only_a_fresh_post_purchase_shaped_token_is_accepted(): void
+    {
+        $shop = $this->shopWithOffer();
+        $domain = $shop->shopify_domain;
+
+        // Shopify's real shape: iat, no exp — accepted.
+        $this->postJson(self::OFFER_ENDPOINT, ['token' => $this->token($domain, drop: ['exp'])])->assertOk();
+
+        $refused = [
+            'no expiry at all' => $this->token($domain, drop: ['exp', 'iat']),
+            'an old exp-less token' => $this->token($domain, override: ['iat' => time() - 2 * 86400], drop: ['exp']),
+            'an expired token' => $this->token($domain, override: ['exp' => time() - 3600]),
+            'a session token issuer' => $this->token($domain, override: ['iss' => 'https://'.$domain.'/admin']),
+            'another app\'s audience' => $this->token($domain, override: ['aud' => 'another_api_key']),
+            'sub disagreeing with the purchase' => $this->token($domain, override: ['sub' => 'ref-else']),
+            'no purchase inside' => $this->token($domain, override: ['input_data' => ['shop' => ['domain' => $domain]]]),
+        ];
+
+        foreach ($refused as $why => $token) {
+            $this->postJson(self::OFFER_ENDPOINT, ['token' => $token])->assertUnauthorized();
+        }
+
+        // An audience naming THIS app is fine.
+        $this->postJson(self::OFFER_ENDPOINT, ['token' => $this->token($domain, override: ['aud' => self::API_KEY])])->assertOk();
+    }
+
     // === Helpers ===
+
+    private function flowWithOffer(Shop $shop, int $priority, int $discount, UpsellFlowStatus $status = UpsellFlowStatus::ACTIVE): UpsellFlowOffer
+    {
+        $flow = new UpsellFlow(['name' => 'Other flow', 'priority' => $priority]);
+        $flow->shop_id = (int) $shop->getKey();
+        $flow->forceFill(['status' => $status->value])->save();
+
+        UpsellFlowTrigger::create(['flow_id' => (int) $flow->getKey(), 'match_type' => UpsellFlowTrigger::MATCH_ANY_PRODUCT]);
+
+        return UpsellFlowOffer::create([
+            'flow_id' => (int) $flow->getKey(),
+            'offer_title' => 'VIP',
+            'offer_product_gid' => 'gid://shopify/Product/778',
+            'offer_variant_gid' => 'gid://shopify/ProductVariant/4343',
+            'base_price' => 100,
+            'discount_type' => UpsellFlowOffer::DISCOUNT_PERCENT,
+            'discount_value' => $discount,
+            'currency' => 'ILS',
+            'position' => 0,
+        ]);
+    }
 
     private function shopWithOffer(): Shop
     {
@@ -165,7 +260,11 @@ final class PostPurchaseChangesetTest extends TestCase
     }
 
     /** A REAL post-purchase token in Shopify's shape, signed like Shopify signs it. */
-    private function token(string $domain, ?string $secret = null): string
+    /**
+     * @param  array<string, mixed>  $override  top-level claims to replace or add
+     * @param  list<string>  $drop  top-level claims to leave out
+     */
+    private function token(string $domain, ?string $secret = null, array $override = [], array $drop = []): string
     {
         $encode = static fn (array $part): string => rtrim(strtr(
             base64_encode((string) json_encode($part)),
@@ -174,8 +273,9 @@ final class PostPurchaseChangesetTest extends TestCase
         ), '=');
 
         $header = $encode(['alg' => 'HS256', 'typ' => 'JWT']);
-        $payload = $encode([
+        $payload = $encode(array_diff_key(array_merge([
             'iss' => 'shopify',
+            'sub' => self::REFERENCE,
             'iat' => time(),
             'exp' => time() + 600,
             'input_data' => [
@@ -187,7 +287,7 @@ final class PostPurchaseChangesetTest extends TestCase
                     'totalPriceSet' => ['presentmentMoney' => ['amount' => '250.00', 'currencyCode' => 'ILS']],
                 ],
             ],
-        ]);
+        ], $override), array_flip($drop)));
         $signature = rtrim(strtr(base64_encode(
             hash_hmac('sha256', $header.'.'.$payload, $secret ?? self::API_SECRET, true)
         ), '+/', '-_'), '=');

@@ -33,12 +33,15 @@ use App\Services\Shopify\ShopifyToken;
  */
 final class SessionTokenOfferEndpointTest extends TestCase
 {
+    use FakesShopifyParentOrder;
     use RefreshDatabase;
 
     // === CONSTANTS ===
     private const API_KEY = 'upsell_offer_api_key';
     private const API_SECRET = 'upsell_offer_api_secret';
     private const ENDPOINT = '/upsell/offer';
+    private const CUSTOMER_ID = '501';
+    private const CUSTOMER_GID = 'gid://shopify/Customer/501';
 
     protected function setUp(): void
     {
@@ -51,6 +54,7 @@ final class SessionTokenOfferEndpointTest extends TestCase
 
     protected function tearDown(): void
     {
+        $this->clearShopifyParentOrderFake();
         Tenant::clear();
         parent::tearDown();
     }
@@ -59,10 +63,10 @@ final class SessionTokenOfferEndpointTest extends TestCase
     {
         $shop = $this->makeInstalledShop('alpha.myshopify.com');
         $offer = $this->makeMatchingFlowWithDiscount($shop, base: 100.0, percent: 10);
+        $this->fakeShopifyParentOrder('100', self::CUSTOMER_ID);
 
         $response = $this->getOfferWithToken($shop->shopify_domain, [
-            'parent_order' => 'P-100',
-            'customer' => 'cust-1',
+            'parent_order' => 'gid://shopify/OrderIdentity/100',
             'subtotal' => '250',
             'products' => 'gid://shopify/Product/1',
         ]);
@@ -85,6 +89,61 @@ final class SessionTokenOfferEndpointTest extends TestCase
             ->where('shop_id', $shop->id)
             ->where('event_type', OfferEventType::IMPRESSION->value)
             ->count());
+    }
+
+    /**
+     * IDENTITY LAW. The session token proves the SHOP for anyone who can open a
+     * checkout; the shopper is its `sub`. A `customer` query param is ignored, and
+     * the accept URL is signed only for the order Shopify says is the sub's.
+     */
+    public function test_the_accept_url_is_signed_for_the_tokens_shopper_never_the_query_customer(): void
+    {
+        $shop = $this->makeInstalledShop('alpha.myshopify.com');
+        $this->makeMatchingFlowWithDiscount($shop, base: 100.0, percent: 0);
+        $this->fakeShopifyParentOrder('100', self::CUSTOMER_ID);
+
+        $response = $this->getOfferWithToken($shop->shopify_domain, [
+            'parent_order' => '100',
+            'customer' => '17', // another shopper's id — must be ignored
+            'products' => 'gid://shopify/Product/1',
+        ]);
+
+        $response->assertOk();
+        parse_str((string) parse_url((string) $response->json('accept_api_url'), PHP_URL_QUERY), $signed);
+        $this->assertSame(self::CUSTOMER_ID, $signed['customer']);
+        $this->assertSame('100', $signed['parent_order']);
+    }
+
+    public function test_a_token_with_no_customer_or_a_staff_id_gets_no_offer(): void
+    {
+        $shop = $this->makeInstalledShop('alpha.myshopify.com');
+        $this->makeMatchingFlowWithDiscount($shop, base: 100.0, percent: 0);
+        $this->fakeShopifyParentOrder('100', self::CUSTOMER_ID);
+        $params = ['parent_order' => '100', 'customer' => self::CUSTOMER_ID, 'products' => 'gid://shopify/Product/1'];
+
+        // A guest's token (no sub), and an admin token (a bare staff user id).
+        foreach ([null, '501'] as $sub) {
+            $this->getOfferWithToken($shop->shopify_domain, $params, $sub)
+                ->assertOk()
+                ->assertJsonPath('offer', null)
+                ->assertJsonPath('reason', 'no_verified_customer');
+        }
+
+        $this->assertSame(0, UpsellOfferEvent::withoutGlobalScopes()->count());
+    }
+
+    public function test_an_order_belonging_to_another_customer_gets_no_offer(): void
+    {
+        $shop = $this->makeInstalledShop('alpha.myshopify.com');
+        $this->makeMatchingFlowWithDiscount($shop, base: 100.0, percent: 0);
+        $this->fakeShopifyParentOrder('100', '17');
+
+        $this->getOfferWithToken($shop->shopify_domain, ['parent_order' => '100', 'products' => 'gid://shopify/Product/1'])
+            ->assertOk()
+            ->assertJsonPath('offer', null)
+            ->assertJsonPath('reason', 'unverified_order');
+
+        $this->assertSame(0, UpsellOfferEvent::withoutGlobalScopes()->count());
     }
 
     public function test_a_shop_without_payplus_is_offered_nothing_on_this_rail(): void
@@ -118,10 +177,10 @@ final class SessionTokenOfferEndpointTest extends TestCase
         $shop = $this->makeInstalledShop('alpha.myshopify.com');
         // A flow that only matches Product/999 — the purchase is Product/1.
         $this->makeMatchingFlowWithDiscount($shop, base: 50.0, percent: 0, productGid: 'gid://shopify/Product/999');
+        $this->fakeShopifyParentOrder('1', self::CUSTOMER_ID);
 
         $response = $this->getOfferWithToken($shop->shopify_domain, [
-            'parent_order' => 'P-1',
-            'customer' => 'c',
+            'parent_order' => '1',
             'subtotal' => '10',
             'products' => 'gid://shopify/Product/1',
         ]);
@@ -169,9 +228,9 @@ final class SessionTokenOfferEndpointTest extends TestCase
         Tenant::clear();
 
         // Shop A's token requests the SAME purchased product — gets nothing.
+        $this->fakeShopifyParentOrder('1', self::CUSTOMER_ID);
         $response = $this->getOfferWithToken($shopA->shopify_domain, [
-            'parent_order' => 'P-1',
-            'customer' => 'c',
+            'parent_order' => '1',
             'subtotal' => '500',
             'products' => 'gid://shopify/Product/1',
         ]);
@@ -208,26 +267,27 @@ final class SessionTokenOfferEndpointTest extends TestCase
      *
      * @param  array<string, string>  $params
      */
-    private function getOfferWithToken(string $shopDomain, array $params): \Illuminate\Testing\TestResponse
+    private function getOfferWithToken(string $shopDomain, array $params, ?string $sub = self::CUSTOMER_GID): \Illuminate\Testing\TestResponse
     {
-        $jwt = $this->makeJwt($shopDomain, self::API_KEY, self::API_SECRET);
+        $jwt = $this->makeJwt($shopDomain, self::API_KEY, self::API_SECRET, sub: $sub);
 
         return $this->withToken($jwt)->getJson(self::ENDPOINT.'?'.http_build_query($params));
     }
 
-    private function makeJwt(string $shop, string $aud, string $secret, ?int $exp = null): string
+    private function makeJwt(string $shop, string $aud, string $secret, ?int $exp = null, ?string $sub = self::CUSTOMER_GID): string
     {
         $now = time();
         $header = $this->b64(json_encode(['alg' => 'HS256', 'typ' => 'JWT']));
-        $payload = $this->b64(json_encode([
+        $payload = $this->b64(json_encode(array_filter([
             'iss' => 'https://'.$shop.'/admin',
             'dest' => 'https://'.$shop.'/admin',
             'aud' => $aud,
-            'sub' => '123',
+            // A checkout extension's token names the logged-in buyer here.
+            'sub' => $sub,
             'exp' => $exp ?? ($now + 60),
             'nbf' => $now - 5,
             'iat' => $now,
-        ]));
+        ], static fn ($v): bool => $v !== null)));
         $signature = $this->b64(hash_hmac('sha256', $header.'.'.$payload, $secret, true));
 
         return $header.'.'.$payload.'.'.$signature;

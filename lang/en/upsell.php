@@ -47,6 +47,10 @@ return [
     'failed_body' => 'Your saved payment method could not be charged. Your original order is unaffected.',
     'no_consent_title' => 'We could not add that',
     'no_consent_body' => 'We do not have permission to charge your saved payment method for this offer. Your original order is unaffected.',
+    'in_progress_title' => 'Already on its way',
+    'in_progress_body' => 'We are still adding this to your order. Please do not press again — you will only be charged once.',
+    'not_eligible_title' => 'This offer is not available',
+    'not_eligible_body' => 'This offer is no longer available for your order. Nothing was charged.',
     'done' => 'You are all set.',
 
     // Renderer state-machine labels (shared card).

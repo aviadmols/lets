@@ -18,13 +18,27 @@ use App\Services\Shopify\ShopifyApps;
  * token could come from either, so each configured secret is tried; the one that
  * verifies also identifies the app whose secret must later SIGN the changeset.
  *
- * Fail closed: any bad segment, bad signature, or expired token returns null.
+ * Fail closed: any bad segment, bad signature, wrong issuer/audience, missing
+ * purchase, or expired (or never-expiring) token returns null.
  */
 final class PostPurchaseTokenVerifier
 {
     // === CONSTANTS ===
     private const ALG = 'HS256';
     private const LEEWAY_SECONDS = 30;
+
+    /** Shopify's post-purchase token names its issuer literally (JWT specification). */
+    private const ISSUER = 'shopify';
+
+    /**
+     * How long an `exp`-less token (Shopify's own never carry one) stays usable after
+     * its `iat`. The post-purchase page is a moment right after checkout; a day is
+     * far beyond any real shopper and still ends a captured token.
+     */
+    private const MAX_TOKEN_AGE_SECONDS = 86400;
+
+    /** An `iat` above this is in milliseconds, not seconds. */
+    private const MILLISECOND_EPOCH_THRESHOLD = 100000000000;
 
     /**
      * @return array{claims: array<string, mixed>, app_key: string}|null
@@ -58,11 +72,8 @@ final class PostPurchaseTokenVerifier
                 continue;
             }
 
-            $now = time();
-            if (isset($claims['exp']) && $now >= ((int) $claims['exp'] + self::LEEWAY_SECONDS)) {
-                return null;
-            }
-            if (isset($claims['nbf']) && $now < ((int) $claims['nbf'] - self::LEEWAY_SECONDS)) {
+            if (! $this->isPostPurchaseToken($claims, ShopifyApps::credentials($appKey)['api_key'])
+                || ! $this->isFresh($claims)) {
                 return null;
             }
 
@@ -70,6 +81,72 @@ final class PostPurchaseTokenVerifier
         }
 
         return null;
+    }
+
+    /**
+     * Is this the token Shopify hands a POST-PURCHASE extension — and not some other
+     * HS256 token the same app secret signs (an App Bridge or customer-account session
+     * token)? Shopify's spec: `iss` is the literal "shopify", `sub` is the purchase's
+     * reference id, `aud` is unused. So: the issuer is pinned; an audience, if one is
+     * present, must be THIS app; and the purchase the rest of the app reads must be
+     * there and agree with `sub`.
+     *
+     * @param  array<string, mixed>  $claims
+     */
+    private function isPostPurchaseToken(array $claims, string $apiKey): bool
+    {
+        if (($claims['iss'] ?? null) !== self::ISSUER) {
+            return false;
+        }
+
+        if (array_key_exists('aud', $claims)) {
+            $aud = $claims['aud'];
+            $audiences = is_array($aud) ? $aud : [$aud];
+            if ($apiKey === '' || ! in_array($apiKey, array_map('strval', $audiences), true)) {
+                return false;
+            }
+        }
+
+        $referenceId = $this->referenceId($claims);
+        if ($referenceId === '') {
+            return false;
+        }
+
+        return ! isset($claims['sub']) || (string) $claims['sub'] === $referenceId;
+    }
+
+    /**
+     * Expiry is REQUIRED, not optional. Shopify's post-purchase token carries no
+     * `exp` (only `iat`), so a token without an `exp` is held to a maximum age from
+     * its `iat` instead — and a token with neither never verifies. Without this a
+     * captured token would be good forever.
+     *
+     * @param  array<string, mixed>  $claims
+     */
+    private function isFresh(array $claims): bool
+    {
+        $now = time();
+
+        if (isset($claims['nbf']) && $now < ((int) $claims['nbf'] - self::LEEWAY_SECONDS)) {
+            return false;
+        }
+
+        if (isset($claims['exp'])) {
+            return $now < ((int) $claims['exp'] + self::LEEWAY_SECONDS);
+        }
+
+        if (! isset($claims['iat']) || ! is_numeric($claims['iat'])) {
+            return false;
+        }
+
+        $issuedAt = (int) $claims['iat'];
+        // Partner-issued examples use milliseconds (Date.now()); Shopify's use seconds.
+        if ($issuedAt > self::MILLISECOND_EPOCH_THRESHOLD) {
+            $issuedAt = intdiv($issuedAt, 1000);
+        }
+
+        return $issuedAt <= $now + self::LEEWAY_SECONDS
+            && $now - $issuedAt <= self::MAX_TOKEN_AGE_SECONDS;
     }
 
     /**

@@ -120,7 +120,13 @@
     text-decoration: none;
     cursor: pointer;
     border: 1px solid transparent;
+    font-family: inherit;
     transition: filter .15s ease, opacity .15s ease;
+}
+
+/* The accept button posts a form (a charge is never a link a prefetcher can follow). */
+.ppu__form {
+    margin: 0;
 }
 
 .ppu__btn--accept {

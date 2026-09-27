@@ -30,6 +30,12 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  *   - the charge is idempotent on the deterministic upsell ledger key, so a
  *     double-tap "Accept" in the extension collapses to exactly ONE charge.
  *
+ * POST only (the route refuses GET): a charge must never be a URL that a link
+ * scanner, a prefetcher or an <img> can fire. There is no cookie on this surface
+ * (a sandboxed extension worker, CORS `*`), so there is no ambient credential to
+ * forge — the signed URL is a capability, minted only for the shopper and order
+ * the offer endpoint verified, and the in-flight wall makes a replay charge once.
+ *
  * This controller adds NO new charge logic; the engine is untouched.
  */
 final class AcceptUpsellApiController extends Controller
@@ -54,7 +60,6 @@ final class AcceptUpsellApiController extends Controller
                 offer: $offer,
                 parentOrderId: (string) $request->query('parent_order', ''),
                 customerRef: (string) $request->query('customer', ''),
-                customerEmail: $request->query('email') !== null ? (string) $request->query('email') : null,
             );
 
             $result = $this->charges->accept($shop, $req);
@@ -124,6 +129,8 @@ final class AcceptUpsellApiController extends Controller
             UpsellChargeResult::RESULT_CHARGED,
             UpsellChargeResult::RESULT_ALREADY => 200,
             UpsellChargeResult::RESULT_EXPIRED => 410,
+            UpsellChargeResult::RESULT_IN_FLIGHT => 409,
+            UpsellChargeResult::RESULT_NOT_ELIGIBLE,
             UpsellChargeResult::RESULT_NO_CONSENT,
             UpsellChargeResult::RESULT_NO_METHOD,
             UpsellChargeResult::RESULT_INVALID_SELECTION => 422,
