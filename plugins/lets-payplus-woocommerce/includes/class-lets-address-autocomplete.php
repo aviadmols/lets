@@ -335,7 +335,7 @@ function lets_payplus_address_report_update($user_id, $load_address)
     // in the shopper's face. The signed helper already swallows transport noise.
     lets_payplus_signed_post('/api/woocommerce/account/address-updated', array(
         'customer_ref' => (string) $user_id,
-        'email'        => (string) $user->user_email,
+        'email'        => lets_payplus_account_asserted_email($user),
         'name'         => (string) $user->display_name,
         'type'         => sanitize_key((string) $load_address),
     ));

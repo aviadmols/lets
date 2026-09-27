@@ -113,7 +113,8 @@ function lets_payplus_rest_iframe_error(WP_REST_Request $request)
 
     if (function_exists('wc_get_order')) {
         $order = wc_get_order($order_id);
-        if (! $order || ($order_key !== '' && ! hash_equals((string) $order->get_order_key(), $order_key))) {
+        // Same wall as the thank-you routes: no key, no order.
+        if (! lets_payplus_order_key_matches($order, $order_key)) {
             return new WP_REST_Response(array('error' => 'invalid_order'), 422);
         }
     }

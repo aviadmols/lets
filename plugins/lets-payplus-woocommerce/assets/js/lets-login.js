@@ -369,6 +369,15 @@
                 release();
 
                 if (!body || !body.ok) {
+                    // The handset is proven but is not the one saved on the
+                    // account it points at: the email code is the way in.
+                    if (body && body.reason === 'use_email') {
+                        stopCountdown();
+                        sayUseEmail();
+
+                        return;
+                    }
+
                     say((body && body.reason) || 'rejected');
 
                     return;
@@ -529,6 +538,38 @@
                 show('dest');
                 if (dest && canSwitch) { dest.value = email; }
                 if (dest) { dest.focus(); }
+            });
+
+            node.appendChild(link);
+        }
+
+        /**
+         * "Use the email code instead." Back to step one on the email channel,
+         * with the field EMPTY — the shopper types their own address; the panel
+         * never learns (or shows) which address the phone was linked to.
+         */
+        function sayUseEmail() {
+            var node = messageNode();
+            if (!node) { return; }
+
+            node.textContent = S.use_email || S.rejected || '';
+            node.setAttribute('data-tone', 'bad');
+
+            var canSwitch = root.querySelector('[data-lets-channel="email"]');
+            if (!canSwitch) { return; }
+
+            var link = document.createElement('button');
+            link.type = 'button';
+            link.className = 'la-auth__link';
+            link.textContent = S.use_email_cta || '';
+            link.addEventListener('click', function () {
+                if (codeInput) { codeInput.value = ''; }
+                selectChannel('email');
+                show('dest');
+                if (dest) {
+                    dest.value = '';
+                    dest.focus();
+                }
             });
 
             node.appendChild(link);
