@@ -15,6 +15,7 @@ plugins/**/dist
 .env
 .env.backup
 .env.production
+.env.local
 .phpactor.json
 auth.json
 npm-debug.log
