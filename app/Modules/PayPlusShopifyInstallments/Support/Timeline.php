@@ -66,6 +66,16 @@ final class Timeline
     /** No customer_consents row for (shop, customer, context) — charge skipped, left for admin. */
     public const KIND_CONSENT_MISSING = 'consent_missing';
 
+    /**
+     * A charge refused because it exceeds what the customer consented to — the
+     * amount, or a tighter cadence (ConsentCeiling). details: {reason, amount,
+     * ceiling, allowed, type, key}. Needs a new consent or a merchant approval.
+     */
+    public const KIND_CHARGE_ABOVE_CONSENT = 'charge_above_consent';
+
+    /** A merchant approved charging above the customer's consent. details: {from, to, reason}. */
+    public const KIND_CONSENT_OVERRIDE_APPROVED = 'consent_override_approved';
+
     /** The shop's live-charging switch is off — the due charge was skipped, not failed. */
     public const KIND_CHARGING_PAUSED = 'charging_paused';
 

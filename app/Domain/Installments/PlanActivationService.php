@@ -2,6 +2,7 @@
 
 namespace App\Domain\Installments;
 
+use App\Domain\Billing\ConsentCeiling;
 use App\Domain\Billing\IdempotencyKey;
 use App\Domain\Billing\Ledger;
 use App\Domain\Installments\Contracts\DepositTokenResolver;
@@ -349,7 +350,7 @@ final class PlanActivationService
                         (string) (data_get($plan->meta, DepositPlanService::META_DEPOSIT_AMOUNT) ?? ''),
                     ),
                 'billing_frequency_description' => (string) ($plan->billing_frequency?->value ?? ''),
-            ],
+            ] + ConsentCeiling::termsFor($plan),
         );
     }
 

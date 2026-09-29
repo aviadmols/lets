@@ -5,6 +5,7 @@ namespace App\Filament\Resources\CampaignResource\Pages;
 use App\Domain\Campaigns\Email\CampaignBodyNormalizer;
 use App\Domain\Campaigns\Email\CampaignDuplicator;
 use App\Domain\Campaigns\Email\CampaignPreview;
+use App\Domain\Campaigns\Email\CampaignSendQuota;
 use App\Domain\Campaigns\Email\EmailCampaignAudience;
 use App\Domain\Campaigns\Email\EmailCampaignSender;
 use App\Domain\Campaigns\Email\Jobs\StartCampaignJob;
@@ -321,12 +322,33 @@ class EditCampaign extends EditRecord
             return;
         }
 
+        // The shared relay's daily cap (CampaignSendQuota), said at the click for
+        // the same reason: nothing is started when today's allowance is gone,
+        // and when some is left the merchant is told how much before it runs out.
+        $remaining = app(CampaignSendQuota::class)->remainingToday($shop);
+        $cap = CampaignSendQuota::dailyCap();
+
+        if ($remaining === 0) {
+            Notification::make()
+                ->warning()
+                ->title(__(CampaignResource::LANG.'.form.daily_limit_title'))
+                ->body(__(CampaignResource::LANG.'.form.daily_limit_body', ['cap' => number_format($cap)]))
+                ->persistent()
+                ->send();
+
+            return;
+        }
+
         StartCampaignJob::dispatch((int) $shop->getKey(), (int) $this->record->getKey());
 
         Notification::make()
             ->success()
             ->title(__(CampaignResource::LANG.'.form.send_started'))
-            ->body(__(CampaignResource::LANG.'.form.send_started_body'))
+            ->body(__(CampaignResource::LANG.'.form.send_started_body')
+                .($remaining === null ? '' : ' '.__(CampaignResource::LANG.'.form.daily_limit_note', [
+                    'remaining' => number_format($remaining),
+                    'cap' => number_format($cap),
+                ])))
             ->send();
 
         $this->refreshFormData(['status']);

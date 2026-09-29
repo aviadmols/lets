@@ -292,6 +292,7 @@ return [
             'already_valid' => 'The saved card is valid at PayPlus, so the charge is failing for another reason — most likely the card was saved on a different PayPlus terminal.',
             'not_found' => 'PayPlus holds no card we can safely attach to this member.',
             'ambiguous' => 'PayPlus knows this customer but holds more than one card and we cannot tell which is theirs. Ask them to update their card instead.',
+            'needs_confirmation' => 'PayPlus holds a card for this email that we cannot prove is this customer’s own (or their card was reported stolen or lost), so nothing was attached or charged. If you are sure it is theirs, use “Choose a saved card”; otherwise send them a card-update link.',
             'no_last_four' => 'We hold no last-4 digits for this member, so a card at PayPlus cannot be matched to them safely.',
             'not_connected' => 'This store has no PayPlus connection configured.',
             'recurring_live' => 'Warning: PayPlus is still billing this member on its own schedule. Cancel it there before charging, or they will be billed twice.',
@@ -311,6 +312,18 @@ return [
             'repeat_body_in_flight' => 'A charge of :last was sent for this subscription on :when and its outcome is not known yet. Charging again now may charge the customer twice. Check PayPlus before you approve.',
             'repeat_confirm' => 'I approve charging this subscription again today',
             'repeat_blocked' => 'Nothing was charged: this subscription was already charged in the last 24 hours. To charge again, open the subscription and approve a second charge explicitly.',
+            'above_consent' => 'Nothing was charged: this amount (or billing frequency) is above what the customer agreed to. Ask the customer to accept the new terms, or approve the charge on the subscription.',
+        ],
+
+        // A charge above what the customer consented to (ConsentCeiling).
+        'approve_above_consent' => [
+            'label' => 'Approve new amount',
+            'heading' => 'Charge above what the customer agreed to?',
+            'body' => 'The customer agreed to :agreed per charge. The next charge is :next. Approving lets this subscription be charged at its current terms without a new customer consent. Your approval, with your name and reason, is kept on the subscription.',
+            'reason' => 'Why is this charge approved?',
+            'confirm' => 'I confirm the customer was told about this amount',
+            'submit' => 'Approve',
+            'done' => 'Approved. The next charge can go ahead.',
         ],
 
         /*

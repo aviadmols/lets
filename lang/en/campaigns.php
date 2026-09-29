@@ -129,6 +129,7 @@ return [
         'campaign_cancelled' => 'The campaign was cancelled',
         'shop_not_live' => 'The store was disconnected',
         'emails_off' => 'Email is switched off for this store',
+        'daily_limit' => 'Daily sending limit reached — use “Retry the failures” tomorrow',
     ],
 
     'rail' => [
@@ -213,6 +214,9 @@ return [
         'links_revoked' => ':count sign-in links were revoked.',
         'send_started' => 'Sending has started.',
         'send_started_body' => 'The audience is being built in the background. The counts on this page fill in as it goes.',
+        'daily_limit_title' => 'Today’s sending limit is used up',
+        'daily_limit_body' => 'Your store sends through the shared LETS mail service, which allows :cap campaign emails per store per day. Nothing was sent now. Try again tomorrow, or connect your own mail server in Settings → Email to send without this limit.',
+        'daily_limit_note' => 'Your store sends through the shared LETS mail service: :remaining of :cap campaign emails are left today. Anyone past that is marked “Daily sending limit reached” and can be sent tomorrow with “Retry the failures” — or connect your own mail server in Settings → Email.',
         'duplicated' => 'Copied to “:name”.',
         'duplicate_failed' => 'The campaign could not be copied.',
     ],

@@ -114,11 +114,22 @@ final class EventPresenter
         // A migrated member's token was found at PayPlus and swapped in — the
         // card they are billed on changed, which is worth a line of its own.
         'payment_method_token_recovered' => ['success', 'timeline.kind.payment_method_token_recovered'],
+        // WARNING: a card was found and held back — a decision waiting for the merchant.
+        'payment_method_token_needs_confirmation' => ['warning', 'timeline.kind.payment_method_token_needs_confirmation'],
         'card_update_started' => ['info', 'timeline.kind.card_update_started'],
         'card_update_link_sent' => ['info', 'timeline.kind.card_update_link_sent'],
         // WARNING: a charge stood down because this subscription was already
         // charged today — the wall that stops a double charge, made visible.
         'charge_repeat_blocked' => ['warning', 'timeline.kind.charge_repeat_blocked'],
+        // WARNING: a charge stood down because it is above what the customer
+        // agreed to (ConsentCeiling) — the merchant must act for it to run.
+        'charge_above_consent' => ['warning', 'timeline.kind.charge_above_consent'],
+        // WARNING: the merchant chose to charge above the consent — it must stand
+        // out in the scan someone runs after a dispute.
+        'consent_override_approved' => ['warning', 'timeline.kind.consent_override_approved'],
+        // FAILURE: a store asked for a tax document and none was issued — the
+        // merchant must see it (a copy of the site, or a total LETS never collected).
+        'invoicing_report_refused' => ['failure', 'timeline.kind.invoicing_report_refused'],
         // WARNING, not success: a second charge in one day, on purpose. It must
         // stand out in exactly the scan someone runs when a customer says
         // "you charged me twice".

@@ -195,6 +195,23 @@ ONLY while no shop can be determined yet (the first embedded load, before the
 tenant binds) — a known shop never gets the wildcard. Storefront, account and
 payment surfaces are left to their own per-route policy.
 
+### 5.4 The WooCommerce site is inside the money perimeter
+
+The plugin's connection key + HMAC secret live in the WordPress options table.
+Whoever holds them — any WP administrator or shop manager, a compromised plugin
+on that site, or a staging/backup COPY of it — can sign requests LETS acts on,
+including `RefundMirrorController` (a store-side refund that LETS mirrors into a
+REAL PayPlus refund) and invoicing reports (`InvoicingController`). This is by
+design — the store is where the merchant works — so the WordPress site's own
+security (admin accounts, 2FA, plugin hygiene, who can restore a backup) is part
+of LETS's money perimeter. Walls on our side: refunds are capped at what was
+charged and reserved under a row lock (RefundService), invoicing reports must
+come from the connected site (and, once that site has reported itself, must say
+so), and a reported total may not exceed what LETS recorded as collected. A
+merchant who suspects the site is compromised should have a new connection
+token minted (WooCommerceShopProvisioner re-mints the key + secret, which
+invalidates the previous pair) and paste it into the real site only.
+
 ## 6. Security incident response policy
 
 **Scope**: any suspected unauthorized access, data leak, credential exposure or

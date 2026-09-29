@@ -18,6 +18,13 @@ return [
     // over minutes rather than fired at queue speed into one SMTP relay.
     'emails_per_second' => (int) env('CAMPAIGN_EMAILS_PER_SECOND', 2),
 
+    // Campaign emails ONE shop may send per day through the platform's shared
+    // relay (a shop on its own SMTP is not capped). Unset → CampaignSendQuota's
+    // default. Protects the one sending reputation every tenant shares.
+    'shared_relay_daily_cap' => env('CAMPAIGN_SHARED_RELAY_DAILY_CAP') !== null
+        ? (int) env('CAMPAIGN_SHARED_RELAY_DAILY_CAP')
+        : null,
+
     // Spent/expired tokens are kept this long after expiry so an abuse report
     // can still be answered, then pruned nightly.
     'token_prune_days' => (int) env('CAMPAIGN_TOKEN_PRUNE_DAYS', 30),

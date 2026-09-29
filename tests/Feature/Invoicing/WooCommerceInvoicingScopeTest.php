@@ -3,7 +3,9 @@
 namespace Tests\Feature\Invoicing;
 
 use App\Domain\Invoicing\Jobs\IssueDocumentJob;
+use App\Http\Controllers\WooCommerce\InvoicingController;
 use App\Models\MerchantInvoicingSettings;
+use App\Models\PaymentLedger;
 use App\Models\Shop;
 use App\Services\WooCommerce\Orders\WooCommerceOrderStrategy;
 use App\Services\WooCommerce\WooCommerceShopProvisioner;
@@ -271,6 +273,65 @@ final class WooCommerceInvoicingScopeTest extends TestCase
     // === Helpers ===
 
     /** @return array{0:Shop,1:string,2:string} */
+    /**
+     * A store that has reported its own site once runs a build that always sends
+     * one — so a site-less report after that is an old copy of it, refused and
+     * put on the shop's activity feed. Before that, site-less reports still work.
+     */
+    public function test_a_siteless_report_is_refused_once_the_store_has_reported_its_site(): void
+    {
+        Queue::fake();
+        [$shop, $key, $secret] = $this->connectedShop('proven.example.com');
+        $this->enableInvoicing($shop, MerchantInvoicingSettings::SCOPE_ALL_ORDERS);
+
+        // An old build: no site, accepted.
+        $this->signed('POST', $key, $secret, self::ISSUE_PATH, $this->order())->assertOk();
+
+        // The store updates and reports itself.
+        $body = $this->order(site: 'https://proven.example.com');
+        $body['order_id'] = '5502';
+        $this->signed('POST', $key, $secret, self::ISSUE_PATH, $body)->assertOk();
+
+        // Now a site-less report cannot be that store.
+        $siteless = $this->order();
+        $siteless['order_id'] = '5503';
+        $response = $this->signed('POST', $key, $secret, self::ISSUE_PATH, $siteless)->assertStatus(422);
+
+        $this->assertSame(InvoicingController::REFUSED_SITE_REQUIRED, $response->json('error'));
+        Queue::assertPushed(IssueDocumentJob::class, 2);
+        $this->assertDatabaseHas('activity_events', [
+            'shop_id' => $shop->id,
+            'kind' => InvoicingController::KIND_REPORT_REFUSED,
+        ]);
+    }
+
+    /** Where LETS recorded the money, a report may not declare more income than was collected. */
+    public function test_a_total_above_what_lets_collected_is_refused(): void
+    {
+        Queue::fake();
+        [$shop, $key, $secret] = $this->connectedShop('collected.example.com');
+        $this->enableInvoicing($shop, MerchantInvoicingSettings::SCOPE_ALL_ORDERS);
+
+        Tenant::run($shop, fn () => (new PaymentLedger)->forceFill([
+            'shop_id' => $shop->id,
+            'shopify_order_id' => '5501',
+            'charge_context' => PaymentLedger::CONTEXT_GATEWAY,
+            'idempotency_key' => 'gateway:'.$shop->id.':5501',
+            'amount' => 100.00,
+            'currency' => 'ILS',
+            'status' => 'succeeded',
+        ])->save());
+
+        $response = $this->signed('POST', $key, $secret, self::ISSUE_PATH, $this->order(total: 249.90))
+            ->assertStatus(422);
+        $this->assertSame(InvoicingController::REFUSED_TOTAL, $response->json('error'));
+        Queue::assertNothingPushed();
+
+        // The amount LETS collected is accepted.
+        $this->signed('POST', $key, $secret, self::ISSUE_PATH, $this->order(total: 100.00))->assertOk();
+        Queue::assertPushed(IssueDocumentJob::class, 1);
+    }
+
     private function connectedShop(string $domain): array
     {
         $result = (new WooCommerceShopProvisioner)->provision($domain);

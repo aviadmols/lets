@@ -157,6 +157,13 @@ class MerchantBillingSettings extends Model
      */
     public const DEFAULT_LIVE_CHARGING_ENABLED = true;
 
+    /**
+     * After-purchase offers charge the saved card. TRUE by default. Separate from
+     * live charging on purpose (a migration hold must not stop live sales); off,
+     * no offer is shown and no accept charges.
+     */
+    public const DEFAULT_UPSELL_CHARGING_ENABLED = true;
+
     /** Policy / terms. */
     public const DEFAULT_TERMS_VERSION = 'v1';
 
@@ -202,6 +209,7 @@ class MerchantBillingSettings extends Model
             'allow_customer_edit_items' => 'boolean',
             'single_active_subscription' => 'boolean',
             'live_charging_enabled' => 'boolean',
+            'upsell_charging_enabled' => 'boolean',
             'charging_paused_at' => 'datetime',
         ];
     }
@@ -238,6 +246,7 @@ class MerchantBillingSettings extends Model
                 'allow_customer_edit_items' => self::DEFAULT_ALLOW_CUSTOMER_EDIT_ITEMS,
                 'single_active_subscription' => self::DEFAULT_SINGLE_ACTIVE_SUBSCRIPTION,
                 'live_charging_enabled' => self::DEFAULT_LIVE_CHARGING_ENABLED,
+                'upsell_charging_enabled' => self::DEFAULT_UPSELL_CHARGING_ENABLED,
                 'terms_version' => self::DEFAULT_TERMS_VERSION,
                 'default_upsell_order_strategy' => self::DEFAULT_UPSELL_ORDER_STRATEGY,
             ],
@@ -436,6 +445,12 @@ class MerchantBillingSettings extends Model
     public function chargingIsLive(): bool
     {
         return (bool) ($this->live_charging_enabled ?? self::DEFAULT_LIVE_CHARGING_ENABLED);
+    }
+
+    /** May an after-purchase offer be shown and charged in this shop? */
+    public function upsellChargingIsLive(): bool
+    {
+        return (bool) ($this->upsell_charging_enabled ?? self::DEFAULT_UPSELL_CHARGING_ENABLED);
     }
 
     public function allowsOneSubscriptionOnly(): bool

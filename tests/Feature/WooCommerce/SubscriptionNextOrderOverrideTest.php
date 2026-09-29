@@ -90,6 +90,10 @@ final class SubscriptionNextOrderOverrideTest extends TestCase
             'line_items' => [['product_id' => 2670, 'name' => 'Coffee bag', 'quantity' => 2, 'unit_price' => 30.00]],
             'amount' => 60.00,
             'currency' => 'ILS',
+            // Set by the CUSTOMER in their account area — a next order above the
+            // consented amount is theirs to pay (ConsentCeiling); a merchant's
+            // would need an explicit approval first.
+            'set_by' => 'customer',
         ]]])->save());
 
         Tenant::set($shop);

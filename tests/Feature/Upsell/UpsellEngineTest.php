@@ -218,6 +218,38 @@ final class UpsellEngineTest extends TestCase
         });
     }
 
+    /** The merchant's upsell switch off: no offer is shown and an accept charges nothing. */
+    public function test_the_upsell_switch_off_shows_nothing_and_charges_nothing(): void
+    {
+        $shop = $this->makeShop();
+
+        Tenant::run($shop, function () use ($shop): void {
+            [$flow, $offer] = $this->makeFlowWithConsent($shop, customerRef: 'cust-77', base: 100.0);
+            $this->shown($flow, $offer, 'P-901');
+
+            \App\Models\MerchantBillingSettings::current()->forceFill(['upsell_charging_enabled' => false])->save();
+
+            $this->assertNull(app(UpsellResolver::class)->resolve(new PurchaseContext(
+                shopId: (int) $shop->getKey(),
+                parentOrderId: 'P-902',
+                customerRef: 'cust-77',
+                orderSubtotal: 120.0,
+                purchasedProductGids: ['gid://shopify/Product/1'],
+            )));
+
+            $result = $this->chargeService()->accept($shop, new AcceptUpsellRequest(
+                flow: $flow,
+                offer: $offer,
+                parentOrderId: 'P-901',
+                customerRef: 'cust-77',
+                customerEmail: 'buyer@example.com',
+            ));
+
+            $this->assertSame(UpsellChargeResult::RESULT_NOT_ELIGIBLE, $result->result);
+            $this->assertSame(0, $this->payplusCalls);
+        });
+    }
+
     /**
      * The shopper's explicit "Add to my order" click IS the authorization, so accept() RECORDS
      * the upsell consent — but the money-safety law still holds: the consent row must exist

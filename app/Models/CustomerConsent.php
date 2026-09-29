@@ -26,6 +26,8 @@ class CustomerConsent extends Model
     {
         return [
             'accepted_at' => 'datetime',
+            'consented_amount' => 'decimal:2',
+            'consented_interval' => 'integer',
         ];
     }
 }

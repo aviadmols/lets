@@ -2,6 +2,7 @@
 
 namespace App\Domain\Installments\Http\Controllers\Storefront;
 
+use App\Support\StoreCurrency;
 use App\Domain\Installments\DepositPlanService;
 use App\Domain\Installments\InstallmentQuote;
 use App\Domain\Installments\ProductPriceResolver;
@@ -49,7 +50,7 @@ final class InstallmentQuoteController extends ProxyInstallmentController
             installments: (int) $request->input('installments', InstallmentQuote::DEFAULT_INSTALLMENTS),
             frequency: DepositPlanService::frequencyFrom($request->input('frequency')),
             paymentDay: (int) $request->input('payment_day', InstallmentQuote::DEFAULT_PAYMENT_DAY),
-            currency: (string) ($request->input('currency') ?: config('payplus.currency', 'ILS')),
+            currency: StoreCurrency::resolve($request->input('currency')),
             // Clamp the preview to THIS shop's merchant bounds (verifiedShop bound the
             // tenant) so the schedule shown matches what start would actually charge.
             bounds: MerchantBillingSettings::current(),

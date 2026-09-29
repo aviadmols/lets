@@ -69,8 +69,18 @@ uri = "/shopify/webhooks"
 # token capture on orders/paid keeps working; re-add this block to the toml once
 # protected-customer-data access is approved (needed for App Store submission).
 # [[webhooks.subscriptions]]
-# topics = ["orders/paid", "orders/create", "orders/cancelled", "orders/fulfilled", "refunds/create"]
+# topics = ["orders/paid", "orders/create", "orders/cancelled", "orders/fulfilled"]
 # uri = "/shopify/webhooks"
+
+# Refunds (2026-09-29): a Shopify-side refund of a plain order takes back the
+# loyalty points it earned (RefundCreatedHandler → RefundClawback). Declared ON
+# its own block so it ships with the compliance topics above — it sits behind the
+# SAME "Protected customer data access" grant, which those already require. Also
+# registered per-shop on install (config('shopify.webhook_topics')); a double
+# delivery is harmless because the clawback is keyed on the Shopify refund id.
+[[webhooks.subscriptions]]
+topics = ["refunds/create"]
+uri = "/shopify/webhooks"
 
 # Catalog sync — keep the local products cache fresh (W1).
 [[webhooks.subscriptions]]

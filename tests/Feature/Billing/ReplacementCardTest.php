@@ -410,7 +410,7 @@ final class ReplacementCardTest extends TestCase
         $payment = $plan->latestPayment()->first();
 
         app(ImportedTokenRecovery::class)->apply($plan, [
-            'route' => ImportedTokenRecovery::ROUTE_REPLACEMENT,
+            'route' => ImportedTokenRecovery::ROUTE_MANUAL, // the merchant confirmed it (a replacement is only proposed)
             'token' => 'tok-fresh',
             'customer_uid' => 'cust-1',
             'recurring_live' => false,
@@ -444,7 +444,7 @@ final class ReplacementCardTest extends TestCase
         $plan = $this->heldPlan();
 
         app(ImportedTokenRecovery::class)->apply($plan, [
-            'route' => ImportedTokenRecovery::ROUTE_REPLACEMENT,
+            'route' => ImportedTokenRecovery::ROUTE_MANUAL, // the merchant confirmed it (a replacement is only proposed)
             'token' => 'tok-fresh',
             'customer_uid' => 'cust-1',
             'recurring_live' => false,
@@ -467,7 +467,7 @@ final class ReplacementCardTest extends TestCase
         $plan = $this->heldPlan();
 
         app(ImportedTokenRecovery::class)->apply($plan, [
-            'route' => ImportedTokenRecovery::ROUTE_REPLACEMENT,
+            'route' => ImportedTokenRecovery::ROUTE_MANUAL, // the merchant confirmed it (a replacement is only proposed)
             'token' => 'tok-fresh',
             'customer_uid' => 'cust-1',
             'recurring_live' => true,
@@ -488,7 +488,7 @@ final class ReplacementCardTest extends TestCase
         $plan->forceFill(['next_charge_at' => $owed])->save();
 
         app(ImportedTokenRecovery::class)->apply($plan, [
-            'route' => ImportedTokenRecovery::ROUTE_REPLACEMENT,
+            'route' => ImportedTokenRecovery::ROUTE_MANUAL, // the merchant confirmed it (a replacement is only proposed)
             'token' => 'tok-fresh',
             'customer_uid' => 'cust-1',
             'recurring_live' => false,
@@ -508,7 +508,7 @@ final class ReplacementCardTest extends TestCase
         $plan->forceFill(['payment_failed_at' => null])->save(); // they asked to pause
 
         app(ImportedTokenRecovery::class)->apply($plan, [
-            'route' => ImportedTokenRecovery::ROUTE_REPLACEMENT,
+            'route' => ImportedTokenRecovery::ROUTE_MANUAL, // the merchant confirmed it (a replacement is only proposed)
             'token' => 'tok-fresh',
             'customer_uid' => 'cust-1',
             'recurring_live' => false,
@@ -524,7 +524,7 @@ final class ReplacementCardTest extends TestCase
         $plan->forceFill(['status' => PlanStatus::CANCELLED->value])->save();
 
         app(ImportedTokenRecovery::class)->apply($plan, [
-            'route' => ImportedTokenRecovery::ROUTE_REPLACEMENT,
+            'route' => ImportedTokenRecovery::ROUTE_MANUAL, // the merchant confirmed it (a replacement is only proposed)
             'token' => 'tok-fresh',
             'customer_uid' => 'cust-1',
             'recurring_live' => false,
@@ -585,6 +585,73 @@ final class ReplacementCardTest extends TestCase
         ])->save();
 
         return $plan;
+    }
+
+    // === Found by email is not proven — the merchant confirms ===
+
+    /**
+     * A different card found through the customer's email (a family member, a
+     * typo, somebody who once paid with this address) is PROPOSED, never attached
+     * or charged by the machine: the plan stays held, nothing is queued, the
+     * Timeline says why, and the card is offered for the merchant to choose.
+     */
+    public function test_an_automatic_replacement_is_proposed_not_attached(): void
+    {
+        Queue::fake();
+        $plan = $this->heldPlan();
+
+        $applied = app(ImportedTokenRecovery::class)->apply($plan, [
+            'route' => ImportedTokenRecovery::ROUTE_REPLACEMENT,
+            'token' => 'tok-fresh',
+            'customer_uid' => 'cust-1',
+            'recurring_live' => false,
+            'candidates' => [['token' => 'tok-fresh', 'last_four' => 'resh', 'expired' => false, 'held' => false]],
+        ]);
+
+        $this->assertFalse($applied);
+        $this->assertSame('tok-dead', $plan->paymentMethod->fresh()->payplus_card_token_uid);
+        $this->assertSame(PlanStatus::PAUSED->value, $plan->fresh()->status->value);
+        Queue::assertNotPushed(ChargeJob::class);
+        $this->assertDatabaseHas('activity_events', ['plan_id' => $plan->id, 'kind' => ImportedTokenRecovery::KIND_NEEDS_CONFIRMATION]);
+        $this->assertSame('tok-fresh', ImportedTokenRecovery::proposedCandidates($plan->fresh())[0]['token']);
+    }
+
+    public function test_a_relaxed_email_match_is_proposed_not_attached(): void
+    {
+        $plan = $this->heldPlan();
+
+        $this->assertTrue(app(ImportedTokenRecovery::class)->needsConfirmation($plan, ['route' => ImportedTokenRecovery::ROUTE_EMAIL_RELAXED]));
+        $this->assertFalse(app(ImportedTokenRecovery::class)->needsConfirmation($plan, ['route' => ImportedTokenRecovery::ROUTE_EMAIL]));
+        $this->assertFalse(app(ImportedTokenRecovery::class)->needsConfirmation($plan, ['route' => ImportedTokenRecovery::ROUTE_MANUAL]));
+    }
+
+    /** After a STOLEN/LOST decline, every automatic route waits for a person — even the old recurring's token. */
+    public function test_after_a_stolen_decline_nothing_automatic_attaches(): void
+    {
+        Queue::fake();
+        $plan = $this->heldPlan();
+        $plan->latestPayment()->first()->forceFill(['failure_message' => 'גנוב, החרם כרטיס'])->save();
+        $plan = $plan->fresh();
+
+        $this->assertTrue(ImportedTokenRecovery::cardReportedStolen('גנוב, החרם כרטיס'));
+        $this->assertFalse(ImportedTokenRecovery::cardReportedStolen('כרטיס חסום'));
+
+        $applied = app(ImportedTokenRecovery::class)->apply($plan, [
+            'route' => ImportedTokenRecovery::ROUTE_RECURRING,
+            'token' => 'tok-old-series',
+            'recurring_live' => false,
+        ]);
+
+        $this->assertFalse($applied);
+        Queue::assertNotPushed(ChargeJob::class);
+
+        // The merchant choosing it is the one way through.
+        $this->assertTrue(app(ImportedTokenRecovery::class)->apply($plan, [
+            'route' => ImportedTokenRecovery::ROUTE_MANUAL,
+            'token' => 'tok-old-series',
+            'recurring_live' => false,
+        ]));
+        $this->assertNull(data_get($plan->fresh()->meta, ImportedTokenRecovery::META_PROPOSAL), 'The proposal is settled.');
     }
 
     /** @return array<string, mixed> */

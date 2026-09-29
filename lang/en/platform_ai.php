@@ -25,7 +25,7 @@ return [
         'enabled_help' => 'The platform-wide kill switch: off, and the chat disappears from every shop at once while the block editor keeps working.',
 
         'budget' => 'Daily token budget',
-        'budget_help' => 'Total tokens (input + output) all shops may spend per day. Blank = uncapped. Over budget, the chat politely says the quota is done for today.',
+        'budget_help' => 'Total tokens (input + output) all shops may spend per day. Blank = the default, 2,000,000. Each shop is also capped at 250,000 per day and 20 calls a minute. Over budget, the chat politely says the quota is done for today.',
     ],
 
     'usage' => [

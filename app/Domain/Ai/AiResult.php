@@ -15,6 +15,9 @@ final readonly class AiResult
 
     public const FAIL_OVER_BUDGET = 'over_budget';
 
+    /** Too many calls from this shop in the last minute — try again shortly. */
+    public const FAIL_RATE_LIMITED = 'rate_limited';
+
     public const FAIL_HTTP = 'http_error';
 
     public const FAIL_TIMEOUT = 'timeout';

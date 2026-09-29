@@ -135,6 +135,7 @@ class ManageBillingSettings extends Page implements HasForms
             'allow_customer_edit_items' => $settings->allowsCustomerEditItems(),
             'single_active_subscription' => $settings->allowsOneSubscriptionOnly(),
             'live_charging_enabled' => $settings->chargingIsLive(),
+            'upsell_charging_enabled' => $settings->upsellChargingIsLive(),
 
             'activation_link_opens' => $settings->activationPagePath() !== null ? self::ACTIVATION_OPENS_STORE : self::ACTIVATION_OPENS_LETS,
             'activation_page_path' => $settings->activationPagePath() ?? MerchantBillingSettings::SUGGESTED_ACTIVATION_PAGE_PATH,
@@ -277,6 +278,12 @@ class ManageBillingSettings extends Page implements HasForms
                 Toggle::make('live_charging_enabled')
                     ->label(__('billing.settings.charging.live'))
                     ->helperText(__('billing.settings.charging.live_help'))
+                    ->columnSpanFull(),
+
+                // Its own switch: live charging deliberately leaves upsells alone.
+                Toggle::make('upsell_charging_enabled')
+                    ->label(__('billing.settings.charging.upsell'))
+                    ->helperText(__('billing.settings.charging.upsell_help'))
                     ->columnSpanFull(),
 
                 // Only while it is OFF, and only when there is actually something
@@ -598,6 +605,7 @@ class ManageBillingSettings extends Page implements HasForms
             : null;
 
         $resumed = $this->applyLiveChargingSwitch($settings, (bool) ($input['live_charging_enabled'] ?? true));
+        $settings->upsell_charging_enabled = (bool) ($input['upsell_charging_enabled'] ?? true);
 
         $settings->cancellation_policy_text = $this->blankToNull($input['cancellation_policy_text'] ?? null);
         $settings->terms_version = $this->blankToNull($input['terms_version'] ?? null) ?? MerchantBillingSettings::DEFAULT_TERMS_VERSION;

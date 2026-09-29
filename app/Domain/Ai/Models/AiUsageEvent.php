@@ -25,6 +25,12 @@ class AiUsageEvent extends Model
 
     public const STATUS_OVER_BUDGET = 'over_budget';
 
+    /** Too many calls from one shop in the rate window — refused before the provider. */
+    public const STATUS_RATE_LIMITED = 'rate_limited';
+
+    /** A call's row written before the provider is asked, holding its estimate. */
+    public const STATUS_RESERVED = 'reserved';
+
     /** Immutable rows: created_at only. */
     public const UPDATED_AT = null;
 
@@ -35,16 +41,29 @@ class AiUsageEvent extends Model
         return [
             'input_tokens' => 'integer',
             'output_tokens' => 'integer',
+            'reserved_tokens' => 'integer',
             'latency_ms' => 'integer',
             'created_at' => 'datetime',
         ];
     }
 
-    /** Tokens the whole platform spent today — the budget's denominator. */
+    /** Tokens the whole platform spent (or has reserved) today — the budget's denominator. */
     public static function platformTokensToday(): int
     {
         return (int) static::acrossAllTenants()
             ->where('created_at', '>=', now()->startOfDay())
-            ->sum(DB::raw('input_tokens + output_tokens'));
+            ->sum(DB::raw('input_tokens + output_tokens + reserved_tokens'));
+    }
+
+    /**
+     * Tokens ONE shop spent (or has reserved) today — its own cap's denominator.
+     * Explicit shop_id: the gateway may run with no tenant bound (a queued job).
+     */
+    public static function shopTokensToday(int $shopId): int
+    {
+        return (int) static::acrossAllTenants()
+            ->where('shop_id', $shopId)
+            ->where('created_at', '>=', now()->startOfDay())
+            ->sum(DB::raw('input_tokens + output_tokens + reserved_tokens'));
     }
 }

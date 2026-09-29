@@ -59,8 +59,7 @@ final class MailTransport
         // 1. The merchant's own relay — unless its address is one the outbound
         //    walls refuse (see merchantRelayRefusal), in which case it is treated
         //    as not configured and the ladder moves on.
-        if ($settings !== null && $settings->override_env_smtp && $settings->smtp_host
-            && self::merchantRelayRefusal($settings) === null) {
+        if (self::usesMerchantRelay($shop)) {
             $config = [
                 'transport' => self::TRANSPORT,
                 'host' => (string) $settings->smtp_host,
@@ -102,6 +101,19 @@ final class MailTransport
             // Both providers refuse a From on a domain they never authenticated.
             'from' => self::sendGridFrom($shop, $settings, $platform),
         ];
+    }
+
+    /**
+     * Is this shop's mail leaving through its OWN relay (rung 1)? False means the
+     * platform's shared account or the .env mailer — the relays whose reputation
+     * every tenant shares (CampaignSendQuota caps campaign volume there).
+     */
+    public static function usesMerchantRelay(Shop $shop): bool
+    {
+        $settings = self::settingsFor($shop);
+
+        return $settings !== null && $settings->override_env_smtp && $settings->smtp_host
+            && self::merchantRelayRefusal($settings) === null;
     }
 
     /**

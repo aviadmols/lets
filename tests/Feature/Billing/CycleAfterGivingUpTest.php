@@ -153,6 +153,17 @@ final class CycleAfterGivingUpTest extends TestCase
         // The merchant raises the subscription price between cycles.
         $plan->fresh()->forceFill(['installment_amount' => self::NEW_PRICE])->save();
 
+        // A raise above what the customer agreed to needs the merchant's explicit,
+        // logged approval (ConsentCeiling) — given here, so the cycle may run.
+        $fresh = $plan->fresh();
+        $ceiling = app(\App\Domain\Billing\ConsentCeiling::class);
+        $ceiling->approveAboveConsent(
+            $fresh,
+            $ceiling->consentFor($fresh, CustomerConsent::CONTEXT_RECURRING),
+            self::NEW_PRICE,
+            'Price rise announced to the customer',
+        );
+
         $this->travelTo($plan->fresh()->next_charge_at);
         $this->amountsCharged = [];
         $this->succeed = true;

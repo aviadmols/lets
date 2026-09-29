@@ -30,9 +30,9 @@ final class SubscriptionEditService
     /**
      * @param  array{next_charge_at?: string|null, line_items?: array<int, array<string, mixed>>}  $input
      */
-    public function editNextCharge(InstallmentPlan $plan, array $input): InstallmentPlan
+    public function editNextCharge(InstallmentPlan $plan, array $input, ?string $actor = null): InstallmentPlan
     {
-        return DB::transaction(function () use ($plan, $input): InstallmentPlan {
+        return DB::transaction(function () use ($plan, $input, $actor): InstallmentPlan {
             $fresh = InstallmentPlan::query()->lockForUpdate()->findOrFail($plan->getKey());
 
             $changed = [];
@@ -54,7 +54,7 @@ final class SubscriptionEditService
             if (array_key_exists('line_items', $input)) {
                 $oldAmount = round((float) ($fresh->nextOrderOverride()['amount'] ?? $fresh->installment_amount), 2);
 
-                $override = $this->buildOverride($fresh, (array) $input['line_items']);
+                $override = $this->buildOverride($fresh, (array) $input['line_items'], $actor);
                 $meta = (array) ($fresh->meta ?? []);
                 if ($override === null) {
                     unset($meta[InstallmentPlan::META_NEXT_ORDER]);
@@ -217,7 +217,7 @@ final class SubscriptionEditService
      * @param  array<int, array<string, mixed>>  $rows
      * @return array<string, mixed>|null
      */
-    private function buildOverride(InstallmentPlan $plan, array $rows): ?array
+    private function buildOverride(InstallmentPlan $plan, array $rows, ?string $actor = null): ?array
     {
         $lineItems = [];
         $total = 0.0;
@@ -255,7 +255,7 @@ final class SubscriptionEditService
             'line_items' => $lineItems,
             'amount' => $total,
             'currency' => (string) ($plan->currency ?: config('payplus.currency', 'ILS')),
-            'set_by' => PlatformContext::actingActor() ?? ActivityEvent::ACTOR_SYSTEM,
+            'set_by' => $actor ?? PlatformContext::actingActor() ?? ActivityEvent::ACTOR_SYSTEM,
             'set_at' => now()->toIso8601String(),
         ];
     }

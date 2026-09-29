@@ -4,6 +4,7 @@ namespace App\Filament\Pages;
 
 use App\Domain\Installments\CardUpdateLinkSender;
 use App\Domain\Installments\CardUpdateService;
+use App\Domain\Installments\ImportedTokenRecovery;
 use App\Domain\Installments\Models\CardUpdateLink;
 use App\Domain\Installments\Models\TokenRecoveryResult;
 use App\Domain\Installments\Models\TokenRecoveryRun;
@@ -604,6 +605,12 @@ class PaymentRecovery extends Page implements HasTable
             return;
         }
 
+        if ($outcome->reason === ChargeOrchestrator::SKIP_ABOVE_CONSENT) {
+            Notification::make()->title(__('subscriptions.action.charge_now.above_consent'))->warning()->send();
+
+            return;
+        }
+
         if ($outcome->isSucceeded()) {
             Notification::make()->title(__('subscriptions.action.charge_now.success'))->success()->send();
             $this->resetTable();
@@ -741,6 +748,7 @@ class PaymentRecovery extends Page implements HasTable
         }
 
         return match ($detail) {
+            ImportedTokenRecovery::DETAIL_NEEDS_CONFIRMATION => __('recovery.lookup.confirm'),
             TokenRecoveryResult::DETAIL_ALL_EXPIRED => __('recovery.lookup.expired'),
             TokenRecoveryResult::DETAIL_ONLY_DEAD => __('recovery.lookup.only_dead'),
             TokenRecoveryResult::DETAIL_NO_CARDS => __('recovery.lookup.no_cards'),
@@ -772,7 +780,9 @@ class PaymentRecovery extends Page implements HasTable
             return 'success';
         }
 
-        return (string) $result->detail === TokenRecoveryResult::DETAIL_SEVERAL ? 'warning' : 'gray';
+        return in_array((string) $result->detail, [TokenRecoveryResult::DETAIL_SEVERAL, ImportedTokenRecovery::DETAIL_NEEDS_CONFIRMATION], true)
+            ? 'warning'
+            : 'gray';
     }
 
     // === The running pass ===

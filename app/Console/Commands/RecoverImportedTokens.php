@@ -148,7 +148,11 @@ final class RecoverImportedTokens extends Command
                     $outcome = $recovery->probe($plan, null, $routes, (bool) $this->option('relaxed'));
                     $ok = $apply
                         ? $recovery->apply($plan, $outcome)
-                        : in_array($outcome['route'], [ImportedTokenRecovery::ROUTE_RECURRING, ImportedTokenRecovery::ROUTE_EMAIL, ImportedTokenRecovery::ROUTE_EMAIL_RELAXED], true);
+                        // A relaxed/replacement pick (or anything after a stolen
+                        // decline) is only ever proposed to the merchant, never
+                        // written — so a dry run must not count it as recovered.
+                        : in_array($outcome['route'], [ImportedTokenRecovery::ROUTE_RECURRING, ImportedTokenRecovery::ROUTE_EMAIL, ImportedTokenRecovery::ROUTE_EMAIL_RELAXED], true)
+                            && ! $recovery->needsConfirmation($plan, $outcome);
 
                     $seen++;
                     $ok ? $recovered++ : null;

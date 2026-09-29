@@ -420,7 +420,9 @@ final class CustomerSubscriptionActions
             }
         }
 
-        return $this->ok($this->edits->editNextCharge($plan, ['line_items' => $clean]));
+        // Attributed to the CUSTOMER: a next order they set themselves is theirs
+        // to pay, so the consent ceiling lets exactly this amount through once.
+        return $this->ok($this->edits->editNextCharge($plan, ['line_items' => $clean], ActivityEvent::ACTOR_CUSTOMER));
     }
 
     /**

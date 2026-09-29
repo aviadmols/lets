@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\WooCommerce\Storefront;
 
+use App\Support\StoreCurrency;
 use App\Domain\Installments\ProductPriceResolver;
 use App\Domain\Installments\RecurringPlanService;
 use App\Domain\Products\ProductPlanTemplateResolver;
@@ -84,7 +85,7 @@ final class WooGatewaySessionController extends WooStorefrontController
             return response()->json(['error' => 'payplus_no_payment_page'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        $currency = (string) ($request->input('currency') ?: config('payplus.currency', 'ILS'));
+        $currency = StoreCurrency::resolve($request->input('currency'));
 
         // Cart-based subscriptions (W17 B): for each subscription line item the plugin sent, create
         // an awaiting_first_payment recurring plan per the merchant's TEMPLATE (cadence/discount
