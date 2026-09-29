@@ -180,3 +180,8 @@
 .rc-row--between > .rc-section__title {
     margin: 0;
 }
+
+/* A strong cell stays strong: .rc-table td resets the font shorthand after .rc-strong. */
+.rc-table td.rc-strong {
+    font-weight: 600;
+}

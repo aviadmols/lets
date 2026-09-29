@@ -1780,6 +1780,11 @@ html:has(meta[name="lets-embedded"]) .rc-lang-switch {
     margin: 0;
 }
 
+/* A strong cell stays strong: .rc-table td resets the font shorthand after .rc-strong. */
+.rc-table td.rc-strong {
+    font-weight: 600;
+}
+
 /* kpi-card.css — KPI card (component §4.1)
    TOKENS: --rc-card --rc-border --rc-radius-card --rc-shadow-card --rc-shadow-hover
            --rc-type-kpi --rc-type-label --rc-ink --rc-ink-muted --rc-green --rc-red
