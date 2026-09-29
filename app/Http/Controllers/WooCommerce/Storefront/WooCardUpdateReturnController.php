@@ -36,13 +36,11 @@ final class WooCardUpdateReturnController
 
         // A PayPlusReturnRef — never the callback token, which a browser must not
         // see. A page PayPlus minted before the ref existed still carries the
-        // legacy token (EITHER column — see the callback controller); here it
+        // legacy token (EITHER column, or the token this shop was rotated FROM
+        // inside its grace window — see Shop::resolveByCallbackToken()); here it
         // only builds a back link.
         $shop = PayPlusReturnRef::resolve($shop_ref)
-            ?? Shop::query()
-                ->where('callback_token', $shop_ref)
-                ->orWhere('wc_shop_token', $shop_ref)
-                ->first();
+            ?? Shop::resolveByCallbackToken($shop_ref);
 
         // The page speaks the account's language: the mint stamped it into the
         // URL; an old or stripped link falls back to the shop's own setting.

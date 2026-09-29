@@ -50,10 +50,9 @@ final class WooGatewayCallbackController
 
     public function __invoke(Request $request, string $wc_shop_token, PayPlusCallbackVerifier $verifier): JsonResponse
     {
-        $shop = Shop::query()
-            ->where('wc_shop_token', $wc_shop_token)
-            ->where('platform', Shop::PLATFORM_WOOCOMMERCE)
-            ->first();
+        // resolveByCallbackToken() also accepts the token this shop was rotated
+        // FROM, while its grace window is open — see CallbackTokenRotator.
+        $shop = Shop::resolveByCallbackToken($wc_shop_token, Shop::PLATFORM_WOOCOMMERCE);
 
         if ($shop === null) {
             return response()->json(['error' => 'not_found'], Response::HTTP_NOT_FOUND);

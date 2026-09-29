@@ -3,6 +3,7 @@
 namespace App\Modules\PayPlusShopifyInstallments\Services\PayPlus;
 
 use App\Models\Shop;
+use App\Modules\PayPlusShopifyInstallments\Support\ResponseMasker;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -723,7 +724,7 @@ final class PayPlusTokenDiscovery
                 Log::warning('payplus.token_discovery.http_error', [
                     'path' => $path,
                     'status' => $response->status(),
-                    'body' => mb_substr($response->body(), 0, self::LOG_BODY_CHARS),
+                    'body' => self::maskedBody($response->body()),
                 ]);
             }
 
@@ -764,5 +765,28 @@ final class PayPlusTokenDiscovery
     private function endpoint(string $path): string
     {
         return rtrim($this->baseUrl, '/').$this->apiPrefix.$path;
+    }
+
+    /**
+     * A PayPlus error body, safe to log: their JSON masked through the same
+     * ResponseMasker every ledger write already goes through, truncated to
+     * LOG_BODY_CHARS. A body PayPlus did NOT send as JSON (an HTML error page,
+     * a transport-level failure page) carries no field names to mask against, so
+     * it is logged as a byte count only rather than risk an unmasked leak
+     * (MEDIUM-5-adjacent finding, LOW-5, 2026-09 audit: this line previously
+     * logged up to 300 raw characters of PayPlus's response, which could echo
+     * back customer data on a validation-style error).
+     */
+    private static function maskedBody(string $raw): string
+    {
+        $decoded = json_decode($raw, true);
+
+        if (! is_array($decoded)) {
+            return '[non-JSON body, '.strlen($raw).' bytes]';
+        }
+
+        $masked = json_encode(ResponseMasker::mask($decoded), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        return mb_substr((string) $masked, 0, self::LOG_BODY_CHARS);
     }
 }

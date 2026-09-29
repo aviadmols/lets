@@ -1,0 +1,47 @@
+# Not web-served (Caddy's root is public/) and not needed at runtime — kept out
+# of the image to shrink it and reduce what a container-shell RCE could read
+# (LOW-2, 2026-09 audit). composer.json/composer.lock ARE needed (installed
+# by the Dockerfile) and are deliberately not excluded here.
+
+.git
+.github
+.claude
+.dockerignore
+Dockerfile*
+
+# Local env / secrets — never baked into an image; real config is Railway vars.
+.env
+.env.*
+!.env.example
+
+# Dev/test-only.
+tests
+docs
+.playwright-mcp
+node_modules
+extensions/**/node_modules
+plugins/**/dist
+
+# Build/runtime artefacts regenerated inside the container, not carried in.
+#
+# storage/framework/{sessions,views,cache,testing} and storage/logs are
+# DELIBERATELY still copied: Laravel needs those directories to actually exist
+# (a bare `.gitignore` placeholder is all that's in them) for `artisan
+# view:cache`/logging to have somewhere to write on first boot — excluding the
+# directory, not just its contents, would break that. Only the truly build-time
+# artefacts below are skipped.
+/vendor
+/public/build
+/public/hot
+/public/storage
+/.phpunit.cache
+.phpunit.result.cache
+
+# Editor/OS noise.
+.idea
+.vscode
+.fleet
+.nova
+.zed
+.DS_Store
+Thumbs.db

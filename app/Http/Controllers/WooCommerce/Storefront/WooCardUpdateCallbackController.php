@@ -39,12 +39,11 @@ final class WooCardUpdateCallbackController
 
     public function __invoke(Request $request, string $callback_token, PayPlusCallbackVerifier $verifier): JsonResponse
     {
-        // EITHER column: the token was born as `wc_shop_token` and PayPlus can be
-        // holding a page URL minted with it long before the rename.
-        $shop = Shop::query()
-            ->where('callback_token', $callback_token)
-            ->orWhere('wc_shop_token', $callback_token)
-            ->first();
+        // EITHER column, or the token this shop was rotated FROM while its grace
+        // window is open (the token was also born as `wc_shop_token`, and PayPlus
+        // can be holding a page URL minted with any of the three) — see
+        // Shop::resolveByCallbackToken() / CallbackTokenRotator.
+        $shop = Shop::resolveByCallbackToken($callback_token);
 
         if ($shop === null) {
             return response()->json(['error' => 'not_found'], Response::HTTP_NOT_FOUND);

@@ -2,6 +2,18 @@
 
 use Illuminate\Support\Str;
 
+// === CONSTANTS ===
+// Both the Shopify admin iframe and a WooCommerce wp-admin iframe need the
+// session cookie sent on a CROSS-SITE embedded request, which only
+// `SameSite=None; Secure` allows (LOW-4, 2026-09 audit — these three vars were
+// previously undocumented, relying entirely on Railway variables being set by
+// hand). `local` is the laptop, over plain http:// — Secure would silently drop
+// the cookie there, so it (and its Secure/Partitioned companions) default OFF
+// only in `local`/`testing`; every other environment defaults to the embedded
+// shape. Real deploys should still SET these explicitly (see .env.example) —
+// this default is the fail-safe for a fresh environment that forgot to.
+$sessionIsLocalLike = in_array(env('APP_ENV', 'production'), ['local', 'testing'], true);
+
 return [
 
     /*
@@ -169,7 +181,7 @@ return [
     |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE'),
+    'secure' => env('SESSION_SECURE_COOKIE', ! $sessionIsLocalLike),
 
     /*
     |--------------------------------------------------------------------------
@@ -199,7 +211,7 @@ return [
     |
     */
 
-    'same_site' => env('SESSION_SAME_SITE', 'lax'),
+    'same_site' => env('SESSION_SAME_SITE', $sessionIsLocalLike ? 'lax' : 'none'),
 
     /*
     |--------------------------------------------------------------------------
@@ -212,6 +224,6 @@ return [
     |
     */
 
-    'partitioned' => env('SESSION_PARTITIONED_COOKIE', false),
+    'partitioned' => env('SESSION_PARTITIONED_COOKIE', ! $sessionIsLocalLike),
 
 ];

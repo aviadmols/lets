@@ -33,6 +33,7 @@ class InstallmentPaymentMethod extends Model
 
     protected $hidden = [
         'payplus_card_token_uid',
+        'payplus_token_reference',
         'encrypted_payplus_token',
     ];
 
@@ -42,6 +43,11 @@ class InstallmentPaymentMethod extends Model
             // The token UID is a credential — encrypt at rest (APP_KEY cast is
             // fine here; it is not a cross-shop secret, it is per-row).
             'payplus_card_token_uid' => 'encrypted',
+            // A fallback CHARGE token (imported `recurring_token` — see
+            // SubscriptionImporter) — just as chargeable as payplus_card_token_uid,
+            // so it gets the same at-rest encryption (MEDIUM-5, 2026-09 audit).
+            // The column was widened to `text` for this in the matching migration.
+            'payplus_token_reference' => 'encrypted',
             'exp_month' => 'integer',
             'exp_year' => 'integer',
         ];
