@@ -27,8 +27,9 @@ use Illuminate\Support\Facades\Cache;
 final class CampaignSendQuota
 {
     // === CONSTANTS ===
-    /** Emails per shop per day through the shared relay, when config sets none. */
-    public const DEFAULT_SHARED_RELAY_DAILY_CAP = 1000;
+    /** Emails per shop per day through the shared relay, when config sets none —
+     * above a real club newsletter (the largest imported club is ~1,400). */
+    public const DEFAULT_SHARED_RELAY_DAILY_CAP = 5000;
 
     private const CACHE_PREFIX = 'campaigns:shared-relay-sent:';
 

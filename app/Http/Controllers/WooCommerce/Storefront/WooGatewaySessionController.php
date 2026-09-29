@@ -85,7 +85,8 @@ final class WooGatewaySessionController extends WooStorefrontController
             return response()->json(['error' => 'payplus_no_payment_page'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        $currency = StoreCurrency::resolve($request->input('currency'));
+        // WooCommerce's own order currency, over the plugin's signed channel.
+        $currency = StoreCurrency::ofSignedOrder($request->input('currency'));
 
         // Cart-based subscriptions (W17 B): for each subscription line item the plugin sent, create
         // an awaiting_first_payment recurring plan per the merchant's TEMPLATE (cadence/discount

@@ -61,6 +61,19 @@ final class WooCommerceGatewayTest extends TestCase
         $this->assertSame('https://pay.example/page/GW-1', $response->json('redirect_url'));
     }
 
+    /** The store's own signed order currency is charged — a USD order is never billed as ILS. */
+    public function test_session_charges_in_the_orders_own_currency(): void
+    {
+        [, $key, $secret] = $this->connectedShop('gw-usd.example.com');
+        $this->fakeGatewayPage('https://pay.example/page/GW-1');
+
+        $this->signedPost($key, $secret, self::SESSION, [
+            'order_id' => '4244', 'amount' => 20.0, 'currency' => 'usd', 'return_url' => 'https://gw-usd.example.com/thanks',
+        ])->assertOk();
+
+        $this->assertSame('USD', $this->gatewayPayloads[0]['currency_code']);
+    }
+
     public function test_session_sends_immediate_capture_charge_method_and_returns_page_request_uid(): void
     {
         // W17: the gateway must send charge_method=1 (capture), not 0 (verify-only — the bug),

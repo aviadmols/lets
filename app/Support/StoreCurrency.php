@@ -39,6 +39,19 @@ final class StoreCurrency
         return array_values(array_unique([self::platform(), ...$list]));
     }
 
+    /**
+     * The currency of an order the STORE itself reports over its signed channel
+     * (the WooCommerce gateway: WooCommerce's own order currency, not a shopper's
+     * pick). Trusted as the store's, but still only a well-formed ISO code — a
+     * USD order forced to ILS would charge the same number in the wrong money.
+     */
+    public static function ofSignedOrder(mixed $reported): string
+    {
+        $code = strtoupper(trim((string) $reported));
+
+        return preg_match('/^[A-Z]{3}$/', $code) === 1 ? $code : self::platform();
+    }
+
     /** The requested code when accepted, else the platform currency (logged when it differed). */
     public static function resolve(mixed $requested, ?int $shopId = null): string
     {
