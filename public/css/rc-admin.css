@@ -4267,9 +4267,10 @@ button.rc-fb-node:focus-visible {
    app.css). RTL: logical properties; Hebrew drops the uppercase + tracking.
    ========================================================================== */
 
-/* ---------------------------------------------------- list-page tabs --- */
+/* ------------------------------ list-page tabs + uncontained form tabs --- */
 
-.fi-body .fi-resource-list-records-page .fi-tabs {
+.fi-body .fi-resource-list-records-page .fi-tabs,
+.fi-body .fi-fo-tabs:not(.fi-contained) > .fi-tabs {
     inline-size: 100%;
     margin-inline: 0;
     padding: 0;
@@ -4279,27 +4280,32 @@ button.rc-fb-node:focus-visible {
     box-shadow: inset 0 -1px 0 var(--rc-border);
 }
 
-.fi-body .fi-resource-list-records-page .fi-tabs-item {
+.fi-body .fi-resource-list-records-page .fi-tabs-item,
+.fi-body .fi-fo-tabs:not(.fi-contained) > .fi-tabs .fi-tabs-item {
     padding: 0 0 10px;
     border-radius: 0;
     background: transparent;
 }
 
-.fi-body .fi-resource-list-records-page .fi-tabs-item-label {
+.fi-body .fi-resource-list-records-page .fi-tabs-item-label,
+.fi-body .fi-fo-tabs:not(.fi-contained) > .fi-tabs .fi-tabs-item-label {
     font: var(--rc-type-body);
     font-weight: 500;
     color: var(--rc-ink-muted);
 }
 
-.fi-body .fi-resource-list-records-page .fi-tabs-item:hover .fi-tabs-item-label {
+.fi-body .fi-resource-list-records-page .fi-tabs-item:hover .fi-tabs-item-label,
+.fi-body .fi-fo-tabs:not(.fi-contained) > .fi-tabs .fi-tabs-item:hover .fi-tabs-item-label {
     color: var(--rc-ink);
 }
 
-.fi-body .fi-resource-list-records-page .fi-tabs-item-active {
+.fi-body .fi-resource-list-records-page .fi-tabs-item-active,
+.fi-body .fi-fo-tabs:not(.fi-contained) > .fi-tabs .fi-tabs-item-active {
     box-shadow: inset 0 -2px 0 var(--rc-blue);
 }
 
-.fi-body .fi-resource-list-records-page .fi-tabs-item-active .fi-tabs-item-label {
+.fi-body .fi-resource-list-records-page .fi-tabs-item-active .fi-tabs-item-label,
+.fi-body .fi-fo-tabs:not(.fi-contained) > .fi-tabs .fi-tabs-item-active .fi-tabs-item-label {
     font-weight: 600;
     color: var(--rc-blue);
 }

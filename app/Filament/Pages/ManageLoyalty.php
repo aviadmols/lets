@@ -92,6 +92,8 @@ class ManageLoyalty extends Page implements HasForms
             ->statePath('data')
             ->schema([
                 Tabs::make('loyalty')
+                    // Page-level underline tabs over the section cards (the sketch), not a card of tabs.
+                    ->contained(false)
                     ->tabs([
                         Tabs\Tab::make(__('loyalty.admin.tab.program'))->schema($this->programSchema()),
                         Tabs\Tab::make(__('loyalty.admin.tab.tiers'))->schema($this->tiersSchema()),
