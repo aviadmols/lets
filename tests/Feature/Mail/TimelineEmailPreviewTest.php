@@ -70,11 +70,11 @@ final class TimelineEmailPreviewTest extends TestCase
 
     public function test_a_plan_preview_shows_that_customer_not_a_sample_one(): void
     {
-        $plan = $this->plan(name: 'אביעד מולשצקי', email: 'aviadmols@gmail.com');
+        $plan = $this->plan(name: 'ישראל ישראלי', email: 'israel@example.com');
 
         $preview = EmailPreviewRenderer::forPlan(self::TEMPLATE, $plan, $this->shop);
 
-        $this->assertStringContainsString('אביעד מולשצקי', $preview['html']);
+        $this->assertStringContainsString('ישראל ישראלי', $preview['html']);
         // The sample bag's name and business must not appear anywhere near a real
         // customer's record.
         $this->assertStringNotContainsString('דנה כהן', $preview['html']);
@@ -205,8 +205,8 @@ final class TimelineEmailPreviewTest extends TestCase
 
     /** @param array<string, mixed> $meta */
     private function plan(
-        string $name = 'אביעד מולשצקי',
-        string $email = 'aviadmols@gmail.com',
+        string $name = 'ישראל ישראלי',
+        string $email = 'israel@example.com',
         array $meta = ['item_title' => 'מנוי שיבולת'],
         ?string $externalProductId = null,
     ): InstallmentPlan {

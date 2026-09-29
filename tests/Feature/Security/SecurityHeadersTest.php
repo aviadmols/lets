@@ -3,6 +3,7 @@
 namespace Tests\Feature\Security;
 
 use App\Http\Middleware\AddSecurityHeaders;
+use App\Models\Shop;
 use App\Models\User;
 use App\Services\WooCommerce\WooCommerceShopProvisioner;
 use App\Support\EmbeddedSession;
@@ -74,6 +75,35 @@ final class SecurityHeadersTest extends TestCase
         $this->withSession([EmbeddedSession::SESSION_RETURN_URL => "javascript:alert(1)"]);
 
         $this->assertSame(AddSecurityHeaders::BASE_FRAME_ANCESTORS, app(AddSecurityHeaders::class)->frameAncestors());
+    }
+
+    public function test_a_known_shopify_shop_is_framed_by_its_own_domain_only(): void
+    {
+        $shop = Shop::create([
+            'shopify_domain' => 'frame-me.myshopify.com',
+            'name' => 'Frame Me',
+            'status' => Shop::STATUS_INSTALLED,
+            'platform' => Shop::PLATFORM_SHOPIFY,
+        ]);
+        $merchant = User::factory()->forShop($shop)->create();
+
+        $csp = $this->frameAncestors($this->actingAs($merchant)->get('/admin'));
+
+        $this->assertStringContainsString('https://frame-me.myshopify.com', $csp);
+        $this->assertStringContainsString('https://admin.shopify.com', $csp);
+        // The whole point: a KNOWN Shopify shop no longer admits every store.
+        $this->assertStringNotContainsString('*.myshopify.com', $csp);
+    }
+
+    public function test_a_known_woocommerce_shop_also_drops_the_shopify_wildcard(): void
+    {
+        $shop = (new WooCommerceShopProvisioner)->provision('no-wildcard.example.com')['shop'];
+        $merchant = User::factory()->forShop($shop)->create();
+
+        $csp = $this->frameAncestors($this->actingAs($merchant)->get('/admin'));
+
+        $this->assertStringNotContainsString('*.myshopify.com', $csp);
+        $this->assertStringContainsString('https://admin.shopify.com', $csp);
     }
 
     public function test_storefront_surfaces_are_not_given_the_admin_wall(): void

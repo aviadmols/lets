@@ -1,5 +1,15 @@
 # FrankPHP (PHP 8.4) image for the web service. Worker/scheduler services reuse
 # this same image and override the start command via the Procfile.
+#
+# NOT changed here (LOW-2, 2026-09 audit): running as non-root. FrankenPHP's own
+# non-root recipe needs Caddy's autosave state + certificate storage moved to a
+# writable path via XDG_CONFIG_HOME/XDG_DATA_HOME, plus storage/bootstrap/cache
+# ownership fixed up at build time — none of that has been verified to still
+# boot cleanly under Railway's container runtime (which also decides $PORT and
+# the read/write layout at deploy time, not at this build). Getting that wrong
+# ships a container that never serves a single request, which is worse than
+# staying root for now. Do this deliberately, with a real Railway deploy to
+# verify against, not as a drive-by line here.
 FROM dunglas/frankenphp:1-php8.4
 
 # System packages required by the PHP extensions below.
@@ -39,18 +49,25 @@ RUN set -eux; \
 # request (the bulk of the slow admin page loads). See docker/opcache.ini.
 COPY docker/opcache.ini /usr/local/etc/php/conf.d/zz-opcache.ini
 
+# Runtime hardening (LOW-2, 2026-09 audit): no X-Powered-By/version fingerprint,
+# no dev-facing error display even if something upstream of APP_DEBUG misfires.
+# See docker/hardening.ini for the reasoning per directive.
+COPY docker/hardening.ini /usr/local/etc/php/conf.d/zz-hardening.ini
+
 # Composer from the official image.
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /app
 
-# Install PHP deps first (better layer caching).
+# Install PHP deps first (better layer caching). No `|| true`: a failed install
+# must fail the build, not silently ship an image with a stale/broken vendor/
+# (LOW-2, 2026-09 audit).
 COPY composer.json composer.lock* ./
-RUN composer install --no-dev --no-scripts --no-interaction --prefer-dist --optimize-autoloader || true
+RUN composer install --no-dev --no-scripts --no-interaction --prefer-dist --optimize-autoloader
 
 # App source.
 COPY . .
-RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader || true
+RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
 # Storage + cache must be writable.
 RUN chmod -R ug+rw storage bootstrap/cache 2>/dev/null || true

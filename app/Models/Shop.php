@@ -142,6 +142,8 @@ class Shop extends Model
         'woocommerce_domain',
         'wc_shop_token',
         'callback_token',
+        'previous_callback_token',
+        'previous_callback_token_expires_at',
         'lets_api_key_hash',
     ];
 
@@ -172,6 +174,7 @@ class Shop extends Model
             'shopify_payments_checked_at' => 'datetime',
             'installed_at' => 'datetime',
             'uninstalled_at' => 'datetime',
+            'previous_callback_token_expires_at' => 'datetime',
             // The platform owner's per-shop embedded-menu allow-list (null = all).
             'embedded_menu' => 'array',
         ];
@@ -557,6 +560,44 @@ class Shop extends Model
         }
 
         return null;
+    }
+
+    /**
+     * The ONE lookup every PayPlus callback + legacy return-URL fallback should use
+     * to turn an opaque token back into a shop — the seam
+     * App\Domain\Security\CallbackTokenRotator rotates behind.
+     *
+     * Matches, in order: the current `callback_token`, the current `wc_shop_token`
+     * (its pre-unification twin — see callbackToken()), or `previous_callback_token`
+     * while it is still inside its rotation grace window. A page PayPlus is holding
+     * from BEFORE a rotation — including one sitting unopened in a card-update
+     * reminder email — keeps resolving until that window closes; after it closes the
+     * old link 404s exactly like any other unknown token.
+     *
+     * $platform narrows to one platform's shops (the deposit/gateway callbacks are
+     * WooCommerce-only); omit it where a rail — card update — is platform-neutral.
+     */
+    public static function resolveByCallbackToken(string $token, ?string $platform = null): ?self
+    {
+        $token = trim($token);
+        if ($token === '') {
+            return null;
+        }
+
+        $query = static::query()->where(function ($q) use ($token): void {
+            $q->where('callback_token', $token)
+                ->orWhere('wc_shop_token', $token)
+                ->orWhere(function ($q2) use ($token): void {
+                    $q2->where('previous_callback_token', $token)
+                        ->where('previous_callback_token_expires_at', '>=', now());
+                });
+        });
+
+        if ($platform !== null) {
+            $query->where('platform', $platform);
+        }
+
+        return $query->first();
     }
 
     public function hasWooConnection(): bool

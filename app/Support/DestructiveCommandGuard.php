@@ -29,17 +29,45 @@ use Symfony\Component\Console\Input\InputInterface;
  * Escape hatch: set ALLOW_DESTRUCTIVE_DB=true in .env. Deliberately an env var and
  * not a CLI flag — wiping a remote database should require editing a file and
  * meaning it, not appending --force to a command you already typed.
+ *
+ * RESIDUAL RISK (2026-09 security audit, MEDIUM-3), left as documentation rather
+ * than a behaviour change: `LOCAL_HOSTS` treats `127.0.0.1`/`localhost` as safe,
+ * so a `railway connect` or SSH port-forward of a PRODUCTION database onto the
+ * laptop's loopback interface would still pass this guard — the connection really
+ * is local, the DATABASE is not. There is no reliable way to tell those apart from
+ * config alone (a legitimate local Postgres also lives on 127.0.0.1), so guessing
+ * would either lock out real local dev or give a false sense of safety. The actual
+ * fix is HIGH-1's: production credentials do not belong on a laptop in the first
+ * place. Do not "solve" this by guessing at database names.
  */
 final class DestructiveCommandGuard
 {
     // === CONSTANTS ===
 
-    /** Commands that DROP tables. Anything here is refused against a remote DB. */
+    /** Commands that DROP tables, or otherwise write bulk/irreversible data, and
+     *  are therefore refused against anything that is not demonstrably local. */
     public const DESTRUCTIVE_COMMANDS = [
         'migrate:fresh',
         'migrate:refresh',
         'migrate:reset',
         'db:wipe',
+        // Reverses the last migration batch — on a remote database that can drop
+        // exactly the columns/tables the newest deploy added.
+        'migrate:rollback',
+        // Runs merchant-authored seeders; several truncate/upsert bulk rows and
+        // none of them should ever touch a database that is not local.
+        'db:seed',
+    ];
+
+    /** A short, honest description per command for the refusal message — a
+     *  `db:seed` refusal must not claim it "would DROP EVERY TABLE". */
+    private const COMMAND_DESCRIPTIONS = [
+        'migrate:fresh' => 'DROP EVERY TABLE, then re-run every migration',
+        'migrate:refresh' => 'DROP EVERY TABLE, then re-run every migration',
+        'migrate:reset' => 'DROP EVERY TABLE',
+        'db:wipe' => 'DROP EVERY TABLE (and every view/type)',
+        'migrate:rollback' => 'DROP the columns/tables the last migration batch added',
+        'db:seed' => 'INSERT/overwrite bulk seeder data',
     ];
 
     /** Hosts that count as "this machine". Empty host = a socket or a file DB. */
@@ -143,10 +171,11 @@ final class DestructiveCommandGuard
         $driver = (string) ($config['driver'] ?? 'unknown');
         $host = (string) ($config['host'] ?? '');
         $database = (string) ($config['database'] ?? '');
+        $does = self::COMMAND_DESCRIPTIONS[$command] ?? 'DROP EVERY TABLE';
 
         return implode(PHP_EOL, [
             '',
-            "REFUSED: `{$command}` would DROP EVERY TABLE on a non-local database.",
+            "REFUSED: `{$command}` would {$does} on a non-local database.",
             '',
             "  connection asked for : {$name}",
             "  actually resolves to : {$driver} @ ".($host !== '' ? $host : '(no host)'),

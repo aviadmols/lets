@@ -53,9 +53,6 @@ final class WooDepositReturnController
     private static function shopFor(string $ref): ?Shop
     {
         return PayPlusReturnRef::resolve($ref)
-            ?? Shop::query()
-                ->where('wc_shop_token', $ref)
-                ->where('platform', Shop::PLATFORM_WOOCOMMERCE)
-                ->first();
+            ?? Shop::resolveByCallbackToken($ref, Shop::PLATFORM_WOOCOMMERCE);
     }
 }

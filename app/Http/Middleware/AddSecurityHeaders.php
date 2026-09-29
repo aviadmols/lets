@@ -23,7 +23,12 @@ use Throwable;
  * And, on the ADMIN only (/admin, /horizon), who may put us in a frame
  * (CSP frame-ancestors) — the clickjacking wall. The admin is framed on purpose
  * in two places, and both stay open:
- *   - Shopify's admin (admin.shopify.com, a store's *.myshopify.com);
+ *   - Shopify's admin (admin.shopify.com), plus, once the request's shop is
+ *     known, THAT shop's own `*.myshopify.com` domain only — never every
+ *     Shopify store on earth. The wildcard `https://*.myshopify.com` is used
+ *     ONLY while no shop can be determined yet (the very first embedded load,
+ *     before the tenant binds) — refusing that load would break every
+ *     merchant's install, so it is the one deliberate exception.
  *   - the connected store's own WordPress admin: the shop's domain (+www) and
  *     the exact wp-admin origin the plugin handed us at embed time.
  * Any other site gets a refused frame. The storefront, account and payment
@@ -42,7 +47,11 @@ final class AddSecurityHeaders
     /** A bare hostname — nothing that could end or extend a CSP directive. */
     public const HOST_PATTERN = '/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/';
 
+    /** Used ONLY while no shop can be determined yet — see frameAncestors(). */
     public const BASE_FRAME_ANCESTORS = ["'self'", 'https://admin.shopify.com', 'https://*.myshopify.com'];
+
+    /** Allowed for every KNOWN shop regardless of platform — narrowed further below. */
+    private const ALWAYS_ANCESTORS = ["'self'", 'https://admin.shopify.com'];
 
     public function handle(Request $request, Closure $next): Response
     {
@@ -72,14 +81,35 @@ final class AddSecurityHeaders
     /** @return list<string> */
     public function frameAncestors(): array
     {
-        $ancestors = self::BASE_FRAME_ANCESTORS;
-
         $shop = $this->shop();
-        $host = strtolower((string) ($shop?->woocommerce_domain ?? ''));
-        // A stored value is still checked: a space or ';' must never add a directive.
-        if ($shop !== null && $shop->platform === Shop::PLATFORM_WOOCOMMERCE && preg_match(self::HOST_PATTERN, $host) === 1) {
-            $ancestors[] = 'https://'.$host;
-            $ancestors[] = 'https://www.'.$host;
+
+        if ($shop === null) {
+            // The tenant cannot be determined yet (the very first embedded load,
+            // before it binds) — admitting every *.myshopify.com store here is
+            // the one deliberate exception; refusing this load would break every
+            // merchant's install, not just an attacker's.
+            return self::BASE_FRAME_ANCESTORS;
+        }
+
+        $ancestors = self::ALWAYS_ANCESTORS;
+
+        if ($shop->platform === Shop::PLATFORM_SHOPIFY) {
+            $domain = strtolower((string) ($shop->shopify_domain ?? ''));
+            // A stored value is still checked: a space or ';' must never add a
+            // directive. A Shopify shop on record with no usable domain (should
+            // not happen) falls back to the wildcard rather than a guessed-wrong
+            // refusal — same reasoning as the shop === null branch above.
+            $ancestors[] = preg_match(self::HOST_PATTERN, $domain) === 1
+                ? 'https://'.$domain
+                : 'https://*.myshopify.com';
+        }
+
+        if ($shop->platform === Shop::PLATFORM_WOOCOMMERCE) {
+            $host = strtolower((string) ($shop->woocommerce_domain ?? ''));
+            if (preg_match(self::HOST_PATTERN, $host) === 1) {
+                $ancestors[] = 'https://'.$host;
+                $ancestors[] = 'https://www.'.$host;
+            }
         }
 
         $returnOrigin = self::origin(EmbeddedSession::returnUrl());

@@ -15,11 +15,20 @@ platform. No plaintext database dumps are exported to laptops or third-party
 storage; ad-hoc dumps for debugging are prohibited by this policy.
 
 On top of at-rest encryption, the *most sensitive columns are encrypted at the
-application layer* (Laravel `encrypted` casts, key = `APP_KEY`): Shopify
-access/refresh tokens, per-shop PayPlus credentials, WooCommerce REST
-credentials, and invoicing (Green Invoice / Morning) credentials — see
-`app/Models/Shop.php`. A stolen backup without `APP_KEY` yields no usable
-gateway or store credentials.
+application layer*, under TWO separate keys — see `app/Models/Shop.php`:
+
+- `APP_KEY` (Laravel's built-in `encrypted` cast): Shopify access/refresh
+  tokens, `lets_api_secret`.
+- `TENANT_CREDENTIALS_KEY` — a DEDICATED key, independent of `APP_KEY`
+  (`App\Casts\EncryptedCredentials`, `config/tenancy.php`): per-shop PayPlus
+  credentials, WooCommerce REST credentials, and invoicing (Green Invoice /
+  Morning) credentials. Separate on purpose: this key can be rotated —
+  `TENANT_CREDENTIALS_PREVIOUS_KEYS` + `php artisan tenant:rotate-credentials-key`
+  — without invalidating every merchant's session (which `APP_KEY` also
+  encrypts).
+
+A stolen backup without both keys yields no usable gateway or store
+credentials.
 
 ## 2. Test / production data separation
 
@@ -151,10 +160,16 @@ compiled** (§ the email-template rule), and previewed only inside a sandboxed
 The account area's "עדכון כרטיס" mints a **PayPlus hosted page** in re-vault
 mode (`create_token`, verify-only charge method) — card digits never touch
 LETS. The completion is a server-to-server callback on the deposit callback's
-exact trust rails: the opaque `{wc_shop_token}` path segment resolves the shop
-before any body field is trusted, a present PayPlus `hash` signature fails
-closed, and the body can only act on the plan its `cardupd:`-prefixed
-`more_info` names (a deposit callback replayed here matches nothing). The new
+exact trust rails: the opaque `{wc_shop_token}` / `{callback_token}` path
+segment resolves the shop before any body field is trusted (`Shop::resolveByCallbackToken()`),
+a present PayPlus `hash` signature fails closed, and the body can only act on
+the plan its `cardupd:`-prefixed `more_info` names (a deposit callback replayed
+here matches nothing). This token is **rotatable with a grace period**
+(`php artisan security:rotate-callback-tokens` —
+`App\Domain\Security\CallbackTokenRotator`): a rotation mints a fresh token
+immediately while the OLD one keeps resolving for `--grace-days` (default 14),
+so a hosted page PayPlus is already holding a link for — including an unopened
+card-update reminder — still completes. The new
 token is vaulted as a fresh `InstallmentPaymentMethod` with identity copied off
 the PLAN (the callback is only a hint); the plan and its non-terminal siblings
 on the old card are re-pointed; replay is idempotent on the token uid; the old
@@ -170,9 +185,12 @@ the click.
 `Referrer-Policy: strict-origin-when-cross-origin` on every response and drops
 `X-Powered-By`. On `/admin` and `/horizon` it adds `Content-Security-Policy:
 frame-ancestors` (clickjacking): only this app, Shopify's admin
-(`admin.shopify.com`, `*.myshopify.com`), and the connected WooCommerce store's
-own domain (+`www.`) and wp-admin origin may frame the admin. Storefront,
-account and payment surfaces are left to their own per-route policy.
+(`admin.shopify.com`), and — once the request's shop is known — THAT shop's own
+`*.myshopify.com` domain (Shopify) or its own domain (+`www.`) and wp-admin
+origin (WooCommerce) may frame the admin. `*.myshopify.com` in full is admitted
+ONLY while no shop can be determined yet (the first embedded load, before the
+tenant binds) — a known shop never gets the wildcard. Storefront, account and
+payment surfaces are left to their own per-route policy.
 
 ## 6. Security incident response policy
 
@@ -183,10 +201,14 @@ integrity failure affecting merchant or shopper data.
    `*.mutation_rejected`, gateway/webhook failures) and Railway alerts are the
    entry points. The on-call owner (Aviad) assesses scope: which shops, which
    data classes, ongoing or contained.
-2. **Contain (same day).** Rotate the affected secret(s): `APP_KEY` re-encrypt
-   cycle, per-shop PayPlus/Woo credentials (re-issued by the merchant), Shopify
-   tokens (reinstall/re-auth). Revoke platform-admin sessions. If a code path
-   is the vector, disable the surface (feature flag / deploy) before fixing it.
+2. **Contain (same day).** Rotate the affected secret(s):
+   `TENANT_CREDENTIALS_KEY` (`php artisan tenant:rotate-credentials-key` after
+   moving the old key to `TENANT_CREDENTIALS_PREVIOUS_KEYS`), `APP_KEY`
+   re-encrypt cycle, PayPlus callback tokens
+   (`php artisan security:rotate-callback-tokens --all`), per-shop PayPlus/Woo
+   credentials (re-issued by the merchant), Shopify tokens (reinstall/re-auth).
+   Revoke platform-admin sessions. If a code path is the vector, disable the
+   surface (feature flag / deploy) before fixing it.
 3. **Assess & record.** Reconstruct the window and the accessed data from the
    append-only logs (§5). Every step of the response is written down as it
    happens.
