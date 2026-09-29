@@ -20,6 +20,8 @@ use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactor
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
 /**
@@ -273,6 +275,41 @@ final class ConsentCeilingTest extends TestCase
         $plan->forceFill(['installment_amount' => 250.00])->save();
         $this->assertSame(ChargeOrchestrator::SKIP_ABOVE_CONSENT, $this->charge($plan->fresh())->reason);
         $this->assertSame(0, $this->calls);
+    }
+
+    public function test_one_broken_plan_does_not_abort_the_backfill(): void
+    {
+        CustomerConsent::create([
+            'shopify_customer_id' => self::CUSTOMER,
+            'consent_context' => CustomerConsent::CONTEXT_RECURRING,
+            'accepted_at' => now()->subYear(),
+        ]);
+        $good = $this->plan();
+        $broken = $this->plan();
+        $alsoGood = $this->plan();
+        // A value the enum cast refuses — hydration-time trouble, as a bad import leaves.
+        DB::table('installment_plans')->where('id', $broken->id)->update(['plan_kind' => 'not-a-kind']);
+
+        Log::spy();
+        $migration = require base_path('database/migrations/2026_09_29_000006_backfill_consent_ceilings_for_live_plans.php');
+        Tenant::clear();
+        $migration->up();
+        Tenant::set($this->shop);
+
+        foreach ([$good, $alsoGood] as $plan) {
+            $this->assertDatabaseHas('customer_consents', [
+                'plan_id' => $plan->id,
+                'ceiling_source' => ConsentCeiling::SOURCE_BASELINE,
+            ]);
+        }
+        $this->assertDatabaseMissing('customer_consents', ['plan_id' => $broken->id]);
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn (string $message, array $context = []): bool => $message === 'migration.consent_ceiling_backfill_skipped'
+                && $context['plan_id'] === $broken->id
+                && $context['shop_id'] === $this->shop->id
+                && $context['exception'] === \ValueError::class)
+            ->once();
     }
 
     public function test_the_edit_service_attributes_a_customer_edit_to_the_customer(): void

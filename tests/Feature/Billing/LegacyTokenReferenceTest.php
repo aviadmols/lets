@@ -14,6 +14,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Services\ChargeOrchestrator;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Encryption\Encrypter;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
@@ -104,6 +105,7 @@ final class LegacyTokenReferenceTest extends TestCase
     {
         $plan = $this->planWithLegacyReference();
         $id = $plan->payment_method_id;
+        $this->canaryMethod(Crypt::encryptString('tok-canary')); // ciphertext under THIS key proves it
 
         $migration = require base_path(self::MIGRATION);
         $migration->up();
@@ -116,6 +118,51 @@ final class LegacyTokenReferenceTest extends TestCase
         $migration->up();
 
         $this->assertSame($first, DB::table('installment_payment_methods')->where('id', $id)->value('payplus_token_reference'), 'A second run changes nothing.');
+    }
+
+    public function test_the_migration_refuses_a_wrong_app_key_and_writes_nothing(): void
+    {
+        $plan = $this->planWithLegacyReference();
+        // Ciphertext written by ANOTHER key: the database belongs to a different APP_KEY.
+        $foreign = new Encrypter(random_bytes(32), 'AES-256-CBC');
+        $this->canaryMethod($foreign->encryptString('tok-production'));
+
+        $migration = require base_path(self::MIGRATION);
+
+        try {
+            $migration->up();
+            $this->fail('A wrong APP_KEY must stop the migration.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('WRONG key', $e->getMessage());
+        }
+
+        $this->assertSame(self::LEGACY_TOKEN, $this->rawReference($plan->payment_method_id), 'Nothing written.');
+    }
+
+    public function test_the_migration_skips_when_no_ciphertext_can_prove_the_key(): void
+    {
+        $plan = $this->planWithLegacyReference();
+
+        $migration = require base_path(self::MIGRATION);
+        $migration->up();
+
+        $this->assertSame(self::LEGACY_TOKEN, $this->rawReference($plan->payment_method_id), 'Skipped, not guessed.');
+        $this->assertSame(self::LEGACY_TOKEN, InstallmentPaymentMethod::query()->findOrFail($plan->payment_method_id)->payplus_token_reference);
+    }
+
+    private function rawReference(int $methodId): ?string
+    {
+        return DB::table('installment_payment_methods')->where('id', $methodId)->value('payplus_token_reference');
+    }
+
+    /** A second method whose card-token column holds $ciphertext exactly as stored. */
+    private function canaryMethod(string $ciphertext): void
+    {
+        $method = InstallmentPaymentMethod::create([
+            'payplus_customer_uid' => 'cust-canary',
+            'status' => InstallmentPaymentMethod::STATUS_ACTIVE,
+        ]);
+        DB::table('installment_payment_methods')->where('id', $method->id)->update(['payplus_card_token_uid' => $ciphertext]);
     }
 
     private function planWithLegacyReference(): InstallmentPlan
