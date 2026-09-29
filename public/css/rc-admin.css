@@ -3623,6 +3623,67 @@ button.rc-fb-node:focus-visible {
 .rc-plan-price-summary { font: var(--rc-type-body-strong); }
 
 /* =============================================================================
+   settings-hub.css — the Settings board of the approved sketch (Settings.dc.html):
+   a quiet 230px text index beside the page (active = the label in link blue,
+   no wash, no rail, no icons), and denser form sections — a 15px title with a
+   12px note under it, 20px gutters.
+
+   TOKENS: --rc-ink --rc-ink-muted --rc-blue --rc-bg --rc-border
+           --rc-radius-control --rc-type-* --rc-space-*
+   SPECIFICITY: rooted at .fi-body (see shell.css). RTL: logical properties.
+   ========================================================================== */
+
+.fi-body .fi-page-sub-navigation-sidebar-ctn {
+    inline-size: 230px;
+}
+
+.fi-body .fi-page-sub-navigation-sidebar .fi-sidebar-item-icon {
+    display: none;
+}
+
+.fi-body .fi-page-sub-navigation-sidebar .fi-sidebar-item-button,
+.fi-body .fi-page-sub-navigation-sidebar .fi-sidebar-item-active > .fi-sidebar-item-button {
+    block-size: 34px;
+    padding: 0 var(--rc-space-3);
+    background-color: transparent;
+    box-shadow: none;
+}
+
+.fi-body .fi-page-sub-navigation-sidebar .fi-sidebar-item-button:hover {
+    background-color: var(--rc-bg);
+}
+
+.fi-body .fi-page-sub-navigation-sidebar .fi-sidebar-item-label {
+    font: var(--rc-type-body);
+    color: var(--rc-ink);
+}
+
+.fi-body .fi-page-sub-navigation-sidebar .fi-sidebar-item-active .fi-sidebar-item-label {
+    font-weight: 600;
+    color: var(--rc-blue);
+}
+
+[dir="rtl"] .fi-body .fi-page-sub-navigation-sidebar .fi-sidebar-item-active > .fi-sidebar-item-button {
+    box-shadow: none;
+}
+
+/* ------------------------------------------------------ form sections --- */
+
+.fi-body .fi-section-header {
+    padding: var(--rc-space-4) 20px;
+    row-gap: 2px;
+}
+
+.fi-body .fi-section-header-description {
+    font: var(--rc-type-caption);
+    color: var(--rc-ink-muted);
+}
+
+.fi-body .fi-section-content {
+    padding: 20px;
+}
+
+/* =============================================================================
    shell.css — the panel chrome of the approved sketch (Main.dc.html): the 248px
    sidebar with 34px items and label-style group headings, Settings + the store
    card pinned at its foot, the 56px white top bar (search at the start; bell,
