@@ -103,6 +103,11 @@ PROMPT,
         'platform_daily_tokens' => env('AI_DAILY_TOKEN_BUDGET') !== null
             ? (int) env('AI_DAILY_TOKEN_BUDGET')
             : null,
+
+        /** One shop's daily cap; unset → AiGateway::DEFAULT_SHOP_DAILY_TOKENS. */
+        'shop_daily_tokens' => env('AI_SHOP_DAILY_TOKEN_BUDGET') !== null
+            ? (int) env('AI_SHOP_DAILY_TOKEN_BUDGET')
+            : null,
     ],
 
     'chat' => [

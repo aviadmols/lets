@@ -79,6 +79,39 @@ final class ImportedTokenRecovery
     public const KIND_RECOVERED = 'payment_method_token_recovered';
 
     /**
+     * Timeline kind written when a card was FOUND but not attached, because the
+     * evidence does not prove it is this customer's (or the old one was reported
+     * stolen/lost). The merchant confirms it with "Choose card" (ROUTE_MANUAL).
+     */
+    public const KIND_NEEDS_CONFIRMATION = 'payment_method_token_needs_confirmation';
+
+    /** probe/recover detail when a found card waits for the merchant. */
+    public const DETAIL_NEEDS_CONFIRMATION = 'card_needs_confirmation';
+
+    /** Plan meta: the cards the last refused-for-confirmation lookup saw. */
+    public const META_PROPOSAL = 'token_recovery_proposal';
+
+    /**
+     * Routes whose card is not PROVEN to be the one we already hold — a different
+     * card found by email (a family member, a typo, an impostor who once paid with
+     * this email). Found, shown, never attached or charged without a merchant.
+     */
+    public const ROUTES_NEEDING_CONFIRMATION = [self::ROUTE_REPLACEMENT, self::ROUTE_EMAIL_RELAXED];
+
+    /**
+     * Declines that say the card was reported STOLEN or LOST. After one of these
+     * nothing automatic may point the plan at another card and charge it —
+     * evading a stolen-card decline is a card-network compliance breach. Only a
+     * merchant's explicit choice (ROUTE_MANUAL) may. Same admitted heuristic as
+     * RECOVERABLE_DECLINES (failure_code is always 1; the Hebrew text is the
+     * signal), matched in the SAFE direction: an unknown wording is not "stolen",
+     * but "stolen" wins over every other reading.
+     *
+     * @var list<string>
+     */
+    public const STOLEN_CARD_DECLINES = ['גנוב', 'אבוד', 'החרם'];
+
+    /**
      * Declines a STALE TOKEN can cause — the ones worth asking PayPlus about.
      *
      * The obvious one is "token does not exist". The other three are the lesson of
@@ -184,6 +217,45 @@ final class ImportedTokenRecovery
         return false;
     }
 
+    /** Was the card we hold reported stolen or lost by the issuer? */
+    public static function cardReportedStolen(?string $failureMessage): bool
+    {
+        $message = trim((string) $failureMessage);
+
+        if ($message === '') {
+            return false;
+        }
+
+        foreach (self::STOLEN_CARD_DECLINES as $needle) {
+            if (str_contains($message, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Must a person confirm this card before it is attached (and so charged)?
+     * Always no for ROUTE_MANUAL — that IS the person. After a stolen/lost
+     * decline, yes for every automatic route; otherwise yes for the routes whose
+     * card is not proven to be ours.
+     */
+    public function needsConfirmation(InstallmentPlan $plan, array $outcome): bool
+    {
+        $route = (string) ($outcome['route'] ?? '');
+
+        if ($route === self::ROUTE_MANUAL) {
+            return false;
+        }
+
+        if (self::cardReportedStolen($plan->latestPayment?->failure_message)) {
+            return true;
+        }
+
+        return in_array($route, self::ROUTES_NEEDING_CONFIRMATION, true);
+    }
+
     /**
      * The routes probe() may try, in order. All three by default — but a bulk
      * run across a whole book pays one HTTP round-trip per route per member, and
@@ -281,12 +353,21 @@ final class ImportedTokenRecovery
             }
 
             if ($token !== '') {
+                $customerUid = (string) ($recurring['customer_uid'] ?? '') ?: null;
+
                 return $this->outcome(
                     self::ROUTE_RECURRING,
                     token: $token,
-                    customerUid: (string) ($recurring['customer_uid'] ?? '') ?: null,
+                    customerUid: $customerUid,
                     recurringLive: (bool) ($recurring['valid'] ?? false),
                     detail: 'from_recurring',
+                    // Listed so a merchant can confirm it when confirmation is
+                    // required (a stolen/lost decline) — PayPlus's recurring view
+                    // names no digits or expiry, so the entry is the uid alone.
+                    candidates: [[
+                        'token' => $token, 'last_four' => null, 'expiry' => null, 'expired' => false,
+                        'added_at' => null, 'held' => false, 'customer_uid' => $customerUid,
+                    ]],
                 );
             }
         }
@@ -455,6 +536,7 @@ final class ImportedTokenRecovery
                         detail: count($customers) > 1
                             ? $pick['basis'].'_across_'.count($customers).'_records'
                             : $pick['basis'],
+                        candidates: $candidates,
                     );
                 }
 
@@ -539,8 +621,23 @@ final class ImportedTokenRecovery
 
         $shopId = (int) $plan->shop_id;
 
+        // FOUND, NOT PROVEN (or the old card was reported stolen): shown to the
+        // merchant, never attached — and so never charged — by a machine.
+        if ($this->needsConfirmation($plan, $outcome)) {
+            $this->propose($plan, $outcome, (string) $token);
+
+            return false;
+        }
+
         DB::transaction(function () use ($method, $plan, $outcome, $token, $shopId): void {
             $was = (string) ($method->payplus_card_token_uid ?? '');
+
+            // Whatever was waiting for a merchant is settled by this write.
+            $meta = (array) ($plan->meta ?? []);
+            if (array_key_exists(self::META_PROPOSAL, $meta)) {
+                unset($meta[self::META_PROPOSAL]);
+                $plan->forceFill(['meta' => $meta])->save();
+            }
 
             $method->payplus_card_token_uid = $token;
 
@@ -675,7 +772,66 @@ final class ImportedTokenRecovery
             ? Tenant::run($shop, fn (): bool => $this->apply($plan, $outcome))
             : false;
 
+        // A card was found and held back for the merchant — say so, so a report
+        // files it as a decision waiting, not as "nothing found".
+        if (! $outcome['applied'] && ($outcome['token'] ?? '') !== '' && $this->needsConfirmation($plan, $outcome)) {
+            $outcome['detail'] = self::DETAIL_NEEDS_CONFIRMATION;
+        }
+
         return $outcome;
+    }
+
+    /**
+     * The cards the latest held-back lookup saw, for the merchant to choose from
+     * (empty when none is waiting).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function proposedCandidates(InstallmentPlan $plan): array
+    {
+        return array_values((array) data_get($plan->meta, self::META_PROPOSAL.'.candidates', []));
+    }
+
+    /** When the held-back proposal was made, or null. */
+    public static function proposedAt(InstallmentPlan $plan): ?string
+    {
+        $at = data_get($plan->meta, self::META_PROPOSAL.'.at');
+
+        return is_string($at) && $at !== '' ? $at : null;
+    }
+
+    /**
+     * Park a found card for the merchant: the cards seen (so "Choose card" can
+     * offer them) on the plan, and a Timeline line saying why it was not used.
+     * Never the full token on the Timeline.
+     */
+    private function propose(InstallmentPlan $plan, array $outcome, string $token): void
+    {
+        $candidates = array_values((array) ($outcome['candidates'] ?? []));
+        $stolen = self::cardReportedStolen($plan->latestPayment?->failure_message);
+
+        $meta = (array) ($plan->meta ?? []);
+        $meta[self::META_PROPOSAL] = [
+            'route' => (string) ($outcome['route'] ?? ''),
+            'candidates' => $candidates,
+            'stolen_decline' => $stolen,
+            'at' => now()->toIso8601String(),
+        ];
+        $plan->forceFill(['meta' => $meta])->save();
+
+        $picked = collect($candidates)->firstWhere('token', $token);
+
+        Timeline::record(
+            kind: self::KIND_NEEDS_CONFIRMATION,
+            details: [
+                'route' => (string) ($outcome['route'] ?? ''),
+                'proposed' => '…'.mb_substr($token, -6),
+                'last_four' => $picked['last_four'] ?? null,
+                'reason' => $stolen ? 'stolen_or_lost_decline' : 'not_proven_same_card',
+            ],
+            planId: $plan->getKey(),
+            shopId: (int) $plan->shop_id,
+        );
     }
 
     /**

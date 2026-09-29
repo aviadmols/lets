@@ -126,6 +126,7 @@ class MerchantInvoicingSettings extends Model
     {
         return [
             'enabled' => 'boolean',
+            'site_url_seen_at' => 'datetime',
             'trigger_statuses' => 'array',
             'document_type_map' => 'array',
             'send_email_to_customer' => 'boolean',

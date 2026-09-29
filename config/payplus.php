@@ -23,6 +23,15 @@ return [
 
     // Currency + VAT (platform default; merchant may override in settings later).
     'currency' => env('PAYPLUS_CURRENCY', 'ILS'),
+
+    // Currencies a storefront request may start a plan / charge in. Anything
+    // else is replaced by `currency` (App\Support\StoreCurrency) — a plan's
+    // currency is sent on every later token charge, so it must never be the
+    // shopper's pick. Comma list; empty → just `currency`.
+    'accepted_currencies' => array_values(array_filter(array_map(
+        static fn (string $c): string => strtoupper(trim($c)),
+        explode(',', (string) env('PAYPLUS_ACCEPTED_CURRENCIES', '')),
+    ))),
     'vat_rate' => (float) env('PAYPLUS_VAT_RATE', 0.18),
 
     /*

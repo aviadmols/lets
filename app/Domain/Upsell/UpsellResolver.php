@@ -10,6 +10,7 @@ use App\Domain\Upsell\Models\UpsellFlowOffer;
 use App\Domain\Upsell\Models\UpsellFlowTrigger;
 use App\Domain\Upsell\Models\UpsellOfferEvent;
 use App\Domain\Upsell\Models\UpsellSetting;
+use App\Models\MerchantBillingSettings;
 use App\Models\Shop;
 use App\Support\Tenant;
 use Illuminate\Support\Facades\Log;
@@ -34,6 +35,12 @@ final class UpsellResolver
         // Tenant must be bound to the SAME shop the context belongs to — a
         // mismatch means the caller forgot to bind, so we fail closed.
         if (Tenant::id() !== $context->shopId) {
+            return null;
+        }
+
+        // The merchant switched after-purchase offers off (Settings → Billing):
+        // an offer that could never be charged is not shown — and no hold opened.
+        if (! MerchantBillingSettings::current()->upsellChargingIsLive()) {
             return null;
         }
 

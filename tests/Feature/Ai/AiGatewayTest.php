@@ -158,6 +158,78 @@ final class AiGatewayTest extends TestCase
         );
     }
 
+    /** One shop exhausting ITS cap is refused; another shop still has its own. */
+    public function test_a_shop_over_its_own_daily_cap_is_refused_without_touching_the_provider(): void
+    {
+        $this->connect();
+        Config::set('ai.budget.shop_daily_tokens', 1000);
+        Http::fake();
+
+        $spent = new AiUsageEvent;
+        $spent->forceFill([
+            'shop_id' => (int) $this->shop->getKey(),
+            'stage' => 'draft_generator', 'provider' => 'anthropic', 'model' => 'm',
+            'input_tokens' => 900, 'output_tokens' => 0,
+            'status' => AiUsageEvent::STATUS_OK,
+        ])->save();
+
+        $result = (new AiGateway)->complete($this->request());
+
+        $this->assertSame(AiResult::FAIL_OVER_BUDGET, $result->failureReason);
+        Http::assertNothingSent();
+    }
+
+    /**
+     * RESERVE, THEN CALL: a call in flight holds its worst case against the cap,
+     * so a parallel call that would only fit if the first cost nothing is refused.
+     */
+    public function test_an_in_flight_reservation_counts_against_the_cap(): void
+    {
+        $this->connect();
+        Http::fake();
+
+        $inFlight = new AiUsageEvent;
+        $inFlight->forceFill([
+            'shop_id' => (int) $this->shop->getKey(),
+            'stage' => 'draft_generator', 'provider' => 'anthropic', 'model' => '',
+            'input_tokens' => 0, 'output_tokens' => 0,
+            'reserved_tokens' => AiGateway::shopDailyCap(),
+            'status' => AiUsageEvent::STATUS_RESERVED,
+        ])->save();
+
+        $this->assertSame(AiResult::FAIL_OVER_BUDGET, (new AiGateway)->complete($this->request())->failureReason);
+        Http::assertNothingSent();
+    }
+
+    public function test_a_settled_call_releases_its_reservation(): void
+    {
+        $this->connect();
+        $this->fakeAnthropicSuccess(['explanation' => 'ok', 'ops' => []], in: 10, out: 5);
+
+        (new AiGateway)->complete($this->request());
+
+        $event = AiUsageEvent::acrossAllTenants()->sole();
+        $this->assertSame(0, (int) $event->reserved_tokens);
+        $this->assertSame(15, AiUsageEvent::shopTokensToday((int) $this->shop->getKey()));
+    }
+
+    public function test_the_platform_cap_is_never_unlimited(): void
+    {
+        $this->assertSame(AiGateway::DEFAULT_PLATFORM_DAILY_TOKENS, AiGateway::platformDailyCap(PlatformAiSettings::current()));
+    }
+
+    public function test_a_shop_calling_too_fast_is_rate_limited(): void
+    {
+        $this->connect();
+        $this->fakeAnthropicSuccess(['explanation' => 'ok', 'ops' => []], in: 1, out: 1);
+
+        for ($i = 0; $i < AiGateway::SHOP_CALLS_PER_MINUTE; $i++) {
+            (new AiGateway)->complete($this->request());
+        }
+
+        $this->assertSame(AiResult::FAIL_RATE_LIMITED, (new AiGateway)->complete($this->request())->failureReason);
+    }
+
     public function test_a_provider_failure_is_typed_and_still_on_the_ledger(): void
     {
         $this->connect();

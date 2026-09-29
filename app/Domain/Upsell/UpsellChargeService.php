@@ -50,14 +50,15 @@ use Throwable;
  *
  * Tenant MUST be bound by the caller (the controller binds from the signed shop).
  *
- * NOT gated by the shop's live-charging switch, and that is a decision rather than
- * an oversight. That switch exists so a merchant can hold a MIGRATION — stop the
+ * Gated by the shop's OWN upsell switch (MerchantBillingSettings::upsellChargingIsLive),
+ * and NOT by the live-charging switch — that is a decision rather than an
+ * oversight. That switch exists so a merchant can hold a MIGRATION — stop the
  * scheduler from billing subscribers they are still checking — and it is read by
  * ChargeOrchestrator, which owns every automatic charge. An upsell is the opposite
  * situation: a shopper is standing at the checkout, one click into a purchase they
  * just chose to make. Refusing it would break live sales in a store that only
- * wanted its migration held still. If a merchant ever needs a true "charge
- * nothing at all", the same guard belongs here, in step 2's neighbourhood.
+ * wanted its migration held still. A merchant who wants "charge nothing at all"
+ * turns BOTH off; the upsell switch also hides every offer (UpsellResolver).
  */
 final class UpsellChargeService
 {
@@ -94,6 +95,20 @@ final class UpsellChargeService
             $req->parentOrderId,
             $req->customerRef,
         );
+
+        // THE MERCHANT'S UPSELL SWITCH (Settings → Billing). Separate from live
+        // charging (see the class note); off means no after-purchase charge at
+        // all. Asked first and logged; a charge that already landed still
+        // answers "already" rather than looking refused.
+        if (! MerchantBillingSettings::current()->upsellChargingIsLive() && ! Ledger::hasSucceeded($shopId, $key)) {
+            Log::warning('upsell.accept.upsell_charging_off', [
+                'shop_id' => $shopId,
+                'flow_id' => $req->flow->getKey(),
+                'offer_id' => $offer->getKey(),
+            ]);
+
+            return UpsellChargeResult::notEligible($key);
+        }
 
         // ELIGIBILITY, server-side: the offer must be live and must have been put in
         // front of THIS order (shown by the resolver, or reached through a branch the

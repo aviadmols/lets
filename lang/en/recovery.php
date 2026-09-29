@@ -108,6 +108,7 @@ return [
         'never' => '—',
         'fixed' => 'New card attached',
         'several' => ':count cards — choose one',
+        'confirm' => 'Card found — confirm it is theirs',
         'expired' => 'Another card, expired',
         'only_dead' => 'No other card',
         'no_cards' => 'No card at PayPlus',

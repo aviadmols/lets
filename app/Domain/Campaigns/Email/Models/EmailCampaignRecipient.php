@@ -74,6 +74,13 @@ class EmailCampaignRecipient extends Model
      */
     public const REASON_EMAILS_OFF = 'emails_off';
 
+    /**
+     * Not sent: the shop reached its daily campaign cap on the platform's shared
+     * relay (CampaignSendQuota). FAILED, not skipped, so "Retry failed" sends it
+     * another day.
+     */
+    public const REASON_DAILY_LIMIT = 'daily_limit';
+
     /** status is guarded: it moves only through the helpers below. */
     protected $guarded = ['id', 'shop_id', 'status'];
 

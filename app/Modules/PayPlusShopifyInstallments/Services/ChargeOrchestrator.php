@@ -3,6 +3,7 @@
 namespace App\Modules\PayPlusShopifyInstallments\Services;
 
 use App\Domain\Billing\ChargeLineDescription;
+use App\Domain\Billing\ConsentCeiling;
 use App\Domain\Billing\Contracts\DocumentPolicy;
 use App\Domain\Billing\Contracts\DocumentPolicyInput;
 use App\Domain\Billing\CycleAmountResolver;
@@ -84,6 +85,12 @@ final class ChargeOrchestrator
      * explicit approval instead of a generic "nothing to charge".
      */
     public const SKIP_CHARGED_RECENTLY = 'charged_recently';
+
+    /**
+     * The skip reason when the charge exceeds what the customer consented to
+     * (ConsentCeiling). Public: the admin screens branch on it to say so.
+     */
+    public const SKIP_ABOVE_CONSENT = 'above_consent';
 
     /** Timeline kind for a plan the shop gives away — refused before anything happens. */
     public const KIND_NO_CHARGE_PLAN = 'charge_refused_no_charge_plan';
@@ -391,7 +398,8 @@ final class ChargeOrchestrator
         // Money-safety law: NO saved-token charge without a stored consent row
         // (shop, customer, context-matching-the-plan-kind). Fail CLOSED — no
         // ledger row, no gateway call — and leave the plan for admin attention.
-        if (! $this->hasConsent($plan)) {
+        $consent = app(ConsentCeiling::class)->consentFor($plan, $this->consentContextFor($plan));
+        if ($consent === null) {
             Timeline::record(
                 kind: Timeline::KIND_CONSENT_MISSING,
                 details: [
@@ -404,6 +412,18 @@ final class ChargeOrchestrator
             );
 
             return ChargeOutcome::skipped('no_consent', $key);
+        }
+
+        // WHAT the customer consented to, not only THAT they did: a charge above
+        // the consented amount (or on a tighter cadence) is refused before a slot
+        // is frozen, a ledger row opened or the gateway asked. Logged and put on
+        // the plan's Timeline; a new consent or a merchant approval lifts it.
+        $ceiling = app(ConsentCeiling::class);
+        $refusal = $ceiling->refusal($plan, $consent, $this->prospectiveAmount($plan, $type));
+        if ($refusal !== null) {
+            $ceiling->recordRefusal($plan, $refusal, $key, $type->value);
+
+            return ChargeOutcome::skipped(self::SKIP_ABOVE_CONSENT, $key);
         }
 
         $payment = $this->findOrCreatePayment($plan, $type);
@@ -1338,44 +1358,33 @@ final class ChargeOrchestrator
     }
 
     /**
-     * Is there a stored consent for this plan's customer to charge a saved token?
-     * Required before any future saved-token charge (CLAUDE.md money-safety law).
-     * Matched on (shop_id, customer, consent_context). The BelongsToShop scope
-     * already pins shop_id; we match the customer by internal id OR shopify id so
-     * a consent captured at checkout (shopify_customer_id only) still satisfies a
-     * later charge that also carries the internal customer_id.
+     * The amount this attempt would ask for — the open slot's frozen amount when
+     * one exists for the next sequence, otherwise what a new slot would be priced
+     * at. Read-only: the consent ceiling is judged BEFORE a slot is frozen, so a
+     * refused price never sticks to the cycle after the merchant corrects it.
      */
-    private function hasConsent(InstallmentPlan $plan): bool
+    private function prospectiveAmount(InstallmentPlan $plan, PaymentType $type): float
     {
-        $hasCustomerId = $plan->customer_id !== null;
-        $hasShopifyId = $plan->shopify_customer_id !== null && $plan->shopify_customer_id !== '';
+        $sequence = $this->nextSequenceFor($plan, $type);
 
-        // Fail closed: a plan with no customer identity at all can never be
-        // matched to a consent row — never let an empty match clause pass.
-        if (! $hasCustomerId && ! $hasShopifyId) {
-            return false;
-        }
+        $open = InstallmentPayment::query()
+            ->where('plan_id', $plan->getKey())
+            ->where('sequence', $sequence)
+            ->first();
 
-        return CustomerConsent::query()
-            ->where('shop_id', (int) $plan->shop_id)
-            ->where('consent_context', $this->consentContextFor($plan))
-            ->where(function ($q) use ($plan, $hasCustomerId, $hasShopifyId): void {
-                if ($hasCustomerId) {
-                    $q->orWhere('customer_id', $plan->customer_id);
-                }
-                if ($hasShopifyId) {
-                    $q->orWhere('shopify_customer_id', $plan->shopify_customer_id);
-                }
-            })
-            ->exists();
+        return $open instanceof InstallmentPayment
+            ? round((float) $open->amount, 2)
+            : round($this->amountFor($plan, $type, $sequence), 2);
     }
 
-    /** Map plan_kind → the consent_context the customer must have accepted. */
+    /**
+     * Map plan_kind → the consent_context the customer must have accepted. The
+     * consent itself is resolved by ConsentCeiling: bound to THIS plan (a legacy
+     * customer-wide row is bound on first use), fail-closed with no identity.
+     */
     private function consentContextFor(InstallmentPlan $plan): string
     {
-        return $plan->plan_kind === PlanKind::RECURRING
-            ? CustomerConsent::CONTEXT_RECURRING
-            : CustomerConsent::CONTEXT_INSTALLMENTS;
+        return ConsentCeiling::contextFor($plan);
     }
 
     private function advanceNextChargeAt(InstallmentPlan $plan): CarbonImmutable

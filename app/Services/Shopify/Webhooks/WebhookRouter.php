@@ -19,6 +19,7 @@ final class WebhookRouter
         private readonly PrivacyWebhookHandler $privacy,
         private readonly ProductWebhookHandler $product,
         private readonly SubscriptionWebhookHandler $subscription,
+        private readonly RefundCreatedHandler $refundCreated,
     ) {}
 
     public function handlerFor(string $topic): ?WebhookHandler
@@ -41,7 +42,8 @@ final class WebhookRouter
             'subscription_billing_attempts/success',
             'subscription_billing_attempts/failure',
             'subscription_billing_attempts/challenged' => $this->subscription,
-            // 'refunds/create' → hand to laravel-backend refund reconciler (TODO).
+            // A Shopify-side refund of a plain order takes back its loyalty points.
+            'refunds/create' => $this->refundCreated,
             default => null,
         };
     }

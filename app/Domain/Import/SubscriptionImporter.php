@@ -2,6 +2,7 @@
 
 namespace App\Domain\Import;
 
+use App\Domain\Billing\ConsentCeiling;
 use App\Models\CustomerConsent;
 use App\Models\InstallmentPaymentMethod;
 use App\Models\InstallmentPlan;
@@ -728,7 +729,7 @@ final class SubscriptionImporter
                     (string) $plan->currency,
                 ),
                 'billing_frequency_description' => (string) ($plan->billing_frequency?->value ?? ''),
-            ],
+            ] + ConsentCeiling::termsFor($plan, ConsentCeiling::SOURCE_MIGRATED),
         );
     }
 

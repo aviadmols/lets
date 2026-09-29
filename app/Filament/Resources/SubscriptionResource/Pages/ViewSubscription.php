@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\SubscriptionResource\Pages;
 
+use App\Domain\Billing\ConsentCeiling;
 use App\Domain\Billing\CycleAmountResolver;
 use App\Domain\Billing\RepeatChargeGuard;
 use App\Domain\Billing\StuckChargeResolver;
@@ -17,6 +18,7 @@ use App\Domain\Lifecycle\SubscriptionEditService;
 use App\Domain\Lifecycle\SubscriptionLifecycleService;
 use App\Filament\Resources\SubscriptionResource;
 use App\Models\ActivityEvent;
+use App\Models\CustomerConsent;
 use App\Models\InstallmentPayment;
 use App\Models\InstallmentPlan;
 use App\Models\MerchantMailSettings;
@@ -36,6 +38,7 @@ use App\Support\Tenant;
 use App\Support\Ui\EventPresenter;
 use App\Support\Ui\Money;
 use App\Support\Ui\ProductOptions;
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Filament\Actions;
 use Filament\Forms\Components\Checkbox;
@@ -389,6 +392,32 @@ class ViewSubscription extends Page
                         ->accepted(),
                 ])
                 ->action(fn (array $data) => $this->chargeNow((bool) ($data['approve_repeat'] ?? false))),
+
+            // The next charge is above what the customer agreed to (amount or
+            // cadence), so the engine refuses it. Shown only then. Approving is
+            // an explicit, reasoned, logged act — a new plan-bound consent row
+            // naming who approved, never an edit of the customer's own consent.
+            Actions\Action::make('approveAboveConsent')
+                ->label(__('subscriptions.action.approve_above_consent.label'))
+                ->icon('heroicon-m-shield-exclamation')
+                ->color('warning')
+                ->visible(fn (): bool => $this->consentRefusal() !== null)
+                ->modalHeading(__('subscriptions.action.approve_above_consent.heading'))
+                ->modalDescription(fn (): string => __('subscriptions.action.approve_above_consent.body', [
+                    'agreed' => Money::format((float) ($this->consentRefusal()['ceiling'] ?? 0), $this->record->currency ?: Money::DEFAULT_CURRENCY),
+                    'next' => Money::format(ConsentCeiling::nextAmount($this->record), $this->record->currency ?: Money::DEFAULT_CURRENCY),
+                ]))
+                ->modalSubmitActionLabel(__('subscriptions.action.approve_above_consent.submit'))
+                ->form([
+                    Textarea::make('reason')
+                        ->label(__('subscriptions.action.approve_above_consent.reason'))
+                        ->required()
+                        ->maxLength(1000),
+                    Checkbox::make('confirm')
+                        ->label(__('subscriptions.action.approve_above_consent.confirm'))
+                        ->accepted(),
+                ])
+                ->action(fn (array $data) => $this->approveAboveConsent((string) ($data['reason'] ?? ''))),
 
             // A charge whose outcome nobody learned. The pipeline refuses to ask
             // again — it cannot know whether the card was charged — so it waits
@@ -1309,18 +1338,9 @@ class ViewSubscription extends Page
      */
     private function cardChoices(): array
     {
-        $result = TokenRecoveryResult::query()
-            ->where('plan_id', $this->record->getKey())
-            ->latest('id')
-            ->first();
-
-        if ($result === null) {
-            return [];
-        }
-
         $choices = [];
 
-        foreach ($result->choosableCards() as $card) {
+        foreach ($this->choosableLookupCards() as $card) {
             $bits = array_filter([
                 ($card['last_four'] ?? null) ? '•••• '.$card['last_four'] : null,
                 ($card['expiry'] ?? null) ? __('subscriptions.action.choose_card.expires', ['date' => $this->prettyExpiry((string) $card['expiry'])]) : null,
@@ -1331,6 +1351,38 @@ class ViewSubscription extends Page
         }
 
         return $choices;
+    }
+
+    /**
+     * Every card the most recent lookup saw — a bulk pass's stored result, or a
+     * card held back for confirmation (ImportedTokenRecovery::propose), whichever
+     * is newer. Both are PayPlus's own answer, never form input.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function lookupCards(): array
+    {
+        $result = TokenRecoveryResult::query()
+            ->where('plan_id', $this->record->getKey())
+            ->latest('id')
+            ->first();
+
+        $proposedAt = ImportedTokenRecovery::proposedAt($this->record);
+        $proposalIsNewer = $proposedAt !== null
+            && ($result === null || $result->created_at === null || $result->created_at->lte(CarbonImmutable::parse($proposedAt)));
+
+        return $proposalIsNewer
+            ? ImportedTokenRecovery::proposedCandidates($this->record)
+            : array_values((array) ($result?->candidates ?? []));
+    }
+
+    /** The live cards, other than the one we hold, a merchant may pick from. @return list<array<string, mixed>> */
+    private function choosableLookupCards(): array
+    {
+        return array_values(array_filter(
+            $this->lookupCards(),
+            static fn (array $c): bool => ! ($c['held'] ?? false) && ($c['expired'] ?? true) === false,
+        ));
     }
 
     /** PayPlus sends MMYY; a human reads MM/YY. */
@@ -1357,13 +1409,7 @@ class ViewSubscription extends Page
             return;
         }
 
-        $result = TokenRecoveryResult::query()
-            ->where('plan_id', $this->record->getKey())
-            ->latest('id')
-            ->first();
-
-        $card = collect((array) ($result?->candidates ?? []))
-            ->firstWhere('token', $token);
+        $card = collect($this->lookupCards())->firstWhere('token', $token);
 
         $applied = app(ImportedTokenRecovery::class)->apply($this->record, [
             'route' => ImportedTokenRecovery::ROUTE_MANUAL,
@@ -1414,6 +1460,7 @@ class ViewSubscription extends Page
                 $outcome['detail'] === 'payplus_not_connected' => __('subscriptions.action.recover_token.not_connected'),
                 $outcome['detail'] === 'no_last_four_to_match_on' => __('subscriptions.action.recover_token.no_last_four'),
                 $outcome['detail'] === 'no_card_matched' => __('subscriptions.action.recover_token.ambiguous'),
+                $outcome['detail'] === ImportedTokenRecovery::DETAIL_NEEDS_CONFIRMATION => __('subscriptions.action.recover_token.needs_confirmation'),
                 default => __('subscriptions.action.recover_token.not_found'),
             })
             ->warning()
@@ -1530,6 +1577,51 @@ class ViewSubscription extends Page
             ]);
     }
 
+    /**
+     * Why the NEXT charge would be refused by the consent ceiling, or null.
+     * Read-only: a plan with no consent at all is a different problem (no_consent)
+     * and is not offered an approval here.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function consentRefusal(): ?array
+    {
+        if ($this->record->status->isTerminal() || $this->record->no_charge) {
+            return null;
+        }
+
+        $consent = $this->boundConsent();
+
+        return $consent === null
+            ? null
+            : app(ConsentCeiling::class)->refusal($this->record, $consent, ConsentCeiling::nextAmount($this->record));
+    }
+
+    /** The plan's own latest consent row with a ceiling (never a legacy row — reading must not write). */
+    private function boundConsent(): ?CustomerConsent
+    {
+        return CustomerConsent::query()
+            ->where('plan_id', $this->record->getKey())
+            ->where('consent_context', ConsentCeiling::contextFor($this->record))
+            ->whereNotNull('consented_amount')
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    protected function approveAboveConsent(string $reason): void
+    {
+        $consent = $this->boundConsent();
+        if ($consent === null || trim($reason) === '') {
+            return;
+        }
+
+        app(ConsentCeiling::class)->approveAboveConsent(
+            $this->record, $consent, ConsentCeiling::nextAmount($this->record), $reason,
+        );
+
+        Notification::make()->title(__('subscriptions.action.approve_above_consent.done'))->success()->send();
+    }
+
     /** Out-of-schedule charge via ChargeNowService (the orchestrator) + a result notice. */
     protected function chargeNow(bool $repeatApproved = false): void
     {
@@ -1539,6 +1631,8 @@ class ViewSubscription extends Page
 
             if ($outcome->reason === ChargeOrchestrator::SKIP_CHARGED_RECENTLY) {
                 Notification::make()->title(__('subscriptions.action.charge_now.repeat_blocked'))->warning()->send();
+            } elseif ($outcome->reason === ChargeOrchestrator::SKIP_ABOVE_CONSENT) {
+                Notification::make()->title(__('subscriptions.action.charge_now.above_consent'))->warning()->send();
             } elseif ($outcome->isSucceeded()) {
                 Notification::make()->title(__('subscriptions.action.charge_now.success'))->success()->send();
             } elseif ($outcome->result === ChargeOutcome::RESULT_FAILED) {

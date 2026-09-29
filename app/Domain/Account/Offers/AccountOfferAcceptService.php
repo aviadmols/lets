@@ -3,6 +3,7 @@
 namespace App\Domain\Account\Offers;
 
 use App\Domain\Account\AccountVisitor;
+use App\Domain\Billing\ConsentCeiling;
 use App\Domain\Installments\RecurringPlanService;
 use App\Domain\Lifecycle\ChargeNowService;
 use App\Domain\Lifecycle\SubscriptionLifecycleService;
@@ -398,7 +399,7 @@ final class AccountOfferAcceptService
                 'cancellation_policy_snapshot' => $settings->cancellationPolicyText(),
                 'billing_amount_description' => $amountDescription,
                 'billing_frequency_description' => $quote->frequency->value,
-            ],
+            ] + ConsentCeiling::termsFor($new),
         );
     }
 

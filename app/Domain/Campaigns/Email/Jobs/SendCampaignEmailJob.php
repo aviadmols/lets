@@ -4,6 +4,7 @@ namespace App\Domain\Campaigns\Email\Jobs;
 
 use App\Domain\Campaigns\Email\CampaignLoginLinks;
 use App\Domain\Campaigns\Email\CampaignMailVars;
+use App\Domain\Campaigns\Email\CampaignSendQuota;
 use App\Domain\Campaigns\Email\CampaignUnsubscribeLinks;
 use App\Domain\Campaigns\Email\Models\CampaignUnsubscribe;
 use App\Domain\Campaigns\Email\Models\EmailCampaign;
@@ -127,8 +128,28 @@ final class SendCampaignEmailJob implements ShouldBeUnique, ShouldQueue
 
         $recipient->refresh();
         $token = null;
+        $quota = app(CampaignSendQuota::class);
+        $quotaClaimed = false;
 
         try {
+            // THE SHARED RELAY'S DAILY CAP. Asked before a login credential is
+            // minted, so a message that will not go out leaves nothing live.
+            // Over the cap the message is not sent: FAILED/daily_limit, which the
+            // campaign screen names and "Retry failed" re-sends tomorrow.
+            if ($quota->applies($shop)) {
+                if (! $quota->claim($shop)) {
+                    Log::warning('campaigns.email.daily_limit_reached', [
+                        'shop_id' => $this->shopId,
+                        'campaign_id' => $this->campaignId,
+                        'cap' => CampaignSendQuota::dailyCap(),
+                    ]);
+                    $recipient->markFailed(EmailCampaignRecipient::REASON_DAILY_LIMIT);
+
+                    return;
+                }
+                $quotaClaimed = true;
+            }
+
             $unsubscribeUrl = $unsubscribes->url($recipient);
 
             // Only mint a credential the body will actually use.
@@ -165,11 +186,13 @@ final class SendCampaignEmailJob implements ShouldBeUnique, ShouldQueue
                 ['campaign_id' => (int) $campaign->getKey()],
             )) {
                 $recipient->markSkipped(EmailCampaignRecipient::REASON_EMAILS_OFF);
+                $this->releaseQuota($quota, $shop, $quotaClaimed);
 
                 return;
             }
 
             CampaignMailer::for($shop)->to((string) $recipient->email)->send($mail);
+            $quotaClaimed = false; // it left — the allowance is spent
 
             $recipient->markSent(null);
 
@@ -194,10 +217,19 @@ final class SendCampaignEmailJob implements ShouldBeUnique, ShouldQueue
 
             // An email that never left must not leave a live credential behind.
             $token?->revoke();
+            $this->releaseQuota($quota, $shop, $quotaClaimed);
 
             $recipient->markFailed(EmailCampaignRecipient::REASON_MAIL_ERROR);
         } finally {
             $campaign->refresh()->settleStatus();
+        }
+    }
+
+    /** A claimed daily-cap slot whose message never left goes back. */
+    private function releaseQuota(CampaignSendQuota $quota, Shop $shop, bool $claimed): void
+    {
+        if ($claimed) {
+            $quota->release($shop);
         }
     }
 

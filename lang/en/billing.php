@@ -128,6 +128,8 @@ return [
             'intro' => 'Whether this store may charge saved cards automatically.',
             'live' => 'Charge subscriptions live',
             'live_help' => 'Turn this off while you check a migration. Subscriptions stay active and their charge dates stay visible, but no saved card is charged — not by the scheduler, not by a retry, not by "charge now". Your store keeps selling: a shopper paying at checkout is unaffected.',
+            'upsell' => 'After-purchase offers charge saved cards',
+            'upsell_help' => 'Turn this off to stop every after-purchase offer: none is shown and none charges a card. The switch above does not stop offers — a shopper one click into a purchase is not a migration — so to charge nothing at all, turn both off.',
             'overdue_heading' => 'Before you turn charging back on',
             'overdue_body' => 'Charge dates kept passing while charging was off, and :count subscriptions are now overdue. Turning it back on rolls each of them forward a whole cycle instead of billing them all at once — you will be told how many moved and how much is about to be charged.',
             'resumed_title' => 'Live charging is on',

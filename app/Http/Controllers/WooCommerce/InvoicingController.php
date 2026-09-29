@@ -8,10 +8,14 @@ use App\Domain\Invoicing\DocumentIssuer;
 use App\Domain\Invoicing\Jobs\IssueDocumentJob;
 use App\Domain\Invoicing\OrderDocumentHold;
 use App\Http\Controllers\WooCommerce\Storefront\WooStorefrontController;
+use App\Models\ActivityEvent;
 use App\Models\InstallmentPlan;
 use App\Models\IssuedDocument;
 use App\Models\MerchantInvoicingSettings;
+use App\Models\PaymentLedger;
 use App\Models\Shop;
+use App\Modules\PayPlusShopifyInstallments\Enums\LedgerStatus;
+use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Services\WooCommerce\Orders\WooCommerceOrderStrategy;
 use App\Services\WooCommerce\WooCommerceShopProvisioner;
 use App\Support\Tenant;
@@ -41,16 +45,37 @@ use Symfony\Component\HttpFoundation\Response;
  * WooGatewayFinalizer records is a payment record, and documents key on the order, not
  * on that row), and the walls are:
  *   0. the report must come from the CONNECTED STORE — a signature proves only the
- *      KEY, and a staging copy of a site holds the same key (siteIsNotTheStore());
+ *      KEY, and a staging copy of a site holds the same key (siteRefusal()); once
+ *      the store has reported its own site, a report with none is refused too;
  *   1. an order carrying a LETS plan id is REJECTED (it is already invoiced through
  *      the plan pipeline, and invoicing it twice would double-declare the income);
- *   2. the deterministic doc:order:{shop}:{order} key + its unique index.
+ *   2. the deterministic doc:order:{shop}:{order} key + its unique index;
+ *   3. where LETS recorded the money for the order, the reported total may not
+ *      exceed it (recordedAmount()).
+ * Every refusal is logged and written to the shop's activity feed.
  */
 final class InvoicingController extends WooStorefrontController
 {
     // === CONSTANTS ===
     /** Hard cap on reported line items — a document is paperwork, not a data dump. */
     private const MAX_LINES = 100;
+
+    /** Rounding slack when a reported total is compared with the money LETS recorded. */
+    private const AMOUNT_TOLERANCE = 0.01;
+
+    /** A report without site_url from a store known to send one (an old copy). */
+    public const REFUSED_SITE_REQUIRED = 'site_required';
+
+    public const REFUSED_SITE_MISMATCH = 'site_mismatch';
+
+    /** A reported total above what LETS recorded as collected for the order. */
+    public const REFUSED_TOTAL = 'total_exceeds_recorded';
+
+    /** Timeline kind for a refused invoicing report — shown on the dashboard feed. */
+    public const KIND_REPORT_REFUSED = 'invoicing_report_refused';
+
+    /** Ledger rows that are money actually collected for an order (a refund came after). */
+    private const COLLECTED_STATUSES = [LedgerStatus::SUCCEEDED, LedgerStatus::REFUNDED];
 
     /** GET /api/woocommerce/invoicing-settings — the plugin hook's decision inputs. */
     public function settings(Request $request): JsonResponse
@@ -106,9 +131,14 @@ final class InvoicingController extends WooStorefrontController
         // Wall 0: is the site that signed this report the store we are connected to?
         // Asked FIRST, before any lookup: a report from somewhere else is not a
         // question about this order, it is a report we should never have been sent.
-        if ($this->siteIsNotTheStore($shop, $request, $orderId)) {
+        $siteRefusal = $this->siteRefusal($shop, $settings, $request, $orderId);
+        if ($siteRefusal !== null) {
+            $this->recordRefusal($shop, $orderId, $siteRefusal, [
+                'reported' => $this->cleanString($request->input('site_url')),
+            ]);
+
             return response()->json([
-                'error' => 'site_mismatch',
+                'error' => $siteRefusal,
                 'expected' => (string) ($shop->woocommerce_domain ?? ''),
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
@@ -145,6 +175,27 @@ final class InvoicingController extends WooStorefrontController
         if ($total <= 0) {
             return response()->json(['error' => 'invalid_total'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
+
+        // Wall 3: the money on the document. Where LETS itself recorded what was
+        // collected for this order (the gateway row, plus any after-purchase charge
+        // on it), a report may not claim MORE income than that — a document is a
+        // declaration to the tax authority, and the plugin's number is merchant
+        // input. Less is allowed (a discount, a partial refund before the status
+        // change); an order LETS never saw paid has nothing to check against.
+        $recorded = $this->recordedAmount($shop, $orderId);
+        if ($recorded !== null && $total > $recorded + self::AMOUNT_TOLERANCE) {
+            $this->recordRefusal($shop, $orderId, self::REFUSED_TOTAL, ['reported' => $total, 'recorded' => $recorded]);
+
+            return response()->json([
+                'error' => self::REFUSED_TOTAL,
+                'recorded' => $recorded,
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        // The LINES are not a second wall: DocumentIssuer balances any gap between
+        // them and this (now checked) total with an adjustment line, so lines can
+        // never move the income a document declares — and refusing on them would
+        // refuse every discounted order whose lines are reported pre-coupon.
 
         // Wall 2: already issued → return the existing document rather than a second one.
         $existing = $this->existingDocument($shop, $orderId);
@@ -224,33 +275,53 @@ final class InvoicingController extends WooStorefrontController
      * connect handshake uses (InstallController), so that a scheme or a `www.`
      * can never make the real store look foreign.
      *
-     * A report carrying NO site is ACCEPTED: every plugin build before 0.50.0
-     * sends none, and silently ending documents for every store yet to update is a
-     * worse failure than the one being closed here. It is logged instead, so the
-     * stores still to update can be named rather than guessed at.
+     * A report carrying NO site is accepted ONLY until the store has proven it
+     * runs a build that sends one. Every plugin build before 0.50.0 sends none,
+     * and ending documents for every store yet to update would be a worse failure
+     * than the one being closed. But the first report that DOES carry the store's
+     * own site stamps `site_url_seen_at`, and from then on a site-less report
+     * cannot be that store — it is an old copy (a staging clone, a backup restore)
+     * still holding the key — and is refused as `site_required`.
+     *
+     * @return string|null the refusal code, or null to accept
      */
-    private function siteIsNotTheStore(Shop $shop, Request $request, string $orderId): bool
+    private function siteRefusal(Shop $shop, MerchantInvoicingSettings $settings, Request $request, string $orderId): ?string
     {
         $expected = (string) ($shop->woocommerce_domain ?? '');
         $reported = app(WooCommerceShopProvisioner::class)
             ->normalizeDomain((string) $request->input('site_url', ''));
 
         if ($expected === '') {
-            return false; // nothing to compare against — never invent a mismatch
+            return null; // nothing to compare against — never invent a mismatch
         }
 
         if ($reported === '') {
+            if ($settings->site_url_seen_at !== null) {
+                Log::warning('invoicing.report_without_site_refused', [
+                    'shop_id' => $shop->getKey(),
+                    'order_id' => $orderId,
+                    'expected' => $expected,
+                    'site_seen_since' => $settings->site_url_seen_at->toIso8601String(),
+                ]);
+
+                return self::REFUSED_SITE_REQUIRED;
+            }
+
             Log::info('invoicing.report_without_site', [
                 'shop_id' => $shop->getKey(),
                 'order_id' => $orderId,
                 'expected' => $expected,
             ]);
 
-            return false;
+            return null;
         }
 
         if ($reported === $expected) {
-            return false;
+            if ($settings->site_url_seen_at === null) {
+                $settings->forceFill(['site_url_seen_at' => now()])->save();
+            }
+
+            return null;
         }
 
         // WARNING, not info: somebody's test orders are reaching a live merchant's
@@ -262,7 +333,50 @@ final class InvoicingController extends WooStorefrontController
             'reported' => $reported,
         ]);
 
-        return true;
+        return self::REFUSED_SITE_MISMATCH;
+    }
+
+    /**
+     * What LETS itself recorded as collected for this store order — the gateway
+     * row WooGatewayFinalizer wrote, plus any after-purchase charge made against
+     * it — or null when LETS never saw this order paid (another gateway, cash,
+     * bank transfer), which leaves nothing to check against. Tenant-bound read.
+     */
+    private function recordedAmount(Shop $shop, string $orderId): ?float
+    {
+        return Tenant::run($shop, static function () use ($orderId): ?float {
+            $rows = PaymentLedger::query()
+                ->whereIn('status', array_map(static fn (LedgerStatus $s): string => $s->value, self::COLLECTED_STATUSES))
+                ->where(fn (Builder $q) => $q
+                    ->where('shopify_order_id', $orderId)
+                    ->orWhere('parent_order_id', $orderId))
+                ->pluck('amount');
+
+            return $rows->isEmpty() ? null : round((float) $rows->sum(), 2);
+        });
+    }
+
+    /**
+     * A refused report, said where the MERCHANT looks (the shop's activity feed on
+     * the dashboard), not only in a log: the store sent an order and no document
+     * came of it, and they need to be able to see why.
+     *
+     * @param  array<string, mixed>  $details
+     */
+    private function recordRefusal(Shop $shop, string $orderId, string $reason, array $details = []): void
+    {
+        Log::warning('invoicing.report_refused', [
+            'shop_id' => $shop->getKey(),
+            'order_id' => $orderId,
+            'reason' => $reason,
+        ] + $details);
+
+        Timeline::record(
+            kind: self::KIND_REPORT_REFUSED,
+            details: ['order_id' => $orderId, 'reason' => $reason] + array_filter($details, static fn ($v): bool => $v !== null),
+            actor: ActivityEvent::ACTOR_WEBHOOK,
+            shopId: (int) $shop->getKey(),
+        );
     }
 
     // === Input shaping ===

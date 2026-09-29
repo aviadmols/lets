@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\WooCommerce\Storefront;
 
+use App\Support\StoreCurrency;
 use App\Domain\Installments\DepositPlanService;
 use App\Domain\Installments\ProductPriceResolver;
 use App\Domain\Installments\RecurringPlanService;
@@ -66,7 +67,7 @@ final class WooSubscribeController extends WooStorefrontController
                 // The cadence is a bounded knob; frequencyFrom clamps to an allowed value.
                 'frequency' => DepositPlanService::frequencyFrom($request->input('frequency')),
                 'interval_count' => max(1, (int) $request->input('interval_count', 1)),
-                'currency' => (string) ($request->input('currency') ?: config('payplus.currency', 'ILS')),
+                'currency' => StoreCurrency::resolve($request->input('currency')),
                 'customer_email' => $this->cleanEmail($request->input('customer_email')),
                 'customer_name' => $this->cleanString($request->input('customer_name')),
                 'customer_phone' => $this->cleanString($request->input('customer_phone')),

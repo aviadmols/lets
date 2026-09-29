@@ -235,12 +235,19 @@ final class TokenRecoveryRunner
                     ($outcome['route'] ?? null) === ImportedTokenRecovery::ROUTE_ALREADY_VALID => $delta['already_valid'] = 1,
                     ($outcome['detail'] ?? null) === 'no_last_four_to_match_on' => $delta['no_last_four'] = 1,
                     ($outcome['detail'] ?? null) === 'no_card_matched' => $delta['ambiguous'] = 1,
+                    // Found, held back for the merchant to confirm (a card not
+                    // proven to be ours, or after a stolen/lost decline): counted
+                    // with the other "left for a person to choose" members.
+                    ($outcome['detail'] ?? null) === ImportedTokenRecovery::DETAIL_NEEDS_CONFIRMATION => $delta['ambiguous'] = 1,
                     default => $delta['not_found'] = 1,
                 };
 
                 // The token we hold is fine and the ISSUER said no. There is still
                 // money owed, so in charge mode it is worth asking for again.
-                $queueCharge = ($outcome['route'] ?? null) === ImportedTokenRecovery::ROUTE_ALREADY_VALID;
+                // Never after a stolen/lost decline: re-presenting that card is
+                // exactly what the issuer told us not to do.
+                $queueCharge = ($outcome['route'] ?? null) === ImportedTokenRecovery::ROUTE_ALREADY_VALID
+                    && ! ImportedTokenRecovery::cardReportedStolen($plan->latestPayment?->failure_message);
             }
         }
 

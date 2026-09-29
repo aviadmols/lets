@@ -134,6 +134,13 @@ api_version = "2026-04"
   ]
   uri = "/shopify/webhooks"
 
+  # Refunds: a Shopify-side refund of a plain order takes back the loyalty
+  # points it earned (RefundCreatedHandler). Also registered per-shop on install;
+  # the clawback is keyed on the refund id, so a double delivery takes once.
+  [[webhooks.subscriptions]]
+  topics = ["refunds/create"]
+  uri = "/shopify/webhooks"
+
   # Mandatory privacy topics. Only the toml / Partner Dashboard can subscribe
   # them — never the per-shop Admin API — so without this block redaction and
   # data requests never arrive. Same set as config('shopify.webhook_topics')
