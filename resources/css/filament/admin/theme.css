@@ -126,6 +126,9 @@
 }
 
 /* === Filament panel surface re-skin (via stable .fi-* hooks) ============== */
+/* Rooted at .fi-body: this sheet loads BEFORE Filament's app.css, so a bare
+   one-class rule lost to the one-class Tailwind utility on the same element
+   and never showed (table heads, section headings, the sidebar surface). */
 .fi-body,
 .fi-simple-layout {
     background-color: var(--rc-bg);
@@ -134,20 +137,20 @@
 }
 
 /* Sidebar = card surface; tight Recharge density. */
-.fi-sidebar,
-.fi-sidebar-nav {
+.fi-body .fi-sidebar,
+.fi-body .fi-sidebar-nav {
     background-color: var(--rc-card);
 }
-.fi-sidebar {
+.fi-body .fi-sidebar {
     border-inline-end: 1px solid var(--rc-border);
 }
 
 /* Active nav item: a rounded pill in the accent wash with a 3px rail painted
    INSIDE its start edge (inset shadow, so the label never shifts). */
-.fi-sidebar-item > .fi-sidebar-item-button {
+.fi-body .fi-sidebar-item > .fi-sidebar-item-button {
     border-radius: var(--rc-radius-control);
 }
-.fi-sidebar-item-active > .fi-sidebar-item-button {
+.fi-body .fi-sidebar-item-active > .fi-sidebar-item-button {
     background-color: var(--rc-blue-bg);
     box-shadow: inset 3px 0 0 var(--rc-blue);
     color: var(--rc-blue-600);
@@ -156,8 +159,8 @@
 [dir="rtl"] .fi-sidebar-item-active > .fi-sidebar-item-button {
     box-shadow: inset -3px 0 0 var(--rc-blue);
 }
-.fi-sidebar-item-active > .fi-sidebar-item-button .fi-sidebar-item-icon,
-.fi-sidebar-item-active > .fi-sidebar-item-button .fi-sidebar-item-label {
+.fi-body .fi-sidebar-item-active > .fi-sidebar-item-button .fi-sidebar-item-icon,
+.fi-body .fi-sidebar-item-active > .fi-sidebar-item-button .fi-sidebar-item-label {
     color: var(--rc-blue-600);
 }
 
@@ -165,22 +168,22 @@
    (filament/partials/sidebar-shop + components/shell.css), not in this list. */
 
 /* Child items (Loyalty → members/referrals, Subscriptions → bulk edit). */
-.fi-sidebar-sub-group-items .fi-sidebar-item-label {
+.fi-body .fi-sidebar-sub-group-items .fi-sidebar-item-label {
     font: var(--rc-type-body);
     font-size: 13px;
 }
 
 /* Cluster left index (Settings): the sketch's quiet list, active = wash. */
-.fi-page-sub-navigation-sidebar .fi-sidebar-item > .fi-sidebar-item-button {
+.fi-body .fi-page-sub-navigation-sidebar .fi-sidebar-item > .fi-sidebar-item-button {
     border-inline-start: 0;
     border-radius: var(--rc-radius-control);
 }
-.fi-page-sub-navigation-sidebar .fi-sidebar-item-active > .fi-sidebar-item-button {
+.fi-body .fi-page-sub-navigation-sidebar .fi-sidebar-item-active > .fi-sidebar-item-button {
     border-inline-start: 0;
     background-color: var(--rc-blue-bg);
 }
 
-.fi-sidebar-group-label {
+.fi-body .fi-sidebar-group-label {
     font: var(--rc-type-label);
     text-transform: uppercase;
     letter-spacing: .04em;
@@ -188,26 +191,26 @@
 }
 
 /* Cards / sections / tables — the Recharge card look (border + soft shadow). */
-.fi-section,
-.fi-wi,
-.fi-ta,
-.fi-modal-window {
+/* (Tables draw their card on .fi-ta-ctn — components/table.css.) */
+.fi-body .fi-section,
+.fi-body .fi-wi,
+.fi-body .fi-modal-window {
     background-color: var(--rc-card);
     border: 1px solid var(--rc-border);
     border-radius: var(--rc-radius-card);
     box-shadow: var(--rc-shadow-card);
 }
 
-.fi-section-header-heading,
-.fi-header-heading {
+.fi-body .fi-section-header-heading,
+.fi-body .fi-header-heading {
     color: var(--rc-ink);
 }
-.fi-header-heading {
+.fi-body .fi-header-heading {
     font: var(--rc-type-title);
 }
 
 /* Table density + hairlines (skin only — never re-template Filament's table). */
-.fi-ta-header-cell {
+.fi-body .fi-ta-header-cell {
     font: var(--rc-type-label);
     font-size: 11px;
     text-transform: uppercase;
@@ -216,35 +219,32 @@
     background-color: var(--rc-surface-sunk);
     border-block-end: 1px solid var(--rc-border);
 }
-.fi-ta-row {
-    border-block-end: 1px solid var(--rc-border-soft);
-}
 
 /* Top bar: white strip on a hairline, like the sidebar. */
-.fi-topbar > nav {
+.fi-body .fi-topbar > nav {
     background-color: var(--rc-card);
     border-block-end: 1px solid var(--rc-border);
     box-shadow: none;
 }
 
 /* Section headers sit on a hairline, content below (the sketch's card head). */
-.fi-section-header {
+.fi-body .fi-section-header {
     border-block-end: 1px solid var(--rc-border);
 }
-.fi-section-header-heading {
+.fi-body .fi-section-header-heading {
     font: var(--rc-type-subh);
 }
-.fi-ta-row:hover {
+.fi-body .fi-ta-row:hover {
     background-color: var(--rc-blue-bg);
 }
-.fi-ta-record-selected {
+.fi-body .fi-ta-record-selected {
     background-color: var(--rc-blue-bg);
 }
 
 /* Focus ring uses the brand. */
-.fi-input:focus,
-.fi-select-input:focus,
-.fi-btn:focus-visible {
+.fi-body .fi-input:focus,
+.fi-body .fi-select-input:focus,
+.fi-body .fi-btn:focus-visible {
     box-shadow: var(--rc-ring);
     outline: none;
 }

@@ -39,7 +39,7 @@
     color: var(--rc-ink);
     text-align: start;
 }
-.rc-accordion__title { display: inline-flex; align-items: center; gap: var(--rc-space-3); }
+.rc-accordion__title { display: inline-flex; align-items: center; gap: var(--rc-space-3); font: var(--rc-type-subh); color: var(--rc-ink); }
 
 .rc-accordion__chevron {
     inline-size: 16px;

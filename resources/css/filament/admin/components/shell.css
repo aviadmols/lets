@@ -485,3 +485,51 @@
 .fi-body .fi-breadcrumbs {
     font: var(--rc-type-caption);
 }
+
+/* The trail above a detail title: small, the steps back in link blue. */
+.fi-body .fi-breadcrumbs-item-label {
+    font: var(--rc-type-body);
+    font-size: 13px;
+    color: var(--rc-ink-muted);
+}
+
+.fi-body a.fi-breadcrumbs-item-label {
+    color: var(--rc-link);
+}
+
+.fi-body a.fi-breadcrumbs-item-label:hover {
+    color: var(--rc-blue-600);
+}
+
+.fi-body .fi-breadcrumbs-item-separator {
+    inline-size: 14px;
+    block-size: 14px;
+}
+
+/* ------------------------------------------------------------ buttons --- */
+
+/* The sketch's buttons: 8px corners, a firm outline on the secondary ones. */
+.fi-body .fi-btn {
+    border-radius: var(--rc-radius-control);
+}
+
+.fi-body .fi-btn.fi-color-gray {
+    box-shadow: 0 0 0 1px var(--rc-border-strong);
+}
+
+/* A destructive action in a page header is a red WORD (the sketch's "Cancel"),
+   not a red slab competing with the primary button; its confirm modal stays red. */
+.fi-body .fi-header .fi-btn.fi-color-danger {
+    background-color: transparent;
+    box-shadow: none;
+    color: var(--rc-red-ink);
+}
+
+.fi-body .fi-header .fi-btn.fi-color-danger:hover {
+    background-color: var(--rc-red-bg);
+}
+
+.fi-body .fi-header .fi-btn.fi-color-danger .fi-btn-label,
+.fi-body .fi-header .fi-btn.fi-color-danger .fi-btn-icon {
+    color: var(--rc-red-ink);
+}
