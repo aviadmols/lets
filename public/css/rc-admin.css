@@ -2986,6 +2986,9 @@ html:has(meta[name="lets-embedded"]) .rc-lang-switch {
     cursor: grab;
 }
 .rc-fb-stage:active { cursor: grabbing; }
+/* The stage holds the LTR plane below, so it is LTR too: inside an RTL stage the
+   1400px plane overflowed to the LEFT and the trigger opened off-screen in Hebrew. */
+.rc-fb-stage { direction: ltr; }
 
 /* Free-form node canvas (Shopify-Flow-style). A physical LTR coordinate plane in BOTH
    locales so drag math + edge geometry never mirror; card TEXT direction is restored

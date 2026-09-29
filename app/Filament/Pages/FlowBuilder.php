@@ -312,6 +312,16 @@ class FlowBuilder extends Page
         ];
     }
 
+    /**
+     * No page heading: the builder's own toolbar IS the header (the sketch's
+     * back · name · status · actions row), and a Filament heading above it
+     * printed the flow's name twice. getTitle() still names the browser tab.
+     */
+    public function getHeading(): string|Htmlable
+    {
+        return '';
+    }
+
     /** Whether the flow graph passes the activation rules (docs/ux/40). */
     public function isActivatable(): bool
     {
