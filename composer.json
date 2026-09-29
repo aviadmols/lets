@@ -17,7 +17,7 @@
         "bacon/bacon-qr-code": "^3.0",
         "bezhansalleh/filament-language-switch": "^3.1",
         "filament/filament": "^3.2",
-        "laravel/framework": "^11.0",
+        "laravel/framework": "^12.61.1",
         "laravel/horizon": "^5.0",
         "laravel/tinker": "^2.9",
         "pragmarx/google2fa": "^8.0",
@@ -65,7 +65,6 @@
         "audit": {
             "block-insecure": false,
             "ignore": {
-                "PKSA-mdq4-51ck-6kdq": "Dev scaffold only \u2014 Laravel 11.x line flagged by Composer 2.9 audit.",
                 "PKSA-w941-zhwq-2wbm": "Dev scaffold only \u2014 filament/tables flagged by Composer 2.9 audit. saas-multitenancy-billing / security review must pin patched releases before production."
             }
         },
