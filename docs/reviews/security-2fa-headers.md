@@ -35,3 +35,16 @@ Clears: #1 bounded fail-closed wait in predeploy for worker/scheduler; #2 own-pa
 Suggestions (applied same day): nested data[0].transaction folded; several pages kept per order (older tab pays); an unsigned decline recorded only when PayPlus's own record carries a transaction code
 Verified separately: Shopify's post-purchase JWT spec states iss is always the literal "shopify"
 Re-review: not required
+
+## 2026-09-29 — ca599b4..ad08330 (admin design, security round 2, infra, billing, Laravel 12) — VERDICT: BLOCKED
+Reviewer: code-review-gatekeeper
+Blocking: #1 payplus_token_reference encrypted cast without data migration; #2 ConsentCeiling baseline ignored pending next-order overrides
+Suggestions: replay 401 → 409; pin SESSION_* on Railway; OAuth state vs iframe install; eager ceiling backfill; refunds/create toml deploy gate; document platform-admin embed; RefundClawback CONST block; LIKE wildcards
+Re-review: required
+
+## 2026-09-29 — re-review bd58bc0+4b1b762 — VERDICT: BLOCKED
+Original #1/#2 cleared. New: backfill migration had no per-plan savepoint (deploy abort); token-encrypt migration had no wrong-APP_KEY guard (irreversible token loss).
+
+## 2026-09-29 — re-review ecffe3b — VERDICT: PASS-WITH-SUGGESTIONS
+Blocking: none. Per-shop/per-plan savepoints in 000006; APP_KEY canary (≥1 decrypt required, skip when unproven) in 000005.
+Suggestions: a pgsql-backed isolation test; try around the canary pluck.
