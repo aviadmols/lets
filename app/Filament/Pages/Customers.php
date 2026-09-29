@@ -116,7 +116,7 @@ class Customers extends Page
      * parameter, and CustomerPlans::query() resolves both kinds — a reference
      * through the id columns, an email through the address clause.
      */
-    private static function customerKey(InstallmentPlan $plan): string
+    public static function customerKey(InstallmentPlan $plan): string
     {
         $reference = trim((string) ($plan->shopify_customer_id ?? ''));
 
