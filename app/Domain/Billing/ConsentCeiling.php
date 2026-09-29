@@ -8,6 +8,7 @@ use App\Models\InstallmentPlan;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Support\PlatformContext;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -37,8 +38,10 @@ use Illuminate\Support\Facades\Log;
  *     (approveAboveConsent: a new plan-bound row naming who approved and why).
  *
  * A row with no ceiling yet (written before this existed) takes the plan's
- * current terms as its baseline the first time it is charged — the status quo
- * is blessed once, and every change after it needs one of the three above.
+ * current terms as its baseline the first time it is charged (or when migration
+ * 2026_09_29_000006 backfills it) — the status quo, INCLUDING a next order already
+ * queued at that moment, is blessed once, and every change after it needs one of
+ * the three above.
  */
 final class ConsentCeiling
 {
@@ -84,10 +87,22 @@ final class ConsentCeiling
     {
         $recurring = $plan->plan_kind === PlanKind::RECURRING;
 
+        $amount = $recurring
+            ? round(max((float) $plan->installment_amount, (float) ($plan->regular_amount ?? 0)), 2)
+            : round((float) $plan->total_amount, 2);
+
+        // A BASELINE blesses the status quo as it stands at that moment — and a
+        // next order already queued IS part of it. Overrides written before the
+        // ceiling existed were stamped set_by=system even when the customer set
+        // them (no acting admin on the storefront), so without this every plan
+        // whose next order was raised before deploy would be refused on its very
+        // next charge.
+        if ($recurring && $source === self::SOURCE_BASELINE) {
+            $amount = max($amount, self::pendingOverrideAmount($plan));
+        }
+
         return [
-            'consented_amount' => $recurring
-                ? round(max((float) $plan->installment_amount, (float) ($plan->regular_amount ?? 0)), 2)
-                : round((float) $plan->total_amount, 2),
+            'consented_amount' => $amount,
             'consented_frequency' => $recurring ? ($plan->billing_frequency?->value) : null,
             'consented_interval' => $recurring ? max(1, (int) ($plan->interval_count ?: 1)) : null,
             'ceiling_source' => $source,
@@ -174,7 +189,7 @@ final class ConsentCeiling
         $allowed = self::allowedFor($ceiling);
 
         if ($plan->plan_kind === PlanKind::RECURRING) {
-            if ($amount > $allowed && ! $this->customerAuthoredCovers($plan, $amount)) {
+            if ($amount > $allowed && ! $this->overrideCovers($plan, $consent, $amount)) {
                 return ['reason' => self::REASON_AMOUNT, 'amount' => round($amount, 2), 'ceiling' => $ceiling, 'allowed' => $allowed];
             }
 
@@ -294,14 +309,48 @@ final class ConsentCeiling
         return round($ceiling + max($ceiling * self::TOLERANCE_RATIO, self::TOLERANCE_ABSOLUTE), 2);
     }
 
-    /** The customer set this next order themselves (account area) — that amount, that cycle, is theirs. */
-    private function customerAuthoredCovers(InstallmentPlan $plan, float $amount): bool
+    /** The amount of the next-order override queued on $plan right now, or 0 when none is. */
+    public static function pendingOverrideAmount(InstallmentPlan $plan): float
     {
         $override = $plan->nextOrderOverride();
 
-        return $override !== null
-            && ($override['set_by'] ?? null) === ActivityEvent::ACTOR_CUSTOMER
-            && round((float) ($override['amount'] ?? -1), 2) === round($amount, 2);
+        return $override === null ? 0.0 : round((float) ($override['amount'] ?? 0), 2);
+    }
+
+    /**
+     * The next-order override covers charging exactly $amount this cycle when:
+     *  - the CUSTOMER set it themselves (account area) — that amount, that cycle,
+     *    is theirs; or
+     *  - it was set BEFORE this consent's ceiling existed — the status quo the
+     *    ceiling was drawn over (legacy overrides carry set_by=system whoever set
+     *    them). A missing or unparseable set_at is never "before": fail closed.
+     * A merchant raise AFTER the ceiling is neither, and still needs approval.
+     */
+    private function overrideCovers(InstallmentPlan $plan, CustomerConsent $consent, float $amount): bool
+    {
+        $override = $plan->nextOrderOverride();
+        if ($override === null || round((float) ($override['amount'] ?? -1), 2) !== round($amount, 2)) {
+            return false;
+        }
+
+        if (($override['set_by'] ?? null) === ActivityEvent::ACTOR_CUSTOMER) {
+            return true;
+        }
+
+        return $this->setBeforeCeiling($override['set_at'] ?? null, $consent);
+    }
+
+    private function setBeforeCeiling(mixed $setAt, CustomerConsent $consent): bool
+    {
+        if (! is_string($setAt) || trim($setAt) === '' || $consent->created_at === null) {
+            return false;
+        }
+
+        try {
+            return Carbon::parse($setAt)->lt($consent->created_at);
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     private function cadenceTightened(InstallmentPlan $plan, CustomerConsent $consent): bool

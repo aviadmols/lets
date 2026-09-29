@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\EncryptedOrPlainString;
 use App\Models\Concerns\BelongsToShop;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
@@ -47,7 +48,11 @@ class InstallmentPaymentMethod extends Model
             // SubscriptionImporter) — just as chargeable as payplus_card_token_uid,
             // so it gets the same at-rest encryption (MEDIUM-5, 2026-09 audit).
             // The column was widened to `text` for this in the matching migration.
-            'payplus_token_reference' => 'encrypted',
+            // TOLERANT cast: rows written before this held plaintext, and the
+            // built-in `encrypted` cast threw on them mid-charge (after the pending
+            // ledger row). Reads never throw; writes always encrypt; migration
+            // 2026_09_29_000005 encrypts the legacy rows in place.
+            'payplus_token_reference' => EncryptedOrPlainString::class,
             'exp_month' => 'integer',
             'exp_year' => 'integer',
         ];

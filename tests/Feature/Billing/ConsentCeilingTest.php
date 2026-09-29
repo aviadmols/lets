@@ -194,6 +194,87 @@ final class ConsentCeilingTest extends TestCase
         $this->assertSame(ChargeOrchestrator::SKIP_ABOVE_CONSENT, $this->charge($second->fresh())->reason);
     }
 
+    public function test_a_legacy_override_pending_when_the_ceiling_is_baselined_charges(): void
+    {
+        // A pre-ceiling consent row (no consented_amount) and a next order raised
+        // before deploy — stamped set_by=system, as the storefront used to write it.
+        $plan = $this->plan();
+        CustomerConsent::create([
+            'plan_id' => $plan->id,
+            'shopify_customer_id' => self::CUSTOMER,
+            'consent_context' => CustomerConsent::CONTEXT_RECURRING,
+            'accepted_at' => now()->subMonth(),
+        ]);
+        $this->queueOverride($plan, 300.00, ActivityEvent::ACTOR_SYSTEM, now()->subDay()->toIso8601String());
+
+        $this->assertTrue($this->charge($plan->fresh())->isSucceeded());
+        $this->assertDatabaseHas('customer_consents', [
+            'plan_id' => $plan->id,
+            'ceiling_source' => ConsentCeiling::SOURCE_BASELINE,
+            'consented_amount' => 300.00,
+        ]);
+    }
+
+    public function test_an_override_set_before_the_ceiling_row_is_covered(): void
+    {
+        $plan = $this->plan();
+        $this->queueOverride($plan, 300.00, ActivityEvent::ACTOR_SYSTEM, now()->subDay()->toIso8601String());
+        $this->consentFor($plan); // ceiling at the plan price, drawn AFTER the override was set
+
+        $this->assertTrue($this->charge($plan->fresh())->isSucceeded());
+    }
+
+    public function test_a_new_merchant_raise_after_the_ceiling_is_refused_until_approved(): void
+    {
+        $plan = $this->plan();
+        $consent = $this->consentFor($plan);
+
+        $this->travel(5)->minutes();
+        $this->queueOverride($plan, 300.00, 'admin:1', now()->toIso8601String());
+
+        $this->assertSame(ChargeOrchestrator::SKIP_ABOVE_CONSENT, $this->charge($plan->fresh())->reason);
+        $this->assertSame(0, $this->calls);
+
+        // A system-stamped override written after the ceiling is not "legacy" either.
+        $this->queueOverride($plan, 300.00, ActivityEvent::ACTOR_SYSTEM, now()->toIso8601String());
+        $this->assertSame(ChargeOrchestrator::SKIP_ABOVE_CONSENT, $this->charge($plan->fresh())->reason);
+
+        // …and one with no set_at at all fails closed.
+        $this->queueOverride($plan, 300.00, ActivityEvent::ACTOR_SYSTEM, null);
+        $this->assertSame(ChargeOrchestrator::SKIP_ABOVE_CONSENT, $this->charge($plan->fresh())->reason);
+
+        app(ConsentCeiling::class)->approveAboveConsent($plan->fresh(), $consent, 300.00, 'Customer asked by phone');
+        $this->assertTrue($this->charge($plan->fresh())->isSucceeded());
+    }
+
+    public function test_the_backfill_draws_ceilings_at_deploy_and_is_idempotent(): void
+    {
+        CustomerConsent::create([
+            'shopify_customer_id' => self::CUSTOMER,
+            'consent_context' => CustomerConsent::CONTEXT_RECURRING,
+            'accepted_at' => now()->subYear(),
+        ]);
+        $plan = $this->plan();
+        $this->queueOverride($plan, 180.00, ActivityEvent::ACTOR_SYSTEM, now()->subDay()->toIso8601String());
+
+        $migration = require base_path('database/migrations/2026_09_29_000006_backfill_consent_ceilings_for_live_plans.php');
+        Tenant::clear(); // a migration runs with no tenant bound
+        $migration->up();
+        $migration->up();
+        Tenant::set($this->shop);
+
+        $rows = CustomerConsent::query()->where('plan_id', $plan->id)->get();
+        $this->assertCount(1, $rows, 'Bound once, not once per run.');
+        $this->assertSame(ConsentCeiling::SOURCE_BASELINE, $rows[0]->ceiling_source);
+        $this->assertEqualsWithDelta(180.00, (float) $rows[0]->consented_amount, 0.001);
+
+        // A merchant price edit AFTER deploy is not blessed by the next charge.
+        $plan->fresh()->clearNextOrderOverride();
+        $plan->forceFill(['installment_amount' => 250.00])->save();
+        $this->assertSame(ChargeOrchestrator::SKIP_ABOVE_CONSENT, $this->charge($plan->fresh())->reason);
+        $this->assertSame(0, $this->calls);
+    }
+
     public function test_the_edit_service_attributes_a_customer_edit_to_the_customer(): void
     {
         $this->assertTrue(method_exists(SubscriptionEditService::class, 'editNextCharge'));
@@ -204,6 +285,20 @@ final class ConsentCeilingTest extends TestCase
     private function charge(InstallmentPlan $plan): \App\Modules\PayPlusShopifyInstallments\Services\ChargeOutcome
     {
         return app(ChargeOrchestrator::class)->charge($plan->id, PaymentType::RECURRING);
+    }
+
+    private function queueOverride(InstallmentPlan $plan, float $amount, string $setBy, ?string $setAt): void
+    {
+        $plan = $plan->fresh();
+        $meta = (array) $plan->meta;
+        $meta[InstallmentPlan::META_NEXT_ORDER] = array_filter([
+            'line_items' => [['product_id' => 1, 'name' => 'Box', 'quantity' => 1, 'unit_price' => $amount]],
+            'amount' => $amount,
+            'currency' => 'ILS',
+            'set_by' => $setBy,
+            'set_at' => $setAt,
+        ], static fn ($v): bool => $v !== null);
+        $plan->forceFill(['meta' => $meta])->save();
     }
 
     private function consentFor(InstallmentPlan $plan): CustomerConsent
