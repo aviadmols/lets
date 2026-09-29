@@ -32,3 +32,4 @@ Thumbs.db
 
 # Playwright MCP scratch output (screenshots, snapshots, console logs)
 /.playwright-mcp
+/storage/preview
