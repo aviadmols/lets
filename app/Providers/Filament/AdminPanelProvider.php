@@ -429,8 +429,11 @@ class AdminPanelProvider extends PanelProvider
     /** @return list<NavigationGroup> */
     protected function navigationGroups(): array
     {
+        // The label is a CLOSURE: panel() runs before SetAdminLocale, so a label
+        // translated here is always English — in Hebrew no item's group matched it
+        // and the groups fell out of order. Filament evaluates it at render time.
         return array_map(
-            fn (string $key): NavigationGroup => NavigationGroup::make(__($key)),
+            fn (string $key): NavigationGroup => NavigationGroup::make(fn (): string => __($key)),
             self::NAV_GROUP_ORDER,
         );
     }
