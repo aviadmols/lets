@@ -9,6 +9,17 @@ return [
         'active_subscribers' => 'Active subscribers',
         'new_subscribers' => 'New subscribers',
         'churned_subscribers' => 'Churned subscribers',
+        // beside the delta chip; :days is the selected range
+        'compare' => 'vs previous day|vs previous :days days',
+    ],
+
+    // the amber strip: the two queues the engine leaves to a human
+    'attention' => [
+        'charges' => ':count charge could not be collected|:count charges could not be collected',
+        'invoices' => ':count invoice needs attention|:count invoices need attention',
+        'and' => 'and',
+        'review_charges' => 'Review failed charges',
+        'open_invoices' => 'Open invoices',
     ],
 
     'performance' => [
@@ -21,6 +32,10 @@ return [
         ],
         'this_period' => 'This period',
         'prev_period' => 'Previous period',
+        'metric_col' => 'Metric',
+        'change' => 'Change',
+        // a rate's move, in percentage points
+        'pts' => ':value pts',
         'metric' => [
             'mrr' => 'Monthly recurring revenue',
             'installment_balance' => 'Installment balance outstanding',
@@ -55,6 +70,7 @@ return [
         'amount' => 'Amount',
         'date' => 'Next charge',
         'empty' => 'No upcoming charges scheduled.',
+        'view_all' => 'View all subscriptions →',
     ],
 
     'empty' => [

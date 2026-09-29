@@ -17,7 +17,7 @@
     border: 1px solid var(--rc-border);
     border-radius: var(--rc-radius-card);
     box-shadow: var(--rc-shadow-card);
-    padding: var(--rc-space-4) var(--rc-space-5);
+    padding: 18px 20px;
     text-decoration: none;
     color: inherit;
     transition: box-shadow .15s ease, transform .15s ease;

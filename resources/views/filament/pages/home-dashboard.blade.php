@@ -1,6 +1,6 @@
 {{--
     Home KPI dashboard (docs/ux/10-home-dashboard.md).
-    TOKENS: .rc-kpi-grid/.rc-kpi/.rc-banner/.rc-section/.rc-table (published theme). ZERO inline CSS.
+    TOKENS: .rc-kpi-grid/.rc-kpi/.rc-banner/.rc-attention/.rc-section/.rc-table/.rc-change (published theme). ZERO inline CSS.
     Renders only — every value is precomputed by DashboardMetrics on the page.
 --}}
 <x-filament-panels::page>
@@ -8,6 +8,8 @@
         $m = $this->metrics();
         $kpis = $m['kpi'];
         $perf = $m['performance'];
+        $compare = trans_choice('dashboard.kpi.compare', $this->rangeDays(), ['days' => $this->rangeDays()]);
+        $attention = $this->attention();
     @endphp
     <div class="rc-stack">
         {{-- 4 KPI hero cards (Processed Revenue / Active / New / Churned) --}}
@@ -17,6 +19,7 @@
                 :value="$this->kpiDisplay($kpis['processed_revenue'])"
                 :delta="$kpis['processed_revenue']['delta']"
                 :goodUp="$kpis['processed_revenue']['good_up']"
+                :compare="$compare"
                 href="{{ \App\Filament\Resources\PaymentLedgerResource::getUrl() }}"
             />
             <x-rc.kpi
@@ -30,14 +33,41 @@
                 :value="$this->kpiDisplay($kpis['new_subscribers'])"
                 :delta="$kpis['new_subscribers']['delta']"
                 :goodUp="$kpis['new_subscribers']['good_up']"
+                :compare="$compare"
             />
             <x-rc.kpi
                 label="dashboard.kpi.churned_subscribers"
                 :value="$this->kpiDisplay($kpis['churned_subscribers'])"
                 :delta="$kpis['churned_subscribers']['delta']"
                 :goodUp="$kpis['churned_subscribers']['good_up']"
+                :compare="$compare"
             />
         </div>
+
+        {{-- The two queues the engine leaves to a human (the sketch's amber strip).
+             Same counts as the sidebar badges and the bell; hidden when both are clear. --}}
+        @if($attention)
+            <div class="rc-attention" role="status">
+                <x-filament::icon icon="heroicon-o-exclamation-triangle" class="rc-attention__icon" />
+                <div class="rc-attention__text">
+                    @if($attention['charges'])
+                        <strong>{{ trans_choice('dashboard.attention.charges', (int) $attention['charges'], ['count' => $attention['charges']]) }}</strong>
+                    @endif
+                    @if($attention['charges'] && $attention['invoices'])
+                        {{ __('dashboard.attention.and') }}
+                    @endif
+                    @if($attention['invoices'])
+                        <strong>{{ trans_choice('dashboard.attention.invoices', (int) $attention['invoices'], ['count' => $attention['invoices']]) }}</strong>
+                    @endif
+                </div>
+                @if($attention['charges'])
+                    <a class="rc-attention__btn" href="{{ $attention['charges_url'] }}" wire:navigate>{{ __('dashboard.attention.review_charges') }}</a>
+                @endif
+                @if($attention['invoices'])
+                    <a class="rc-attention__btn rc-attention__btn--ghost" href="{{ $attention['invoices_url'] }}" wire:navigate>{{ __('dashboard.attention.open_invoices') }}</a>
+                @endif
+            </div>
+        @endif
 
         {{-- First-run onboarding banner (takes over as primary content) --}}
         @if($this->isFirstRun())
@@ -69,28 +99,29 @@
                     @endforeach
                 </div>
             </div>
-            @php
-                $perfRows = [
-                    'installment_balance' => 'dashboard.performance.metric.installment_balance',
-                    'upsell_revenue' => 'dashboard.performance.metric.upsell_revenue',
-                    'charge_success' => 'dashboard.performance.metric.charge_success',
-                    'failed_charges' => 'dashboard.performance.metric.failed_charges',
-                ];
-            @endphp
-            <table class="rc-table">
+            <table class="rc-table rc-table--perf">
                 <thead>
                     <tr>
-                        <th>{{ __('dashboard.performance.title') }}</th>
+                        <th>{{ __('dashboard.performance.metric_col') }}</th>
                         <th>{{ __('dashboard.performance.this_period') }}</th>
                         <th>{{ __('dashboard.performance.prev_period') }}</th>
+                        <th>{{ __('dashboard.performance.change') }}</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach($perfRows as $row => $labelKey)
+                    @foreach(\App\Filament\Pages\HomeDashboard::PERFORMANCE_ROWS as $row => $goodUp)
+                        @php $change = $this->perfChange($perf[$row], $goodUp); @endphp
                         <tr>
-                            <td class="rc-strong">{{ __($labelKey) }}</td>
-                            <td class="rc-ltr">{{ $this->perfDisplay($perf[$row], 'this') }}</td>
+                            <td>{{ __('dashboard.performance.metric.'.$row) }}</td>
+                            <td class="rc-ltr rc-strong">{{ $this->perfDisplay($perf[$row], 'this') }}</td>
                             <td class="rc-ltr rc-muted">{{ $this->perfDisplay($perf[$row], 'prev') }}</td>
+                            <td>
+                                @if($change)
+                                    <span class="rc-change rc-change--{{ $change['tone'] }} rc-ltr">{{ $change['text'] }}</span>
+                                @else
+                                    <span class="rc-muted">—</span>
+                                @endif
+                            </td>
                         </tr>
                     @endforeach
                 </tbody>
@@ -139,7 +170,10 @@
             {{-- Upcoming orders — the next scheduled charges (subscriptions + installments), soonest first.
                  Rows are precomputed by upcomingCharges(); each links to the subscription. --}}
             <div class="rc-section">
-                <div class="rc-section__title">{{ __('dashboard.upcoming.title') }}</div>
+                <div class="rc-row rc-row--between">
+                    <div class="rc-section__title">{{ __('dashboard.upcoming.title') }}</div>
+                    <a class="rc-link rc-section__link" href="{{ \App\Filament\Resources\SubscriptionResource::getUrl() }}" wire:navigate>{{ __('dashboard.upcoming.view_all') }}</a>
+                </div>
                 @php $upcoming = $this->upcomingCharges(); @endphp
                 <table class="rc-table">
                     <thead>
@@ -170,7 +204,7 @@
             {{-- Recent activity feed --}}
             <div class="rc-section">
                 <div class="rc-section__title">{{ __('dashboard.activity.title') }}</div>
-                <x-rc.timeline :events="$this->recentActivity()" />
+                <x-rc.timeline :events="$this->recentActivity()" variant="feed" />
             </div>
         </div>
     </div>

@@ -8,6 +8,9 @@
 
     Props:
       events        — iterable of App\Models\ActivityEvent (already shop-scoped + ordered)
+      variant       — 'rail' (default: dots on a vertical rail, the detail pages) or
+                      'feed' (Home's compact list: one line per event, hairline rows,
+                      the sketch's "Recent activity")
       previewAction — optional Filament action NAME (string) wired on the host page;
                       when set, a "Preview email" trigger is rendered for every
                       email-previewable event, passing { event: id } to the action.
@@ -17,12 +20,13 @@
 @props([
     'events' => [],
     'previewAction' => null,
+    'variant' => 'rail',
 ])
 @php use App\Support\Ui\EventPresenter; @endphp
 @if(count($events) === 0)
     <x-rc.empty title="customers.detail.timeline_empty" icon="heroicon-o-clock" />
 @else
-    <div {{ $attributes->merge(['class' => 'rc-timeline']) }}>
+    <div {{ $attributes->merge(['class' => 'rc-timeline rc-timeline--'.$variant]) }}>
         @foreach($events as $event)
             @php
                 $tone = EventPresenter::tone($event);

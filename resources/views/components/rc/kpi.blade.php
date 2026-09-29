@@ -9,6 +9,7 @@
       value  — preformatted display string (Money::format already applied by caller), or null = empty
       delta  — signed number (%), or null to hide
       goodUp — bool: is "up" the good direction? (false inverts the delta color, e.g. Churn)
+      compare— optional, already-translated caption beside the delta chip ("vs previous 30 days")
       sub    — optional sub-line translation key
       href   — optional drill-through link
       loading— show skeleton instead of value
@@ -18,6 +19,7 @@
     'value' => null,
     'delta' => null,
     'goodUp' => true,
+    'compare' => null,
     'sub' => null,
     'href' => null,
     'loading' => false,
@@ -43,8 +45,13 @@
         <span class="rc-kpi__value @if($isEmpty) rc-kpi__value--empty @endif">{{ $isEmpty ? '—' : $value }}</span>
     @endif
     @if(! is_null($delta) && ! $loading)
-        <span class="rc-kpi__delta {{ $deltaClass }}">
-            <span aria-hidden="true">{{ $arrow }}</span>{{ abs($delta) }}%
+        <span class="rc-kpi__foot">
+            <span class="rc-kpi__delta {{ $deltaClass }}">
+                <span aria-hidden="true">{{ $arrow }}</span>{{ abs($delta) }}%
+            </span>
+            @if($compare)
+                <span class="rc-kpi__compare">{{ $compare }}</span>
+            @endif
         </span>
     @endif
     @if($sub)

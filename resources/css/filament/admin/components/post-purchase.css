@@ -70,29 +70,32 @@
     margin-block-end: var(--rc-space-4);
 }
 
-/* Active | Inactive segment */
+/* Active | Inactive segment — the sketch's segmented control (Foundations):
+   a sunk track, 28px segments, the chosen one raised on a white thumb. */
 .rc-pp-segment {
     display: inline-flex;
-    background: var(--rc-bg);
-    border: 1px solid var(--rc-border);
+    background: var(--rc-gray-bg);
     border-radius: var(--rc-radius-control);
-    padding: var(--rc-space-1);
-    gap: var(--rc-space-1);
+    padding: 3px;
+    gap: 2px;
 }
 .rc-pp-segment__item {
     border: 0;
     background: transparent;
-    padding-block: var(--rc-space-2);
-    padding-inline: var(--rc-space-4);
-    border-radius: var(--rc-radius-control);
-    font: var(--rc-type-body-strong);
+    block-size: 28px;
+    padding-inline: var(--rc-space-3);
+    border-radius: 6px;
+    font: var(--rc-type-body);
+    font-size: 13px;
+    font-weight: 500;
     color: var(--rc-ink-muted);
     cursor: pointer;
 }
 .rc-pp-segment__item--active {
     background: var(--rc-card);
     color: var(--rc-ink);
-    box-shadow: var(--rc-shadow-card);
+    font-weight: 600;
+    box-shadow: var(--rc-shadow-thumb);
 }
 
 /* Reorder priority pill (outlined) */

@@ -9,6 +9,17 @@ return [
         'active_subscribers' => 'מנויים פעילים',
         'new_subscribers' => 'מנויים חדשים',
         'churned_subscribers' => 'מנויים שעזבו',
+        // beside the delta chip; :days is the selected range
+        'compare' => 'לעומת היום הקודם|לעומת :days הימים הקודמים',
+    ],
+
+    // the amber strip: the two queues the engine leaves to a human
+    'attention' => [
+        'charges' => 'חיוב אחד לא נגבה|:count חיובים לא נגבו',
+        'invoices' => 'חשבונית אחת דורשת טיפול|:count חשבוניות דורשות טיפול',
+        'and' => 'וגם',
+        'review_charges' => 'לחיובים שנכשלו',
+        'open_invoices' => 'לחשבוניות',
     ],
 
     'performance' => [
@@ -20,6 +31,10 @@ return [
             'monthly' => 'חודשי',
         ],        'this_period' => 'תקופה נוכחית',
         'prev_period' => 'תקופה קודמת',
+        'metric_col' => 'מדד',
+        'change' => 'שינוי',
+        // a rate's move, in percentage points
+        'pts' => ':value נק׳',
         'metric' => [
             'mrr' => 'הכנסה חודשית חוזרת',
             'installment_balance' => 'יתרת תשלומים פתוחה',
@@ -53,6 +68,7 @@ return [
         'amount' => 'סכום',
         'date' => 'חיוב הבא',
         'empty' => 'אין חיובים קרובים מתוזמנים.',
+        'view_all' => 'לכל המנויים ←',
     ],
 
     'empty' => [

@@ -1,0 +1,182 @@
+/* =============================================================================
+   home.css — the Home board of the approved sketch (Main.dc.html): the KPI
+   card foot (delta chip + "vs previous 30 days"), the amber attention strip,
+   the performance table's Change chips, card-head links, and the compact
+   "Recent activity" feed (x-rc.timeline variant="feed").
+
+   TOKENS: --rc-card --rc-border --rc-border-soft --rc-border-strong --rc-ink
+           --rc-ink-muted --rc-link --rc-amber-bg --rc-amber-border --rc-amber-ink
+           --rc-green-bg --rc-green-ink --rc-red-bg --rc-red-ink --rc-gray-bg
+           --rc-gray-ink --rc-radius-card --rc-radius-control --rc-radius-pill
+           --rc-type-* --rc-space-*
+   RTL: logical properties only; the ▲/▼ arrows are vertical and do not flip.
+   ========================================================================== */
+
+/* ---------------------------------------------------------- KPI card --- */
+
+.rc-kpi__foot {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--rc-space-2);
+}
+
+.rc-kpi__compare {
+    font: var(--rc-type-caption);
+    color: var(--rc-ink-muted);
+}
+
+/* ------------------------------------------------------ attention strip --- */
+
+.rc-attention {
+    display: flex;
+    align-items: center;
+    gap: var(--rc-space-3);
+    padding: var(--rc-space-3) var(--rc-space-4);
+    background: var(--rc-amber-bg);
+    border: 1px solid var(--rc-amber-border);
+    border-radius: var(--rc-radius-card);
+}
+
+.rc-attention__icon {
+    flex: none;
+    inline-size: 20px;
+    block-size: 20px;
+    color: var(--rc-amber-ink);
+}
+
+.rc-attention__text {
+    flex: 1 1 auto;
+    font: var(--rc-type-body);
+    color: var(--rc-ink);
+}
+
+.rc-attention__text strong {
+    font-weight: 600;
+}
+
+.rc-attention__btn {
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+    block-size: 32px;
+    padding-inline: var(--rc-space-3);
+    border: 1px solid var(--rc-border-strong);
+    border-radius: var(--rc-radius-control);
+    background: var(--rc-card);
+    color: var(--rc-ink);
+    font: var(--rc-type-body-strong);
+    font-size: 13px;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.rc-attention__btn:hover {
+    border-color: var(--rc-ink-muted);
+}
+
+.rc-attention__btn--ghost {
+    border-color: transparent;
+    background: transparent;
+    color: var(--rc-amber-ink);
+}
+
+.rc-attention__btn--ghost:hover {
+    border-color: transparent;
+    text-decoration: underline;
+}
+
+@media (max-width: 767px) {
+    .rc-attention {
+        flex-wrap: wrap;
+    }
+}
+
+/* ----------------------------------------------- tables inside a card --- */
+
+/* The sketch's card tables: 20px gutters, 10px header / 11px row padding. */
+.rc-section > .rc-table th {
+    padding: 10px var(--rc-space-5);
+}
+
+.rc-section > .rc-table td {
+    padding: 11px var(--rc-space-5);
+}
+
+.rc-table--perf th:first-child {
+    inline-size: 40%;
+}
+
+/* The Change cell: a small signed chip. */
+.rc-change {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px var(--rc-space-2);
+    border-radius: var(--rc-radius-pill);
+    font: var(--rc-type-label);
+    white-space: nowrap;
+}
+
+.rc-change--up   { background: var(--rc-green-bg); color: var(--rc-green-ink); }
+.rc-change--down { background: var(--rc-red-bg);   color: var(--rc-red-ink); }
+.rc-change--flat { background: var(--rc-gray-bg);  color: var(--rc-gray-ink); }
+
+/* A card head's trailing link ("View all subscriptions →"). */
+.rc-section__link {
+    font: var(--rc-type-body-strong);
+    font-size: 13px;
+}
+
+/* ---------------------------------------------- recent activity (feed) --- */
+
+/* Edge to edge under the card head, one hairline row per event. */
+.rc-section > .rc-timeline--feed {
+    margin: calc(-1 * var(--rc-space-4)) calc(-1 * var(--rc-space-5)) calc(-1 * var(--rc-space-5));
+}
+
+.rc-timeline--feed .rc-timeline__row {
+    gap: var(--rc-space-3);
+    padding: var(--rc-space-3) var(--rc-space-5);
+    border-inline-start: 0;
+    border-block-end: 1px solid var(--rc-border-soft);
+}
+
+.rc-timeline--feed .rc-timeline__row:last-child {
+    border-block-end: 0;
+}
+
+.rc-timeline--feed .rc-timeline__dot {
+    position: static;
+    flex: none;
+    inline-size: 8px;
+    block-size: 8px;
+    margin-block-start: 7px;
+}
+
+.rc-timeline--feed .rc-timeline__body {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 6px;
+    row-gap: 2px;
+    min-inline-size: 0;
+}
+
+.rc-timeline--feed .rc-timeline__summary {
+    color: var(--rc-ink);
+}
+
+.rc-timeline--feed .rc-timeline__meta {
+    flex-basis: 100%;
+}
+
+.rc-timeline--feed .rc-timeline__actor {
+    padding: 0;
+    background: transparent;
+}
+
+/* A title sharing its head row with controls sits centred on them, not on its
+   own bottom margin (the bar's padding already spaces the body). */
+.rc-row--between > .rc-section__title {
+    margin: 0;
+}

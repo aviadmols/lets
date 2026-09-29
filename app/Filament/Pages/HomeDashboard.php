@@ -4,7 +4,10 @@ namespace App\Filament\Pages;
 
 use App\Domain\Dashboard\DashboardMetrics;
 use App\Filament\Concerns\ShopScopedScreen;
+use App\Filament\Resources\IssuedDocumentResource;
 use App\Filament\Resources\ShopResource;
+use App\Filament\Resources\SubscriptionResource;
+use App\Support\BusinessName;
 use App\Filament\Resources\SubscriptionResource\Pages\ViewSubscription;
 use App\Models\ActivityEvent;
 use App\Models\InstallmentPlan;
@@ -68,6 +71,22 @@ class HomeDashboard extends Page
     /** Unpaid subscribers listed by name before the list turns into a wall. */
     public const UNPAID_LIMIT = 10;
 
+    /** The line under the title: "{store} · {platform} · {Sunday, 27 Sep 2026}". */
+    public const SUBHEADING_GLUE = ' · ';
+
+    public const SUBHEADING_DATE_FORMAT = 'l, j M Y';
+
+    /**
+     * Performance rows in display order → is "up" the good direction? Failed
+     * charges rising is bad news, so its chip reads red on the way up.
+     */
+    public const PERFORMANCE_ROWS = [
+        'installment_balance' => true,
+        'upsell_revenue' => true,
+        'charge_success' => true,
+        'failed_charges' => false,
+    ];
+
     /**
      * Overrides ShopScopedScreen::canAccess(). A bound user (merchant, or platform
      * admin who entered a shop) sees the shop dashboard. A platform admin in
@@ -104,6 +123,88 @@ class HomeDashboard extends Page
     }
 
     /** @return array<string, mixed> the rendered metric payload */
+    /**
+     * The sketch's line under the title: which store, on which platform, today.
+     * Tells a platform admin entered into a shop — or a merchant with two — where
+     * they are before they read a single number.
+     */
+    public function getSubheading(): string|Htmlable|null
+    {
+        $shop = Tenant::current();
+
+        if (! $shop) {
+            return null;
+        }
+
+        return implode(self::SUBHEADING_GLUE, array_filter([
+            BusinessName::for($shop),
+            __('nav.platform_name.'.$shop->platform),
+            now()->locale(app()->getLocale())->translatedFormat(self::SUBHEADING_DATE_FORMAT),
+        ]));
+    }
+
+    /**
+     * The attention strip: the two queues the engine leaves to a human — charges it
+     * could not collect, documents it could not issue. The SAME counts as the
+     * sidebar badges and the top-bar bell (read from those screens), so the three
+     * can never disagree. Empty when both are clear, and the strip hides.
+     *
+     * @return array{charges: ?string, invoices: ?string, charges_url: string, invoices_url: string}|null
+     */
+    public function attention(): ?array
+    {
+        $charges = PaymentRecovery::canAccess() ? PaymentRecovery::getNavigationBadge() : null;
+        $invoices = IssuedDocumentResource::canAccess() ? IssuedDocumentResource::getNavigationBadge() : null;
+
+        if ($charges === null && $invoices === null) {
+            return null;
+        }
+
+        return [
+            'charges' => $charges,
+            'invoices' => $invoices,
+            'charges_url' => PaymentRecovery::getUrl(),
+            'invoices_url' => IssuedDocumentResource::getUrl(),
+        ];
+    }
+
+    /**
+     * The "Change" cell of a performance row: a signed chip, green when the move is
+     * good for the merchant (failed charges FALLING is good). A rate moves in
+     * percentage POINTS, not percent-of-percent; money and counts move in percent.
+     * Null when there is no baseline to compare with (previous period empty).
+     *
+     * @param  array{this: float|int, prev: float|int, currency: bool, percent: bool}  $row
+     * @return array{text: string, tone: string}|null
+     */
+    public function perfChange(array $row, bool $goodUp = true): ?array
+    {
+        $this_ = (float) $row['this'];
+        $prev = (float) $row['prev'];
+
+        if ($row['percent']) {
+            $diff = round($this_ - $prev, 1);
+            $text = __('dashboard.performance.pts', ['value' => Money::number(abs($diff), 1)]);
+        } else {
+            if ($prev == 0.0) {
+                return null;
+            }
+            $diff = round((($this_ - $prev) / $prev) * 100, 1);
+            $text = Money::number(abs($diff), 1).'%';
+        }
+
+        if ($diff == 0.0) {
+            return ['text' => $text, 'tone' => 'flat'];
+        }
+
+        $good = ($diff > 0) === $goodUp;
+
+        return [
+            'text' => ($diff > 0 ? '▲ ' : '▼ ').$text,
+            'tone' => $good ? 'up' : 'down',
+        ];
+    }
+
     public function metrics(): array
     {
         return DashboardMetrics::forRange($this->rangeDays())->toArray();
