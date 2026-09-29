@@ -84,11 +84,15 @@
     --rc-shadow-hover: 0 4px 12px rgba(16, 24, 40, .10);
     --rc-shadow-pop: 0 8px 24px rgba(16, 24, 40, .12);
     --rc-ring: 0 0 0 3px rgba(59, 91, 219, .30);
+    /* The raised "thumb" of a segmented control (EN|עב, Daily|Weekly|Monthly). */
+    --rc-shadow-thumb: 0 1px 2px rgba(16, 24, 40, .08);
     /* Modal/drawer scrim (same ink base as the shadow tokens). */
     --rc-scrim: rgba(16, 24, 40, .35);
 
     /* --- 3.4 Layout --- */
     --rc-sidebar-w: 248px;
+    --rc-topbar-h: 56px;
+    --rc-search-w: 380px;
     --rc-content-max: 1200px;
     --rc-gutter: var(--rc-space-6);
 
@@ -139,11 +143,6 @@
     border-inline-end: 1px solid var(--rc-border);
 }
 
-/* Brand row wordmark spacing. */
-.fi-sidebar-header {
-    border-block-end: 1px solid var(--rc-border);
-}
-
 /* Active nav item: a rounded pill in the accent wash with a 3px rail painted
    INSIDE its start edge (inset shadow, so the label never shifts). */
 .fi-sidebar-item > .fi-sidebar-item-button {
@@ -163,16 +162,8 @@
     color: var(--rc-blue-600);
 }
 
-/* The Settings group is always LAST (NAV_GROUP_ORDER) and holds one item — the
-   Settings cluster. Its header would just repeat the item, so the group shows as
-   a hairline + the item, the sketch's pinned footer entry. */
-.fi-sidebar-nav-groups > .fi-sidebar-group:last-child {
-    border-block-start: 1px solid var(--rc-border);
-    padding-block-start: var(--rc-space-3);
-}
-.fi-sidebar-nav-groups > .fi-sidebar-group:last-child > .fi-sidebar-group-button {
-    display: none;
-}
+/* Settings is pinned at the sidebar's FOOT with the store card
+   (filament/partials/sidebar-shop + components/shell.css), not in this list. */
 
 /* Child items (Loyalty → members/referrals, Subscriptions → bulk edit). */
 .fi-sidebar-sub-group-items .fi-sidebar-item-label {
@@ -1446,7 +1437,8 @@ a.rc-railed:hover { background: var(--rc-blue-bg); }
    hook that can put a class on <html>, and inline CSS/JS is not an option here.
    ========================================================================== */
 
-html:has(meta[name="lets-embedded"]) .fi-user-menu {
+html:has(meta[name="lets-embedded"]) .fi-user-menu,
+html:has(meta[name="lets-embedded"]) .rc-lang-switch {
     display: none;
 }
 
@@ -1851,10 +1843,8 @@ html:has(meta[name="lets-embedded"]) .fi-user-menu {
 .rc-sidebar-shop {
     display: flex;
     align-items: center;
-    gap: var(--rc-space-3);
-    margin: var(--rc-space-3);
-    padding-block-start: var(--rc-space-3);
-    border-block-start: 1px solid var(--rc-border);
+    gap: 10px;
+    padding: 10px 10px var(--rc-space-1);
 }
 .rc-sidebar-shop__mark {
     flex-shrink: 0;
@@ -3445,6 +3435,494 @@ button.rc-fb-node:focus-visible {
 .rc-plan-ship__unit { flex: 1 1 auto; max-inline-size: 200px; }
 
 .rc-plan-price-summary { font: var(--rc-type-body-strong); }
+
+/* =============================================================================
+   shell.css — the panel chrome of the approved sketch (Main.dc.html): the 248px
+   sidebar with 34px items and label-style group headings, Settings + the store
+   card pinned at its foot, the 56px white top bar (search at the start; bell,
+   help, EN|עב pill and the user pill at the end), and the page header rhythm.
+
+   TOKENS: --rc-card --rc-bg --rc-border --rc-border-strong --rc-ink --rc-ink-muted
+           --rc-ink-on-primary --rc-blue --rc-blue-bg --rc-red --rc-red-bg --rc-red-ink
+           --rc-amber-bg --rc-amber-ink --rc-radius-control --rc-radius-card
+           --rc-radius-pill --rc-shadow-thumb --rc-shadow-pop --rc-ring --rc-font
+           --rc-type-* --rc-space-* --rc-topbar-h --rc-search-w
+
+   SPECIFICITY: rc-admin.css is loaded BEFORE Filament's app.css, so a one-class
+   rule loses to a one-class Tailwind utility on the same element. Every rule
+   that re-skins a Filament element is therefore rooted at .fi-body. Logical
+   properties only — the whole shell mirrors under dir="rtl".
+   ========================================================================== */
+
+/* ------------------------------------------------------------ sidebar --- */
+
+/* One white column top to bottom — Filament makes the aside transparent on
+   desktop, which let the canvas show through behind the pinned foot. */
+.fi-body .fi-sidebar {
+    background-color: var(--rc-card);
+}
+
+.fi-body .fi-sidebar-header {
+    block-size: var(--rc-topbar-h);
+    padding-inline: 22px;
+    background-color: var(--rc-card);
+    border: 0;
+    box-shadow: none;
+}
+
+/* No reserved scrollbar gutter: items run the full 224px like the sketch, and a
+   thin scrollbar appears only when the list really overflows. */
+.fi-body .fi-sidebar-nav {
+    padding: var(--rc-space-1) var(--rc-space-3) var(--rc-space-3);
+    row-gap: 0;
+    scrollbar-gutter: auto;
+    scrollbar-width: thin;
+}
+
+.fi-body .fi-sidebar-nav-groups {
+    margin-inline: 0;
+    row-gap: 0;
+}
+
+.fi-body .fi-sidebar-group {
+    row-gap: 0;
+}
+
+/* Group headings are quiet labels, not accordions (collapsibleNavigationGroups(false)). */
+.fi-body .fi-sidebar-group-button {
+    padding: 14px 10px var(--rc-space-1);
+}
+
+.fi-body .fi-sidebar-group-label {
+    font: var(--rc-type-label);
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.fi-body .fi-sidebar-group-items {
+    row-gap: 2px;
+}
+
+.fi-body .fi-sidebar-item-button {
+    block-size: 34px;
+    padding: 0 10px;
+    column-gap: 10px;
+}
+
+.fi-body .fi-sidebar-item-button:hover {
+    background-color: var(--rc-bg);
+}
+
+.fi-body .fi-sidebar-item-icon {
+    inline-size: 18px;
+    block-size: 18px;
+    color: var(--rc-ink);
+}
+
+.fi-body .fi-sidebar-item-label {
+    font: var(--rc-type-body);
+    color: var(--rc-ink);
+}
+
+.fi-body .fi-sidebar-item-active > .fi-sidebar-item-button {
+    background-color: var(--rc-blue-bg);
+}
+
+.fi-body .fi-sidebar-item-active > .fi-sidebar-item-button .fi-sidebar-item-label {
+    font-weight: 600;
+    color: var(--rc-blue);
+}
+
+.fi-body .fi-sidebar-item-active > .fi-sidebar-item-button .fi-sidebar-item-icon {
+    color: var(--rc-blue);
+}
+
+/* Count badges (failed charges, invoices) — the sketch's round pill. */
+.fi-body .fi-sidebar-item .fi-badge {
+    min-inline-size: 20px;
+    block-size: 20px;
+    padding: 0 6px;
+    border-radius: var(--rc-radius-pill);
+    font: 600 12px/1 var(--rc-font);
+    box-shadow: none;
+}
+
+.fi-body .fi-sidebar-item .fi-badge.fi-color-danger {
+    background-color: var(--rc-red-bg);
+    color: var(--rc-red-ink);
+}
+
+.fi-body .fi-sidebar-item .fi-badge.fi-color-warning {
+    background-color: var(--rc-amber-bg);
+    color: var(--rc-amber-ink);
+}
+
+/* The foot: a hairline, Settings, then the store card (filament/partials/sidebar-shop). */
+.rc-sidebar-foot {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-inline: var(--rc-space-3);
+    padding-block: var(--rc-space-3) var(--rc-space-4);
+    border-block-start: 1px solid var(--rc-border);
+}
+
+.rc-sidebar-foot__nav {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/* ------------------------------------------------------------- top bar --- */
+
+.fi-body .fi-topbar > nav {
+    block-size: var(--rc-topbar-h);
+    column-gap: var(--rc-space-3);
+}
+
+@media (min-width: 1024px) {
+    .fi-body .fi-topbar > nav {
+        padding-inline: var(--rc-space-6);
+    }
+}
+
+/* The bar's end cluster (bell, help, language, user). */
+.fi-body .fi-topbar > nav > .ms-auto {
+    column-gap: var(--rc-space-2);
+}
+
+/* Search — the sketch's 380px field at the start of the bar. */
+.rc-topbar-search {
+    display: flex;
+    align-items: center;
+    min-inline-size: 0;
+}
+
+.rc-topbar-search__anchor {
+    position: relative;
+    min-inline-size: 0;
+}
+
+.rc-topbar-search__field {
+    display: flex;
+    align-items: center;
+    gap: var(--rc-space-2);
+    inline-size: var(--rc-search-w);
+    max-inline-size: 100%;
+    block-size: 36px;
+    padding-inline: var(--rc-space-3);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    background-color: var(--rc-bg);
+    color: var(--rc-ink-muted);
+    cursor: text;
+    transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+}
+
+.rc-topbar-search__field:focus-within {
+    border-color: var(--rc-blue);
+    background-color: var(--rc-card);
+    box-shadow: var(--rc-ring);
+}
+
+.rc-topbar-search__icon {
+    flex: none;
+    inline-size: 16px;
+    block-size: 16px;
+}
+
+.fi-body .rc-topbar-search__input {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    box-shadow: none;
+    color: var(--rc-ink);
+    font: var(--rc-type-body);
+}
+
+.fi-body .rc-topbar-search__input:focus {
+    box-shadow: none;
+}
+
+.rc-topbar-search__input::placeholder {
+    color: var(--rc-ink-muted);
+    opacity: 1;
+}
+
+.rc-topbar-search__spinner {
+    flex: none;
+    inline-size: 16px;
+    block-size: 16px;
+}
+
+/* Results open under the field, start-aligned (Filament anchors them to the end). */
+.fi-body .rc-topbar-search__results {
+    inset-inline-start: 0;
+    inset-inline-end: auto;
+    inline-size: 460px;
+    max-inline-size: calc(100vw - var(--rc-space-6));
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-card);
+    box-shadow: var(--rc-shadow-pop);
+}
+
+.fi-body .rc-topbar-search__results .fi-global-search-result-group > div {
+    background-color: var(--rc-surface-sunk);
+    border-block-end: 1px solid var(--rc-border);
+}
+
+.fi-body .rc-topbar-search__results .fi-global-search-result-group h3 {
+    font: var(--rc-type-label);
+    font-size: 11px;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--rc-ink-muted);
+}
+
+.fi-body .rc-topbar-search__results .fi-global-search-result-link {
+    padding: 10px var(--rc-space-4);
+}
+
+.fi-body .rc-topbar-search__results .fi-global-search-result:hover,
+.fi-body .rc-topbar-search__results .fi-global-search-result:focus-within {
+    background-color: var(--rc-blue-bg);
+}
+
+[dir="rtl"] .rc-topbar-search__results .fi-global-search-result-group h3 {
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+@media (max-width: 767px) {
+    .rc-topbar-search {
+        flex: 1 1 auto;
+    }
+
+    .rc-topbar-search__anchor,
+    .rc-topbar-search__field {
+        inline-size: 100%;
+    }
+}
+
+/* Icon buttons (bell, help). */
+.rc-topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--rc-space-2);
+}
+
+.rc-topbar-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 36px;
+    block-size: 36px;
+    border: 1px solid transparent;
+    border-radius: var(--rc-radius-control);
+    background: transparent;
+    color: var(--rc-ink-muted);
+    cursor: pointer;
+    transition: background-color .15s ease, color .15s ease;
+}
+
+.rc-topbar-btn:hover,
+.rc-topbar-btn:focus-visible {
+    background-color: var(--rc-bg);
+    color: var(--rc-ink);
+    outline: none;
+}
+
+.rc-topbar-btn__icon {
+    inline-size: 20px;
+    block-size: 20px;
+}
+
+.rc-topbar-btn__dot {
+    position: absolute;
+    inset-block-start: 7px;
+    inset-inline-end: 8px;
+    inline-size: 8px;
+    block-size: 8px;
+    border-radius: var(--rc-radius-pill);
+    background-color: var(--rc-red);
+    box-shadow: 0 0 0 2px var(--rc-card);
+}
+
+/* The bell's dropdown. */
+.rc-topbar-alerts {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-inline-size: 280px;
+    padding: var(--rc-space-2);
+}
+
+.rc-topbar-alerts__heading {
+    padding: var(--rc-space-1) var(--rc-space-2) var(--rc-space-2);
+    font: var(--rc-type-label);
+    color: var(--rc-ink-muted);
+}
+
+.rc-topbar-alerts__item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--rc-space-3);
+    padding: var(--rc-space-2);
+    border-radius: var(--rc-radius-control);
+    color: var(--rc-ink);
+    font: var(--rc-type-body);
+    text-decoration: none;
+}
+
+.rc-topbar-alerts__item:hover,
+.rc-topbar-alerts__item:focus-visible {
+    background-color: var(--rc-bg);
+    outline: none;
+}
+
+.rc-topbar-alerts__count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-inline-size: 20px;
+    block-size: 20px;
+    padding: 0 6px;
+    border-radius: var(--rc-radius-pill);
+    font: 600 12px/1 var(--rc-font);
+}
+
+.rc-topbar-alerts__count--danger {
+    background-color: var(--rc-red-bg);
+    color: var(--rc-red-ink);
+}
+
+.rc-topbar-alerts__count--warning {
+    background-color: var(--rc-amber-bg);
+    color: var(--rc-amber-ink);
+}
+
+.rc-topbar-alerts__empty {
+    padding: var(--rc-space-2);
+    font: var(--rc-type-caption);
+    color: var(--rc-ink-muted);
+}
+
+/* EN | עב — the language pill (vendor/filament-language-switch override). */
+.rc-lang-switch {
+    display: inline-flex;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-pill);
+    background-color: var(--rc-bg);
+}
+
+.rc-lang-switch__item {
+    display: inline-flex;
+    align-items: center;
+    block-size: 26px;
+    padding-inline: 10px;
+    border: 0;
+    border-radius: var(--rc-radius-pill);
+    background: transparent;
+    font: 500 12px/1 var(--rc-font);
+    color: var(--rc-ink-muted);
+    cursor: pointer;
+}
+
+.rc-lang-switch__item:hover {
+    color: var(--rc-ink);
+}
+
+.rc-lang-switch__item--active {
+    background-color: var(--rc-card);
+    box-shadow: var(--rc-shadow-thumb);
+    font-weight: 600;
+    color: var(--rc-ink);
+    cursor: default;
+}
+
+/* The user pill (vendor/filament-panels user-menu override). */
+.rc-user-pill {
+    display: flex;
+    align-items: center;
+    gap: var(--rc-space-2);
+    block-size: 36px;
+    padding-inline: var(--rc-space-1) 10px;
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-pill);
+    background-color: var(--rc-card);
+    color: var(--rc-ink);
+    cursor: pointer;
+}
+
+.rc-user-pill:hover,
+.rc-user-pill:focus-visible {
+    background-color: var(--rc-bg);
+    outline: none;
+}
+
+.rc-user-pill__avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 26px;
+    block-size: 26px;
+    border-radius: var(--rc-radius-pill);
+    background-color: var(--rc-blue);
+    color: var(--rc-ink-on-primary);
+    font: 700 12px/1 var(--rc-font);
+}
+
+.rc-user-pill__name {
+    max-inline-size: 140px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font: var(--rc-type-body-strong);
+    font-size: 13px;
+}
+
+.rc-user-pill__chevron {
+    inline-size: 14px;
+    block-size: 14px;
+}
+
+@media (max-width: 639px) {
+    .rc-user-pill__name {
+        display: none;
+    }
+}
+
+/* ------------------------------------------------------- page rhythm --- */
+
+/* The sketch's main column: 24px above the header, 20px between blocks. */
+.fi-body .fi-page > section {
+    padding-block: var(--rc-space-5) var(--rc-space-6);
+    row-gap: 20px;
+}
+
+.fi-body .fi-header-heading {
+    font: var(--rc-type-title);
+    letter-spacing: normal;
+    color: var(--rc-ink);
+}
+
+.fi-body .fi-header-subheading {
+    margin-block-start: var(--rc-space-1);
+    font: var(--rc-type-body);
+    font-size: 13px;
+    color: var(--rc-ink-muted);
+}
+
+.fi-body .fi-breadcrumbs {
+    font: var(--rc-type-caption);
+}
 
 /* storefront-elements.css — the Storefront page's element cards.
    TOKENS: --rc-green/-bg --rc-amber/-bg --rc-gray/-bg --rc-border --rc-ink-muted

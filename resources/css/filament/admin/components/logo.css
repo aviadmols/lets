@@ -52,10 +52,8 @@
 .rc-sidebar-shop {
     display: flex;
     align-items: center;
-    gap: var(--rc-space-3);
-    margin: var(--rc-space-3);
-    padding-block-start: var(--rc-space-3);
-    border-block-start: 1px solid var(--rc-border);
+    gap: 10px;
+    padding: 10px 10px var(--rc-space-1);
 }
 .rc-sidebar-shop__mark {
     flex-shrink: 0;

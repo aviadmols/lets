@@ -51,4 +51,30 @@ return [
         'shopify' => 'Shopify',
         'woocommerce' => 'WooCommerce',
     ],
+
+    // the top bar (approved sketch): search, bell, help, language pill
+    'search' => [
+        'label' => 'חיפוש',
+        'placeholder' => 'חיפוש לקוחות, מנויים, הזמנות…',
+        'group' => [
+            'customers' => 'לקוחות',
+            'subscriptions' => 'מנויים',
+            'orders' => 'הזמנות',
+        ],
+        'order' => 'הזמנה #:number',
+    ],
+    'alerts' => [
+        'label' => 'התראות',
+        'label_pending' => 'התראות — יש פריטים שדורשים טיפול',
+        'heading' => 'דורש טיפול',
+        'failed_charges' => 'חיובים שלא נגבו',
+        'invoices' => 'חשבוניות שדורשות טיפול',
+        'empty' => 'אין כרגע משהו שדורש טיפול.',
+    ],
+    'help' => 'עזרה — מייל לתמיכה של LETS',
+    'language' => 'שפה',
+    'locale_short' => [
+        'en' => 'EN',
+        'he' => 'עב',
+    ],
 ];

@@ -7,6 +7,7 @@ use App\Domain\Upsell\Http\Controllers\AdminUpsellPreviewController;
 use App\Domain\Upsell\Http\Controllers\PostPurchaseController;
 use App\Filament\Pages\Auth\Login;
 use App\Filament\Pages\Auth\TwoFactorChallenge;
+use App\Filament\Search\TenantGlobalSearchProvider;
 use App\Filament\Pages\TwoFactorSecurity;
 use App\Domain\Upsell\Rendering\UpsellCardPresenter;
 use App\Http\Controllers\Admin\AdminAccountPreviewController;
@@ -83,6 +84,14 @@ class AdminPanelProvider extends PanelProvider
     public const MARK_PATH = 'images/lets-mark.svg';
 
     public const LOCALES = ['en', 'he'];
+
+    /** The sketch's sidebar: 248px (theme.css --rc-sidebar-w). */
+    public const SIDEBAR_WIDTH = '15.5rem';
+
+    /** Top-bar search: wait for a pause in typing, and focus on Ctrl/Cmd+K. */
+    public const SEARCH_DEBOUNCE = '300ms';
+
+    public const SEARCH_KEY_BINDINGS = ['mod+k'];
 
     /** Recharge blue — the one brand accent (theme.css --rc-blue). */
     public const BRAND_ACCENT = '#3B5BDB';
@@ -219,6 +228,26 @@ class AdminPanelProvider extends PanelProvider
             ])
             // Heebo carries Hebrew and Latin in one face, so EN and HE match.
             ->font('Heebo')
+            // The sketch's shell: a 248px sidebar whose group headings are labels,
+            // not accordions.
+            ->sidebarWidth(self::SIDEBAR_WIDTH)
+            ->collapsibleNavigationGroups(false)
+            // The top bar's search: customers, subscriptions and orders of the
+            // BOUND shop only (TenantGlobalSearchProvider fails closed without
+            // one). Drawn at the start of the bar by App\Livewire\TopbarSearch.
+            ->globalSearch(TenantGlobalSearchProvider::class)
+            ->globalSearchDebounce(self::SEARCH_DEBOUNCE)
+            ->globalSearchKeyBindings(self::SEARCH_KEY_BINDINGS)
+            ->renderHook(
+                PanelsRenderHook::TOPBAR_START,
+                fn (): View => ViewFacade::make('filament.partials.topbar-start'),
+            )
+            // Bell (failed charges + documents needing attention) and help,
+            // before the language pill and the user menu.
+            ->renderHook(
+                PanelsRenderHook::GLOBAL_SEARCH_BEFORE,
+                fn (): View => ViewFacade::make('filament.partials.topbar-actions'),
+            )
             // SPA navigation (wire:navigate): swap only the page content over AJAX +
             // keep the shell, assets, fonts, and (when embedded) App Bridge alive across
             // tab switches — instead of a FULL page reload per navigation (re-downloading

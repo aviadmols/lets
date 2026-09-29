@@ -30,6 +30,23 @@ class Settings extends Cluster
 
     protected static SubNavigationPosition $subNavigationPosition = SubNavigationPosition::Start;
 
+    /**
+     * Not in the scrolling nav list: the sketch pins Settings to the FOOT of the
+     * sidebar, above the store card, where it stays put however long the list
+     * above it grows. filament/partials/sidebar-shop renders it there (through
+     * showInSidebarFooter + getNavigationItems, so the active state is Filament's).
+     */
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
+    /** The footer entry shows exactly when the nav item used to: any member page is accessible. */
+    public static function showInSidebarFooter(): bool
+    {
+        return static::canAccessClusteredComponents();
+    }
+
     public static function getNavigationGroup(): ?string
     {
         return __('nav.group.settings');

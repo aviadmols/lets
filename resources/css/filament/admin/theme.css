@@ -83,11 +83,15 @@
     --rc-shadow-hover: 0 4px 12px rgba(16, 24, 40, .10);
     --rc-shadow-pop: 0 8px 24px rgba(16, 24, 40, .12);
     --rc-ring: 0 0 0 3px rgba(59, 91, 219, .30);
+    /* The raised "thumb" of a segmented control (EN|עב, Daily|Weekly|Monthly). */
+    --rc-shadow-thumb: 0 1px 2px rgba(16, 24, 40, .08);
     /* Modal/drawer scrim (same ink base as the shadow tokens). */
     --rc-scrim: rgba(16, 24, 40, .35);
 
     /* --- 3.4 Layout --- */
     --rc-sidebar-w: 248px;
+    --rc-topbar-h: 56px;
+    --rc-search-w: 380px;
     --rc-content-max: 1200px;
     --rc-gutter: var(--rc-space-6);
 
@@ -138,11 +142,6 @@
     border-inline-end: 1px solid var(--rc-border);
 }
 
-/* Brand row wordmark spacing. */
-.fi-sidebar-header {
-    border-block-end: 1px solid var(--rc-border);
-}
-
 /* Active nav item: a rounded pill in the accent wash with a 3px rail painted
    INSIDE its start edge (inset shadow, so the label never shifts). */
 .fi-sidebar-item > .fi-sidebar-item-button {
@@ -162,16 +161,8 @@
     color: var(--rc-blue-600);
 }
 
-/* The Settings group is always LAST (NAV_GROUP_ORDER) and holds one item — the
-   Settings cluster. Its header would just repeat the item, so the group shows as
-   a hairline + the item, the sketch's pinned footer entry. */
-.fi-sidebar-nav-groups > .fi-sidebar-group:last-child {
-    border-block-start: 1px solid var(--rc-border);
-    padding-block-start: var(--rc-space-3);
-}
-.fi-sidebar-nav-groups > .fi-sidebar-group:last-child > .fi-sidebar-group-button {
-    display: none;
-}
+/* Settings is pinned at the sidebar's FOOT with the store card
+   (filament/partials/sidebar-shop + components/shell.css), not in this list. */
 
 /* Child items (Loyalty → members/referrals, Subscriptions → bulk edit). */
 .fi-sidebar-sub-group-items .fi-sidebar-item-label {

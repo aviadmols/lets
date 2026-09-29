@@ -51,4 +51,30 @@ return [
         'shopify' => 'Shopify',
         'woocommerce' => 'WooCommerce',
     ],
+
+    // the top bar (approved sketch): search, bell, help, language pill
+    'search' => [
+        'label' => 'Search',
+        'placeholder' => 'Search customers, subscriptions, orders…',
+        'group' => [
+            'customers' => 'Customers',
+            'subscriptions' => 'Subscriptions',
+            'orders' => 'Orders',
+        ],
+        'order' => 'Order #:number',
+    ],
+    'alerts' => [
+        'label' => 'Notifications',
+        'label_pending' => 'Notifications — items need attention',
+        'heading' => 'Needs attention',
+        'failed_charges' => 'Charges that could not be collected',
+        'invoices' => 'Invoices that need attention',
+        'empty' => 'Nothing needs your attention.',
+    ],
+    'help' => 'Help — email LETS support',
+    'language' => 'Language',
+    'locale_short' => [
+        'en' => 'EN',
+        'he' => 'עב',
+    ],
 ];

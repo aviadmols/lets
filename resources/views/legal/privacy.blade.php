@@ -13,7 +13,7 @@
 @php
     $locale = app()->getLocale();
     $isRtl = $locale === 'he';
-    $email = config('mail.from.address') ?: 'support@lets.co.il';
+    $email = \App\Support\Ui\SupportContact::email();
 @endphp
 <!doctype html>
 <html lang="{{ $locale }}" dir="{{ $isRtl ? 'rtl' : 'ltr' }}">

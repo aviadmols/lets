@@ -19,7 +19,8 @@
    hook that can put a class on <html>, and inline CSS/JS is not an option here.
    ========================================================================== */
 
-html:has(meta[name="lets-embedded"]) .fi-user-menu {
+html:has(meta[name="lets-embedded"]) .fi-user-menu,
+html:has(meta[name="lets-embedded"]) .rc-lang-switch {
     display: none;
 }
 
