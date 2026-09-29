@@ -81,6 +81,23 @@ final class CustomerContractOwnershipTest extends TestCase
         $response->assertForbidden()->assertJson(['reason' => 'no_customer']);
     }
 
+    /**
+     * A staff user's admin token whose numeric id equals the owner's customer
+     * id is still not that customer — admin-shaped tokens carry no shopper.
+     */
+    public function test_an_admin_token_whose_staff_id_equals_the_customer_id_gets_no_verbs(): void
+    {
+        [$shop, $contract] = $this->shopWithContract(ownerCustomerId: 77);
+        $this->fakePauseSuccess($contract); // must never be reached
+
+        $response = $this->postJson('/subscriptions/api/pause', [
+            'contract_gid' => (string) $contract->shopify_gid,
+        ], ['Authorization' => 'Bearer '.$this->token($shop, sub: '77', admin: true)]);
+
+        $response->assertForbidden()->assertJson(['reason' => 'no_customer']);
+        $this->assertSame('ACTIVE', $contract->fresh()->status);
+    }
+
     public function test_no_token_means_no_entry_at_all(): void
     {
         [$shop, $contract] = $this->shopWithContract(ownerCustomerId: 77);
@@ -247,12 +264,26 @@ final class CustomerContractOwnershipTest extends TestCase
      * shape App Bridge mints, so SessionTokenAuth verifies it for real (no
      * middleware mocking; a broken verifier fails these tests, as it should).
      */
-    private function token(Shop $shop, string $sub): string
+    private function token(Shop $shop, string $sub, bool $admin = false): string
     {
         $now = time();
-        $claims = [
+        $claims = $admin ? [
+            // The embedded-ADMIN App Bridge shape: a staff user's numeric id.
             'iss' => 'https://'.$shop->shopify_domain.'/admin',
             'dest' => 'https://'.$shop->shopify_domain,
+            'aud' => self::API_KEY,
+            'sub' => $sub,
+            'exp' => $now + 60,
+            'nbf' => $now - 5,
+            'iat' => $now,
+            'jti' => uniqid(),
+            'sid' => uniqid(),
+        ] : [
+            // The CUSTOMER-ACCOUNT extension shape: iss/dest are the bare shop
+            // host. (An admin App Bridge token — https://{shop}/admin — is never
+            // accepted as a customer; SessionTokenCustomer refuses it.)
+            'iss' => $shop->shopify_domain,
+            'dest' => $shop->shopify_domain,
             'aud' => self::API_KEY,
             'sub' => $sub,
             'exp' => $now + 60,

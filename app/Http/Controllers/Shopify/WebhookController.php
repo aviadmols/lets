@@ -25,6 +25,21 @@ use Symfony\Component\HttpFoundation\Response;
  */
 final class WebhookController extends Controller
 {
+    // === CONSTANTS ===
+    /**
+     * Where a payload names its own shop: `shop_domain` on the compliance
+     * topics, `myshopify_domain` on a Shop resource (app/uninstalled, shop/update).
+     */
+    public const SHOP_DOMAIN_KEYS = ['shop_domain', 'myshopify_domain'];
+
+    /** Topics that must name their shop in the body — erasure and uninstall. */
+    public const TOPICS_REQUIRING_SHOP = [
+        'shop/redact',
+        'customers/redact',
+        'customers/data_request',
+        'app/uninstalled',
+    ];
+
     public function __invoke(Request $request, ?string $topic = null): JsonResponse
     {
         $headers = (array) config('shopify.webhook_headers');
@@ -44,6 +59,17 @@ final class WebhookController extends Controller
         }
 
         $payload = (array) $request->json()->all();
+
+        // The HMAC covers the BODY only, and it is one app secret for every shop —
+        // so the shop/topic HEADERS are not bound by it. Where the body names its
+        // own shop, that name must be the header's; and the topics that destroy
+        // data or end an install must name it. Otherwise a genuine body captured
+        // from one delivery could be replayed as another shop's shop/redact.
+        if (! $this->payloadMatchesShop($topic, $payload, $shopDomain)) {
+            Log::warning('shopify.webhook.shop_mismatch', ['shop_id' => $shop->id, 'topic' => $topic]);
+
+            return response()->json(['status' => 'shop_mismatch'], Response::HTTP_UNAUTHORIZED);
+        }
 
         // Dedupe key scoped by shop — a replay for Shop A can never collide with B.
         // firstOrCreate is atomic against the unique index; a second delivery with
@@ -78,6 +104,34 @@ final class WebhookController extends Controller
         ProcessShopifyWebhookJob::dispatch($shop->id, $event->id)->onQueue(TenantContext::QUEUE_WEBHOOKS);
 
         return response()->json(['status' => 'accepted', 'event_id' => $event->id], Response::HTTP_ACCEPTED);
+    }
+
+    /**
+     * Does the body agree with the X-Shopify-Shop-Domain header it arrived with?
+     *
+     * Every payload key in SHOP_DOMAIN_KEYS that is PRESENT must equal the
+     * header's domain. For the topics in TOPICS_REQUIRING_SHOP the key must also
+     * be present — Shopify always sends it on those, and they are the ones a
+     * replay under a forged header could turn into erasure or an uninstall.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function payloadMatchesShop(string $topic, array $payload, string $headerDomain): bool
+    {
+        $header = strtolower(trim($headerDomain));
+        $named = false;
+
+        foreach (self::SHOP_DOMAIN_KEYS as $key) {
+            if (! array_key_exists($key, $payload)) {
+                continue;
+            }
+            if (! is_string($payload[$key]) || strtolower(trim($payload[$key])) !== $header) {
+                return false;
+            }
+            $named = true;
+        }
+
+        return $named || ! in_array($topic, self::TOPICS_REQUIRING_SHOP, true);
     }
 
     /** @return array<string, string|null> Allowlisted, masked audit headers. */

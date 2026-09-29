@@ -18,6 +18,7 @@ use App\Services\Shopify\Orders\ShopifyOrderStrategy;
 use App\Http\Middleware\BindDevTenant;
 use App\Http\Middleware\BindTenantFromUser;
 use App\Support\DestructiveCommandGuard;
+use App\Support\PublicRouteLimits;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\URL;
@@ -61,6 +62,10 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(CommandStarting::class, static function (CommandStarting $event): void {
             DestructiveCommandGuard::assertSafe($event->command, $event->input);
         });
+
+        // Throttles for the public routes that do real work per hit (plugin zip,
+        // OAuth install) — see PublicRouteLimits.
+        PublicRouteLimits::register();
 
         // STAFF PASSWORD POLICY (docs/security/security-policies.md §4): every
         // password set through the app — merchant claim-via-reset, platform

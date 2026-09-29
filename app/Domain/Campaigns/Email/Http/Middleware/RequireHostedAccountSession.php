@@ -15,7 +15,9 @@ use Symfony\Component\HttpFoundation\Response;
  * pushes the idle deadline.
  *
  * Fail-closed: no bag, an expired bag, a shop that no longer exists or is not
- * live — all the same page, which says only that the link has run its course.
+ * live, a link the merchant revoked (per token or per campaign) or whose own
+ * window ran out — all the same page, which says only that the link has run
+ * its course.
  */
 final class RequireHostedAccountSession
 {
@@ -34,8 +36,18 @@ final class RequireHostedAccountSession
             return response()->view(self::VIEW_EXPIRED, [], Response::HTTP_GONE);
         }
 
-        $this->hosted->touch();
+        return Tenant::run($shop, function () use ($request, $next): Response {
+            // A revoked (or run-out) link ends the session it opened — at once,
+            // not at the idle deadline this request would otherwise push again.
+            if (! $this->hosted->linkIsLive()) {
+                $this->hosted->end();
 
-        return Tenant::run($shop, static fn (): Response => $next($request));
+                return response()->view(self::VIEW_EXPIRED, [], Response::HTTP_GONE);
+            }
+
+            $this->hosted->touch();
+
+            return $next($request);
+        });
     }
 }

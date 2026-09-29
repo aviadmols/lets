@@ -9,6 +9,8 @@ use App\Services\Shopify\SessionTokenVerifier;
 use App\Services\Shopify\ShopifyApps;
 use App\Services\Shopify\ShopifyTokenExchange;
 use App\Services\Shopify\ShopInstaller;
+use App\Support\SessionSwapGuard;
+use App\Support\ShopTeam;
 use App\Support\Tenant;
 use Closure;
 use Illuminate\Http\Request;
@@ -103,6 +105,19 @@ final class EmbeddedAuthenticate
             && (int) (Auth::user()->getAttribute('shop_id') ?? 0) === (int) $shop->getKey();
 
         if (! $alreadyThisMerchant) {
+            // A different login already holds this browser. Replace it only where
+            // SessionSwapGuard allows (never a platform admin, never on a top-level
+            // navigation); otherwise leave that session exactly as it is and bind
+            // nothing — a link cannot silently turn one person into another.
+            if (! SessionSwapGuard::mayReplaceSessionWith($request, $user)) {
+                Log::warning('shopify.embedded.session_swap_refused', [
+                    'shop_id' => (int) $shop->getKey(),
+                    'current_user_id' => Auth::id(),
+                ]);
+
+                return $next($request);
+            }
+
             Auth::login($user);
         }
 
@@ -191,13 +206,17 @@ final class EmbeddedAuthenticate
     }
 
     /**
-     * The shop-scoped admin login to authenticate as. Looked up by shop_id (the
-     * exact link MerchantUserProvisioner created), so a session token for shop A can
-     * only ever log in shop A's user. Returns null if none is linked.
+     * The shop-scoped admin login to authenticate as: the shop's OWNER (its
+     * oldest merchant login — ShopTeam). Looked up by shop_id (the exact link
+     * MerchantUserProvisioner created), so a session token for shop A can only
+     * ever log in shop A's user; deterministic by id, so which login a merchant
+     * lands as — and whose name the audit trail carries — never depends on row
+     * order; and a platform admin is never picked, even if one carries a shop_id.
+     * Returns null if none is linked.
      */
     private function merchantUserFor(Shop $shop): ?User
     {
-        return User::query()->where('shop_id', $shop->getKey())->first();
+        return ShopTeam::ownerOf((int) $shop->getKey());
     }
 
     private function extractToken(Request $request): string

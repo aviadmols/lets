@@ -4,9 +4,11 @@ namespace Tests\Feature\Tenancy;
 
 use App\Filament\Resources\TeamMemberResource;
 use App\Filament\Resources\TeamMemberResource\Pages\CreateTeamMember;
+use App\Filament\Resources\TeamMemberResource\Pages\EditTeamMember;
 use App\Filament\Resources\TeamMemberResource\Pages\ListTeamMembers;
 use App\Models\Shop;
 use App\Models\User;
+use App\Support\ShopTeam;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -122,6 +124,71 @@ final class TeamMembersTest extends TestCase
         // With only one account left, even a colleague row would be the last way in.
         $colleague->delete();
         $this->assertFalse(TeamMemberResource::mayDelete($this->ownerA));
+    }
+
+    // === Owner vs member ===
+
+    /** The shop's oldest merchant login is its owner — derived, so every shop already has one. */
+    public function test_the_oldest_merchant_login_is_the_owner(): void
+    {
+        $member = User::factory()->forShop($this->shopA)->create();
+
+        $this->assertTrue(ShopTeam::isOwner($this->ownerA));
+        $this->assertFalse(ShopTeam::isOwner($member));
+        $this->assertSame((int) $this->ownerA->getKey(), (int) ShopTeam::ownerOf((int) $this->shopA->getKey())?->getKey());
+    }
+
+    /** An operator row carrying a shop_id is never that shop's owner. */
+    public function test_a_platform_admin_is_never_the_owner(): void
+    {
+        $shop = $this->shop('team-c.example.com');
+        $operator = User::factory()->forShop($shop)->create();
+        $operator->forceFill(['is_platform_admin' => true])->save();
+        $merchant = User::factory()->forShop($shop)->create();
+
+        $this->assertFalse(ShopTeam::isOwner($operator));
+        $this->assertSame((int) $merchant->getKey(), (int) ShopTeam::ownerOf((int) $shop->getKey())?->getKey());
+    }
+
+    /** A member cannot re-key the owner, add logins, or remove anyone. */
+    public function test_a_member_cannot_manage_other_logins(): void
+    {
+        $member = User::factory()->forShop($this->shopA)->create();
+        $other = User::factory()->forShop($this->shopA)->create();
+        $this->actingAs($member);
+
+        $this->assertFalse(TeamMemberResource::canCreate());
+        $this->assertFalse(TeamMemberResource::canEdit($this->ownerA));
+        $this->assertFalse(TeamMemberResource::canDelete($other));
+        $this->assertFalse(TeamMemberResource::mayDelete($this->ownerA));
+
+        Livewire::test(EditTeamMember::class, ['record' => $this->ownerA->getKey()])->assertForbidden();
+        Livewire::test(CreateTeamMember::class)->assertForbidden();
+    }
+
+    /** A member still edits their OWN login — nobody is locked out of their account. */
+    public function test_a_member_can_edit_their_own_login(): void
+    {
+        $member = User::factory()->forShop($this->shopA)->create(['name' => 'Before']);
+        $this->actingAs($member);
+
+        $this->assertTrue(TeamMemberResource::canEdit($member));
+
+        Livewire::test(EditTeamMember::class, ['record' => $member->getKey()])
+            ->fillForm(['name' => 'After'])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $this->assertSame('After', $member->fresh()->name);
+    }
+
+    public function test_the_owner_manages_the_team(): void
+    {
+        $member = User::factory()->forShop($this->shopA)->create();
+
+        $this->assertTrue(TeamMemberResource::canCreate());
+        $this->assertTrue(TeamMemberResource::canEdit($member));
+        $this->assertTrue(TeamMemberResource::mayDelete($member));
     }
 
     private function shop(string $domain): Shop

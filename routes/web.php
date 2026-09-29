@@ -7,6 +7,7 @@ use App\Models\Shop;
 use App\Models\User;
 use App\Providers\Filament\AdminPanelProvider;
 use App\Support\PlatformContext;
+use App\Support\PublicRouteLimits;
 use App\Support\Ui\PanelAccess;
 use Database\Seeders\DemoShopSeeder;
 use Illuminate\Support\Facades\Auth;
@@ -139,7 +140,10 @@ Route::get('/admin/woocommerce/plugin/download', function () {
     $zip->close();
 
     return response()->download($tmp, 'lets-payplus-woocommerce.zip')->deleteFileAfterSend(true);
-})->name('woocommerce.plugin.download');
+})
+    // Public, and a full zip build per hit — so throttled per IP (PublicRouteLimits).
+    ->middleware('throttle:'.PublicRouteLimits::LIMITER_PLUGIN_DOWNLOAD)
+    ->name('woocommerce.plugin.download');
 
 /*
  * DEV-ONLY auto-login for local visual verification (Playwright screenshots).

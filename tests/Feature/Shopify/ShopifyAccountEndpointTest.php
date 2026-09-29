@@ -202,8 +202,11 @@ final class ShopifyAccountEndpointTest extends TestCase
     {
         $now = time();
         $claims = [
-            'iss' => 'https://'.$shop->shopify_domain.'/admin',
-            'dest' => 'https://'.$shop->shopify_domain,
+            // The CUSTOMER-ACCOUNT extension shape: iss/dest are the bare shop
+            // host. (An admin App Bridge token — https://{shop}/admin — is never
+            // accepted as a customer; SessionTokenCustomer refuses it.)
+            'iss' => $shop->shopify_domain,
+            'dest' => $shop->shopify_domain,
             'aud' => self::API_KEY,
             'sub' => $sub,
             'exp' => $now + 60,

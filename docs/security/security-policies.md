@@ -132,7 +132,10 @@ account with no password. It is a credential, and is treated as one:
   privileged accounts**, and issues the cookie itself — the same trust split as
   the sign-in codes. On Shopify (which mints no storefront session for an app)
   the shopper lands on a SaaS-hosted account page whose short session carries
-  exactly the identity the token named.
+  exactly the identity the token named. Every request re-checks the token that
+  opened it: a revoked link (per token or per campaign) ends the sessions it
+  already started, and no session outlives its link's own window however
+  often activity pushes the idle deadline (2026-09-29).
 - **Audited.** Each redemption writes `privacy.personal_data_accessed`
   (surface `campaign_login`) and a `campaign_login_used` Timeline event on the
   customer's own feed — deliberately a different kind from an admin's

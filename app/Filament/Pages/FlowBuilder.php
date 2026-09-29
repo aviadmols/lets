@@ -20,6 +20,7 @@ use App\Support\Ui\Money;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
+use Livewire\Attributes\Locked;
 
 /**
  * Flow Builder canvas (docs/ux/40 — custom Livewire + Alpine page). Renders ONE
@@ -70,6 +71,10 @@ class FlowBuilder extends Page
     ];
 
     /** The ONLY Livewire-persisted graph state. */
+    // Set once in mount() from the route; #[Locked] so the browser cannot
+    // substitute another id in a Livewire update (every read is tenant-scoped,
+    // but a swapped id must not even reach the mutators).
+    #[Locked]
     public int $flowId = 0;
 
     /** The flow's editable name, bound to the inline toolbar field (persisted via renameFlow). */

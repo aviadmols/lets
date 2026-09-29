@@ -7,7 +7,8 @@ use App\Http\Middleware\SetAdminLocale;
 use App\Models\Shop;
 use App\Models\User;
 use App\Support\EmbeddedSession;
-use Illuminate\Database\Eloquent\Builder;
+use App\Support\SessionSwapGuard;
+use App\Support\ShopTeam;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -51,6 +52,13 @@ final class EmbedLoginController
     /** GET /embed/woocommerce/{token} */
     public function __invoke(Request $request, string $token): RedirectResponse|Response
     {
+        // The plugin only ever loads this URL as an iframe src. Opened as a
+        // top-level page it is a link somebody pasted or sent — the login-CSRF
+        // shape — so it is refused BEFORE the token is spent.
+        if (SessionSwapGuard::isTopLevelNavigation($request)) {
+            return $this->expired('top_level_navigation');
+        }
+
         $payload = Cache::pull(EmbedSessionController::CACHE_PREFIX.$token);
         if (! is_array($payload)) {
             return $this->expired('token_not_found');
@@ -69,6 +77,11 @@ final class EmbedLoginController
 
         if ($user === null) {
             return $this->expired('no_user_for_shop', (int) $shop->getKey());
+        }
+
+        // Never silently replace a different live login (SessionSwapGuard).
+        if (! SessionSwapGuard::mayReplaceSessionWith($request, $user)) {
+            return $this->expired('session_swap_refused', (int) $shop->getKey());
         }
 
         Auth::login($user);
@@ -102,35 +115,20 @@ final class EmbedLoginController
 
         // (a) this WordPress user already has a login on THIS shop's team.
         if ($email !== null) {
-            $member = $this->merchantsOf($shopId)->where('email', $email)->first();
+            $member = ShopTeam::merchantsOf($shopId)->where('email', $email)->first();
             if ($member !== null) {
                 return $member;
             }
         }
 
         // (b) the shop's oldest merchant user — the owner login.
-        $owner = $this->merchantsOf($shopId)->orderBy('id')->first();
+        $owner = ShopTeam::ownerOf($shopId);
         if ($owner !== null) {
             return $owner;
         }
 
         // (c) nobody at all yet: provision one, the same way onboarding does.
         return $this->provision($shop, $email, $name);
-    }
-
-    /**
-     * Merchant users of ONE shop. Platform admins are excluded from every branch:
-     * an embedded WordPress session must never become the app owner's session.
-     *
-     * @return Builder<User>
-     */
-    private function merchantsOf(int $shopId): Builder
-    {
-        return User::query()
-            ->where('shop_id', $shopId)
-            ->where(fn (Builder $q): Builder => $q
-                ->where('is_platform_admin', false)
-                ->orWhereNull('is_platform_admin'));
     }
 
     /**

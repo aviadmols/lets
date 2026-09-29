@@ -4,6 +4,7 @@ namespace Tests\Feature\Shopify;
 
 use App\Http\Middleware\SessionTokenAuth;
 use App\Models\Shop;
+use App\Services\Shopify\SessionTokenVerifier;
 use App\Services\Shopify\ShopifyToken;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -75,6 +76,29 @@ final class SessionTokenAuthTest extends TestCase
         $jwt = $this->makeJwt(self::SHOP, self::API_KEY, self::API_SECRET, exp: time() - 60);
 
         $this->withToken($jwt)->getJson('/test/embedded-probe')->assertStatus(401);
+    }
+
+    /** A token with no `exp` would never expire — Shopify always sets one, so none is refused. */
+    public function test_a_token_without_an_expiry_is_rejected(): void
+    {
+        $now = time();
+        $header = $this->b64(json_encode(['alg' => 'HS256', 'typ' => 'JWT']));
+        $payload = $this->b64(json_encode([
+            'iss' => 'https://'.self::SHOP.'/admin',
+            'dest' => 'https://'.self::SHOP,
+            'aud' => self::API_KEY,
+            'sub' => '123',
+            'nbf' => $now - 5,
+            'iat' => $now,
+        ]));
+        $jwt = $header.'.'.$payload.'.'.$this->b64(hash_hmac('sha256', $header.'.'.$payload, self::API_SECRET, true));
+
+        $this->assertNull((new SessionTokenVerifier)->verify($jwt, self::API_SECRET, self::API_KEY));
+        $this->assertNotNull((new SessionTokenVerifier)->verify(
+            $this->makeJwt(self::SHOP, self::API_KEY, self::API_SECRET),
+            self::API_SECRET,
+            self::API_KEY,
+        ));
     }
 
     public function test_a_checkout_extension_token_with_a_bare_host_is_accepted(): void

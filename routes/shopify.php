@@ -3,6 +3,7 @@
 use App\Http\Controllers\Shopify\OAuthController;
 use App\Http\Controllers\Shopify\WebhookController;
 use App\Http\Middleware\VerifyShopifyWebhook;
+use App\Support\PublicRouteLimits;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -16,7 +17,10 @@ use Illuminate\Support\Facades\Route;
 */
 
 // === OAuth (public-app authorization-code grant) ===
-Route::get('/shopify/install', [OAuthController::class, 'install'])->name('shopify.install');
+// Throttled per IP: each hit mints and caches a state nonce (PublicRouteLimits).
+Route::get('/shopify/install', [OAuthController::class, 'install'])
+    ->middleware('throttle:'.PublicRouteLimits::LIMITER_SHOPIFY_INSTALL)
+    ->name('shopify.install');
 Route::get('/shopify/callback', [OAuthController::class, 'callback'])->name('shopify.callback');
 
 // === Webhooks (one endpoint, routed by X-Shopify-Shop-Domain, HMAC-verified) ===

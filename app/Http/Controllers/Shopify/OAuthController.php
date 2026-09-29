@@ -35,6 +35,9 @@ final class OAuthController extends Controller
     // === CONSTANTS ===
     private const STATE_CACHE_PREFIX = 'shopify:oauth_state:';
     private const STATE_TTL_SECONDS = 300; // 5 minutes
+
+    /** The browser that STARTED an install carries its nonce in its own session. */
+    public const STATE_SESSION_KEY = 'shopify_oauth_state';
     private const TOKEN_EXCHANGE_TIMEOUT = 30;
 
     /**
@@ -57,10 +60,17 @@ final class OAuthController extends Controller
             abort(Response::HTTP_SERVICE_UNAVAILABLE, 'SHOPIFY_API_KEY is not configured.');
         }
 
-        // Single-use state nonce, cached by shop (consumed once in callback). The
-        // chosen app rides along so the callback exchanges with the SAME identity.
+        // Single-use state nonce, cached BY THE NONCE (consumed once in callback)
+        // and parked in THIS browser's session. Keyed by nonce, not shop, so a
+        // stranger calling /shopify/install?shop=victim cannot overwrite (and so
+        // break) an install already in progress; bound to the session, so a
+        // callback only completes in the browser that started it. The chosen app
+        // and shop ride along so the callback exchanges with the SAME identity.
         $nonce = bin2hex(random_bytes(16));
-        Cache::put(self::STATE_CACHE_PREFIX.$shop, ['nonce' => $nonce, 'app' => $appKey], self::STATE_TTL_SECONDS);
+        Cache::put(self::STATE_CACHE_PREFIX.$nonce, ['shop' => $shop, 'app' => $appKey], self::STATE_TTL_SECONDS);
+        if ($request->hasSession()) {
+            $request->session()->put(self::STATE_SESSION_KEY, $nonce);
+        }
 
         $authorizeUrl = sprintf('https://%s/admin/oauth/authorize?%s', $shop, http_build_query([
             'client_id' => $app['api_key'],
@@ -95,13 +105,21 @@ final class OAuthController extends Controller
             abort(Response::HTTP_UNPROCESSABLE_ENTITY, 'Invalid shop in callback.');
         }
 
-        // 3. state consumed exactly once — and it must have been minted for the
-        //    SAME app whose secret just verified the HMAC.
-        $cached = Cache::pull(self::STATE_CACHE_PREFIX.$shop);
-        $cachedNonce = is_array($cached) ? (string) ($cached['nonce'] ?? '') : '';
-        $cachedApp = is_array($cached) ? (string) ($cached['app'] ?? '') : '';
+        // 3. state consumed exactly once — it must be the nonce THIS browser's
+        //    session was given at install, minted for THIS shop, and for the SAME
+        //    app whose secret just verified the HMAC.
         $returnedState = (string) $request->query('state', '');
-        if ($cachedNonce === '' || ! hash_equals($cachedNonce, $returnedState) || $cachedApp !== $appKey) {
+        $sessionState = $request->hasSession() ? (string) $request->session()->pull(self::STATE_SESSION_KEY, '') : '';
+        $cached = preg_match('/^[a-f0-9]{32}$/', $returnedState) === 1
+            ? Cache::pull(self::STATE_CACHE_PREFIX.$returnedState)
+            : null;
+        $cachedShop = is_array($cached) ? (string) ($cached['shop'] ?? '') : '';
+        $cachedApp = is_array($cached) ? (string) ($cached['app'] ?? '') : '';
+        if ($cachedShop === ''
+            || $sessionState === ''
+            || ! hash_equals($sessionState, $returnedState)
+            || ! hash_equals($cachedShop, $shop)
+            || $cachedApp !== $appKey) {
             abort(Response::HTTP_UNAUTHORIZED, 'Invalid or expired OAuth state.');
         }
 

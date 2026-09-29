@@ -27,7 +27,7 @@ final class WooLoyaltyPageUrlController extends WooStorefrontController
 {
     // === CONSTANTS ===
     /** How long the minted link stays valid. Long enough to read, short enough to leak safely. */
-    private const TTL_MINUTES = 60;
+    public const TTL_MINUTES = 60;
 
     public function __invoke(Request $request): JsonResponse
     {

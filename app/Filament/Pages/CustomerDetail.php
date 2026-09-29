@@ -53,6 +53,10 @@ class CustomerDetail extends Page
 
     public const FEED_LIMIT = 50;
 
+    // Set once in mount() from the route; #[Locked] so the browser cannot
+    // substitute another id in a Livewire update (every read is tenant-scoped,
+    // but a swapped id must not even reach the mutators).
+    #[Locked]
     public string $customer;
 
     // --- Contact details, read from the store on open and written back on save ---

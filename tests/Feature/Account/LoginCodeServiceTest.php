@@ -235,6 +235,57 @@ final class LoginCodeServiceTest extends TestCase
         $this->assertSame(LoginCodeService::EXHAUSTED, $this->verify('dana@example.com', '123456'));
     }
 
+    /**
+     * The budget is claimed in the database, not judged from the row a request
+     * READ. Here a parallel request spends the last guess between this one's
+     * read and its claim — the correct code must still be too late.
+     */
+    public function test_a_guess_raced_past_the_budget_is_exhausted_even_when_correct(): void
+    {
+        $code = $this->issue('dana@example.com');
+        CustomerLoginCode::query()->update(['attempts' => LoginCodeService::MAX_ATTEMPTS - 1]);
+
+        CustomerLoginCode::retrieved(static function (CustomerLoginCode $row): void {
+            // The other in-flight request, landing its claim right after our read.
+            CustomerLoginCode::query()->whereKey($row->getKey())->update(['attempts' => LoginCodeService::MAX_ATTEMPTS]);
+        });
+
+        try {
+            $this->assertSame(LoginCodeService::EXHAUSTED, $this->verify('dana@example.com', $code));
+        } finally {
+            CustomerLoginCode::flushEventListeners();
+        }
+
+        $this->assertSame(LoginCodeService::MAX_ATTEMPTS, (int) CustomerLoginCode::query()->value('attempts'));
+        $this->assertNull(CustomerLoginCode::query()->value('consumed_at'), 'never signed in');
+    }
+
+    /** The last guess in the budget is still a guess the shopper gets to use. */
+    public function test_the_last_guess_in_the_budget_still_verifies(): void
+    {
+        $code = $this->issue('dana@example.com');
+        CustomerLoginCode::query()->update(['attempts' => LoginCodeService::MAX_ATTEMPTS - 1]);
+
+        $this->assertSame(LoginCodeService::VERIFIED, $this->verify('dana@example.com', $code));
+    }
+
+    /**
+     * The shop-wide bucket must not be a lockout lever: however many codes the
+     * shop has sent this hour, a new shopper still gets theirs.
+     */
+    public function test_a_busy_shop_still_sends_a_new_shopper_a_code(): void
+    {
+        $shopKey = 'lets:login-code:shop:'.$this->shop->getKey();
+        for ($i = 0; $i < LoginCodeService::MAX_PER_SHOP_HOUR + 5; $i++) {
+            RateLimiter::hit($shopKey, 3600);
+        }
+
+        $code = $this->issue('new-shopper@example.com');
+
+        $this->assertSame(1, CustomerLoginCode::query()->count());
+        $this->assertSame(LoginCodeService::VERIFIED, $this->verify('new-shopper@example.com', $code));
+    }
+
     public function test_an_expired_code_is_reported_as_expired_not_wrong(): void
     {
         $this->issue('dana@example.com');

@@ -6,6 +6,7 @@ use App\Filament\Clusters\Settings as SettingsCluster;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Filament\Resources\TeamMemberResource\Pages;
 use App\Models\User;
+use App\Support\ShopTeam;
 use App\Support\Tenant;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\TextInput;
@@ -14,6 +15,7 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 
@@ -31,6 +33,13 @@ use Illuminate\Support\Facades\Hash;
  * bound shop rather than accepting one. A missing `where` on any other screen
  * shows a merchant an empty table; a missing `where` HERE would handed them
  * somebody else's staff list.
+ *
+ * OWNER VS MEMBER (ShopTeam). The shop's oldest login is its owner; only the
+ * owner (or the operator inside the shop) may add, edit or remove OTHER logins.
+ * A member may edit their own name, email and password and nothing else here —
+ * a support login set up for a colleague cannot re-key the owner and lock them
+ * out. Enforced by canCreate/canEdit/canDelete, which Filament checks on the
+ * page itself as well as on the buttons.
  *
  * PLATFORM ADMINS ARE INVISIBLE AND UNTOUCHABLE. They are filtered out of every
  * query, so a merchant can neither see the operator's account nor rename, lock
@@ -143,12 +152,19 @@ class TeamMemberResource extends Resource
                     ->searchable()
                     ->copyable(),
 
+                Tables\Columns\TextColumn::make('role')
+                    ->label(__('team.col.role'))
+                    ->state(fn (User $record): string => ShopTeam::isOwner($record)
+                        ? __('team.role.owner')
+                        : __('team.role.member')),
+
                 Tables\Columns\TextColumn::make('created_at')
                     ->label(__('team.col.added'))
                     ->dateTime('d M Y'),
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
+                Tables\Actions\EditAction::make()
+                    ->visible(fn (User $record): bool => self::canEdit($record)),
 
                 // A team of one that deletes itself is a shop nobody can sign in
                 // to. The last account, and your own, both stay.
@@ -161,14 +177,50 @@ class TeamMemberResource extends Resource
             ->emptyStateIcon('heroicon-o-users');
     }
 
-    /** Never yourself, and never the last way in. */
+    /** Adding a login is the owner's call. */
+    public static function canCreate(): bool
+    {
+        return ShopTeam::mayManageOthers(self::actor());
+    }
+
+    /** Your own row always; anybody else's only as the owner. */
+    public static function canEdit(Model $record): bool
+    {
+        return (int) $record->getKey() === (int) Auth::id()
+            || ShopTeam::mayManageOthers(self::actor());
+    }
+
+    public static function canDelete(Model $record): bool
+    {
+        return $record instanceof User && self::mayDelete($record);
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return ShopTeam::mayManageOthers(self::actor());
+    }
+
+    /**
+     * Only the owner removes people — never yourself, and never the last way in.
+     */
     public static function mayDelete(User $record): bool
     {
+        if (! ShopTeam::mayManageOthers(self::actor())) {
+            return false;
+        }
+
         if ((int) $record->getKey() === (int) Auth::id()) {
             return false;
         }
 
         return self::getEloquentQuery()->count() > 1;
+    }
+
+    private static function actor(): ?User
+    {
+        $user = Auth::user();
+
+        return $user instanceof User ? $user : null;
     }
 
     public static function getPages(): array

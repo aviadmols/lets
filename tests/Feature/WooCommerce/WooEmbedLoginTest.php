@@ -8,6 +8,7 @@ use App\Models\Shop;
 use App\Models\User;
 use App\Services\WooCommerce\WooCommerceShopProvisioner;
 use App\Support\EmbeddedSession;
+use App\Support\SessionSwapGuard;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -102,6 +103,42 @@ final class WooEmbedLoginTest extends TestCase
 
         $this->get('/embed/woocommerce/'.$token)->assertStatus(410);
         $this->assertGuest();
+    }
+
+    /**
+     * The plugin only ever loads the link as an iframe src. Opened top-level
+     * (pasted, sent in a chat) it is the login-CSRF shape: refused, and the
+     * token is NOT spent, so the real iframe load still works.
+     */
+    public function test_a_top_level_open_is_refused_without_spending_the_token(): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop('embed-toplevel.example.com');
+        $owner = User::factory()->forShop($shop)->create();
+
+        $token = $this->tokenFrom($this->mint($key, $secret)->json('url'));
+
+        $this->get('/embed/woocommerce/'.$token, [SessionSwapGuard::DEST_HEADER => 'document'])->assertStatus(410);
+        $this->assertGuest();
+
+        $this->get('/embed/woocommerce/'.$token, [SessionSwapGuard::DEST_HEADER => 'iframe'])
+            ->assertRedirect(HomeDashboard::getUrl());
+        $this->assertAuthenticatedAs($owner);
+    }
+
+    /** A live platform-admin session is never replaced by an embed link. */
+    public function test_a_platform_admin_session_is_not_swapped(): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop('embed-operator.example.com');
+        User::factory()->forShop($shop)->create();
+        $operator = User::factory()->create();
+        $operator->forceFill(['is_platform_admin' => true])->save();
+
+        $token = $this->tokenFrom($this->mint($key, $secret)->json('url'));
+
+        $this->actingAs($operator)
+            ->get('/embed/woocommerce/'.$token, [SessionSwapGuard::DEST_HEADER => 'iframe'])
+            ->assertStatus(410);
+        $this->assertAuthenticatedAs($operator);
     }
 
     public function test_a_forged_token_is_gone_not_a_login_form(): void

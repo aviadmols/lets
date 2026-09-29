@@ -3,10 +3,12 @@
 namespace App\Domain\Loyalty\Http\Controllers;
 
 use App\Domain\Loyalty\Rendering\LoyaltyPagePresenter;
+use App\Http\Controllers\WooCommerce\Storefront\WooLoyaltyPageUrlController;
 use App\Models\MerchantLoyaltySettings;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\URL;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 /**
@@ -72,11 +74,16 @@ final class LoyaltyPageController extends LoyaltyController
             self::SIGNED_NAME_PARAM => (string) $request->query(self::SIGNED_NAME_PARAM, ''),
         ];
 
+        // The action links EXPIRE with the page that carries them. A never-
+        // expiring link here was a standing bearer credential for this member's
+        // points: iframe HTML that leaked once could redeem them forever.
+        $expires = now()->addMinutes(WooLoyaltyPageUrlController::TTL_MINUTES);
+
         return [
-            'join' => \Illuminate\Support\Facades\URL::signedRoute('loyalty.signed.join', $params),
-            'birthday' => \Illuminate\Support\Facades\URL::signedRoute('loyalty.signed.birthday', $params),
-            'social' => \Illuminate\Support\Facades\URL::signedRoute('loyalty.signed.social', $params),
-            'redeem' => \Illuminate\Support\Facades\URL::signedRoute('loyalty.signed.redeem', $params),
+            'join' => URL::temporarySignedRoute('loyalty.signed.join', $expires, $params),
+            'birthday' => URL::temporarySignedRoute('loyalty.signed.birthday', $expires, $params),
+            'social' => URL::temporarySignedRoute('loyalty.signed.social', $expires, $params),
+            'redeem' => URL::temporarySignedRoute('loyalty.signed.redeem', $expires, $params),
         ];
     }
 }

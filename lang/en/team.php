@@ -21,6 +21,12 @@ return [
         'name' => 'Name',
         'email' => 'Email',
         'added' => 'Added',
+        'role' => 'Role',
+    ],
+
+    'role' => [
+        'owner' => 'Owner',
+        'member' => 'Member',
     ],
 
     'action' => [
