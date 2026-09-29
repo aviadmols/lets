@@ -127,6 +127,22 @@ final class TopbarSearchTest extends TestCase
         $this->assertStringNotContainsString('theirs.test', $this->flatten($results));
     }
 
+    public function test_like_wildcards_in_the_term_are_literal(): void
+    {
+        $this->plan($this->mine, 'Percent 50% Off', 'p50@mine.test', null, ref: '33', order: '6001');
+        $this->plan($this->mine, 'Under a_b Score', 'ub@mine.test', null, ref: '44', order: '6002');
+        $this->plan($this->mine, 'Bang x!y Name', 'bang@mine.test', null, ref: '55', order: '6003');
+
+        // "%%" and "__" would match every row as wildcards; literal, they match none.
+        $this->assertSame([], $this->group($this->search('%%'), 'nav.search.group.customers'));
+        $this->assertSame([], $this->group($this->search('__'), 'nav.search.group.customers'));
+
+        $this->assertCount(1, $this->group($this->search('50%'), 'nav.search.group.customers'));
+        $this->assertCount(1, $this->group($this->search('a_b'), 'nav.search.group.customers'));
+        $this->assertCount(1, $this->group($this->search('x!y'), 'nav.search.group.customers'));
+        $this->assertSame('%a!_b!%!!%', TenantGlobalSearchProvider::containsPattern('a_b%!'));
+    }
+
     public function test_a_single_character_opens_nothing(): void
     {
         $this->assertNull((new TenantGlobalSearchProvider)->getResults('d'));

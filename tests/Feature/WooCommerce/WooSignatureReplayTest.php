@@ -34,8 +34,8 @@ final class WooSignatureReplayTest extends TestCase
         $this->signedPost($key, $secret, self::INSTALL, self::BODY, $ts)->assertOk();
 
         $this->signedPost($key, $secret, self::INSTALL, self::BODY, $ts)
-            ->assertStatus(401)
-            ->assertJsonPath('reason', 'replayed');
+            ->assertStatus(409)
+            ->assertExactJson(['error' => 'replayed']);
     }
 
     /** A genuine re-send is signed afresh — it is a new signature and goes through. */

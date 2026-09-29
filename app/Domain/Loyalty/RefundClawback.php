@@ -24,6 +24,10 @@ use App\Models\PaymentLedger;
  */
 final class RefundClawback
 {
+    // === CONSTANTS ===
+    /** The `source` stamped on a clawback that came from a Shopify refunds/create webhook. */
+    public const SOURCE_SHOPIFY_REFUND = 'shopify_refund';
+
     public function __construct(private readonly PointsEngine $engine) {}
 
     /** Money refunded from one of OUR ledger rows. */
@@ -58,7 +62,7 @@ final class RefundClawback
             return;
         }
 
-        $meta = ['order_id' => $orderId, 'refund_ref' => $refundRef, 'source' => 'shopify_refund'];
+        $meta = ['order_id' => $orderId, 'refund_ref' => $refundRef, 'source' => self::SOURCE_SHOPIFY_REFUND];
 
         $earning = $this->find(LoyaltyPointEvent::keyForShopifyOrder($orderId), LoyaltyPointEvent::KIND_EARN_PURCHASE);
         if ($earning !== null) {

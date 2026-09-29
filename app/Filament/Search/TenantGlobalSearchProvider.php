@@ -67,6 +67,9 @@ final class TenantGlobalSearchProvider implements GlobalSearchProvider
     /** Separator between the facts on a result's second line. */
     public const DETAIL_GLUE = ' · ';
 
+    /** LIKE escape character: '!' rather than a backslash, so the SQL literal reads the same on every engine. */
+    private const LIKE_ESCAPE = '!';
+
     public function getResults(string $query): ?GlobalSearchResults
     {
         $term = mb_substr(trim($query), 0, self::MAX_LENGTH);
@@ -99,19 +102,19 @@ final class TenantGlobalSearchProvider implements GlobalSearchProvider
     /** @return list<GlobalSearchResult> */
     private function customers(string $term): array
     {
-        $like = '%'.$term.'%';
+        $like = self::containsPattern($term);
         $op = $this->likeOperator(new InstallmentPlan);
 
         $found = [];
 
         InstallmentPlan::query()
             ->where(fn (Builder $w) => $w
-                ->where('customer_name', $op, $like)
-                ->orWhere('customer_email', $op, $like)
-                ->orWhere('customer_phone', $op, $like)
+                ->whereRaw($this->likeSql('customer_name', $op), [$like])
+                ->orWhereRaw($this->likeSql('customer_email', $op), [$like])
+                ->orWhereRaw($this->likeSql('customer_phone', $op), [$like])
                 // The store's own customer reference, as the Customers list searches it.
-                ->orWhere('shopify_customer_id', $op, $like)
-                ->orWhere('external_customer_id', $op, $like))
+                ->orWhereRaw($this->likeSql('shopify_customer_id', $op), [$like])
+                ->orWhereRaw($this->likeSql('external_customer_id', $op), [$like]))
             ->latest('id')
             ->limit(self::CUSTOMER_SCAN)
             ->get(['id', 'shopify_customer_id', 'external_customer_id', 'customer_id', 'customer_name', 'customer_email', 'customer_phone'])
@@ -136,8 +139,8 @@ final class TenantGlobalSearchProvider implements GlobalSearchProvider
             SubscriptionContract::query()
                 ->whereNotNull('shopify_customer_gid')
                 ->where(fn (Builder $w) => $w
-                    ->where('customer_name', $contractOp, $like)
-                    ->orWhere('customer_email', $contractOp, $like))
+                    ->whereRaw($this->likeSql('customer_name', $contractOp), [$like])
+                    ->orWhereRaw($this->likeSql('customer_email', $contractOp), [$like]))
                 ->latest('id')
                 ->limit(self::CUSTOMER_SCAN)
                 ->get(['id', 'shopify_customer_gid', 'customer_name', 'customer_email'])
@@ -161,16 +164,16 @@ final class TenantGlobalSearchProvider implements GlobalSearchProvider
     /** @return list<GlobalSearchResult> */
     private function subscriptions(string $term): array
     {
-        $like = '%'.$term.'%';
+        $like = self::containsPattern($term);
         $op = $this->likeOperator(new InstallmentPlan);
         $numericId = ctype_digit(ltrim($term, self::ORDER_PREFIX)) ? (int) ltrim($term, self::ORDER_PREFIX) : null;
 
         $items = InstallmentPlan::query()
             ->with('product')
             ->where(function (Builder $w) use ($op, $like, $numericId): void {
-                $w->where('public_id', $op, $like)
-                    ->orWhere('customer_name', $op, $like)
-                    ->orWhere('customer_email', $op, $like);
+                $w->whereRaw($this->likeSql('public_id', $op), [$like])
+                    ->orWhereRaw($this->likeSql('customer_name', $op), [$like])
+                    ->orWhereRaw($this->likeSql('customer_email', $op), [$like]);
 
                 if ($numericId !== null) {
                     $w->orWhere('id', $numericId);
@@ -193,9 +196,9 @@ final class TenantGlobalSearchProvider implements GlobalSearchProvider
 
             SubscriptionContract::query()
                 ->where(fn (Builder $w) => $w
-                    ->where('customer_name', $contractOp, $like)
-                    ->orWhere('customer_email', $contractOp, $like)
-                    ->orWhere('shopify_gid', $contractOp, $like))
+                    ->whereRaw($this->likeSql('customer_name', $contractOp), [$like])
+                    ->orWhereRaw($this->likeSql('customer_email', $contractOp), [$like])
+                    ->orWhereRaw($this->likeSql('shopify_gid', $contractOp), [$like]))
                 ->latest('id')
                 ->limit($room)
                 ->get()
@@ -225,7 +228,7 @@ final class TenantGlobalSearchProvider implements GlobalSearchProvider
             return [];
         }
 
-        $like = '%'.$number.'%';
+        $like = self::containsPattern($number);
         $found = [];
 
         $planOp = $this->likeOperator(new InstallmentPlan);
@@ -285,11 +288,33 @@ final class TenantGlobalSearchProvider implements GlobalSearchProvider
         return null;
     }
 
+    /**
+     * `%term%` with the term's own LIKE wildcards made literal: a merchant typing
+     * "50%" or "a_b" searches for exactly that, not for "anything". The escape
+     * character itself is escaped first.
+     */
+    public static function containsPattern(string $term): string
+    {
+        $e = self::LIKE_ESCAPE;
+
+        return '%'.strtr($term, [$e => $e.$e, '%' => $e.'%', '_' => $e.'_']).'%';
+    }
+
+    /**
+     * `column op ? ESCAPE '!'`. Column names are this class's own literals and $op
+     * comes from likeOperator(), never user input; the term is always bound.
+     * SQLite has no default LIKE escape, so the clause is always spelled out.
+     */
+    private function likeSql(string $column, string $op): string
+    {
+        return $column.' '.$op." ? ESCAPE '".self::LIKE_ESCAPE."'";
+    }
+
     /** @param list<string> $columns */
     private function anyColumnLike(Builder $w, array $columns, string $op, string $like): Builder
     {
         foreach ($columns as $column) {
-            $w->orWhere($column, $op, $like);
+            $w->orWhereRaw($this->likeSql($column, $op), [$like]);
         }
 
         return $w;

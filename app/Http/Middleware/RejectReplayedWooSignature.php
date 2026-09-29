@@ -34,6 +34,8 @@ final class RejectReplayedWooSignature
 
     private const HEADER_SIGNATURE = 'X-LETS-Signature';
 
+    public const ERROR_REPLAYED = 'replayed';
+
     public function handle(Request $request, Closure $next): Response
     {
         $shop = $request->attributes->get(VerifyWooCommerceSignature::ATTR_SHOP);
@@ -53,7 +55,11 @@ final class RejectReplayedWooSignature
                 'path' => $request->getPathInfo(),
             ]);
 
-            return response()->json(['error' => 'unauthorized', 'reason' => 'replayed'], Response::HTTP_UNAUTHORIZED);
+            // 409, not 401: the signature IS genuine — this exact call already
+            // arrived (typically an identical same-second double submit whose first
+            // copy succeeded). A 401 made the plugin show an auth error for a call
+            // that worked; a conflict says "already done" and is still refused.
+            return response()->json(['error' => self::ERROR_REPLAYED], Response::HTTP_CONFLICT);
         }
 
         return $next($request);
