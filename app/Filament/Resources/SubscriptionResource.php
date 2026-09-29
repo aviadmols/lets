@@ -327,6 +327,7 @@ class SubscriptionResource extends Resource
             ->filtersFormColumns(4)
             ->recordUrl(fn (InstallmentPlan $record): string => Pages\ViewSubscription::getUrl(['plan' => $record->getKey()]))
             ->defaultSort('id', 'desc')
+            ->searchPlaceholder(__('subscriptions.list.search_placeholder'))
             ->emptyStateHeading(__('subscriptions.list.empty.first_run'))
             ->emptyStateIcon('heroicon-o-arrow-path-rounded-square');
     }

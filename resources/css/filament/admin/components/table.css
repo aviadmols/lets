@@ -1,0 +1,210 @@
+/* =============================================================================
+   table.css — Filament's native tables and list-page tabs in the approved
+   sketch's dress (Subscriptions.dc.html, Foundations.dc.html): underline tabs
+   on a hairline, the search at the START of the toolbar, 11px uppercase column
+   heads on a sunk band, 20px cell gutters, and status badges as dotted pills.
+   Skin only — Filament's table Blade is never re-templated.
+
+   TOKENS: --rc-card --rc-bg --rc-border --rc-border-soft --rc-surface-sunk
+           --rc-ink --rc-ink-muted --rc-blue --rc-blue-bg --rc-red-bg --rc-red-ink
+           --rc-radius-card --rc-radius-control --rc-radius-pill --rc-shadow-card
+           --rc-ring --rc-type-* --rc-space-*
+
+   SPECIFICITY: rooted at .fi-body (rc-admin.css loads before Filament's
+   app.css). RTL: logical properties; Hebrew drops the uppercase + tracking.
+   ========================================================================== */
+
+/* ---------------------------------------------------- list-page tabs --- */
+
+.fi-body .fi-resource-list-records-page .fi-tabs {
+    inline-size: 100%;
+    margin-inline: 0;
+    padding: 0;
+    gap: 28px;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: inset 0 -1px 0 var(--rc-border);
+}
+
+.fi-body .fi-resource-list-records-page .fi-tabs-item {
+    padding: 0 0 10px;
+    border-radius: 0;
+    background: transparent;
+}
+
+.fi-body .fi-resource-list-records-page .fi-tabs-item-label {
+    font: var(--rc-type-body);
+    font-weight: 500;
+    color: var(--rc-ink-muted);
+}
+
+.fi-body .fi-resource-list-records-page .fi-tabs-item:hover .fi-tabs-item-label {
+    color: var(--rc-ink);
+}
+
+.fi-body .fi-resource-list-records-page .fi-tabs-item-active {
+    box-shadow: inset 0 -2px 0 var(--rc-blue);
+}
+
+.fi-body .fi-resource-list-records-page .fi-tabs-item-active .fi-tabs-item-label {
+    font-weight: 600;
+    color: var(--rc-blue);
+}
+
+.fi-body .fi-tabs-item .fi-badge {
+    min-inline-size: 20px;
+    block-size: 20px;
+    padding: 0 6px;
+    border-radius: var(--rc-radius-pill);
+    font: 600 12px/1 var(--rc-font);
+    box-shadow: none;
+}
+
+/* ------------------------------------------------------------ the card --- */
+
+.fi-body .fi-ta-ctn {
+    border-radius: var(--rc-radius-card);
+    box-shadow: var(--rc-shadow-card), 0 0 0 1px var(--rc-border);
+}
+
+/* The toolbar: the search leads (the sketch), actions follow. row-reverse is
+   direction-aware, so Hebrew puts the search on the right. */
+.fi-body .fi-ta-header-toolbar {
+    flex-direction: row-reverse;
+    padding: var(--rc-space-3) var(--rc-space-5);
+}
+
+.fi-body .fi-ta-header-toolbar > div:last-child {
+    margin-inline-start: 0;
+}
+
+.fi-body .fi-ta-search-field {
+    inline-size: 300px;
+    max-inline-size: 100%;
+}
+
+.fi-body .fi-ta-search-field .fi-input-wrp {
+    background-color: var(--rc-card);
+    border-radius: var(--rc-radius-control);
+    box-shadow: 0 0 0 1px var(--rc-border-strong);
+}
+
+.fi-body .fi-ta-search-field .fi-input-wrp:focus-within {
+    box-shadow: var(--rc-ring);
+}
+
+/* Collapsible filters: a compact row until opened. */
+.fi-body .fi-ta-filters-above-content-ctn {
+    padding: var(--rc-space-2) var(--rc-space-5);
+}
+
+/* ------------------------------------------------------ heads + cells --- */
+
+.fi-body .fi-ta-header-cell {
+    padding: 10px var(--rc-space-5);
+    background-color: var(--rc-surface-sunk);
+}
+
+.fi-body .fi-ta-header-cell-label {
+    font: var(--rc-type-label);
+    font-size: 11px;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--rc-ink-muted);
+}
+
+[dir="rtl"] .fi-body .fi-ta-header-cell-label {
+    letter-spacing: normal;
+    text-transform: none;
+}
+
+.fi-body .fi-ta-cell:first-of-type {
+    padding-inline-start: var(--rc-space-2);
+}
+
+.fi-body .fi-ta-cell:last-of-type {
+    padding-inline-end: var(--rc-space-2);
+}
+
+.fi-body .fi-ta-text {
+    padding: var(--rc-space-3);
+}
+
+.fi-body .fi-ta-text-item-label {
+    font: var(--rc-type-body);
+    color: var(--rc-ink);
+}
+
+.fi-body .fi-ta-text-item-label.font-semibold {
+    font-weight: 500;
+}
+
+.fi-body .fi-ta-text-description,
+.fi-body .fi-ta-text .fi-ta-col-description {
+    font: var(--rc-type-caption);
+    color: var(--rc-ink-muted);
+}
+
+.fi-body .fi-ta-row:hover {
+    background-color: var(--rc-blue-bg);
+}
+
+/* --------------------------------------------------------- the badges --- */
+
+/* A status pill with a leading dot, like the sketch's rc-badge. The hue is
+   Filament's own badge colour, already pointed at the status palette. */
+.fi-body .fi-ta-cell .fi-badge {
+    gap: 6px;
+    padding: 2px var(--rc-space-2);
+    border-radius: var(--rc-radius-pill);
+    font: 600 12px/1.4 var(--rc-font);
+    box-shadow: none;
+}
+
+.fi-body .fi-ta-cell .fi-badge::before {
+    content: "";
+    flex: none;
+    inline-size: 6px;
+    block-size: 6px;
+    border-radius: var(--rc-radius-pill);
+    background-color: currentColor;
+}
+
+/* Tab counts: red where the tab is a job (Could not charge), quiet otherwise. */
+.fi-body .fi-tabs-item .fi-badge {
+    background-color: var(--rc-gray-bg);
+    color: var(--rc-gray-ink);
+}
+
+.fi-body .fi-tabs-item .fi-badge.fi-color-danger {
+    background-color: var(--rc-red-bg);
+    color: var(--rc-red-ink);
+}
+
+/* While the filters are folded away, their toggle joins the toolbar row at the
+   end instead of spending a whole row of its own; opened, the filters take the
+   full width above the toolbar as before. */
+.fi-body .fi-ta-header-ctn:has(.fi-ta-filters-above-content-ctn) {
+    position: relative;
+}
+
+.fi-body .fi-ta-header-ctn:has(.fi-ta-filters[x-cloak], .fi-ta-filters[style*="none"]) > .fi-ta-filters-above-content-ctn {
+    position: absolute;
+    inset-block-start: var(--rc-space-3);
+    inset-inline-end: var(--rc-space-5);
+    z-index: 1;
+    padding: 0;
+    border: 0;
+}
+
+.fi-body .fi-ta-filters-above-content-ctn .fi-icon-btn {
+    inline-size: 36px;
+    block-size: 36px;
+    border: 1px dashed var(--rc-border-strong);
+    border-radius: var(--rc-radius-control);
+}
+
+.fi-body .fi-ta-filters-above-content-ctn .fi-icon-btn:hover {
+    border-color: var(--rc-blue);
+    color: var(--rc-blue);
+}

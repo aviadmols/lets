@@ -7,8 +7,10 @@ use App\Filament\Actions\NewSubscription;
 use App\Filament\Pages\BulkEditSubscriptions;
 use App\Filament\Resources\SubscriptionResource;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
+use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Support\Tenant;
+use App\Support\Ui\Money;
 use Filament\Actions\Action;
 use Filament\Resources\Components\Tab;
 use Filament\Resources\Pages\ListRecords;
@@ -45,6 +47,8 @@ class ListSubscriptions extends ListRecords
      */
     public const BADGE_CEILING = 99;
 
+    public const SUBHEADING_GLUE = ' · ';
+
     /**
      * Export WHAT THE SCREEN IS SHOWING.
      *
@@ -73,9 +77,10 @@ class ListSubscriptions extends ListRecords
              *
              * The button itself lives in NewSubscription, because the Shopify-rail
              * contracts screen offers the same one.
+             *
+             * LAST in the row: the sketch reads Export · Bulk edit · New, the
+             * primary button at the end where the eye finishes.
              */
-            NewSubscription::make(),
-
             Action::make('export')
                 ->label(__('subscriptions.action.export.label'))
                 ->icon('heroicon-m-arrow-down-tray')
@@ -104,7 +109,42 @@ class ListSubscriptions extends ListRecords
                 ->icon('heroicon-m-pencil-square')
                 ->color('gray')
                 ->url(fn (): string => BulkEditSubscriptions::getUrl($this->bulkEditSeed())),
+
+            NewSubscription::make(),
         ];
+    }
+
+    /** The sketch's list header: the title alone, no "Subscriptions › List" trail. */
+    public function getBreadcrumbs(): array
+    {
+        return [];
+    }
+
+    /**
+     * "1,284 subscriptions · 1,102 recurring · 182 installment plans" — the size
+     * of the book at a glance, from ONE grouped count (tenant-scoped through the
+     * resource query).
+     */
+    public function getSubheading(): ?string
+    {
+        $byKind = static::getResource()::getEloquentQuery()
+            ->toBase()
+            ->selectRaw('plan_kind, COUNT(*) as aggregate')
+            ->groupBy('plan_kind')
+            ->pluck('aggregate', 'plan_kind')
+            ->map(fn ($n): int => (int) $n);
+
+        $total = $byKind->sum();
+
+        if ($total === 0) {
+            return null;
+        }
+
+        return implode(self::SUBHEADING_GLUE, [
+            trans_choice('subscriptions.list.summary.total', $total, ['count' => Money::number($total)]),
+            trans_choice('subscriptions.list.summary.recurring', $byKind[PlanKind::RECURRING->value] ?? 0, ['count' => Money::number($byKind[PlanKind::RECURRING->value] ?? 0)]),
+            trans_choice('subscriptions.list.summary.installments', $byKind[PlanKind::INSTALLMENTS->value] ?? 0, ['count' => Money::number($byKind[PlanKind::INSTALLMENTS->value] ?? 0)]),
+        ]);
     }
 
     /**
@@ -173,7 +213,8 @@ class ListSubscriptions extends ListRecords
              */
             'failing' => Tab::make(__('subscriptions.tab.failing'))
                 ->modifyQueryUsing(fn (Builder $query): Builder => self::failingQuery($query))
-                ->badge($this->countFor(self::failingQuery(...))),
+                ->badge($this->countFor(self::failingQuery(...)))
+                ->badgeColor('danger'),
 
             'paused' => Tab::make(__('subscriptions.tab.paused'))
                 ->modifyQueryUsing(fn (Builder $query): Builder => $query->where('status', PlanStatus::PAUSED->value))

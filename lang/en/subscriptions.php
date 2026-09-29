@@ -5,6 +5,12 @@ return [
     'list' => [
         'title' => 'Subscriptions',
         'search_placeholder' => 'Search customer',
+        // the line under the title: the size of the book
+        'summary' => [
+            'total' => ':count subscription|:count subscriptions',
+            'recurring' => ':count recurring|:count recurring',
+            'installments' => ':count installment plan|:count installment plans',
+        ],
         'col' => [
             'customer' => 'Customer',
             'product' => 'Product',

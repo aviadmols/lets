@@ -5,6 +5,12 @@ return [
     'list' => [
         'title' => 'מנויים',
         'search_placeholder' => 'חיפוש לקוח',
+        // the line under the title: the size of the book
+        'summary' => [
+            'total' => 'מנוי אחד|:count מנויים',
+            'recurring' => 'אחד מתחדש|:count מתחדשים',
+            'installments' => 'תוכנית תשלומים אחת|:count תוכניות תשלומים',
+        ],
         'col' => [
             'customer' => 'לקוח',
             'product' => 'מוצר',
