@@ -39,6 +39,13 @@ final class WooCommerceUpsellFlowTest extends TestCase
 
     public int $payplusCalls = 0;
 
+    /**
+     * Each call is a FRESH signing, as a real re-send from the plugin is: a
+     * signature is honoured once (RejectReplayedWooSignature), so two calls in the
+     * same second must not share one.
+     */
+    private int $signings = 0;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -527,7 +534,7 @@ final class WooCommerceUpsellFlowTest extends TestCase
     private function signedPost(string $apiKey, string $apiSecret, string $path, array $body): TestResponse
     {
         $json = (string) json_encode($body, JSON_UNESCAPED_SLASHES);
-        $ts = (string) time();
+        $ts = (string) (time() - $this->signings++);
         $sig = base64_encode(hash_hmac('sha256', $ts.'POST'.$path.$json, $apiSecret, true));
 
         return $this->call('POST', $path, [], [], [], [
@@ -538,7 +545,7 @@ final class WooCommerceUpsellFlowTest extends TestCase
 
     private function signedGet(string $apiKey, string $apiSecret, string $path, string $query): TestResponse
     {
-        $ts = (string) time();
+        $ts = (string) (time() - $this->signings++);
         // The middleware signs path + raw body (empty for GET) — NOT the query string.
         $sig = base64_encode(hash_hmac('sha256', $ts.'GET'.$path.'', $apiSecret, true));
 

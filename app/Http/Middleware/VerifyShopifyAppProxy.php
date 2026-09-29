@@ -34,6 +34,14 @@ final class VerifyShopifyAppProxy
     // === CONSTANTS ===
     public const ATTR_SHOP = 'shopify_proxy_shop';
 
+    /**
+     * How old (or how far ahead) a signed proxy `timestamp` may be. Shopify signs
+     * each forwarded request afresh, so a genuine one is seconds old; the slack
+     * is for clock skew only. Without it a captured signed URL — which carries
+     * logged_in_customer_id — could be replayed forever.
+     */
+    public const MAX_TIMESTAMP_SKEW_SECONDS = 600;
+
     public function handle(Request $request, Closure $next): Response
     {
         // The proxy signature is signed with the app secret (same secret family as
@@ -63,6 +71,18 @@ final class VerifyShopifyAppProxy
             Log::warning('shopify.proxy.invalid_signature', ['shop' => $request->query('shop')]);
 
             return response()->json(['status' => 'invalid_signature'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        // FRESHNESS. `timestamp` is inside the signed set, so it cannot be edited
+        // or stripped from a captured URL without breaking the signature; a stale
+        // one is a replay. (Shopify always sends it; none at all is judged only by
+        // the signature, exactly as before.)
+        $timestamp = $request->query('timestamp');
+        if ($timestamp !== null && (! is_string($timestamp) || ! ctype_digit($timestamp)
+            || abs(now()->getTimestamp() - (int) $timestamp) > self::MAX_TIMESTAMP_SKEW_SECONDS)) {
+            Log::warning('shopify.proxy.stale_timestamp', ['shop' => $request->query('shop')]);
+
+            return response()->json(['status' => 'stale_signature'], Response::HTTP_UNAUTHORIZED);
         }
 
         // The shop param is trusted ONLY because it is inside the signed set; still

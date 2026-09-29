@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Shopify;
 
+use App\Http\Controllers\Shopify\WebhookController;
 use App\Models\Shop;
 use App\Models\WebhookEvent;
 use App\Services\Shopify\ShopifyToken;
@@ -121,6 +122,56 @@ final class ShopifyWebhookTest extends TestCase
         $this->assertSame(1, WebhookEvent::query()->where('shop_id', $shopA->id)->count());
     }
 
+    /**
+     * The HMAC is one app secret over the body only, so the shop header is not
+     * bound by it. A body that names ANOTHER shop than the header is refused.
+     */
+    public function test_a_body_naming_another_shop_than_the_header_is_refused(): void
+    {
+        $shopA = $this->makeShop('alpha.myshopify.com');
+        $shopB = $this->makeShop('beta.myshopify.com');
+
+        $this->postWebhook('shop/redact', $shopB->shopify_domain, [
+            'shop_id' => 1,
+            'shop_domain' => $shopA->shopify_domain,
+        ], 'wh-swap')->assertStatus(401);
+
+        $this->postWebhook('app/uninstalled', $shopB->shopify_domain, [
+            'id' => 1,
+            'myshopify_domain' => $shopA->shopify_domain,
+        ], 'wh-swap-2')->assertStatus(401);
+
+        $this->assertDatabaseCount('webhook_events', 0);
+    }
+
+    /** An erasure/uninstall topic must name its shop — an order body replayed as one is refused. */
+    public function test_a_destructive_topic_whose_body_names_no_shop_is_refused(): void
+    {
+        $shop = $this->makeShop('alpha.myshopify.com');
+
+        foreach (WebhookController::TOPICS_REQUIRING_SHOP as $i => $topic) {
+            $this->postWebhook($topic, $shop->shopify_domain, ['id' => 77, 'total_price' => '10.00'], 'wh-replay-'.$i)
+                ->assertStatus(401);
+        }
+
+        $this->assertDatabaseCount('webhook_events', 0);
+    }
+
+    public function test_a_destructive_topic_naming_its_own_shop_is_accepted(): void
+    {
+        $shop = $this->makeShop('alpha.myshopify.com');
+
+        $this->postWebhook('shop/redact', $shop->shopify_domain, [
+            'shop_id' => 1,
+            'shop_domain' => 'ALPHA.myshopify.com',
+        ], 'wh-own')->assertStatus(202);
+
+        $this->postWebhook('app/uninstalled', $shop->shopify_domain, [
+            'id' => 1,
+            'myshopify_domain' => $shop->shopify_domain,
+        ], 'wh-own-2')->assertStatus(202);
+    }
+
     public function test_duplicate_webhook_id_is_deduped_to_one_row(): void
     {
         $shop = $this->makeShop('alpha.myshopify.com');
@@ -176,7 +227,12 @@ final class ShopifyWebhookTest extends TestCase
         $shop->captureShopifyInstall(new ShopifyToken('shpat_live_token', 'read_orders', 86400));
         $this->assertNotNull($shop->fresh()->shopifyAccessToken());
 
-        $this->postWebhook('app/uninstalled', $shop->shopify_domain, ['domain' => $shop->shopify_domain], 'wh-uninstall')
+        // The Shop resource Shopify sends: `domain` is the storefront's primary
+        // domain, `myshopify_domain` the one the header must match.
+        $this->postWebhook('app/uninstalled', $shop->shopify_domain, [
+            'domain' => 'shop.example.com',
+            'myshopify_domain' => $shop->shopify_domain,
+        ], 'wh-uninstall')
             ->assertStatus(202);
 
         $fresh = $shop->fresh();

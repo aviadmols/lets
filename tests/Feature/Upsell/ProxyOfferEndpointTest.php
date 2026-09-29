@@ -8,6 +8,7 @@ use App\Domain\Upsell\Models\UpsellFlow;
 use App\Domain\Upsell\Models\UpsellFlowOffer;
 use App\Domain\Upsell\Models\UpsellFlowTrigger;
 use App\Domain\Upsell\Models\UpsellOfferEvent;
+use App\Http\Middleware\VerifyShopifyAppProxy;
 use App\Models\Shop;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -204,6 +205,31 @@ final class ProxyOfferEndpointTest extends TestCase
         ]);
 
         $this->getJson(self::ENDPOINT.'?'.$query)->assertStatus(401);
+    }
+
+    /** A captured, correctly-signed URL cannot be replayed once its timestamp is stale. */
+    public function test_a_signed_request_with_a_stale_timestamp_is_refused(): void
+    {
+        $shop = $this->makeShop('alpha.myshopify.com');
+        $this->makeMatchingFlowWithDiscount($shop, base: 100.0, percent: 0);
+
+        $stale = (string) (time() - VerifyShopifyAppProxy::MAX_TIMESTAMP_SKEW_SECONDS - 60);
+
+        $this->getSignedOffer($shop->shopify_domain, [
+            'products' => 'gid://shopify/Product/1',
+            'logged_in_customer_id' => '501',
+            'timestamp' => $stale,
+        ])->assertStatus(401)->assertJson(['status' => 'stale_signature']);
+    }
+
+    public function test_a_signed_request_with_a_fresh_timestamp_is_served(): void
+    {
+        $shop = $this->makeShop('alpha.myshopify.com');
+
+        $this->getSignedOffer($shop->shopify_domain, [
+            'products' => 'gid://shopify/Product/999',
+            'timestamp' => (string) time(),
+        ])->assertOk();
     }
 
     public function test_signed_request_for_shop_a_never_returns_shop_b_offer(): void

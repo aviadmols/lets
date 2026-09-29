@@ -4,6 +4,7 @@ use App\Domain\Loyalty\Http\Controllers\LoyaltyActionController;
 use App\Domain\Loyalty\Http\Controllers\LoyaltyPageController;
 use App\Domain\Loyalty\Http\Controllers\LoyaltyRedeemController;
 use App\Domain\Loyalty\LoyaltyServiceProvider;
+use App\Http\Middleware\RequireSignatureExpiry;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -29,10 +30,15 @@ Route::prefix('loyalty/{shop}')
     ->whereNumber('shop')
     ->group(function (): void {
         Route::get('/', LoyaltyPageController::class)->name('loyalty.signed.page');
-        Route::post('/join', [LoyaltyActionController::class, 'join'])->name('loyalty.signed.join');
-        Route::post('/birthday', [LoyaltyActionController::class, 'birthday'])->name('loyalty.signed.birthday');
-        Route::post('/social', [LoyaltyActionController::class, 'social'])->name('loyalty.signed.social');
-        Route::post('/redeem', [LoyaltyRedeemController::class, 'redeem'])
-            ->middleware('throttle:'.LoyaltyServiceProvider::LIMITER_REDEEM)
-            ->name('loyalty.signed.redeem');
+
+        // The actions EXPIRE with the page that minted them (60 min) — a
+        // signature with no expiry is refused, so no link lives forever.
+        Route::middleware(RequireSignatureExpiry::class)->group(function (): void {
+            Route::post('/join', [LoyaltyActionController::class, 'join'])->name('loyalty.signed.join');
+            Route::post('/birthday', [LoyaltyActionController::class, 'birthday'])->name('loyalty.signed.birthday');
+            Route::post('/social', [LoyaltyActionController::class, 'social'])->name('loyalty.signed.social');
+            Route::post('/redeem', [LoyaltyRedeemController::class, 'redeem'])
+                ->middleware('throttle:'.LoyaltyServiceProvider::LIMITER_REDEEM)
+                ->name('loyalty.signed.redeem');
+        });
     });

@@ -62,8 +62,21 @@ final class TenantScope implements Scope
     // === CONSTANTS ===
     public const SHOP_FOREIGN_KEY = 'shop_id';
 
+    /** A predicate no row satisfies — the whole of "no tenant bound". */
+    public const NO_TENANT_PREDICATE = '1 = 0';
+
     public function apply(Builder $builder, Model $model): void
     {
+        // No tenant → NOTHING, stated outright. `where(shop_id, null)` compiles
+        // to `shop_id IS NULL`, which is only empty while every tenant table
+        // keeps shop_id NOT NULL; a single nullable column would turn "no shop"
+        // into "every orphan row". 1 = 0 does not depend on the schema.
+        if (! Tenant::check()) {
+            $builder->whereRaw(self::NO_TENANT_PREDICATE);
+
+            return;
+        }
+
         $builder->where(
             $model->qualifyColumn(self::SHOP_FOREIGN_KEY),
             Tenant::id()

@@ -16,6 +16,7 @@ use App\Support\Ui\Money;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
+use Livewire\Attributes\Locked;
 
 /**
  * Product detail (Work Package W1, plan §E) — the Recharge "product" screen where
@@ -56,6 +57,10 @@ class ProductDetail extends Page
     public const CHARGE_DAY_MAX = 28;
 
     /** The ONLY Livewire-persisted state — the tenant-scoped product id. */
+    // Set once in mount() from the route; #[Locked] so the browser cannot
+    // substitute another id in a Livewire update (every read is tenant-scoped,
+    // but a swapped id must not even reach the mutators).
+    #[Locked]
     public int $productId = 0;
 
     // === "Edit subscription plan" drawer state (mirrors FlowBuilder's drawer) ===

@@ -3,6 +3,8 @@
 namespace Tests\Feature\Campaigns\Email;
 
 use App\Domain\Campaigns\Email\CampaignLoginLinks;
+use App\Domain\Campaigns\Email\Models\CustomerLoginToken;
+use App\Domain\Campaigns\Email\Models\EmailCampaign;
 use App\Domain\Campaigns\Email\Models\EmailCampaignRecipient;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
@@ -108,6 +110,54 @@ final class HostedAccountTest extends TestCase
 
         $this->travel((int) config('campaigns.hosted_session_minutes') + 5)->minutes();
 
+        $this->get('/c/account')->assertStatus(410);
+    }
+
+    /** Revoking the one link ends the session it already opened — not only the next click. */
+    public function test_revoking_the_link_ends_the_session_it_started(): void
+    {
+        [$shop, , $raw] = $this->arrive();
+
+        $this->post('/c/login/'.$raw);
+        $this->get('/c/account')->assertOk();
+
+        $this->inShop($shop, function () use ($raw): void {
+            CustomerLoginToken::query()->where('token_hash', CustomerLoginToken::hash($raw))->firstOrFail()->revoke();
+        });
+
+        $this->get('/c/account')->assertStatus(410);
+        $this->postJson('/c/account/act/pause', ['subscription' => 'x'])->assertStatus(410);
+    }
+
+    /** The campaign-wide switch is the merchant's one lever — it reaches open sessions too. */
+    public function test_revoking_the_campaigns_links_ends_open_sessions(): void
+    {
+        [$shop, , $raw] = $this->arrive();
+
+        $this->post('/c/login/'.$raw);
+        $this->get('/c/account')->assertOk();
+
+        $this->inShop($shop, function (): void {
+            EmailCampaign::query()->update(['login_links_revoked_at' => now()]);
+        });
+
+        $this->get('/c/account')->assertStatus(410);
+    }
+
+    /** A session pushed forward by activity still never outlives the link's own window. */
+    public function test_a_busy_session_ends_when_the_links_window_does(): void
+    {
+        [$shop, , $raw] = $this->arrive();
+
+        $this->post('/c/login/'.$raw);
+
+        $this->inShop($shop, function () use ($raw): void {
+            CustomerLoginToken::query()->where('token_hash', CustomerLoginToken::hash($raw))
+                ->update(['expires_at' => now()->addMinutes(10)]);
+        });
+
+        $this->get('/c/account')->assertOk();
+        $this->travel(11)->minutes();
         $this->get('/c/account')->assertStatus(410);
     }
 

@@ -15,7 +15,10 @@ class ListTeamMembers extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
-            CreateAction::make()->label(__('team.action.add')),
+            CreateAction::make()
+                ->label(__('team.action.add'))
+                // Adding a login is the owner's call (ShopTeam).
+                ->visible(fn (): bool => TeamMemberResource::canCreate()),
         ];
     }
 }

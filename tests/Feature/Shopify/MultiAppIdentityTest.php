@@ -218,8 +218,11 @@ final class MultiAppIdentityTest extends TestCase
 
         $header = $encode(['alg' => 'HS256', 'typ' => 'JWT']);
         $payload = $encode([
-            'iss' => 'https://'.self::SHOP.'/admin',
-            'dest' => 'https://'.self::SHOP,
+            // The CUSTOMER-ACCOUNT extension shape: iss/dest are the bare shop
+            // host. (An admin App Bridge token — https://{shop}/admin — is never
+            // accepted as a customer; SessionTokenCustomer refuses it.)
+            'iss' => self::SHOP,
+            'dest' => self::SHOP,
             'aud' => self::CUSTOM_KEY,
             'sub' => $sub,
             'exp' => $now + 60,

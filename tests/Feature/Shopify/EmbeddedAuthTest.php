@@ -8,6 +8,7 @@ use App\Jobs\Shopify\RegisterShopifyWebhooksJob;
 use App\Models\Shop;
 use App\Models\User;
 use App\Services\Shopify\ShopifyToken;
+use App\Support\SessionSwapGuard;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Session\Middleware\StartSession;
@@ -217,6 +218,74 @@ final class EmbeddedAuthTest extends TestCase
             ->assertOk()
             ->assertJsonPath('authenticated', true)
             ->assertJsonPath('user_id', $shopUser->getKey())   // re-logged to SHOP's user
+            ->assertJsonPath('bound_shop_id', $shop->getKey());
+    }
+
+    /**
+     * (g) WHICH login: the shop's owner (oldest merchant login), deterministically
+     * — never a platform admin, even one whose row carries this shop's id.
+     */
+    public function test_the_embedded_login_is_the_owner_and_never_a_platform_admin(): void
+    {
+        Queue::fake();
+        Http::fake();
+
+        $shop = $this->makeInstalledShop(self::SHOP);
+        $operator = User::factory()->forShop($shop)->create();
+        $operator->forceFill(['is_platform_admin' => true])->save();
+        $owner = User::factory()->forShop($shop)->create();
+        User::factory()->forShop($shop)->create(); // a later teammate
+
+        $this->getJson('/test/embedded-admin-probe?id_token='.$this->makeJwt(self::SHOP, self::API_KEY, self::API_SECRET))
+            ->assertOk()
+            ->assertJsonPath('user_id', $owner->getKey())
+            ->assertJsonPath('bound_shop_id', $shop->getKey());
+    }
+
+    /** (h) A platform admin's session is never replaced by a one-click embedded URL. */
+    public function test_a_platform_admin_session_is_never_swapped(): void
+    {
+        Queue::fake();
+        Http::fake();
+
+        $shop = $this->makeInstalledShop(self::SHOP);
+        User::factory()->forShop($shop)->create();
+        $operator = User::factory()->create();
+        $operator->forceFill(['is_platform_admin' => true])->save();
+
+        $this->actingAs($operator)
+            ->getJson('/test/embedded-admin-probe?id_token='.$this->makeJwt(self::SHOP, self::API_KEY, self::API_SECRET), [
+                SessionSwapGuard::DEST_HEADER => 'iframe',
+            ])
+            ->assertOk()
+            ->assertJsonPath('user_id', $operator->getKey())
+            ->assertJsonPath('bound_shop_id', null);
+    }
+
+    /**
+     * (i) Login CSRF: a URL opened as a TOP-LEVEL page does not silently swap a
+     * different live login; inside the admin iframe the swap still happens.
+     */
+    public function test_a_top_level_link_does_not_swap_another_merchants_session(): void
+    {
+        Queue::fake();
+        Http::fake();
+
+        $shop = $this->makeInstalledShop(self::SHOP);
+        $shopUser = User::factory()->forShop($shop)->create();
+        $victim = User::factory()->forShop($this->makeInstalledShop(self::OTHER_SHOP))->create();
+        $url = '/test/embedded-admin-probe?id_token='.$this->makeJwt(self::SHOP, self::API_KEY, self::API_SECRET);
+
+        $this->actingAs($victim)
+            ->getJson($url, [SessionSwapGuard::DEST_HEADER => 'document'])
+            ->assertOk()
+            ->assertJsonPath('user_id', $victim->getKey())
+            ->assertJsonPath('bound_shop_id', null);
+
+        $this->actingAs($victim)
+            ->getJson($url, [SessionSwapGuard::DEST_HEADER => 'iframe'])
+            ->assertOk()
+            ->assertJsonPath('user_id', $shopUser->getKey())
             ->assertJsonPath('bound_shop_id', $shop->getKey());
     }
 

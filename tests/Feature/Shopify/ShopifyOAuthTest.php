@@ -2,9 +2,11 @@
 
 namespace Tests\Feature\Shopify;
 
+use App\Http\Controllers\Shopify\OAuthController;
 use App\Jobs\Products\ImportShopProductsJob;
 use App\Jobs\Shopify\RegisterShopifyWebhooksJob;
 use App\Models\Shop;
+use App\Support\PublicRouteLimits;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
@@ -48,7 +50,47 @@ final class ShopifyOAuthTest extends TestCase
         $this->assertStringContainsString('https://'.self::SHOP.'/admin/oauth/authorize', $location);
         $this->assertStringContainsString('client_id='.self::API_KEY, $location);
         $this->assertStringContainsString('state=', $location);
-        $this->assertNotNull(Cache::get('shopify:oauth_state:'.self::SHOP));
+
+        // Cached BY THE NONCE (not the shop) and parked in this browser's session.
+        parse_str((string) parse_url($location, PHP_URL_QUERY), $params);
+        $state = (string) $params['state'];
+        $this->assertSame(self::SHOP, Cache::get('shopify:oauth_state:'.$state)['shop'] ?? null);
+        $response->assertSessionHas(OAuthController::STATE_SESSION_KEY, $state);
+    }
+
+    /** A stranger's install for the same shop cannot overwrite (break) one in progress. */
+    public function test_a_second_install_for_the_shop_does_not_break_the_first(): void
+    {
+        Http::fake(['https://'.self::SHOP.'/admin/oauth/access_token' => Http::response(['access_token' => 'shpat_x', 'scope' => 'read_orders'], 200)]);
+
+        $first = $this->seedState();
+        // Somebody else starts an install for the same shop in THEIR browser.
+        $this->flushSession();
+        $this->get('/shopify/install?shop='.self::SHOP)->assertRedirect();
+        $this->flushSession();
+
+        $this->withSession([OAuthController::STATE_SESSION_KEY => $first])
+            ->get('/shopify/callback?'.http_build_query($this->signedCallbackQuery(state: $first)))
+            ->assertRedirect('https://'.self::SHOP.'/admin/apps/payplus-subscriptions');
+    }
+
+    /** The callback completes only in the browser that started the install. */
+    public function test_callback_in_a_browser_without_the_state_session_is_refused_401(): void
+    {
+        $state = $this->seedState();
+        $this->flushSession();
+
+        $this->get('/shopify/callback?'.http_build_query($this->signedCallbackQuery(state: $state)))->assertStatus(401);
+        $this->assertSame(0, Shop::query()->where('shopify_domain', self::SHOP)->count());
+    }
+
+    public function test_install_is_throttled_per_ip(): void
+    {
+        for ($i = 0; $i < PublicRouteLimits::SHOPIFY_INSTALLS_PER_MINUTE; $i++) {
+            $this->get('/shopify/install?shop='.self::SHOP)->assertRedirect();
+        }
+
+        $this->get('/shopify/install?shop='.self::SHOP)->assertStatus(429);
     }
 
     public function test_install_rejects_invalid_shop_param_422(): void
@@ -137,8 +179,10 @@ final class ShopifyOAuthTest extends TestCase
     {
         // The cached state carries the Partner app the install started on, so the
         // callback exchanges with the SAME identity (multi-app deployments).
-        $nonce = 'state-nonce-123';
-        Cache::put('shopify:oauth_state:'.self::SHOP, ['nonce' => $nonce, 'app' => 'public'], 300);
+        // Keyed by the nonce; the same nonce sits in the browser's session.
+        $nonce = bin2hex(random_bytes(16));
+        Cache::put('shopify:oauth_state:'.$nonce, ['shop' => self::SHOP, 'app' => 'public'], 300);
+        $this->withSession([OAuthController::STATE_SESSION_KEY => $nonce]);
 
         return $nonce;
     }

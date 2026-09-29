@@ -58,6 +58,13 @@ final class WooCommerceUpsellBundleTest extends TestCase
     /** @var list<float> */
     public array $charged = [];
 
+    /**
+     * Each call is a FRESH signing, as a real re-send from the plugin is: a
+     * signature is honoured once (RejectReplayedWooSignature), so two calls in the
+     * same second must not share one.
+     */
+    private int $signings = 0;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -397,7 +404,7 @@ final class WooCommerceUpsellBundleTest extends TestCase
         $query = http_build_query(['parent_order' => self::ORDER, 'customer' => self::CUSTOMER, 'products' => '1', 'subtotal' => '120']);
         // The signature's freshness is judged on the REAL clock; the offer's window on the
         // application's, which these tests move.
-        $ts = (string) time();
+        $ts = (string) (time() - $this->signings++);
         $sig = base64_encode(hash_hmac('sha256', $ts.'GET'.self::OFFER, $secret, true));
 
         return $this->call('GET', self::OFFER.'?'.$query, [], [], [], [
@@ -416,7 +423,7 @@ final class WooCommerceUpsellBundleTest extends TestCase
             'email' => 'reader@example.com',
             'product_ids' => $productIds,
         ], JSON_UNESCAPED_SLASHES);
-        $ts = (string) time();
+        $ts = (string) (time() - $this->signings++);
         $sig = base64_encode(hash_hmac('sha256', $ts.'POST'.self::ACCEPT.$json, $secret, true));
 
         return $this->call('POST', self::ACCEPT, [], [], [], [

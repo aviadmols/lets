@@ -40,7 +40,10 @@ use Illuminate\Support\Facades\RateLimiter;
  *   - attempts are counted ON THE ROW, so a cache flush cannot refill the budget;
  *   - issuing invalidates every earlier live code for that destination, so an old
  *     code that leaked cannot be used after the shopper asks for a new one;
- *   - three RateLimiter buckets: per destination, per shop, per caller IP.
+ *   - a guess is claimed with a conditional UPDATE, so parallel requests cannot
+ *     spend more than MAX_ATTEMPTS between them;
+ *   - RateLimiter buckets per destination and per caller IP refuse; the per-shop
+ *     bucket only raises an alarm (a refusing shop bucket is a lockout lever).
  */
 /*
  * NOT final: generateCode() is the substitution seam a test overrides so it can
@@ -64,7 +67,10 @@ class LoginCodeService
     /** How many codes one destination may be sent per hour. */
     public const MAX_PER_DESTINATION_HOUR = 5;
 
-    /** How many codes one shop may send per hour — a compromised key's blast radius. */
+    /**
+     * Codes per shop per hour at which we ALERT — never refuse. See
+     * withinLimits() on why this bucket must not be able to lock a shop out.
+     */
     public const MAX_PER_SHOP_HOUR = 200;
 
     /** How many codes one caller IP may trigger per hour. */
@@ -148,13 +154,23 @@ class LoginCodeService
             if ($row->isExpired()) {
                 return self::EXPIRED;
             }
-            if ($row->attempts >= self::MAX_ATTEMPTS) {
+            // CLAIM the guess BEFORE checking it, and claim it ATOMICALLY. A
+            // verifier that increments only on failure can be defeated by a client
+            // that aborts the connection; one that checks the count it READ and then
+            // increments can be defeated by N parallel requests that all read 0.
+            // The conditional UPDATE is the budget: whoever changes the row owns
+            // one of the MAX_ATTEMPTS guesses, and nobody else does.
+            $claimedGuess = CustomerLoginCode::query()
+                ->whereKey($row->getKey())
+                ->whereNull('consumed_at')
+                ->where('attempts', '<', self::MAX_ATTEMPTS)
+                ->increment('attempts');
+
+            if ($claimedGuess !== 1) {
                 return self::EXHAUSTED;
             }
 
-            // Count the guess BEFORE checking it. A verifier that increments only
-            // on failure can be defeated by a client that aborts the connection.
-            $row->increment('attempts');
+            $row->refresh();
 
             if (! Hash::check(trim($code), (string) $row->code_hash)) {
                 return $row->attempts >= self::MAX_ATTEMPTS ? self::EXHAUSTED : self::REJECTED;
@@ -202,16 +218,24 @@ class LoginCodeService
             ->update(['consumed_at' => now()]);
     }
 
-    /** Three buckets, all of which must have room. */
+    /** The destination and IP buckets must have room; the shop bucket only alarms. */
     private function withinLimits(Shop $shop, string $channel, string $destination, ?string $ip): bool
     {
         $shopId = (int) $shop->getKey();
         $destKey = 'lets:login-code:dest:'.CustomerLoginCode::hashDestination($shopId, $channel, $destination);
         $shopKey = 'lets:login-code:shop:'.$shopId;
 
-        if (RateLimiter::tooManyAttempts($destKey, self::MAX_PER_DESTINATION_HOUR)
-            || RateLimiter::tooManyAttempts($shopKey, self::MAX_PER_SHOP_HOUR)) {
+        if (RateLimiter::tooManyAttempts($destKey, self::MAX_PER_DESTINATION_HOUR)) {
             return false;
+        }
+
+        // The per-SHOP bucket is an ALARM, not a gate. As a gate it was a lever:
+        // anyone able to reach the store's public sign-in form could spend the
+        // shop's whole hourly budget and lock every one of its shoppers out of
+        // code sign-in. The per-destination and per-IP buckets are what refuse
+        // abuse; this one only says a shop is being hammered (logged once a window).
+        if (RateLimiter::attempts($shopKey) === self::MAX_PER_SHOP_HOUR) {
+            Log::warning('account.login_code.shop_volume_alarm', ['shop_id' => $shopId]);
         }
 
         if ($ip !== null) {

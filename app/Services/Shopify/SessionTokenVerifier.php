@@ -67,7 +67,10 @@ final class SessionTokenVerifier
         if ((string) ($claims['aud'] ?? '') !== $apiKey) {
             return null;
         }
-        if (isset($claims['exp']) && $now >= ((int) $claims['exp'] + self::LEEWAY_SECONDS)) {
+        // exp is REQUIRED: Shopify sets it on every session token, and a token
+        // without one would never expire.
+        if (! isset($claims['exp']) || ! is_numeric($claims['exp'])
+            || $now >= ((int) $claims['exp'] + self::LEEWAY_SECONDS)) {
             return null;
         }
         if (isset($claims['nbf']) && $now < ((int) $claims['nbf'] - self::LEEWAY_SECONDS)) {

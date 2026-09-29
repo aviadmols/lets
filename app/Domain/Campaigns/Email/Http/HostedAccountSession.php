@@ -84,6 +84,31 @@ final class HostedAccountSession
         );
     }
 
+    /**
+     * Is the LINK that opened this session still alive? Tenant must be bound to
+     * the session's shop (the middleware asks inside Tenant::run).
+     *
+     * Revoking a link — the one token, or every link in its campaign — has to
+     * end the sessions it already started, not only the next click; and a
+     * session may never outlive the link's own window however often its idle
+     * deadline is pushed. isUsable() answers all three. A bag with no token id
+     * is not one start() wrote, so it is treated as dead (fail closed).
+     */
+    public function linkIsLive(): bool
+    {
+        $bag = $this->bag();
+        $tokenId = is_array($bag) ? (int) ($bag['token_id'] ?? 0) : 0;
+        if ($tokenId <= 0) {
+            return false;
+        }
+
+        $token = CustomerLoginToken::query()->whereKey($tokenId)->first();
+
+        return $token instanceof CustomerLoginToken
+            && (int) $token->shop_id === (int) $bag['shop_id']
+            && $token->isUsable(now());
+    }
+
     /** Push the idle deadline — called on every authenticated request. */
     public function touch(): void
     {

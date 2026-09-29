@@ -36,6 +36,13 @@ final class StoreInitiatedRefundTest extends TestCase
     use MakesRefundScenarios;
     use RefreshDatabase;
 
+    /**
+     * Each call is a FRESH signing, as a real re-send from the plugin is: a
+     * signature is honoured once (RejectReplayedWooSignature), so two calls in the
+     * same second must not share one.
+     */
+    private int $signings = 0;
+
     protected function tearDown(): void
     {
         $this->clearRefundFakes();
@@ -378,7 +385,7 @@ final class StoreInitiatedRefundTest extends TestCase
     private function signedPost(Shop $shop, string $path, array $body): TestResponse
     {
         $json = (string) json_encode($body, JSON_UNESCAPED_SLASHES);
-        $timestamp = (string) time();
+        $timestamp = (string) (time() - $this->signings++);
 
         return $this->call('POST', $path, [], [], [], [
             'HTTP_X_LETS_KEY' => self::API_KEY,

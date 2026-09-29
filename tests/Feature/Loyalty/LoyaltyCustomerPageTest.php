@@ -152,6 +152,40 @@ final class LoyaltyCustomerPageTest extends TestCase
         $this->get($this->signedPage('42'))->assertNotFound();
     }
 
+    /** A signed action link with NO expiry is a standing credential — refused. */
+    public function test_a_never_expiring_action_link_is_refused(): void
+    {
+        $forever = URL::signedRoute('loyalty.signed.join', [
+            'shop' => (int) $this->shop->getKey(),
+            'ref' => '42',
+            'email' => '',
+            'name' => '',
+        ]);
+
+        $this->postJson($forever)->assertForbidden();
+    }
+
+    public function test_an_action_link_stops_working_when_its_page_would_have(): void
+    {
+        $url = $this->signedAction('join', '42');
+
+        $this->travel(61)->minutes();
+
+        $this->postJson($url)->assertForbidden();
+    }
+
+    /** The page hands its buttons links that carry an expiry. */
+    public function test_the_pages_action_links_expire(): void
+    {
+        $html = (string) $this->get($this->signedPage('42'))->assertOk()->getContent();
+
+        preg_match_all('#/loyalty/\d+/(?:join|birthday|social|redeem)\?[^"\'\s<]+#', html_entity_decode(stripslashes($html)), $links);
+        $this->assertNotEmpty($links[0]);
+        foreach ($links[0] as $link) {
+            $this->assertStringContainsString('expires=', $link);
+        }
+    }
+
     // === Helpers ===
 
     private function signedPage(string $ref): string
@@ -166,7 +200,7 @@ final class LoyaltyCustomerPageTest extends TestCase
 
     private function signedAction(string $action, string $ref): string
     {
-        return URL::signedRoute('loyalty.signed.'.$action, [
+        return URL::temporarySignedRoute('loyalty.signed.'.$action, now()->addHour(), [
             'shop' => (int) $this->shop->getKey(),
             'ref' => $ref,
             'email' => '',

@@ -30,6 +30,7 @@ use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use Livewire\Attributes\Locked;
 
 /**
  * The newsletter studio — a block document edited as blocks, previewed as the
@@ -66,6 +67,10 @@ class NewsletterStudio extends Page
     public const VERSIONS_SHOWN = 20;
 
     // --- Identity + concurrency ---
+    // Set once in mount() from the route; #[Locked] so the browser cannot
+    // substitute another id in a Livewire update (every read is tenant-scoped,
+    // but a swapped id must not even reach the mutators).
+    #[Locked]
     public int $campaignId = 0;
 
     public int $knownVersion = 0;

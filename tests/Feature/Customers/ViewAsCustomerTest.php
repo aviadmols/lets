@@ -77,6 +77,31 @@ final class ViewAsCustomerTest extends TestCase
         $this->assertSame('admin:'.$admin->getKey(), $event->actor);
     }
 
+    /**
+     * The open WRITES an audit row, and the admin cookie travels cross-site — so
+     * another site's <img> must not be able to plant "viewed as" entries.
+     */
+    public function test_a_cross_site_request_is_refused_and_writes_nothing(): void
+    {
+        $shop = $this->shopifyShop('viewas-csrf.myshopify.com');
+        Tenant::set($shop);
+        $this->actingAs(User::factory()->forShop($shop)->create());
+        $this->plan($shop, '77', 'Dana Subscriber', 'dana@example.com');
+
+        foreach (['cross-site', 'same-site'] as $site) {
+            $this->get(route('filament.admin.account.view_as', ['customer' => '77']), ['Sec-Fetch-Site' => $site])
+                ->assertForbidden();
+        }
+
+        $this->assertSame(0, Tenant::run($shop, fn (): int => ActivityEvent::query()
+            ->where('kind', Timeline::KIND_CUSTOMER_VIEWED_AS)
+            ->count()));
+
+        // The admin's own link (same-origin, opened in a new tab) still works.
+        $this->get(route('filament.admin.account.view_as', ['customer' => '77']), ['Sec-Fetch-Site' => 'same-origin'])
+            ->assertOk();
+    }
+
     public function test_an_admin_of_another_shop_cannot_view_this_customer(): void
     {
         $shopA = $this->shopifyShop('viewas-a.myshopify.com');

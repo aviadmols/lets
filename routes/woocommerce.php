@@ -30,6 +30,7 @@ use App\Http\Controllers\WooCommerce\Storefront\WooSubscriptionCatalogController
 use App\Http\Controllers\WooCommerce\Storefront\WooUpsellAcceptController;
 use App\Http\Controllers\WooCommerce\Storefront\WooUpsellDeclineController;
 use App\Http\Controllers\WooCommerce\Storefront\WooUpsellOfferController;
+use App\Http\Middleware\RejectReplayedWooSignature;
 use App\Http\Middleware\VerifyWooCommerceSignature;
 use Illuminate\Support\Facades\Route;
 
@@ -39,11 +40,17 @@ use Illuminate\Support\Facades\Route;
  * is the auth (per-shop API-key HMAC) and binds the tenant from the verified shop. The
  * connect handshake completes the admin-driven onboarding loop; the installments
  * endpoints are the deposit + installments selling flow (W11 P2).
+ *
+ * Every route that CHANGES something also carries RejectReplayedWooSignature: a
+ * signature is honoured once, so a captured call cannot be re-sent inside the
+ * signature's 300 s window. Reads are left without it on purpose (see the class).
  */
 Route::middleware(VerifyWooCommerceSignature::class)
     ->prefix('api/woocommerce')
     ->group(function () {
-        Route::post('/install', [InstallController::class, 'install'])->name('woocommerce.install');
+        Route::post('/install', [InstallController::class, 'install'])
+            ->middleware(RejectReplayedWooSignature::class)
+            ->name('woocommerce.install');
         Route::post('/verify-key', [InstallController::class, 'verify'])->name('woocommerce.verify');
 
         /*
@@ -85,6 +92,7 @@ Route::middleware(VerifyWooCommerceSignature::class)
         | store. Redemption is the WEB route embed/woocommerce/{token}.
         */
         Route::post('/embed/session', EmbedSessionController::class)
+            ->middleware(RejectReplayedWooSignature::class)
             ->name('woocommerce.embed.session');
 
         /*
@@ -117,6 +125,7 @@ Route::middleware(VerifyWooCommerceSignature::class)
         Route::get('/invoicing-settings', [InvoicingController::class, 'settings'])
             ->name('woocommerce.invoicing.settings');
         Route::post('/orders/issue-document', [InvoicingController::class, 'issue'])
+            ->middleware(RejectReplayedWooSignature::class)
             ->name('woocommerce.invoicing.issue');
         // READ: the issued documents for one order (admin metabox + customer link).
         // POST, not GET — the plugin's GET signer excludes the query string.
@@ -134,8 +143,10 @@ Route::middleware(VerifyWooCommerceSignature::class)
          * WooCommerce already made and never calls PayPlus.
          */
         Route::post('/orders/{order}/refund', [RefundMirrorController::class, 'refund'])
+            ->middleware(RejectReplayedWooSignature::class)
             ->name('woocommerce.refunds.process');
         Route::post('/orders/{order}/refunded', [RefundMirrorController::class, 'refunded'])
+            ->middleware(RejectReplayedWooSignature::class)
             ->name('woocommerce.refunds.mirror');
         // A READ, POSTed because the plugin's signer excludes the query string.
         Route::post('/orders/{order}/refund-state', [RefundMirrorController::class, 'state'])
@@ -154,6 +165,7 @@ Route::middleware(VerifyWooCommerceSignature::class)
         Route::post('/installments/quote', WooInstallmentQuoteController::class)
             ->name('woocommerce.installments.quote');
         Route::post('/installments/start', WooStartInstallmentPlanController::class)
+            ->middleware(RejectReplayedWooSignature::class)
             ->name('woocommerce.installments.start');
 
         /*
@@ -167,6 +179,7 @@ Route::middleware(VerifyWooCommerceSignature::class)
         | order via WooCommerceOrderStrategy.
         */
         Route::post('/installments/subscribe', WooSubscribeController::class)
+            ->middleware(RejectReplayedWooSignature::class)
             ->name('woocommerce.installments.subscribe');
 
         /*
@@ -196,8 +209,10 @@ Route::middleware(VerifyWooCommerceSignature::class)
         Route::get('/upsell/offer', WooUpsellOfferController::class)
             ->name('woocommerce.upsell.offer');
         Route::post('/upsell/accept', WooUpsellAcceptController::class)
+            ->middleware(RejectReplayedWooSignature::class)
             ->name('woocommerce.upsell.accept');
         Route::post('/upsell/decline', WooUpsellDeclineController::class)
+            ->middleware(RejectReplayedWooSignature::class)
             ->name('woocommerce.upsell.decline');
 
         /*
@@ -209,10 +224,12 @@ Route::middleware(VerifyWooCommerceSignature::class)
         | callback (below, token-segment auth) marks the WC order paid via WC REST.
         */
         Route::post('/gateway/session', WooGatewaySessionController::class)
+            ->middleware(RejectReplayedWooSignature::class)
             ->name('woocommerce.gateway.session');
         // Verify-on-return: the plugin confirms a gateway payment from the thank-you page when
         // PayPlus didn't push the callback (orders stuck "pending"). Same HMAC group.
         Route::post('/gateway/verify', WooGatewayVerifyController::class)
+            ->middleware(RejectReplayedWooSignature::class)
             ->name('woocommerce.gateway.verify');
 
         // Loyalty club: the plugin's SERVER tells us who is logged in (over this
@@ -220,6 +237,7 @@ Route::middleware(VerifyWooCommerceSignature::class)
         // shopper, which the plugin renders in an iframe. WooCommerce has no App
         // Proxy, so this is how identity is established without trusting a browser.
         Route::post('/loyalty/page-url', WooLoyaltyPageUrlController::class)
+            ->middleware(RejectReplayedWooSignature::class)
             ->name('woocommerce.loyalty.page_url');
 
         /*
@@ -244,8 +262,10 @@ Route::middleware(VerifyWooCommerceSignature::class)
             ->name('woocommerce.account.bootstrap');
 
         Route::post('/account/otp/request', [AccountOtpController::class, 'request'])
+            ->middleware(RejectReplayedWooSignature::class)
             ->name('woocommerce.account.otp.request');
         Route::post('/account/otp/verify', [AccountOtpController::class, 'verify'])
+            ->middleware(RejectReplayedWooSignature::class)
             ->name('woocommerce.account.otp.verify');
 
         // "Does LETS already know this address?" — asked by the plugin AFTER a
@@ -260,10 +280,12 @@ Route::middleware(VerifyWooCommerceSignature::class)
         // session: WordPress resolves its own user and refuses privileged accounts.
         // Single use, two minutes, and only for the shop the signature resolved.
         Route::post('/account/impersonate/verify', ImpersonateVerifyController::class)
+            ->middleware(RejectReplayedWooSignature::class)
             ->name('woocommerce.account.impersonate.verify');
 
         Route::post('/account/subscriptions/{action}', AccountActionController::class)
             ->whereIn('action', CustomerSubscriptionActions::ACTIONS)
+            ->middleware(RejectReplayedWooSignature::class)
             ->name('woocommerce.account.subscriptions.act');
 
         // Asked by the STOREFRONT, not the account page: may this shopper start

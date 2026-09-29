@@ -13,6 +13,7 @@ use App\Support\Ui\PanelAccess;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
@@ -40,11 +41,27 @@ final class AdminCustomerAccountViewController
     /** The personal-data access-log surface name (security-policies.md §5). */
     public const SURFACE = 'account_view_as';
 
+    /**
+     * Where a view-as open may come from: the admin's own pages (same-origin)
+     * or the address bar (none). Anything else is another site's <img>/<a>.
+     */
+    public const ALLOWED_FETCH_SITES = ['same-origin', 'none'];
+
     public function __invoke(Request $request, string $customer, AccountPresenter $presenter): View
     {
         $shop = Tenant::current();
         if (! PanelAccess::canSeeShopScoped() || ! $shop instanceof Shop) {
             throw new NotFoundHttpException;
+        }
+
+        // This GET WRITES (the access log + a Timeline row), and the admin cookie
+        // is SameSite=None, so another site could plant false "viewed as" entries
+        // with an <img>. The browser says where the request came from; anything
+        // but the admin itself is refused before a line is written. (No header —
+        // a non-browser client — is judged by the session alone, as before.)
+        $site = strtolower((string) $request->headers->get('Sec-Fetch-Site', ''));
+        if ($site !== '' && ! in_array($site, self::ALLOWED_FETCH_SITES, true)) {
+            throw new AccessDeniedHttpException;
         }
 
         $customer = trim($customer);
