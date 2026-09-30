@@ -38,7 +38,8 @@
                 <div class="rc-timeline__body">
                     <span class="rc-timeline__title">{{ EventPresenter::label($event) }}</span>
                     @if($summary)
-                        <span class="rc-timeline__summary rc-ltr">{{ $summary }}</span>
+                        {{-- Not rc-ltr: the summary is "Label: value" prose in the admin's language. --}}
+                        <span class="rc-timeline__summary">{{ $summary }}</span>
                     @endif
                     {{-- A merchant's note is prose in their own language — no rc-ltr. --}}
                     @if($note)

@@ -80,6 +80,9 @@ final class DocumentReconciliationService
             details: [
                 'context' => (string) $document->context,
                 'failure_code' => (string) $document->failure_code,
+                'document_type' => $document->document_type ?: null,
+                'amount' => $document->amount !== null ? round((float) $document->amount, 2) : null,
+                'currency' => $document->currency ?: null,
             ],
             planId: $document->plan_id !== null ? (int) $document->plan_id : null,
             shopId: (int) $document->shop_id,
@@ -123,6 +126,9 @@ final class DocumentReconciliationService
                 // The assertion, not just the act: a human said the provider held
                 // no document for this money before we issued a fresh one.
                 'verified_absent_by_merchant' => true,
+                'document_type' => $document->document_type ?: null,
+                'amount' => $document->amount !== null ? round((float) $document->amount, 2) : null,
+                'currency' => $document->currency ?: null,
             ],
             planId: $document->plan_id !== null ? (int) $document->plan_id : null,
             shopId: (int) $document->shop_id,
@@ -169,6 +175,9 @@ final class DocumentReconciliationService
                 'document_number' => $document->document_number,
                 // Adopted from the provider by a human, not minted by us.
                 'reconciled_by_merchant' => true,
+                'document_type' => $document->document_type ?: null,
+                'amount' => $document->amount !== null ? round((float) $document->amount, 2) : null,
+                'currency' => $document->currency ?: null,
             ],
             planId: $document->plan_id !== null ? (int) $document->plan_id : null,
             shopId: (int) $document->shop_id,
@@ -214,6 +223,7 @@ final class DocumentReconciliationService
                 'context' => (string) $document->context,
                 'document_number' => $document->document_number,
                 'external_order_id' => (string) $document->external_order_id,
+                'document_type' => $document->document_type ?: null,
             ],
             planId: $document->plan_id !== null ? (int) $document->plan_id : null,
             shopId: (int) $document->shop_id,

@@ -490,6 +490,11 @@ final class UpsellChargeService
                 'offer_id' => $offer->getKey(),
                 'amount' => $amount,
                 'transaction_uid' => $result->transactionUid,
+                // Display-safe (never the uid above): what was sold, on which order.
+                'currency' => $currency,
+                'approval_number' => $result->approvalNumber,
+                'offer_name' => $offer->offer_title ?: null,
+                'parent_order_id' => $req->parentOrderId,
             ],
             shopId: $shopId,
         );
@@ -540,7 +545,15 @@ final class UpsellChargeService
 
         Timeline::record(
             kind: 'upsell_charge_failed',
-            details: ['offer_id' => $offer->getKey(), 'error_code' => $result->errorCode],
+            details: [
+                'offer_id' => $offer->getKey(),
+                'error_code' => $result->errorCode,
+                'error_message' => $result->errorMessage,
+                'amount' => round((float) $ledger->amount, 2),
+                'currency' => $ledger->currency ?: null,
+                'offer_name' => $offer->offer_title ?: null,
+                'parent_order_id' => $req->parentOrderId,
+            ],
             shopId: $shopId,
         );
 

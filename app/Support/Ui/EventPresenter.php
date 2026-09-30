@@ -148,7 +148,58 @@ final class EventPresenter
         'campaign_email_sent' => ['info', 'timeline.kind.campaign_email_sent'],
         'campaign_login_used' => ['info', 'timeline.kind.campaign_login_used'],
         'campaign_unsubscribed' => ['gray', 'timeline.kind.campaign_unsubscribed'],
+
+        // --- The charge pipeline's own steps (Timeline::KIND_*). Until these were
+        // mapped every one of them read as the "Activity" fallback.
+        'charge_attempt_started' => ['info', 'timeline.kind.charge_attempt_started'],
+        // WARNING: the card was declined and the engine will ask again — the
+        // merchant may want to reach the customer before it does.
+        'charge_retry_scheduled' => ['warning', 'timeline.kind.charge_retry_scheduled'],
+        // GRAY: a second trigger met a charge already at the gateway and stood down.
+        'charge_in_flight' => ['gray', 'timeline.kind.charge_in_flight'],
+        // WARNING: the card may have been charged and nobody knows — a person must look.
+        'charge_needs_reconcile' => ['warning', 'timeline.kind.charge_needs_reconcile'],
+        'charge_reconciled' => ['info', 'timeline.kind.charge_reconciled'],
+        'charging_paused' => ['gray', 'timeline.kind.charging_paused'],
+        'charging_resumed_rolled_forward' => ['info', 'timeline.kind.charging_resumed_rolled_forward'],
+        'consent_missing' => ['warning', 'timeline.kind.consent_missing'],
+        'manual_payment_pending' => ['gray', 'timeline.kind.manual_payment_pending'],
+
+        // --- Refunds and cancellations (RefundOrchestrator / store refunders).
+        'refund_requested' => ['info', 'timeline.kind.refund_requested'],
+        'refunded' => ['info', 'timeline.kind.refund_succeeded'],
+        'store_refund_synced' => ['info', 'timeline.kind.store_refund_synced'],
+        // FAILURE: the money went back and the store order still reads as paid.
+        'store_refund_sync_failed' => ['failure', 'timeline.kind.store_refund_sync_failed'],
+        'restocked' => ['info', 'timeline.kind.restocked'],
+        'order_cancelled_by_merchant' => ['info', 'timeline.kind.order_cancelled_by_merchant'],
+
+        // --- How a plan came to exist.
+        'deposit_plan_created' => ['info', 'timeline.kind.deposit_plan_created'],
+        'deposit_paid_plan_activated' => ['success', 'timeline.kind.deposit_paid_plan_activated'],
+        'recurring_plan_created' => ['info', 'timeline.kind.recurring_plan_created'],
+        'subscription_imported' => ['info', 'timeline.kind.subscription_imported'],
+        'subscription_import_updated' => ['info', 'timeline.kind.subscription_import_updated'],
+        'subscription_import_released' => ['info', 'timeline.kind.subscription_import_released'],
+
+        // --- Post-purchase upsells (UpsellChargeService).
+        'upsell_charge_succeeded' => ['success', 'timeline.kind.upsell_charge_succeeded'],
+        'upsell_charge_failed' => ['failure', 'timeline.kind.upsell_charge_failed'],
+        // FAILURE: money moved with no order behind it — the store_order_failed twin.
+        'upsell_child_order_failed' => ['failure', 'timeline.kind.upsell_child_order_failed'],
+        'upsell_no_payment_method' => ['warning', 'timeline.kind.upsell_no_payment_method'],
+
+        // --- Privacy webhooks (GDPR). Gray: compliance, not commerce.
+        'customer_redacted' => ['gray', 'timeline.kind.customer_redacted'],
+        'shop_redacted' => ['gray', 'timeline.kind.shop_redacted'],
+        'customer_data_exported' => ['gray', 'timeline.kind.customer_data_exported'],
     ];
+
+    /**
+     * A status_changed row whose subject is a PAYMENT row reads as its own title —
+     * "Payment status changed" — so it is never mistaken for the subscription's.
+     */
+    public const PAYMENT_STATUS_CHANGED_LABEL = 'timeline.kind.payment_status_changed';
 
     public const FALLBACK = ['info', 'timeline.kind.generic'];
 
@@ -232,7 +283,43 @@ final class EventPresenter
      * Detail keys that are SAFE to surface in the UI. Anything else (notably
      * invoice_url / document_url / raw token / payplus_* secrets) is dropped.
      */
-    public const SAFE_DETAIL_KEYS = ['amount', 'currency', 'sequence', 'from', 'to', 'context', 'reason', 'changed', 'from_amount', 'to_amount', 'charge_number', 'coupon_codes', 'action', 'result', 'subscription', 'campaign', 'bulk_edit_id'];
+    public const SAFE_DETAIL_KEYS = [
+        'amount', 'currency', 'sequence', 'from', 'to', 'context', 'reason', 'changed', 'from_amount', 'to_amount',
+        'charge_number', 'coupon_codes', 'action', 'result', 'subscription', 'campaign', 'bulk_edit_id',
+        // Added so every row can say exactly what happened. Each is display-safe:
+        // no token (only a card's last four), no transaction uid (a uid can be
+        // charged against), no URL. Rendered as "Label: value" by TimelineSummary.
+        'model', 'type', 'trigger', 'source', 'template', 'mode', 'field', 'was', 'now', 'skipped',
+        'approval_number', 'card_brand', 'card_last_four', 'brand', 'last_four', 'attempt',
+        'error_message', 'error', 'next_retry_at', 'last_charged_at', 'last_amount', 'ceiling', 'opened_at', 'resolved_as',
+        'document_type', 'document_number', 'consent_context', 'reported', 'recorded',
+        'deposit_amount', 'total_amount', 'installments', 'frequency', 'interval_count', 'interval',
+        'next_charge_at', 'first_charge_at', 'next_billing_date', 'cycle_still_due_at',
+        'order_id', 'parent_order_id', 'external_order_id', 'shopify_order_id', 'request_id', 'reference', 'paid_cycle',
+        'sent_to', 'channel', 'offset_hours', 'plans', 'file', 'line', 'membership_id',
+        'offer_name', 'product', 'quantity', 'from_plan', 'to_plan', 'source_plan', 'new_plan', 'added_lines',
+        'token_captured', 'is_final', 'restock', 'needs_reconcile', 'verified_absent_by_merchant',
+        'reconciled_by_merchant', 'skipped_delivery', 'will_retry', 'repaired', 'counts',
+    ];
+
+    /**
+     * Whitelisted keys that are safe on SOME kinds only. `was`/`now` is a date on
+     * a rolled-forward charge and a cadence on a frequency edit — but on a
+     * recovered card it is the tail of a PayPlus token, which never reaches a feed.
+     */
+    public const KIND_SCOPED_KEYS = [
+        'was' => ['charging_resumed_rolled_forward', 'plan_edited', 'customer_details_updated'],
+        'now' => ['charging_resumed_rolled_forward', 'plan_edited', 'customer_details_updated'],
+    ];
+
+    /**
+     * Keys that must NEVER be whitelisted, whatever a writer puts in its details.
+     * Pinned by TimelineEnrichmentTest.
+     */
+    public const NEVER_SHOWN_KEYS = [
+        'invoice_url', 'document_url', 'url', 'token', 'key', 'transaction_uid', 'refund_transaction_uid',
+        'original_transaction_uid', 'proposed', 'customer', 'customer_ref', 'note', 'contract_gid', 'external_ref',
+    ];
 
     public static function tone(ActivityEvent $event): string
     {
@@ -241,7 +328,9 @@ final class EventPresenter
 
     public static function label(ActivityEvent $event): string
     {
-        $key = (self::KINDS[$event->kind] ?? self::FALLBACK)[1];
+        $key = TimelineSummary::isPaymentTransition($event)
+            ? self::PAYMENT_STATUS_CHANGED_LABEL
+            : (self::KINDS[$event->kind] ?? self::FALLBACK)[1];
         $translated = __($key);
 
         // If a kind has no specific key yet, humanize the raw kind rather than
@@ -291,85 +380,24 @@ final class EventPresenter
         return $note !== '' ? $note : null;
     }
 
-    /** Plain-language one-line summary built ONLY from whitelisted detail keys. */
+    /**
+     * Plain-language one-line summary built ONLY from whitelisted detail keys —
+     * "Label: value" facts in the admin's language (TimelineSummary). A URL, a
+     * token or a raw catalogue key never reaches it.
+     */
     public static function summarize(ActivityEvent $event): ?string
     {
         $details = (array) ($event->details ?? []);
         $safe = array_intersect_key($details, array_flip(self::SAFE_DETAIL_KEYS));
 
-        if ($safe === []) {
-            return null;
-        }
-
-        $parts = [];
-        if (isset($safe['amount'])) {
-            $parts[] = Money::format((float) $safe['amount'], (string) ($safe['currency'] ?? Money::DEFAULT_CURRENCY));
-        }
-        if (isset($safe['sequence'])) {
-            $parts[] = __('subscriptions.detail.installment_n', ['n' => $safe['sequence']]);
-        }
-        if (isset($safe['from'], $safe['to'])) {
-            $parts[] = __('billing.status.'.$safe['from']).' → '.__('billing.status.'.$safe['to']);
-        }
-        // A refused account action: which verb, and why it was refused. Both
-        // resolve through the catalog and degrade to the raw value, so a verb
-        // added later reads as itself rather than as a missing-translation token.
-        if (isset($safe['action'])) {
-            $parts[] = self::catalogued('timeline.action.', (string) $safe['action']);
-        }
-        if (isset($safe['result'])) {
-            $parts[] = self::catalogued('timeline.result.', (string) $safe['result']);
-        }
-        if (isset($safe['subscription'])) {
-            $parts[] = (string) $safe['subscription'];
-        }
-        // A plan edit (W25): render each changed field as "old → new" (amount formatted as money,
-        // dates/plain values as-is). Only the whitelisted `changed` shape is read.
-        foreach ((array) ($safe['changed'] ?? []) as $field => $change) {
-            if (! is_array($change) || ! array_key_exists('to', $change)) {
-                continue;
+        // Keys safe only on the kinds that write something safe into them.
+        foreach (self::KIND_SCOPED_KEYS as $key => $kinds) {
+            if (! in_array((string) $event->kind, $kinds, true)) {
+                unset($safe[$key]);
             }
-            $parts[] = self::changePart((string) $field, $change, (string) ($safe['currency'] ?? Money::DEFAULT_CURRENCY));
         }
 
-        // This change was one of many, made by a bulk edit. Said out loud on the
-        // subscription's own feed because the alternative is a merchant reading
-        // "Next charge: 3 Oct → 10 Oct, by Dana" on four thousand subscriptions and
-        // having no way to tell it was one click rather than four thousand.
-        if (isset($safe['bulk_edit_id'])) {
-            $parts[] = __('timeline.bulk_edit', ['id' => (int) $safe['bulk_edit_id']]);
-        }
-
-        return $parts === [] ? null : implode(' · ', $parts);
-    }
-
-    /** A catalogue lookup that degrades to the raw value instead of a missing-translation token. */
-    private static function catalogued(string $prefix, string $value): string
-    {
-        $translated = __($prefix.$value);
-
-        return $translated === $prefix.$value ? $value : $translated;
-    }
-
-    /** "Field: old → new" for a single edited field. Amount fields format as money. */
-    private static function changePart(string $field, array $change, string $currency): string
-    {
-        $format = static function ($v) use ($field, $currency): string {
-            if ($v === null || $v === '') {
-                return '—';
-            }
-
-            return $field === 'amount'
-                ? Money::format((float) $v, $currency)
-                : (string) $v;
-        };
-
-        $label = __('timeline.field.'.$field);
-        if ($label === 'timeline.field.'.$field) {
-            $label = ucfirst(str_replace('_', ' ', $field));
-        }
-
-        return $label.': '.$format($change['from'] ?? null).' → '.$format($change['to'] ?? null);
+        return TimelineSummary::build($event, $safe);
     }
 
     /** The display name for an "admin:{id}" actor (request-static cache), else the generic label. */

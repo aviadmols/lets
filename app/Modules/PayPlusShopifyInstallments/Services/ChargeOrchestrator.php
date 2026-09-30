@@ -32,6 +32,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\GatewayResult;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
+use App\Modules\PayPlusShopifyInstallments\Support\ChargeTimelineFacts;
 use App\Modules\PayPlusShopifyInstallments\Support\ResponseMasker;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use App\Services\Orders\PlatformOrderStrategyFactory;
@@ -385,7 +386,7 @@ final class ChargeOrchestrator
 
         Timeline::record(
             kind: Timeline::KIND_CHARGE_ATTEMPT_STARTED,
-            details: ['type' => $type->value, 'key' => $key],
+            details: ['type' => $type->value, 'key' => $key] + $this->attemptFacts($plan, $type),
             planId: $plan->getKey(),
             shopId: $shopId,
         );
@@ -695,7 +696,16 @@ final class ChargeOrchestrator
                 'amount' => (float) $payment->amount,
                 'transaction_uid' => $result->transactionUid,
                 'is_final' => $isFinal,
-            ],
+                // Display-safe facts (never the uid above): which charge, which
+                // card, the PayPlus approval number, and why it ran.
+                'approval_number' => $result->approvalNumber,
+            ] + ChargeTimelineFacts::for(
+                $plan,
+                $type,
+                (int) $payment->sequence,
+                (float) $payment->amount,
+                (int) $payment->attempt_count,
+            ),
             planId: $plan->getKey(),
             paymentId: $payment->getKey(),
             shopId: $plan->shop_id,
@@ -895,7 +905,16 @@ final class ChargeOrchestrator
                 'error_message' => $result->errorMessage,
                 'attempt' => $payment->attempt_count,
                 'next_retry_at' => $payment->next_retry_at?->toIso8601String(),
-            ],
+            ] + ChargeTimelineFacts::for(
+                $plan,
+                $payment->payment_type instanceof PaymentType
+                    ? $payment->payment_type
+                    : ($plan->plan_kind === PlanKind::RECURRING ? PaymentType::RECURRING : PaymentType::INSTALLMENT),
+                (int) $payment->sequence,
+                (float) $payment->amount,
+                // attempt_count was already raised for THIS attempt above.
+                max(0, (int) $payment->attempt_count - 1),
+            ),
             planId: $plan->getKey(),
             paymentId: $payment->getKey(),
             shopId: $plan->shop_id,
@@ -1363,6 +1382,34 @@ final class ChargeOrchestrator
      * at. Read-only: the consent ceiling is judged BEFORE a slot is frozen, so a
      * refused price never sticks to the cycle after the merchant corrects it.
      */
+    /**
+     * What the "charge attempt started" row says about the charge it opens: which
+     * slot, how much, which card and why. Read-only and fail-soft — a Timeline
+     * detail must never be the reason a charge does not run.
+     *
+     * @return array<string, mixed>
+     */
+    private function attemptFacts(InstallmentPlan $plan, PaymentType $type): array
+    {
+        try {
+            $sequence = $this->nextSequenceFor($plan, $type);
+            $open = InstallmentPayment::query()
+                ->where('plan_id', $plan->getKey())
+                ->where('sequence', $sequence)
+                ->first();
+
+            return ChargeTimelineFacts::for(
+                $plan,
+                $type,
+                $sequence,
+                $this->prospectiveAmount($plan, $type),
+                (int) ($open?->attempt_count ?? 0),
+            );
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
     private function prospectiveAmount(InstallmentPlan $plan, PaymentType $type): float
     {
         $sequence = $this->nextSequenceFor($plan, $type);
@@ -1681,7 +1728,12 @@ final class ChargeOrchestrator
 
         Timeline::record(
             kind: 'document_issue_requested',
-            details: ['document_type' => $decision->documentType],
+            details: [
+                'document_type' => $decision->documentType,
+                'context' => $documentContext->value,
+                'amount' => round((float) $ledger->amount, 2),
+                'currency' => (string) ($ledger->currency ?: $plan->currency),
+            ],
             planId: $plan->getKey(),
             shopId: $plan->shop_id,
         );

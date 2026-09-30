@@ -40,7 +40,8 @@
     background: var(--rc-gray-bg); color: var(--rc-ink-muted);
     font: var(--rc-type-caption);
 }
-.rc-timeline__summary { font: var(--rc-type-body); color: var(--rc-ink-muted); }
+/* plaintext: a Hebrew summary reads RTL, an English one LTR, whatever the page. */
+.rc-timeline__summary { font: var(--rc-type-body); color: var(--rc-ink-muted); unicode-bidi: plaintext; }
 
 /* A merchant's free-text note: full ink (it is the content, not metadata),
    wraps as prose, keeps the author's line breaks. */

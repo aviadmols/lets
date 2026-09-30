@@ -53,11 +53,17 @@ trait HasGuardedStatus
 
         Timeline::record(
             kind: Timeline::KIND_STATUS_CHANGED,
-            details: array_merge([
-                'model' => class_basename($this),
-                'from' => $from->value,
-                'to' => $to->value,
-            ], $context),
+            details: array_merge(
+                // Optional, display-safe facts the model offers (which payment,
+                // how much) — so the row says WHAT moved, not only that it did.
+                method_exists($this, 'timelineDetails') ? (array) $this->timelineDetails() : [],
+                [
+                    'model' => class_basename($this),
+                    'from' => $from->value,
+                    'to' => $to->value,
+                ],
+                $context,
+            ),
             planId: $this->timelinePlanId(),
             paymentId: $this->timelinePaymentId(),
             shopId: $this->shop_id ?? null,

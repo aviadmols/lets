@@ -90,6 +90,22 @@ class InstallmentPayment extends Model
             : PaymentStatus::from((string) $this->status);
     }
 
+    /**
+     * Display-safe facts every status move of this slot carries onto the Timeline,
+     * so "pending → succeeded" says WHICH payment and how much. Never the uid.
+     *
+     * @return array<string, mixed>
+     */
+    public function timelineDetails(): array
+    {
+        return array_filter([
+            'sequence' => $this->sequence,
+            'amount' => $this->amount === null ? null : round((float) $this->amount, 2),
+            'currency' => $this->currency ?: null,
+            'approval_number' => $this->approval_number ?: null,
+        ], static fn ($v): bool => $v !== null);
+    }
+
     protected function timelinePlanId(): ?int
     {
         return $this->plan_id;
