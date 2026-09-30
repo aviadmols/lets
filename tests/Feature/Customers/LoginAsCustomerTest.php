@@ -55,6 +55,15 @@ final class LoginAsCustomerTest extends TestCase
      */
     private int $signings = 0;
 
+    /** One base second per test: time() - n could repeat a timestamp when the clock
+     * ticks between two signings, and the replay wall would then refuse the repeat. */
+    private ?int $signBase = null;
+
+    private function signBase(): int
+    {
+        return $this->signBase ??= time();
+    }
+
     protected function tearDown(): void
     {
         Str::createRandomStringsNormally();
@@ -226,7 +235,7 @@ final class LoginAsCustomerTest extends TestCase
     private function signed(string $apiKey, string $apiSecret, array $body): TestResponse
     {
         $json = (string) json_encode($body, JSON_UNESCAPED_SLASHES);
-        $ts = (string) (time() - $this->signings++);
+        $ts = (string) ($this->signBase() - $this->signings++);
         $sig = base64_encode(hash_hmac('sha256', $ts.'POST'.self::VERIFY_PATH.$json, $apiSecret, true));
 
         return $this->call('POST', self::VERIFY_PATH, [], [], [], [

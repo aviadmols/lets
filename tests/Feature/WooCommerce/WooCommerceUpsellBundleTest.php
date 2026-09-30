@@ -65,6 +65,15 @@ final class WooCommerceUpsellBundleTest extends TestCase
      */
     private int $signings = 0;
 
+    /** One base second per test: time() - n could repeat a timestamp when the clock
+     * ticks between two signings, and the replay wall would then refuse the repeat. */
+    private ?int $signBase = null;
+
+    private function signBase(): int
+    {
+        return $this->signBase ??= time();
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -404,7 +413,7 @@ final class WooCommerceUpsellBundleTest extends TestCase
         $query = http_build_query(['parent_order' => self::ORDER, 'customer' => self::CUSTOMER, 'products' => '1', 'subtotal' => '120']);
         // The signature's freshness is judged on the REAL clock; the offer's window on the
         // application's, which these tests move.
-        $ts = (string) (time() - $this->signings++);
+        $ts = (string) ($this->signBase() - $this->signings++);
         $sig = base64_encode(hash_hmac('sha256', $ts.'GET'.self::OFFER, $secret, true));
 
         return $this->call('GET', self::OFFER.'?'.$query, [], [], [], [
@@ -423,7 +432,7 @@ final class WooCommerceUpsellBundleTest extends TestCase
             'email' => 'reader@example.com',
             'product_ids' => $productIds,
         ], JSON_UNESCAPED_SLASHES);
-        $ts = (string) (time() - $this->signings++);
+        $ts = (string) ($this->signBase() - $this->signings++);
         $sig = base64_encode(hash_hmac('sha256', $ts.'POST'.self::ACCEPT.$json, $secret, true));
 
         return $this->call('POST', self::ACCEPT, [], [], [], [

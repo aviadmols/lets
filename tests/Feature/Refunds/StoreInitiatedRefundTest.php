@@ -43,6 +43,15 @@ final class StoreInitiatedRefundTest extends TestCase
      */
     private int $signings = 0;
 
+    /** One base second per test: time() - n could repeat a timestamp when the clock
+     * ticks between two signings, and the replay wall would then refuse the repeat. */
+    private ?int $signBase = null;
+
+    private function signBase(): int
+    {
+        return $this->signBase ??= time();
+    }
+
     protected function tearDown(): void
     {
         $this->clearRefundFakes();
@@ -385,7 +394,7 @@ final class StoreInitiatedRefundTest extends TestCase
     private function signedPost(Shop $shop, string $path, array $body): TestResponse
     {
         $json = (string) json_encode($body, JSON_UNESCAPED_SLASHES);
-        $timestamp = (string) (time() - $this->signings++);
+        $timestamp = (string) ($this->signBase() - $this->signings++);
 
         return $this->call('POST', $path, [], [], [], [
             'HTTP_X_LETS_KEY' => self::API_KEY,

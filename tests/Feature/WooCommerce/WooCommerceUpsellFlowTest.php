@@ -46,6 +46,15 @@ final class WooCommerceUpsellFlowTest extends TestCase
      */
     private int $signings = 0;
 
+    /** One base second per test: time() - n could repeat a timestamp when the clock
+     * ticks between two signings, and the replay wall would then refuse the repeat. */
+    private ?int $signBase = null;
+
+    private function signBase(): int
+    {
+        return $this->signBase ??= time();
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -534,7 +543,7 @@ final class WooCommerceUpsellFlowTest extends TestCase
     private function signedPost(string $apiKey, string $apiSecret, string $path, array $body): TestResponse
     {
         $json = (string) json_encode($body, JSON_UNESCAPED_SLASHES);
-        $ts = (string) (time() - $this->signings++);
+        $ts = (string) ($this->signBase() - $this->signings++);
         $sig = base64_encode(hash_hmac('sha256', $ts.'POST'.$path.$json, $apiSecret, true));
 
         return $this->call('POST', $path, [], [], [], [
@@ -545,7 +554,7 @@ final class WooCommerceUpsellFlowTest extends TestCase
 
     private function signedGet(string $apiKey, string $apiSecret, string $path, string $query): TestResponse
     {
-        $ts = (string) (time() - $this->signings++);
+        $ts = (string) ($this->signBase() - $this->signings++);
         // The middleware signs path + raw body (empty for GET) — NOT the query string.
         $sig = base64_encode(hash_hmac('sha256', $ts.'GET'.$path.'', $apiSecret, true));
 
