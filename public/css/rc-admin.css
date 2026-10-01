@@ -357,6 +357,269 @@
 .rc-accordion__panel > div { overflow: hidden; }
 .rc-accordion__body { padding: 0 var(--rc-space-5) var(--rc-space-5); border-block-start: 1px solid var(--rc-border); padding-block-start: var(--rc-space-4); }
 
+/* analytics-payments.css — Analytics › Payments (Overview · Recovery · Failures · Upcoming) and Cohorts.
+   Screen-level layout only; every chart is a shared rc.chart.* component (analytics.css).
+   TOKENS: --rc-card --rc-border --rc-border-soft --rc-border-strong --rc-surface-sunk --rc-ink --rc-ink-muted
+           --rc-blue --rc-blue-600 --rc-blue-bg --rc-radius-control --rc-ring --rc-space-1…5
+           --rc-type-body --rc-type-body-strong --rc-type-label --rc-type-caption
+   RULES: logical properties only (mirrors in RTL); no colour literals — tokens only. */
+
+/* ---- toolbars + grids --------------------------------------------------- */
+.rc-an-pay-toolbar { display: flex; justify-content: flex-end; align-items: center; gap: var(--rc-space-2); }
+
+.rc-an-pay-kpis { display: grid; gap: var(--rc-space-4); grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 1100px) { .rc-an-pay-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .rc-an-pay-kpis { grid-template-columns: minmax(0, 1fr); } }
+
+/* donut beside its table (Recovery contribution) */
+.rc-an-pay-split { display: grid; gap: var(--rc-space-5); grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); align-items: start; }
+@media (max-width: 1100px) { .rc-an-pay-split { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---- cohorts: the metric menu's level headings -------------------------- */
+.rc-an-cohort-group {
+    padding: var(--rc-space-2) var(--rc-space-3) var(--rc-space-1);
+    font: var(--rc-type-label); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--rc-ink-muted);
+}
+[dir="rtl"] .rc-an-cohort-group { text-transform: none; letter-spacing: normal; }
+
+/* ---- upcoming: per-day drill-down --------------------------------------- */
+.rc-an-pay-days {
+    display: grid; gap: var(--rc-space-2); margin: 0; padding: 0; list-style: none;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+.rc-an-pay-days__item {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px var(--rc-space-2);
+    padding: var(--rc-space-2) var(--rc-space-3);
+    border: 1px solid var(--rc-border); border-radius: var(--rc-radius-control);
+    background: var(--rc-card); color: var(--rc-ink); text-decoration: none;
+    transition: border-color .15s ease, background-color .15s ease;
+}
+.rc-an-pay-days__item:hover { border-color: var(--rc-blue); background: var(--rc-blue-bg); }
+.rc-an-pay-days__item:focus-visible { outline: none; box-shadow: var(--rc-ring); }
+.rc-an-pay-days__date { grid-column: 1 / -1; font: var(--rc-type-body-strong); }
+.rc-an-pay-days__count { font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+.rc-an-pay-days__amount { font: var(--rc-type-caption); color: var(--rc-ink); font-variant-numeric: tabular-nums; text-align: end; }
+
+/* ---- upcoming: the table ------------------------------------------------ */
+.rc-an-pay-table { display: flex; flex-direction: column; }
+.rc-an-pay-tablebar {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--rc-space-3); flex-wrap: wrap;
+    padding: var(--rc-space-3) 20px; border-block-end: 1px solid var(--rc-border);
+}
+.rc-an-pay-search {
+    display: inline-flex; align-items: center; gap: var(--rc-space-2);
+    inline-size: min(100%, 320px); block-size: 34px; padding-inline: var(--rc-space-3);
+    border: 1px solid var(--rc-border-strong); border-radius: var(--rc-radius-control); background: var(--rc-card);
+}
+.rc-an-pay-search:focus-within { box-shadow: var(--rc-ring); border-color: var(--rc-blue); }
+.rc-an-pay-search__icon { inline-size: 16px; block-size: 16px; color: var(--rc-ink-muted); flex-shrink: 0; }
+.rc-an-pay-search__input {
+    flex: 1; min-inline-size: 0; border: 0; padding: 0; background: transparent;
+    color: var(--rc-ink); font: var(--rc-type-body); font-size: 13px; outline: none; box-shadow: none;
+}
+.rc-an-pay-search__input:focus { outline: none; box-shadow: none; }
+
+.rc-an-pay-link { color: var(--rc-blue-600); text-decoration: none; font-weight: 600; }
+.rc-an-pay-link:hover { text-decoration: underline; }
+.rc-an-pay-link:focus-visible { outline: none; box-shadow: var(--rc-ring); border-radius: 2px; }
+.rc-an-pay-sub { display: block; font: var(--rc-type-caption); color: var(--rc-ink-muted); font-weight: 400; }
+.rc-an-pay-error { max-inline-size: 260px; font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+
+.rc-an-pay-pager {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--rc-space-3); flex-wrap: wrap;
+    padding: var(--rc-space-3) 20px; border-block-start: 1px solid var(--rc-border);
+}
+.rc-an-pay-pager__count { font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+.rc-an-pay-pager__buttons { display: inline-flex; align-items: center; gap: var(--rc-space-2); }
+.rc-an-pay-pager__buttons .rc-an-btn { block-size: 32px; }
+.rc-an-pay-pager__page { font: var(--rc-type-caption); color: var(--rc-ink-muted); font-variant-numeric: tabular-nums; }
+
+/* =========================================================================
+   Analytics — Cancellations · Forecast · Reports screens
+   (resources/views/filament/pages/analytics/{cancellations,forecast,reports}/*)
+   TOKENS: --rc-space-* --rc-ink --rc-ink-muted --rc-card --rc-surface-sunk --rc-border --rc-border-soft
+           --rc-border-strong --rc-radius-card --rc-radius-control --rc-radius-pill --rc-shadow-card --rc-blue
+           --rc-blue-bg --rc-link --rc-ring --rc-type-* --rc-gray-bg --rc-gray-ink
+   Logical properties only — the screens mirror in RTL without a single left/right.
+   ========================================================================= */
+
+/* Section label above a KPI row ("Subscriber churn metrics") */
+.rc-an-heading {
+    margin: var(--rc-space-2) 0 calc(-1 * var(--rc-space-2));
+    font: var(--rc-type-label); font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--rc-ink-muted);
+}
+[dir="rtl"] .rc-an-heading { text-transform: none; letter-spacing: normal; }
+
+/* A column of cards inside one grid cell */
+.rc-an-stack { display: flex; flex-direction: column; gap: var(--rc-space-4); min-inline-size: 0; }
+
+/* One-line summary over a table ("1,371 subscriptions · 46 churned · …") */
+.rc-an-summary { margin: 0; padding: var(--rc-space-3) 20px 0; font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+
+/* ── Toolbar: search, selects, buttons above a live table ─────────────── */
+.rc-an-toolbar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: var(--rc-space-2);
+    padding: var(--rc-space-3) 20px; border-block-end: 1px solid var(--rc-border);
+}
+.rc-an-toolbar__grow { flex: 1 1 auto; }
+.rc-an-toolbar--bare { padding-inline: 0; padding-block-start: 0; border-block-end: 0; }
+.rc-an-summary--inline { padding: 0; }
+.rc-an-search {
+    display: inline-flex; align-items: center; gap: var(--rc-space-2);
+    block-size: 36px; min-inline-size: 240px; padding-inline: var(--rc-space-3);
+    border: 1px solid var(--rc-border-strong); border-radius: var(--rc-radius-control); background: var(--rc-card);
+}
+.rc-an-search:focus-within { box-shadow: 0 0 0 3px var(--rc-ring); border-color: var(--rc-blue); }
+.rc-an-search__icon { inline-size: 16px; block-size: 16px; color: var(--rc-ink-muted); flex: none; }
+.rc-an-search__input {
+    flex: 1 1 auto; min-inline-size: 0; border: 0; padding: 0; background: transparent;
+    font: var(--rc-type-body); color: var(--rc-ink); outline: none; box-shadow: none;
+}
+.rc-an-select {
+    block-size: 36px; padding-block: 0; padding-inline: var(--rc-space-3) var(--rc-space-6);
+    border: 1px solid var(--rc-border-strong); border-radius: var(--rc-radius-control);
+    background-color: var(--rc-card); font: var(--rc-type-body); color: var(--rc-ink);
+}
+.rc-an-select:focus { box-shadow: 0 0 0 3px var(--rc-ring); border-color: var(--rc-blue); outline: none; }
+
+/* Sortable column header */
+.rc-an-sort {
+    display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; cursor: pointer;
+    font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit;
+}
+.rc-an-sort:hover, .rc-an-sort--active { color: var(--rc-ink); }
+.rc-an-sort__icon { inline-size: 12px; block-size: 12px; }
+.rc-an-table .rc-num .rc-an-sort { flex-direction: row-reverse; }
+
+/* Two-line cell (name over email) */
+.rc-an-cell-sub { display: block; font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+.rc-an-cell-link { color: var(--rc-link); text-decoration: none; font-weight: 600; }
+.rc-an-cell-link:hover { text-decoration: underline; }
+
+/* Pager + footnote under a table */
+.rc-an-pager {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--rc-space-3);
+    padding: var(--rc-space-3) 20px; border-block-start: 1px solid var(--rc-border-soft);
+    font: var(--rc-type-caption); color: var(--rc-ink-muted);
+}
+.rc-an-pager__nav { display: inline-flex; align-items: center; gap: var(--rc-space-2); }
+.rc-an-pager__btn { block-size: 30px; }
+.rc-an-pager__btn:disabled { opacity: .45; cursor: default; }
+.rc-an-pager__icon { inline-size: 14px; block-size: 14px; }
+[dir="rtl"] .rc-an-pager__icon { transform: scaleX(-1); }
+
+/* Loading veil on a live table while Livewire answers */
+.rc-an-live { position: relative; transition: opacity .15s ease; }
+.rc-an-live__busy { opacity: .55; transition: opacity .15s ease; }
+
+/* ── Forecast: "how it is computed" + per-kind rates ─────────────────── */
+.rc-an-explain { margin: 0; font: var(--rc-type-body); color: var(--rc-ink-muted); line-height: 1.55; }
+.rc-an-explain + .rc-an-explain { margin-block-start: var(--rc-space-2); }
+
+/* ── Reports library ─────────────────────────────────────────────────── */
+.rc-report-grid {
+    display: grid; gap: var(--rc-space-4);
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); align-items: start;
+}
+.rc-report-cat {
+    display: flex; flex-direction: column; background: var(--rc-card);
+    border: 1px solid var(--rc-border); border-radius: var(--rc-radius-card); box-shadow: var(--rc-shadow-card); overflow: hidden;
+}
+.rc-report-cat__head {
+    display: flex; align-items: baseline; justify-content: space-between; gap: var(--rc-space-2);
+    padding: var(--rc-space-3) var(--rc-space-4); border-block-end: 1px solid var(--rc-border);
+}
+.rc-report-cat__title { margin: 0; font: var(--rc-type-subh); color: var(--rc-ink); }
+.rc-report-cat__count { font: var(--rc-type-caption); color: var(--rc-ink-muted); white-space: nowrap; }
+.rc-report-cat__list { margin: 0; padding: 0; list-style: none; }
+.rc-report {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--rc-space-3);
+    padding: var(--rc-space-3) var(--rc-space-4); border-block-end: 1px solid var(--rc-border-soft);
+}
+.rc-report:last-child { border-block-end: 0; }
+.rc-report__text { display: flex; flex-direction: column; gap: 2px; min-inline-size: 0; }
+.rc-report__title { font: var(--rc-type-body-strong); color: var(--rc-ink); }
+.rc-report__body { font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+.rc-report__run { flex: none; block-size: 30px; }
+.rc-report__icon { inline-size: 14px; block-size: 14px; }
+.rc-report--off .rc-report__title { color: var(--rc-ink-muted); }
+.rc-report__off {
+    flex: none; padding: 2px var(--rc-space-2); border-radius: var(--rc-radius-pill);
+    background: var(--rc-gray-bg); color: var(--rc-gray-ink); font: var(--rc-type-label); white-space: nowrap;
+}
+
+/* A note under a flush (edge-to-edge table) card keeps the card's inner gutter */
+.rc-an-card--flush .rc-an-card__note { padding: var(--rc-space-3) 20px; margin: 0; }
+
+/* Cells that must not wrap (dates) */
+.rc-an-table .rc-an-nowrap { white-space: nowrap; }
+
+/* =========================================================================
+   analytics-subscribers.css — layout helpers for Analytics › Subscribers
+   (Acquisition · Order funnel · Revenue · Lifetime value, + the Overview
+   plan × frequency table fit). Layout only: every colour, type ramp, space
+   and radius is a theme token.
+   TOKENS: --rc-space-1/2/3/4/6 --rc-type-label --rc-type-caption --rc-type-h --rc-type-kpi
+           --rc-type-body-strong --rc-type-subh --rc-ink --rc-ink-muted --rc-border --rc-border-soft
+           --rc-surface-sunk --rc-radius-card
+   ========================================================================= */
+
+/* Two panels side by side inside one card (acquisition by product). */
+.rc-ans-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rc-space-4) var(--rc-space-6); }
+.rc-ans-pair__col { display: flex; flex-direction: column; gap: var(--rc-space-2); min-inline-size: 0; }
+
+/* A small heading row above a panel/chart: label · value. */
+.rc-ans-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--rc-space-2); }
+.rc-ans-head__label { font: var(--rc-type-label); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--rc-ink-muted); }
+[dir="rtl"] .rc-ans-head__label { text-transform: none; letter-spacing: normal; }
+.rc-ans-head__title { font: var(--rc-type-body-strong); color: var(--rc-ink); }
+.rc-ans-head__value { font: var(--rc-type-body-strong); color: var(--rc-ink); white-space: nowrap; }
+
+/* Three small charts in a row (revenue: orders · revenue · AOV). */
+.rc-ans-trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--rc-space-4) var(--rc-space-6); }
+.rc-ans-trio__cell { display: flex; flex-direction: column; gap: var(--rc-space-2); min-inline-size: 0; }
+
+/* A KPI band inside a card, divided from what follows. */
+.rc-ans-band { padding-block-end: var(--rc-space-4); border-block-end: 1px solid var(--rc-border-soft); }
+.rc-ans-band.rc-an-kpi-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.rc-ans-band .rc-an-mini__value { font: var(--rc-type-kpi); }
+
+/* Funnel stage headings. */
+.rc-ans-stage { display: flex; flex-direction: column; gap: var(--rc-space-2); }
+.rc-ans-stage + .rc-ans-stage { padding-block-start: var(--rc-space-3); border-block-start: 1px solid var(--rc-border-soft); }
+
+/* A caption under a flush (edge-to-edge) table. */
+.rc-ans-flush-note { margin: 0; padding: var(--rc-space-3) 20px; font: var(--rc-type-caption); color: var(--rc-ink-muted); border-block-start: 1px solid var(--rc-border-soft); }
+
+/* Lifetime value summary sentence. */
+.rc-ans-summary {
+    display: flex; flex-direction: column; gap: var(--rc-space-1);
+    padding: var(--rc-space-4) 20px; background: var(--rc-surface-sunk);
+    border: 1px solid var(--rc-border); border-radius: var(--rc-radius-card);
+}
+.rc-ans-summary__lead { margin: 0; font: var(--rc-type-subh); color: var(--rc-ink); }
+.rc-ans-summary__lead strong { font: var(--rc-type-h); }
+.rc-ans-summary__note { margin: 0; font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+
+/* Tables that must fit a half-width card: tighter cells, wrapping headers and labels. */
+.rc-an-table.rc-ans-fit th,
+.rc-an-table.rc-ans-fit td { padding-inline: 10px; }
+.rc-an-table.rc-ans-fit th:first-child,
+.rc-an-table.rc-ans-fit td:first-child { padding-inline-start: 16px; }
+.rc-an-table.rc-ans-fit th:last-child,
+.rc-an-table.rc-ans-fit td:last-child { padding-inline-end: 16px; }
+.rc-an-table.rc-ans-fit th { white-space: normal; overflow-wrap: anywhere; }
+.rc-an-table.rc-ans-fit .rc-strong-cell { white-space: normal; overflow-wrap: anywhere; }
+
+@media (max-width: 1100px) {
+    .rc-ans-trio { grid-template-columns: minmax(0, 1fr); }
+    .rc-ans-band.rc-an-kpi-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+    .rc-ans-pair, .rc-ans-band.rc-an-kpi-row { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* analytics.css — the Analytics module: page shell, cards, the rc.chart.*
    components and their ENTRANCE MOTION.
    TOKENS: --rc-card --rc-bg --rc-border --rc-border-soft --rc-border-strong
