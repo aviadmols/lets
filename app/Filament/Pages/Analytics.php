@@ -2,24 +2,37 @@
 
 namespace App\Filament\Pages;
 
-use App\Domain\Dashboard\AnalyticsMetrics;
-use App\Domain\Dashboard\PaymentMetrics;
+use App\Domain\Analytics\Context;
+use App\Domain\Analytics\FilterOptions;
+use App\Domain\Analytics\Filters;
+use App\Domain\Analytics\Granularity;
+use App\Domain\Analytics\Period;
 use App\Filament\Concerns\ShopScopedScreen;
-use App\Filament\Resources\SubscriptionResource;
-use App\Support\Ui\Money;
+use App\Filament\Pages\Analytics\ScreenRegistry;
+use App\Filament\Pages\Analytics\Screens\AnalyticsScreen;
+use App\Support\Tenant;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
-use Illuminate\Support\Carbon;
+use Livewire\Attributes\Url;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * Analytics — subscription KPIs + the subscribers trend (the Loop-style
- * overview): Active subscribers / subscriptions / product quantity / MRR cards,
- * and a daily chart of the active line with new-vs-cancelled bars.
+ * Analytics — the module SHELL. One sidebar item; inside it, section tabs
+ * (Subscribers · Cohorts · Payments · Products · Upsells · Cancellations ·
+ * Forecast · Reports), sub-tab pills, the date range / compare / export
+ * header and the filter chips. The screens themselves are plain classes
+ * resolved through ScreenRegistry (one file set per screen) and drawn as
+ * Blade partials inside this page.
  *
- * RENDERS ONLY: AnalyticsMetrics computes; this page turns the series into SVG
- * GEOMETRY (points, rects, ticks) so the Blade draws without a line of JS — no
- * chart library, works offline, prints, and flips cleanly under RTL (the time
- * axis stays LTR like every date in the admin).
+ * ALL STATE IS IN THE URL (#[Url]) — section, sub-tab, range, custom dates,
+ * compare, filter chips, per-chart granularity and screen options — so a view
+ * is a link and survives a reload. Every value read back from the URL is
+ * validated (ScreenRegistry, Period, Filters, Granularity, AnalyticsScreen::OPTIONS);
+ * a hand-edited link opens the nearest sensible screen, never an error.
+ *
+ * No chart library, no JS: geometry is computed in PHP (ChartGeometry), drawn
+ * as SVG attributes, animated by CSS. Tenant law: every query class reads
+ * BelongsToShop models under the bound shop.
  */
 class Analytics extends Page
 {
@@ -34,35 +47,43 @@ class Analytics extends Page
 
     protected static ?int $navigationSort = -5; // right under Home
 
-    /** Selectable ranges, in days. */
-    public const RANGES = [
-        'week' => 7,
-        'month' => 30,
-        'quarter' => 90,
-    ];
+    /** Characters that make a CSV cell a formula in a spreadsheet (CSV injection). */
+    public const CSV_FORMULA_PREFIXES = ['=', '+', '-', '@', "\t", "\r"];
 
-    public const DEFAULT_RANGE = 'month';
+    #[Url(as: 'section', history: true)]
+    public string $section = ScreenRegistry::DEFAULT_SECTION;
 
-    // --- SVG geometry (viewBox units; CSS scales the box responsively) ---
-    private const W = 1000;
+    #[Url(as: 'tab', history: true)]
+    public string $sub = '';
 
-    private const H = 320;
+    #[Url]
+    public string $range = Period::DEFAULT_RANGE;
 
-    private const PAD_START = 46;   // room for the line-axis labels
+    #[Url]
+    public string $compare = Period::DEFAULT_COMPARE;
 
-    private const PAD_END = 34;     // room for the bar-axis labels
+    #[Url]
+    public ?string $from = null;
 
-    private const LINE_TOP = 16;
+    #[Url]
+    public ?string $to = null;
 
-    private const LINE_BOTTOM = 180; // the active line lives in the top band
+    /** @var array<string, list<string>> filter chips (?f[plans][]=3) */
+    #[Url(as: 'f')]
+    public array $filters = [];
 
-    private const BAR_ZERO = 250;    // bars grow up (new) / down (cancelled) from here
+    /** @var array<string, string> chart id => granularity (?g[subscribers_trend]=weekly) */
+    #[Url(as: 'g')]
+    public array $grains = [];
 
-    private const BAR_MAX = 52;      // tallest bar, in units
+    /** @var array<string, string> screen option => value (?o[unit]=revenue) */
+    #[Url(as: 'o')]
+    public array $options = [];
 
-    private const TICK_Y = 312;
+    /** The custom-range inputs in the date menu (applied explicitly, not live). */
+    public ?string $customFrom = null;
 
-    public string $range = self::DEFAULT_RANGE;
+    public ?string $customTo = null;
 
     public static function getNavigationLabel(): string
     {
@@ -74,255 +95,188 @@ class Analytics extends Page
         return __('analytics.title');
     }
 
-    public function selectRange(string $range): void
+    /** The shell draws its own header (title + meta + range/compare/export). */
+    public function getHeading(): string|Htmlable
     {
-        if (array_key_exists($range, self::RANGES)) {
-            $this->range = $range;
+        return '';
+    }
+
+    public function mount(): void
+    {
+        $this->normalize();
+        $this->customFrom = $this->period()->start()->format(Period::DATE_FORMAT);
+        $this->customTo = $this->period()->end()->format(Period::DATE_FORMAT);
+    }
+
+    // === Actions (every one re-validates; the URL follows) ===
+
+    public function go(string $section, ?string $sub = null): void
+    {
+        $this->section = ScreenRegistry::section($section);
+        $this->sub = ScreenRegistry::subtab($this->section, $sub);
+        $this->options = [];
+    }
+
+    public function setRange(string $range): void
+    {
+        if ($range === Period::RANGE_CUSTOM || ! array_key_exists($range, Period::RANGES)) {
+            return;
+        }
+        $this->range = $range;
+        $this->from = null;
+        $this->to = null;
+        $this->grains = [];
+    }
+
+    public function applyCustomRange(): void
+    {
+        $period = Period::fromInput(Period::RANGE_CUSTOM, $this->compare, $this->customFrom, $this->customTo);
+        if ($period->range !== Period::RANGE_CUSTOM) {
+            return; // unreadable dates — keep the current window
+        }
+        $this->range = Period::RANGE_CUSTOM;
+        $this->from = $period->start()->format(Period::DATE_FORMAT);
+        $this->to = $period->end()->format(Period::DATE_FORMAT);
+        $this->grains = [];
+    }
+
+    public function setCompare(string $compare): void
+    {
+        if (in_array($compare, Period::COMPARES, true)) {
+            $this->compare = $compare;
         }
     }
 
-    public function rangeDays(): int
+    public function toggleFilter(string $dimension, string $value): void
     {
-        return self::RANGES[$this->range] ?? self::RANGES[self::DEFAULT_RANGE];
+        if (! in_array($dimension, Filters::APPLIED, true)) {
+            return;
+        }
+        $current = array_map('strval', (array) ($this->filters[$dimension] ?? []));
+        $current = in_array($value, $current, true)
+            ? array_values(array_diff($current, [$value]))
+            : [...$current, $value];
+
+        $this->filters = Filters::fromInput([...$this->filters, $dimension => $current])->toArray();
     }
 
-    /** @return array<string, mixed> the computed metric payload (memoized per render). */
-    public function metrics(): array
+    public function clearFilter(string $dimension): void
     {
-        return $this->metricsMemo ??= AnalyticsMetrics::forRange($this->rangeDays());
+        unset($this->filters[$dimension]);
     }
 
-    /** @var array<string, mixed>|null */
-    private ?array $metricsMemo = null;
-
-    // === KPI cards ===
-
-    // === Payments (the money half) ===
-
-    /**
-     * What the shop actually collected in the selected window.
-     *
-     * Kept apart from the subscriber KPIs above because it answers a different
-     * question: those describe the book, these describe whether it is being
-     * billed. A merchant reading "120 active subscriptions" with an 80% success
-     * rate is looking at a problem the first number alone would have hidden.
-     *
-     * @return list<array{label: string, value: string, tone: string}>
-     */
-    public function paymentKpis(): array
+    public function setGrain(string $chartId, string $grain): void
     {
-        $p = $this->payments();
-
-        return [
-            ['label' => 'analytics.payments.attempted', 'value' => Money::format($p['attempted']), 'tone' => 'plain'],
-            ['label' => 'analytics.payments.realized', 'value' => Money::format($p['realized']), 'tone' => 'good'],
-            ['label' => 'analytics.payments.success_rate', 'value' => Money::number($p['success_rate']).'%', 'tone' => 'good'],
-            ['label' => 'analytics.payments.retrying', 'value' => Money::format($p['retrying']), 'tone' => 'warn'],
-            ['label' => 'analytics.payments.lost', 'value' => Money::format($p['lost']), 'tone' => 'stop'],
-        ];
+        if (preg_match('/^[a-z0-9_]{1,40}$/', $chartId) && Granularity::tryFrom($grain) !== null) {
+            $this->grains[$chartId] = $grain;
+        }
     }
 
-    /** @return array<string, mixed> */
-    public function payments(): array
+    public function setOption(string $key, string $value): void
     {
-        return $this->paymentsMemo ??= PaymentMetrics::snapshot($this->rangeDays());
+        $allowed = $this->screen()->options()[$key] ?? null;
+        if ($allowed !== null && in_array($value, $allowed, true)) {
+            $this->options[$key] = $value;
+        }
     }
 
-    /** @var array<string, mixed>|null */
-    private ?array $paymentsMemo = null;
-
-    /**
-     * Realized vs lost per month, as stacked bars — the shape of the year.
-     *
-     * Geometry only, in the same viewBox discipline as the trend chart above:
-     * every colour is a class, nothing is styled inline.
-     *
-     * @return array{bars: list<array{x: float, realized_y: float, realized_h: float, lost_y: float, lost_h: float, label: string, rate: string, title: string}>, width: int, height: int, zero_y: int, has_data: bool}
-     */
-    public function paymentChart(): array
+    /** CSV of what the current screen offers for export. */
+    public function export(): ?StreamedResponse
     {
-        $months = PaymentMetrics::monthly();
-        $n = count($months);
-
-        $plotW = self::W - self::PAD_START - self::PAD_END;
-        $slot = $plotW / max(1, $n);
-        $barW = min(46, $slot * 0.55);
-
-        $top = 30;          // room for the per-month rate label
-        $zero = 250;        // the baseline both stacks grow from
-        $maxUnits = $zero - $top;
-
-        $peak = 0.0;
-        foreach ($months as $m) {
-            $peak = max($peak, $m['realized'] + $m['lost']);
+        $rows = $this->screen()->export($this->context());
+        if ($rows === null) {
+            return null;
         }
 
-        $scale = fn (float $v): float => $peak > 0 ? round($v * $maxUnits / $peak, 1) : 0.0;
+        $name = 'analytics-'.$this->section.'-'.$this->sub.'-'.$this->period()->key().'.csv';
 
-        $bars = [];
-        foreach ($months as $i => $m) {
-            $x = round(self::PAD_START + $i * $slot + ($slot - $barW) / 2, 1);
-            $lostH = $scale($m['lost']);
-            $realizedH = $scale($m['realized']);
-
-            $bars[] = [
-                'x' => $x,
-                'w' => round($barW, 1),
-                // Lost sits ON TOP of realized, so the green block always starts
-                // at the baseline and months stay comparable at a glance.
-                'realized_y' => round($zero - $realizedH, 1),
-                'realized_h' => $realizedH,
-                'lost_y' => round($zero - $realizedH - $lostH, 1),
-                'lost_h' => $lostH,
-                'label' => $m['label'],
-                'rate' => $m['rate'] > 0 ? $m['rate'].'%' : '',
-                'title' => $m['label'].' · '.Money::format($m['realized']).' / '.Money::format($m['realized'] + $m['lost']),
-            ];
-        }
-
-        return [
-            'bars' => $bars,
-            'width' => self::W,
-            'height' => 300,
-            'zero_y' => $zero,
-            'has_data' => $peak > 0,
-        ];
-    }
-
-    /**
-     * EVERY scheduled charge ahead, by day — not a 30-day window. A store of
-     * yearly members has most of its money past any window, and a table that
-     * stopped at day 30 read as "this is everything" while hiding it.
-     *
-     * Each row links into the subscriptions list with the date filter already
-     * set to that single day — which is the whole point: a number is only useful
-     * if you can open it and see the people inside it.
-     *
-     * @return list<array{date: string, label: string, count: int, amount: string, url: string}>
-     */
-    public function upcoming(): array
-    {
-        return array_map(static fn (array $day): array => [
-            'date' => $day['date'],
-            'label' => $day['label'],
-            'count' => $day['count'],
-            'amount' => Money::format($day['amount']),
-            'url' => SubscriptionResource::getUrl('index', [
-                'tableFilters' => ['next_charge_at' => ['from' => $day['date'], 'until' => $day['date']]],
-            ]),
-        ], PaymentMetrics::upcoming(null));
-    }
-
-    /** @return list<array{label: string, value: string}> */
-    public function kpis(): array
-    {
-        $m = $this->metrics();
-
-        return [
-            ['label' => 'analytics.kpi.active_subscribers', 'value' => Money::number($m['active_subscribers'])],
-            ['label' => 'analytics.kpi.active_subscriptions', 'value' => Money::number($m['active_subscriptions'])],
-            ['label' => 'analytics.kpi.products_quantity', 'value' => Money::number($m['products_quantity'])],
-            ['label' => 'analytics.kpi.mrr', 'value' => Money::format($m['mrr'])],
-        ];
-    }
-
-    // === Chart geometry (the Blade draws, this computes) ===
-
-    /**
-     * @return array{
-     *   width: int, height: int,
-     *   line_points: string,
-     *   dots: list<array{x: float, y: float, title: string}>,
-     *   bars: list<array{x: float, y: float, w: float, h: float, kind: string, title: string}>,
-     *   y_ticks: list<array{y: float, label: string}>,
-     *   bar_ticks: list<array{y: float, label: string}>,
-     *   x_ticks: list<array{x: float, label: string}>,
-     *   zero_y: int,
-     *   has_data: bool
-     * }
-     */
-    public function chart(): array
-    {
-        $trend = $this->metrics()['trend'];
-        $n = count($trend);
-
-        $plotW = self::W - self::PAD_START - self::PAD_END;
-        $x = fn (int $i): float => round(self::PAD_START + ($n > 1 ? $i * $plotW / ($n - 1) : $plotW / 2), 1);
-
-        // Line scale: pad the active range by one so a flat line floats mid-band.
-        $actives = array_column($trend, 'active');
-        $min = max(0, min($actives ?: [0]) - 1);
-        $max = max($actives ?: [0]) + 1;
-        $span = max(1, $max - $min);
-        $yLine = fn (int $v): float => round(self::LINE_BOTTOM - ($v - $min) * (self::LINE_BOTTOM - self::LINE_TOP) / $span, 1);
-
-        // Bar scale: shared for new + cancelled so their heights compare honestly.
-        $maxBar = max(1, max(array_map(
-            fn (array $d): int => max((int) $d['new'], (int) $d['cancelled']),
-            $trend ?: [['new' => 0, 'cancelled' => 0]],
-        )));
-        $barH = fn (int $v): float => round($v * self::BAR_MAX / $maxBar, 1);
-        $barW = round(min(18, $plotW / max(1, $n) * 0.5), 1);
-
-        $points = [];
-        $dots = [];
-        $bars = [];
-        foreach ($trend as $i => $day) {
-            $px = $x($i);
-            $py = $yLine((int) $day['active']);
-            $points[] = $px.','.$py;
-            $label = Carbon::parse($day['date'])->format('d M');
-            $dots[] = [
-                'x' => $px, 'y' => $py,
-                'title' => $label.' — '.__('analytics.chart.active_tip', ['count' => $day['active']]),
-            ];
-
-            if ((int) $day['new'] > 0) {
-                $h = $barH((int) $day['new']);
-                $bars[] = [
-                    'x' => $px - $barW / 2, 'y' => self::BAR_ZERO - $h, 'w' => $barW, 'h' => $h,
-                    'kind' => 'new',
-                    'title' => $label.' — '.__('analytics.chart.new_tip', ['count' => $day['new']]),
-                ];
+        return response()->streamDownload(function () use ($rows): void {
+            $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel reads Hebrew
+            fputcsv($out, array_map(self::csvCell(...), $rows['headers']));
+            foreach ($rows['rows'] as $row) {
+                fputcsv($out, array_map(self::csvCell(...), $row));
             }
-            if ((int) $day['cancelled'] > 0) {
-                $h = $barH((int) $day['cancelled']);
-                $bars[] = [
-                    'x' => $px - $barW / 2, 'y' => self::BAR_ZERO, 'w' => $barW, 'h' => $h,
-                    'kind' => 'churn',
-                    'title' => $label.' — '.__('analytics.chart.cancelled_tip', ['count' => $day['cancelled']]),
-                ];
-            }
+            fclose($out);
+        }, $name, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    public static function csvCell(mixed $value): string
+    {
+        $value = (string) ($value ?? '');
+
+        return $value !== '' && in_array($value[0], self::CSV_FORMULA_PREFIXES, true) && ! is_numeric($value)
+            ? "'".$value
+            : $value;
+    }
+
+    // === Read-side for the view ===
+
+    public function period(): Period
+    {
+        return $this->periodMemo ??= Period::fromInput($this->range, $this->compare, $this->from, $this->to);
+    }
+
+    private ?Period $periodMemo = null;
+
+    public function context(): Context
+    {
+        return new Context(
+            $this->period(),
+            Filters::fromInput($this->filters),
+            array_map('strval', array_filter($this->grains, 'is_string')),
+            array_map('strval', array_filter($this->options, 'is_string')),
+        );
+    }
+
+    public function screen(): AnalyticsScreen
+    {
+        return ScreenRegistry::screen($this->section, $this->sub);
+    }
+
+    /** @return array<string, array<string, string>> */
+    public function filterOptions(): array
+    {
+        return $this->filterOptionsMemo ??= app(FilterOptions::class)->all();
+    }
+
+    /** @var array<string, array<string, string>>|null */
+    private ?array $filterOptionsMemo = null;
+
+    /** "shop.example · WooCommerce · 31 Aug – 29 Sep 2026 · compared with 1 – 30 Aug 2026" */
+    public function metaLine(): string
+    {
+        $shop = Tenant::current();
+        $parts = [];
+        if ($shop !== null) {
+            $parts[] = (string) ($shop->woocommerce_domain ?: $shop->shopify_domain ?: $shop->name);
+            $parts[] = __('analytics.platform.'.($shop->platform === 'woocommerce' ? 'woocommerce' : 'shopify'));
+        }
+        $parts[] = $this->period()->label();
+        if ($comparison = $this->period()->comparison()) {
+            $parts[] = __('analytics.compare.compared_with', ['span' => $comparison->label()]);
         }
 
-        // Axis ticks: line min/mid/max at the start edge; bar 0/max at the end
-        // edge; ~6 date ticks along the bottom.
-        $yTicks = [
-            ['y' => $yLine($min), 'label' => (string) $min],
-            ['y' => $yLine((int) round(($min + $max) / 2)), 'label' => (string) round(($min + $max) / 2)],
-            ['y' => $yLine($max), 'label' => (string) $max],
-        ];
-        $barTicks = [
-            ['y' => self::BAR_ZERO, 'label' => '0'],
-            ['y' => self::BAR_ZERO - self::BAR_MAX, 'label' => (string) $maxBar],
-        ];
-        $xTicks = [];
-        $step = max(1, (int) ceil($n / 6));
-        for ($i = 0; $i < $n; $i += $step) {
-            $xTicks[] = ['x' => $x($i), 'label' => Carbon::parse($trend[$i]['date'])->format('d M')];
-        }
+        return implode(' · ', $parts);
+    }
 
-        return [
-            'width' => self::W,
-            'height' => self::H,
-            'line_points' => implode(' ', $points),
-            'dots' => $dots,
-            'bars' => $bars,
-            'y_ticks' => $yTicks,
-            'bar_ticks' => $barTicks,
-            'x_ticks' => $xTicks,
-            'zero_y' => self::BAR_ZERO,
-            'has_data' => $n > 0 && (max($actives ?: [0]) > 0 || $bars !== []),
-        ];
+    public function rendering(): void
+    {
+        $this->normalize();
+        $this->periodMemo = null;
+    }
+
+    /** Snap URL state onto known values before anything reads it. */
+    private function normalize(): void
+    {
+        $this->section = ScreenRegistry::section($this->section);
+        $this->sub = ScreenRegistry::subtab($this->section, $this->sub);
+        $this->filters = Filters::fromInput($this->filters)->toArray();
+        if (! array_key_exists($this->range, Period::RANGES)) {
+            $this->range = Period::DEFAULT_RANGE;
+        }
+        if (! in_array($this->compare, Period::COMPARES, true)) {
+            $this->compare = Period::DEFAULT_COMPARE;
+        }
     }
 }

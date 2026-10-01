@@ -1,189 +1,129 @@
 {{--
-    Analytics — subscription KPIs + the subscribers trend (Loop-style overview).
-    TOKENS: .rc-kpi-grid/.rc-section/.rc-pp-segment/.rc-chart* (published theme).
-    ZERO inline CSS; the SVG is geometry only — every colour comes from classes.
-    Renders only: AnalyticsMetrics aggregates, Analytics::chart() lays out.
+    Analytics — the module shell: header (title, meta, range · compare · export), section tabs,
+    sub-tab pills + filter chips, then the current screen's partial (ScreenRegistry).
+    TOKENS (components/analytics.css): .rc-an .rc-an__head/__title-block/__title/__meta/__actions/__bar/__chips
+            .rc-an-btn .rc-an-menu* .rc-an-tabs .rc-seg .rc-chip .rc-an-body .rc-motion
+    ZERO inline CSS. Every state change is a Livewire action; the URL follows (#[Url]).
+    The body carries a wire:key of section+tab so switching screens swaps in NEW nodes
+    (their entrance animation plays), and every chart keys itself by its own data.
 --}}
+@php
+    use App\Domain\Analytics\Filters;
+    use App\Domain\Analytics\Period;
+    use App\Filament\Pages\Analytics\ScreenRegistry;
+
+    $period = $this->period();
+    $screen = $this->screen();
+    $context = $this->context();
+    $data = $screen->data($context);
+    $canExport = ! $screen->isPlaceholder();
+@endphp
 <x-filament-panels::page>
-    <div class="rc-stack">
+    <div class="rc-an rc-motion">
+        {{-- ── Header ─────────────────────────────────────────────── --}}
+        <header class="rc-an__head">
+            <div class="rc-an__title-block">
+                <h1 class="rc-an__title">{{ __('analytics.title') }}</h1>
+                <p class="rc-an__meta">{{ $this->metaLine() }}</p>
+            </div>
 
-        {{-- KPI cards --}}
-        <div class="rc-kpi-grid">
-            @foreach($this->kpis() as $kpi)
-                <x-rc.kpi :label="$kpi['label']" :value="$kpi['value']" />
-            @endforeach
-        </div>
-
-        {{-- Subscribers trend --}}
-        <div class="rc-section">
-            <div class="rc-row rc-row--between">
-                <div class="rc-section__title">{{ __('analytics.trend.title') }}</div>
-                <div class="rc-pp-segment" role="group" aria-label="{{ __('analytics.trend.period') }}">
-                    @foreach(\App\Filament\Pages\Analytics::RANGES as $key => $days)
-                        <button type="button"
-                                class="rc-pp-segment__item {{ $range === $key ? 'rc-pp-segment__item--active' : '' }}"
-                                aria-pressed="{{ $range === $key ? 'true' : 'false' }}"
-                                wire:click="selectRange('{{ $key }}')">
-                            {{ __('analytics.trend.range.'.$key) }}
+            <div class="rc-an__actions">
+                {{-- Date range --}}
+                <x-filament::dropdown placement="bottom-end" width="xs">
+                    <x-slot name="trigger">
+                        <button type="button" class="rc-an-btn">
+                            <x-heroicon-o-calendar class="rc-an-btn__icon" />
+                            {{ $period->range === Period::RANGE_CUSTOM ? $period->label() : __('analytics.range.'.$period->range) }}
+                            <x-heroicon-m-chevron-down class="rc-an-btn__caret" />
                         </button>
+                    </x-slot>
+                    <div class="rc-an-menu" role="menu">
+                        @foreach(array_keys(Period::RANGES) as $preset)
+                            @continue($preset === Period::RANGE_CUSTOM)
+                            <button type="button" role="menuitemradio" aria-checked="{{ $period->range === $preset ? 'true' : 'false' }}"
+                                    @class(['rc-an-menu__item', 'rc-an-menu__item--active' => $period->range === $preset])
+                                    wire:click="setRange('{{ $preset }}')" x-on:click="close">
+                                {{ __('analytics.range.'.$preset) }}
+                                @if($period->range === $preset)<x-heroicon-m-check class="rc-an-menu__check" />@endif
+                            </button>
+                        @endforeach
+                        <div class="rc-an-menu__sep"></div>
+                        <form class="rc-an-menu__custom" wire:submit="applyCustomRange">
+                            <label class="rc-an-menu__field">{{ __('analytics.range.from') }}
+                                <input type="date" class="rc-an-menu__input" wire:model="customFrom" max="{{ now()->format(Period::DATE_FORMAT) }}">
+                            </label>
+                            <label class="rc-an-menu__field">{{ __('analytics.range.to') }}
+                                <input type="date" class="rc-an-menu__input" wire:model="customTo" max="{{ now()->format(Period::DATE_FORMAT) }}">
+                            </label>
+                            <button type="submit" class="rc-an-btn rc-an-menu__apply" x-on:click="close">{{ __('analytics.range.apply') }}</button>
+                        </form>
+                    </div>
+                </x-filament::dropdown>
+
+                {{-- Compare --}}
+                <x-filament::dropdown placement="bottom-end" width="xs">
+                    <x-slot name="trigger">
+                        <button type="button" class="rc-an-btn rc-an-btn--quiet">
+                            {{ __('analytics.compare.label', ['mode' => __('analytics.compare.'.$period->compare)]) }}
+                            <x-heroicon-m-chevron-down class="rc-an-btn__caret" />
+                        </button>
+                    </x-slot>
+                    <div class="rc-an-menu" role="menu">
+                        @foreach(Period::COMPARES as $mode)
+                            <button type="button" role="menuitemradio" aria-checked="{{ $period->compare === $mode ? 'true' : 'false' }}"
+                                    @class(['rc-an-menu__item', 'rc-an-menu__item--active' => $period->compare === $mode])
+                                    wire:click="setCompare('{{ $mode }}')" x-on:click="close">
+                                {{ __('analytics.compare.'.$mode) }}
+                                @if($period->compare === $mode)<x-heroicon-m-check class="rc-an-menu__check" />@endif
+                            </button>
+                        @endforeach
+                    </div>
+                </x-filament::dropdown>
+
+                {{-- Export (CSV of the current screen) --}}
+                <button type="button" class="rc-an-btn" wire:click="export" @disabled(! $canExport)
+                        @if(! $canExport) title="{{ __('analytics.export_unavailable') }}" @endif>
+                    <x-heroicon-o-arrow-down-tray class="rc-an-btn__icon" />
+                    {{ __('analytics.export') }}
+                </button>
+            </div>
+        </header>
+
+        {{-- ── Section tabs ───────────────────────────────────────── --}}
+        <nav class="rc-an-tabs" aria-label="{{ __('analytics.sections_label') }}">
+            @foreach(ScreenRegistry::sections() as $key)
+                <a href="{{ \App\Filament\Pages\Analytics::getUrl(['section' => $key]) }}"
+                   wire:click.prevent="go('{{ $key }}')"
+                   @class(['rc-an-tabs__tab', 'rc-an-tabs__tab--active' => $section === $key])
+                   @if($section === $key) aria-current="page" @endif>{{ __('analytics.sections.'.$key) }}</a>
+            @endforeach
+        </nav>
+
+        {{-- ── Sub-tabs + filter chips ────────────────────────────── --}}
+        <div class="rc-an__bar">
+            @if(ScreenRegistry::hasSubtabs($section))
+                <div class="rc-seg" role="tablist" aria-label="{{ __('analytics.sections.'.$section) }}">
+                    @foreach(ScreenRegistry::subtabs($section) as $tab)
+                        <a href="{{ \App\Filament\Pages\Analytics::getUrl(['section' => $section, 'tab' => $tab]) }}"
+                           wire:click.prevent="go('{{ $section }}', '{{ $tab }}')" role="tab"
+                           aria-selected="{{ $sub === $tab ? 'true' : 'false' }}"
+                           @class(['rc-seg__item', 'rc-seg__item--active' => $sub === $tab])>{{ __('analytics.subtabs.'.$section.'.'.$tab) }}</a>
                     @endforeach
                 </div>
-            </div>
+            @endif
 
-            @php $chart = $this->chart(); @endphp
-            @if(! $chart['has_data'])
-                <x-rc.empty title="analytics.trend.empty" icon="heroicon-o-chart-bar" />
-            @else
-                {{-- The time axis reads left-to-right like every date in the admin. --}}
-                <div class="rc-chart rc-ltr">
-                    <svg viewBox="0 0 {{ $chart['width'] }} {{ $chart['height'] }}" role="img"
-                         aria-label="{{ __('analytics.trend.title') }}" preserveAspectRatio="xMidYMid meet">
-                        {{-- gridlines + axis labels for the active line --}}
-                        @foreach($chart['y_ticks'] as $tick)
-                            <line class="rc-chart__grid" x1="46" x2="{{ $chart['width'] - 34 }}" y1="{{ $tick['y'] }}" y2="{{ $tick['y'] }}" />
-                            <text class="rc-chart__tick" x="38" y="{{ $tick['y'] + 4 }}" text-anchor="end">{{ $tick['label'] }}</text>
-                        @endforeach
-
-                        {{-- the bars' zero line + right-edge scale --}}
-                        <line class="rc-chart__zero" x1="46" x2="{{ $chart['width'] - 34 }}" y1="{{ $chart['zero_y'] }}" y2="{{ $chart['zero_y'] }}" />
-                        @foreach($chart['bar_ticks'] as $tick)
-                            <text class="rc-chart__tick" x="{{ $chart['width'] - 26 }}" y="{{ $tick['y'] + 4 }}" text-anchor="start">{{ $tick['label'] }}</text>
-                        @endforeach
-
-                        {{-- new / cancelled bars (native <title> = the hover tooltip) --}}
-                        @foreach($chart['bars'] as $bar)
-                            <rect class="rc-chart__bar rc-chart__bar--{{ $bar['kind'] }}"
-                                  x="{{ $bar['x'] }}" y="{{ $bar['y'] }}" width="{{ $bar['w'] }}" height="{{ $bar['h'] }}" rx="2">
-                                <title>{{ $bar['title'] }}</title>
-                            </rect>
-                        @endforeach
-
-                        {{-- the active-subscriptions line + day dots --}}
-                        <polyline class="rc-chart__line" points="{{ $chart['line_points'] }}" />
-                        @foreach($chart['dots'] as $dot)
-                            <circle class="rc-chart__dot" cx="{{ $dot['x'] }}" cy="{{ $dot['y'] }}" r="3.5">
-                                <title>{{ $dot['title'] }}</title>
-                            </circle>
-                        @endforeach
-
-                        {{-- date ticks --}}
-                        @foreach($chart['x_ticks'] as $tick)
-                            <text class="rc-chart__tick" x="{{ $tick['x'] }}" y="312" text-anchor="middle">{{ $tick['label'] }}</text>
-                        @endforeach
-                    </svg>
-                </div>
-
-                <div class="rc-chart-legend">
-                    <span class="rc-chart-legend__item"><span class="rc-chart-legend__swatch rc-chart-legend__swatch--line"></span>{{ __('analytics.legend.active') }}</span>
-                    <span class="rc-chart-legend__item"><span class="rc-chart-legend__swatch rc-chart-legend__swatch--new"></span>{{ __('analytics.legend.new') }}</span>
-                    <span class="rc-chart-legend__item"><span class="rc-chart-legend__swatch rc-chart-legend__swatch--churn"></span>{{ __('analytics.legend.cancelled') }}</span>
-                </div>
-
-                {{-- An honest chart says what it is. --}}
-                <span class="rc-muted">{{ __('analytics.trend.note') }}</span>
+            @if($screen->filters() !== [])
+                @include('filament.pages.analytics.partials.chips', [
+                    'dimensions' => $screen->filters(),
+                    'chosen' => Filters::fromInput($filters),
+                    'choices' => $this->filterOptions(),
+                ])
             @endif
         </div>
 
-        {{--
-            PAYMENTS — the money half, read from the ledger.
-            The subscriber numbers above describe the book; these describe whether
-            it is actually being billed. Same range selector as the trend.
-        --}}
-        <div class="rc-section">
-            <div class="rc-section__title">{{ __('analytics.payments.title') }}</div>
-
-            <div class="rc-kpi-grid">
-                @foreach($this->paymentKpis() as $kpi)
-                    <x-rc.kpi :label="$kpi['label']" :value="$kpi['value']" />
-                @endforeach
-            </div>
-
-            <span class="rc-muted">{{ __('analytics.payments.note') }}</span>
-        </div>
-
-        {{-- Realized vs lost, month by month. --}}
-        <div class="rc-section">
-            <div class="rc-section__title">{{ __('analytics.payments.chart_title') }}</div>
-
-            @php $pc = $this->paymentChart(); @endphp
-            @if(! $pc['has_data'])
-                <x-rc.empty title="analytics.payments.empty" icon="heroicon-o-banknotes" />
-            @else
-                <div class="rc-chart rc-ltr">
-                    <svg viewBox="0 0 {{ $pc['width'] }} {{ $pc['height'] }}" role="img"
-                         aria-label="{{ __('analytics.payments.chart_title') }}" preserveAspectRatio="xMidYMid meet">
-                        <line class="rc-chart__axis" x1="0" y1="{{ $pc['zero_y'] }}"
-                              x2="{{ $pc['width'] }}" y2="{{ $pc['zero_y'] }}"></line>
-
-                        @foreach($pc['bars'] as $bar)
-                            @if($bar['realized_h'] > 0)
-                                <rect class="rc-chart__bar rc-chart__bar--new"
-                                      x="{{ $bar['x'] }}" y="{{ $bar['realized_y'] }}"
-                                      width="{{ $bar['w'] }}" height="{{ $bar['realized_h'] }}" rx="2">
-                                    <title>{{ $bar['title'] }}</title>
-                                </rect>
-                            @endif
-                            @if($bar['lost_h'] > 0)
-                                <rect class="rc-chart__bar rc-chart__bar--churn"
-                                      x="{{ $bar['x'] }}" y="{{ $bar['lost_y'] }}"
-                                      width="{{ $bar['w'] }}" height="{{ $bar['lost_h'] }}" rx="2">
-                                    <title>{{ $bar['title'] }}</title>
-                                </rect>
-                            @endif
-
-                            @if($bar['rate'] !== '')
-                                <text class="rc-chart__tick" x="{{ $bar['x'] + $bar['w'] / 2 }}"
-                                      y="{{ $bar['lost_y'] - 6 }}" text-anchor="middle">{{ $bar['rate'] }}</text>
-                            @endif
-
-                            <text class="rc-chart__tick" x="{{ $bar['x'] + $bar['w'] / 2 }}"
-                                  y="{{ $pc['zero_y'] + 20 }}" text-anchor="middle">{{ $bar['label'] }}</text>
-                        @endforeach
-                    </svg>
-                </div>
-
-                <div class="rc-chart-legend">
-                    <span class="rc-chart-legend__item"><span class="rc-chart-legend__swatch rc-chart-legend__swatch--new"></span>{{ __('analytics.payments.realized') }}</span>
-                    <span class="rc-chart-legend__item"><span class="rc-chart-legend__swatch rc-chart-legend__swatch--churn"></span>{{ __('analytics.payments.lost') }}</span>
-                </div>
-            @endif
-        </div>
-
-        {{--
-            WHAT IS ABOUT TO BE CHARGED, by day — ALL of it, however far out.
-            Every row is a link into the subscriptions list with the date filter
-            already set to that one day — a number is only useful if you can open
-            it and see the people in it. The list scrolls inside its own region
-            so a year of yearly members does not stretch the page.
-        --}}
-        <div class="rc-section">
-            <div class="rc-section__title">{{ __('analytics.payments.upcoming_title') }}</div>
-
-            @php $days = $this->upcoming(); @endphp
-            @if($days === [])
-                <x-rc.empty title="analytics.payments.upcoming_empty" icon="heroicon-o-calendar-days" />
-            @else
-                <div class="rc-scroll-region">
-                    <table class="rc-table">
-                        <thead>
-                            <tr>
-                                <th>{{ __('analytics.payments.col_date') }}</th>
-                                <th>{{ __('analytics.payments.col_count') }}</th>
-                                <th>{{ __('analytics.payments.col_amount') }}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach($days as $day)
-                                <tr wire:key="due-{{ $day['date'] }}">
-                                    <td><a href="{{ $day['url'] }}">{{ $day['label'] }}</a></td>
-                                    <td class="rc-ltr">{{ $day['count'] }}</td>
-                                    <td class="rc-ltr">{{ $day['amount'] }}</td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-            @endif
+        {{-- ── The screen ─────────────────────────────────────────── --}}
+        <div class="rc-an-body" wire:key="screen-{{ $section }}-{{ $sub }}">
+            @include($screen->view(), $data + ['context' => $context])
         </div>
     </div>
 </x-filament-panels::page>
