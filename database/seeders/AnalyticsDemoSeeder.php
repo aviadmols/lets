@@ -115,6 +115,9 @@ class AnalyticsDemoSeeder extends Seeder
             array_sum(array_map(static fn ($p): int => count($p['events']), $plans)),
             array_sum(array_map(static fn ($p): int => count($p['charges']), $plans)),
         ));
+
+        // Upsell activity (after-purchase funnel + account area) rides on these plans.
+        $this->call(AnalyticsUpsellDemoSeeder::class);
     }
 
     /** Simulate one subscription's life from $born until today. @return array<string, mixed> */
