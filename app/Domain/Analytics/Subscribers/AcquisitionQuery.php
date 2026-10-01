@@ -122,10 +122,7 @@ final class AcquisitionQuery
     /** @return list<array<string, mixed>> */
     private function inWindow(array $rows, Period $window): array
     {
-        $from = $window->start()->format('Y-m-d H:i:s');
-        $to = $window->end()->format('Y-m-d H:i:s');
-
-        return array_values(array_filter($rows, static fn (array $r): bool => $r['at'] >= $from && $r['at'] <= $to));
+        return MovementLog::inWindow($rows, $window);
     }
 
     /**

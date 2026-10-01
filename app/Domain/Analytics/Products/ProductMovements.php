@@ -69,6 +69,8 @@ final class ProductMovements
                     'title' => $line['title'],
                     'qty' => $row['qty'] * (float) $line['share'],
                     'mrr' => $row['mrr'] * (float) $line['share'],
+                    'dunning' => $row['dunning'] ?? null,
+                    'paired_at' => $row['paired_at'] ?? null,
                 ];
             }
         }
@@ -181,7 +183,7 @@ final class ProductMovements
         $from = $window->start()->format('Y-m-d H:i:s');
         $to = $window->end()->format('Y-m-d H:i:s');
         foreach ($this->lines as $line) {
-            if ($line['at'] >= $from && $line['at'] <= $to) {
+            if (MovementLog::countsIn($line, $from, $to)) { // the dunning churn rule
                 yield $line;
             }
         }

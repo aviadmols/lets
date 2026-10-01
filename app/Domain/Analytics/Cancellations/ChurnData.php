@@ -68,15 +68,16 @@ final class ChurnData
     }
 
     /**
+     * The cancellations that COUNT in $window — the same rule as every movement
+     * (MovementLog::countsIn): a payment-retry lapse recovered before the
+     * window ends is not a cancellation of that window.
+     *
      * @param  list<array<string, mixed>>  $rows
-     * @return list<array<string, mixed>> the rows inside $window
+     * @return list<array<string, mixed>>
      */
     public static function inWindow(array $rows, Period $window): array
     {
-        $from = $window->start()->format('Y-m-d H:i:s');
-        $to = $window->end()->format('Y-m-d H:i:s');
-
-        return array_values(array_filter($rows, static fn (array $r): bool => $r['at'] >= $from && $r['at'] <= $to));
+        return MovementLog::inWindow($rows, $window);
     }
 
     /** A Period for an arbitrary [start, end] day span (custom range, no compare). */

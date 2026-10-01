@@ -343,7 +343,8 @@ final class ReportDefinitions
     /** @return array{columns: list<string>, rows: iterable<list<mixed>>} */
     public function cancellationLogs(): array
     {
-        $rows = (new CancellationLog($this->filters))->between($this->period->start(), $this->period->end());
+        // The screen's rule: a payment-retry lapse recovered inside the range is not a cancellation.
+        $rows = MovementLog::inWindow((new CancellationLog($this->filters))->between($this->period->start(), $this->period->end()), $this->period);
 
         return [
             'columns' => ['date', 'subscription', 'customer', 'email', 'product', 'frequency', 'mrr', 'completed_orders', 'channel', 'reason'],

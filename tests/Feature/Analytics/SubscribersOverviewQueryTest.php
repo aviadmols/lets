@@ -169,10 +169,31 @@ final class SubscribersOverviewQueryTest extends TestCase
         $this->assertSame(MovementLog::NEW, MovementLog::classify('awaiting_first_payment', 'active'));
         $this->assertSame(MovementLog::PAUSED, MovementLog::classify('active', 'paused'));
         $this->assertSame(MovementLog::CANCELLED, MovementLog::classify('active', 'cancelled'));
-        $this->assertSame(MovementLog::CANCELLED, MovementLog::classify('active', 'failed'), 'Involuntary churn.');
+        $this->assertSame(MovementLog::CANCELLED, MovementLog::classify('active', 'failed'), 'Involuntary churn — a candidate, see countsIn().');
         $this->assertSame(MovementLog::EXPIRED, MovementLog::classify('active', 'completed'));
         $this->assertNull(MovementLog::classify('paused', 'cancelled'), 'Not in the book before or after.');
         $this->assertNull(MovementLog::classify('draft', 'cancelled'));
+
+        $this->assertSame(MovementLog::DUNNING_OUT, MovementLog::dunning('active', 'awaiting_payment'));
+        $this->assertSame(MovementLog::DUNNING_IN, MovementLog::dunning('failed', 'active'));
+        $this->assertNull(MovementLog::dunning('active', 'cancelled'), 'A voluntary cancellation is not dunning.');
+    }
+
+    /** The owner's churn rule, as pure arithmetic over window bounds. */
+    public function test_a_dunning_move_counts_by_where_the_plan_stands_at_the_window_edges(): void
+    {
+        [$from, $to] = ['2026-09-01 00:00:00', '2026-09-30 23:59:59'];
+        $out = static fn (string $at, ?string $back): array => ['at' => $at, 'dunning' => MovementLog::DUNNING_OUT, 'paired_at' => $back];
+        $in = static fn (string $at, ?string $lapsed): array => ['at' => $at, 'dunning' => MovementLog::DUNNING_IN, 'paired_at' => $lapsed];
+
+        $this->assertTrue(MovementLog::countsIn($out('2026-09-10 10:00:00', null), $from, $to), 'Never recovered → churn.');
+        $this->assertTrue(MovementLog::countsIn($out('2026-09-10 10:00:00', '2026-10-02 10:00:00'), $from, $to), 'Recovered only after the end → churn of this window.');
+        $this->assertFalse(MovementLog::countsIn($out('2026-09-10 10:00:00', '2026-09-20 10:00:00'), $from, $to), 'Recovered inside → not churn.');
+        $this->assertFalse(MovementLog::countsIn($in('2026-09-20 10:00:00', '2026-09-10 10:00:00'), $from, $to), '…and its recovery is not a reactivation.');
+        $this->assertTrue(MovementLog::countsIn($in('2026-09-20 10:00:00', '2026-08-10 10:00:00'), $from, $to), 'Lapsed at the start → reactivated.');
+        $this->assertTrue(MovementLog::countsIn($in('2026-09-20 10:00:00', null), $from, $to), 'Lapse older than the log → reactivated.');
+        $this->assertTrue(MovementLog::countsIn(['at' => '2026-09-10 10:00:00', 'dunning' => null], $from, $to), 'Any other move counts where it happened.');
+        $this->assertFalse(MovementLog::countsIn(['at' => '2026-08-31 23:59:59', 'dunning' => null], $from, $to));
     }
 
     public function test_a_plan_activated_by_event_is_new_once(): void

@@ -3,6 +3,7 @@
 namespace App\Domain\Analytics\Subscribers;
 
 use App\Domain\Analytics\Filters;
+use App\Domain\Analytics\Period;
 use App\Domain\Analytics\Support\Sql;
 use App\Domain\ShopifySubscriptions\ContractActionService;
 use App\Models\ActivityEvent;
@@ -66,6 +67,12 @@ final class MovementLog
         PlanStatus::AWAITING_PAYMENT->value,
     ];
 
+    /** A dunning move OUT of the book (active → failed / awaiting_payment). */
+    public const DUNNING_OUT = 'out';
+
+    /** A dunning move back IN (failed / awaiting_payment → active). */
+    public const DUNNING_IN = 'in';
+
     /** Shopify contract Timeline kind => movement type. */
     public const CONTRACT_KINDS = [
         ContractActionService::KIND_PAUSED => self::PAUSED,
@@ -81,9 +88,11 @@ final class MovementLog
      *
      *   into active:  pre-active → NEW · paused → RESUMED · failed/awaiting_payment → REACTIVATED
      *   out of active: → paused PAUSED · → cancelled CANCELLED · → completed EXPIRED
-     *                  → failed/awaiting_payment CANCELLED (involuntary churn; the
-     *                    return trip is a REACTIVATION, which is the spec's own
-     *                    "a cancelled subscription came back")
+     *                  → failed/awaiting_payment CANCELLED — but only as a
+     *                    CANDIDATE: a payment-retry lapse is churn only if the
+     *                    plan is still lapsed at the END of the window, and its
+     *                    return trip is a REACTIVATION only if the plan was
+     *                    lapsed at the window's START. countsIn() applies that.
      */
     public static function classify(?string $from, ?string $to): ?string
     {
@@ -116,6 +125,92 @@ final class MovementLog
         return in_array($type, self::ADDITIONS, true) ? 1 : -1;
     }
 
+    /** DUNNING_OUT / DUNNING_IN for a payment-retry move across the book's edge, else null. */
+    public static function dunning(?string $from, ?string $to): ?string
+    {
+        $active = PlanStatus::ACTIVE->value;
+
+        return match (true) {
+            $from === $active && in_array($to, self::LAPSED, true) => self::DUNNING_OUT,
+            $to === $active && in_array($from, self::LAPSED, true) => self::DUNNING_IN,
+            default => null,
+        };
+    }
+
+    /**
+     * THE churn rule for a window (owner decision, data-map §Movements). A
+     * payment-retry lapse is not churn at the moment it happens:
+     *
+     *   dunning OUT in the window → counts (CANCELLED) only if the plan is still
+     *                               lapsed at the window's END — its recovery
+     *                               (`paired_at`) is missing or after the end;
+     *   dunning IN in the window  → counts (REACTIVATED) only if the plan was
+     *                               lapsed at the window's START — its lapse
+     *                               (`paired_at`) is older than the log or
+     *                               before the start;
+     *   a lapse AND its recovery both inside the window are neither.
+     *
+     * Every other movement counts where it happened. Point-in-time values
+     * (MovementSummary::activeAt, mrrAt…) keep reading the raw rows — the book
+     * really did dip while the card was being retried.
+     *
+     * @param  array<string, mixed>  $row  a since() row or a CancellationLog row
+     */
+    public static function countsIn(array $row, string $from, string $to): bool
+    {
+        if ($row['at'] < $from || $row['at'] > $to) {
+            return false;
+        }
+        $paired = $row['paired_at'] ?? null;
+
+        return match ($row['dunning'] ?? null) {
+            self::DUNNING_OUT => $paired === null || $paired > $to,
+            self::DUNNING_IN => $paired === null || $paired < $from,
+            default => true,
+        };
+    }
+
+    /**
+     * The rows that COUNT inside $window (countsIn) — every window total, bar
+     * and churn figure reads movements through here.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    public static function inWindow(array $rows, Period $window): array
+    {
+        $from = $window->start()->format('Y-m-d H:i:s');
+        $to = $window->end()->format('Y-m-d H:i:s');
+
+        return array_values(array_filter($rows, static fn (array $r): bool => self::countsIn($r, $from, $to)));
+    }
+
+    /**
+     * Link each dunning OUT to the same plan's next dunning IN (and back), so a
+     * window can tell a recovered lapse from churn. A recovery whose lapse is
+     * older than the log keeps paired_at = null (lapsed before any window).
+     *
+     * @param  list<array<string, mixed>>  $rows  oldest first
+     * @return list<array<string, mixed>>
+     */
+    public static function pairDunning(array $rows): array
+    {
+        $open = [];
+        foreach ($rows as $i => $row) {
+            $kind = $row['dunning'] ?? null;
+            if ($kind === self::DUNNING_OUT) {
+                $open[$row['sub']] = $i;
+            } elseif ($kind === self::DUNNING_IN && isset($open[$row['sub']])) {
+                $j = $open[$row['sub']];
+                $rows[$j]['paired_at'] = $row['at'];
+                $rows[$i]['paired_at'] = $rows[$j]['at'];
+                unset($open[$row['sub']]);
+            }
+        }
+
+        return $rows;
+    }
+
     /**
      * Every movement from $since until now, oldest first.
      *
@@ -132,9 +227,9 @@ final class MovementLog
             array_push($rows, ...$this->newContracts($since), ...$this->contractEvents($since));
         }
 
-        usort($rows, static fn (array $a, array $b): int => [$a['at'], $a['sub']] <=> [$b['at'], $b['sub']]);
+        usort($rows, static fn (array $a, array $b): int => [$a['at'], $a['sub'], $a['seq']] <=> [$b['at'], $b['sub'], $b['seq']]);
 
-        return $rows;
+        return self::pairDunning($rows);
     }
 
     /** @return list<array<string, mixed>> */
@@ -165,6 +260,7 @@ final class MovementLog
                 'installment_plans.created_at as born',
                 Sql::planMrr().' as mrr',
                 'activity_events.actor as actor',
+                'activity_events.id as seq',
             ]))
             ->toBase()
             ->get();
@@ -173,7 +269,10 @@ final class MovementLog
         foreach ($rows as $r) {
             $type = self::classify($r->from_status, $r->to_status);
             if ($type !== null) {
-                $out[] = $this->row($r->at, 'p:'.$r->plan_id, $r->k, $type, 1, $r->mrr, $r->born, $r->actor);
+                $out[] = array_merge(
+                    $this->row($r->at, 'p:'.$r->plan_id, $r->k, $type, 1, $r->mrr, $r->born, $r->actor),
+                    ['dunning' => self::dunning($r->from_status, $r->to_status), 'seq' => (int) $r->seq],
+                );
             }
         }
 
@@ -269,7 +368,12 @@ final class MovementLog
         ))->all();
     }
 
-    /** @return array{at: string, day: string, sub: string, key: string, type: string, dir: int, qty: int, mrr: float, born: string, actor: string} */
+    /**
+     * `dunning` (DUNNING_OUT / DUNNING_IN / null) and `paired_at` feed
+     * countsIn(); `seq` orders two moves of one subscription in the same second.
+     *
+     * @return array{at: string, day: string, sub: string, key: string, type: string, dir: int, qty: int, mrr: float, born: string, actor: string, dunning: ?string, paired_at: ?string, seq: int}
+     */
     private function row(mixed $at, string $sub, mixed $key, string $type, mixed $qty, mixed $mrr, mixed $born, mixed $actor): array
     {
         $at = CarbonImmutable::parse((string) $at);
@@ -286,6 +390,9 @@ final class MovementLog
             'mrr' => round((float) $mrr, 2),
             'born' => $born->format('Y-m-d'),
             'actor' => (string) ($actor ?? ActivityEvent::ACTOR_SYSTEM),
+            'dunning' => null,
+            'paired_at' => null,
+            'seq' => 0,
         ];
     }
 }

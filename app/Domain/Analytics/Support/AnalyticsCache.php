@@ -23,7 +23,7 @@ final class AnalyticsCache
     public const TTL_SECONDS = 300;
 
     /** Bump to invalidate every cached analytics payload after a shape change. */
-    public const VERSION = 'v1';
+    public const VERSION = 'v2';
 
     public const PREFIX = 'analytics';
 

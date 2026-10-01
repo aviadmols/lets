@@ -233,7 +233,7 @@ final class MovementSummary
         $from = $window->start()->format('Y-m-d H:i:s');
         $to = $window->end()->format('Y-m-d H:i:s');
         foreach ($rows as $row) {
-            if ($row['at'] >= $from && $row['at'] <= $to) {
+            if (MovementLog::countsIn($row, $from, $to)) { // the dunning churn rule
                 yield $row;
             }
         }

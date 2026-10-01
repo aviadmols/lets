@@ -32,10 +32,10 @@ Classified by `Subscribers\MovementLog::classify()`:
 | pre-active (`draft`, `awaiting_first_payment`, `awaiting_activation`) → `active` | New |
 | plan created already `active` (CSV import, hand-typed, settled in one request — no activation event) | New, at `created_at` |
 | `paused → active` | Resumed |
-| `failed`/`awaiting_payment → active` | Reactivated (a lapsed subscription came back; `cancelled` is terminal in LETS, so a true "un-cancel" cannot happen — the customer gets a new plan, which counts as New) |
+| `failed`/`awaiting_payment → active` | Reactivated — **only if the plan was already lapsed at the START of the period** (see the churn rule below). `cancelled` is terminal in LETS, so a true "un-cancel" cannot happen — the customer gets a new plan, which counts as New. |
 | `active → paused` | Paused (includes our own dunning hold, `action = unpaid_cycle_held`) |
 | `active → cancelled` | Cancelled / Churned |
-| `active → failed`/`awaiting_payment` | Cancelled / Churned (involuntary) |
+| `active → failed`/`awaiting_payment` | Cancelled / Churned (involuntary) — **only if the plan is still lapsed at the END of the period** (see the churn rule below). |
 | `active → completed` | Expired |
 | anything not crossing `active` (e.g. `paused → cancelled`) | not a book movement |
 
@@ -43,6 +43,20 @@ Shopify rail: `subscription_contracts.created_at` = New; Timeline kinds `shopify
 (joined via `details.contract_gid`) = Paused/Resumed/Cancelled. **Limitation:** a contract cancelled or expired in
 Shopify's own admin updates the mirror's `status` without a Timeline row, so it is invisible to movements
 (the KPI is right, the bar is missing). Contract `EXPIRED` likewise has no event.
+
+**Churn rule for payment retries (owner decision, 2026-10-01).** A plan that moves `active → failed`/`awaiting_payment`
+(dunning) is NOT churn when it moves. Per period (`MovementLog::countsIn`, the one place the rule lives):
+
+- lapsed inside the period and **still lapsed at its end** (no `→ active` by then; a later `→ cancelled` keeps it lapsed) → **Churned**;
+- lapsed **and** recovered inside the period → **neither** churn nor reactivation;
+- lapsed **before** the period start and `→ active` inside it → **Reactivated**.
+
+Each dunning row carries `paired_at` (its recovery / its lapse, `MovementLog::pairDunning`; `CancellationLog` reads the
+recovery with one correlated `MIN`). The rule is window-relative, so a period, its comparison window and every trend
+bucket each judge by their own edges — bars of a chart bucketed weekly can differ from the period total by design.
+Point-in-time values (active at T, the trend line, MRR history) still read every raw move: the book really dipped while
+the card was retried. Subscribers › Overview, Cancellations (Overview / Order-wise / Saves' cancelled count), Products
+(churn, movements), Acquisition's 0-day churn and the Cancellation-logs report all read movements through this rule.
 
 Subscriber level: a person crosses the edge only when their first active subscription arrives (0→1) or their
 last one leaves (1→0) — `MovementSummary::crossings()`.
@@ -166,10 +180,10 @@ and in `installment_payments.attempt_count` / `next_retry_at` / `failure_message
 |---|---|
 | Subscribers, subscriptions, activity logs, upcoming orders, transaction logs, product-wise sales, cancellation logs | ✔ — tables above + `activity_events`. |
 | Checkout/processed order line items, bundles, inventory, prepaid credit, Streak | ✖ — no order lines, bundles-as-orders, inventory or prepaid ledger in LETS (thank-you bundles are `upsell_flow_offers.bundle_*`). |
-| Exports history | ✖ — needs an `analytics_exports` table if exports become queued jobs; today Export streams a CSV directly. |
+| Exports history | ✖ — needs an `analytics_exports` table if exports become queued jobs; today every CSV (shell Export, risk table, report library) streams through one signed, 5-minute, tenant-bound GET (`AnalyticsDownload` → `AnalyticsDownloadController`). |
 
 ## Indexes worth adding before production scale
 
-`activity_events (shop_id, kind, created_at)` — the movement log filters on `kind` within a shop and window;
-today it uses `(shop_id, created_at)` + the `kind` index. `installment_plans (shop_id, plan_kind, status)`
-for the active-book union.
+Added in `2026_10_01_000001_add_analytics_indexes`: `activity_events (shop_id, kind, created_at)` — the movement
+log filters on `kind` within a shop and window — and `installment_plans (shop_id, plan_kind, status)` for the
+active-book union.

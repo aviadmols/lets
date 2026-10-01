@@ -22,7 +22,10 @@ use Carbon\CarbonImmutable;
  * "Cancellation" is exactly MovementLog's CANCELLED type, so the counts here
  * always equal the Subscribers screens' "Cancelled":
  *   PayPlus — status_changed active → cancelled | failed | awaiting_payment
- *             (the last two are involuntary churn, channel "Payment failed");
+ *             (the last two are involuntary churn, channel "Payment failed" —
+ *             candidates only: each carries its recovery time, and a window
+ *             counts it only if the plan is still lapsed at the window's end,
+ *             MovementLog::countsIn via ChurnData::inWindow);
  *   Shopify — the shopify_subscription_cancelled Timeline kind.
  *
  * Volume: one row per cancellation in the window. Completed orders are a
@@ -76,6 +79,16 @@ final class CancellationLog
             ." AND pl.charge_context NOT IN ('".implode("','", self::EXCLUDED_CONTEXTS)."')"
             .' AND pl.created_at <= activity_events.created_at)';
         $ends = [PlanStatus::CANCELLED->value, ...MovementLog::LAPSED];
+        // When a payment-retry lapse came back: the plan's first lapsed → active
+        // move after it. One correlated MIN per cancellation row (window-sized).
+        $lapsedList = "'".implode("','", MovementLog::LAPSED)."'";
+        $recFrom = Sql::jsonText('rec.details', 'from');
+        $recTo = Sql::jsonText('rec.details', 'to');
+        $recovered = "(CASE WHEN {$toStatus} IN ({$lapsedList}) THEN (SELECT MIN(rec.created_at) FROM activity_events rec"
+            .' WHERE rec.shop_id = activity_events.shop_id AND rec.plan_id = activity_events.plan_id'
+            ." AND rec.kind = '".Timeline::KIND_STATUS_CHANGED."' AND rec.payment_id IS NULL"
+            ." AND rec.created_at >= activity_events.created_at AND rec.id <> activity_events.id"
+            ." AND {$recFrom} IN ({$lapsedList}) AND {$recTo} = '".PlanStatus::ACTIVE->value."') END)";
 
         $query = ActivityEvent::query()
             ->join('installment_plans', function ($join): void {
@@ -113,6 +126,7 @@ final class CancellationLog
                 "{$orders} as orders",
                 'installment_plans.customer_name as name',
                 'installment_plans.customer_email as email',
+                "{$recovered} as recovered_at",
             ]))
             ->toBase()
             ->get();
@@ -198,6 +212,9 @@ final class CancellationLog
             'name' => (string) ($r->name ?? ''),
             'email' => (string) ($r->email ?? ''),
             'ref' => (string) ($r->ref ?? ''),
+            // MovementLog::countsIn reads these: a lapse recovered inside a window is not its cancellation.
+            'dunning' => in_array($to, MovementLog::LAPSED, true) ? MovementLog::DUNNING_OUT : null,
+            'paired_at' => isset($r->recovered_at) ? CarbonImmutable::parse((string) $r->recovered_at)->format('Y-m-d H:i:s') : null,
         ];
     }
 }
