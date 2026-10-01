@@ -58,6 +58,37 @@
     --rc-amber: #C77700;   --rc-amber-bg: #FBF1E0;  --rc-amber-ink: #8A5300;
     --rc-amber-border: #EED9AE;
 
+    /* --- 1.4 Analytics chart series (approved analytics sketch, brief §2). In
+           this order; they differ in LIGHTNESS, not only hue. Positive movements
+           take S1/S2/S5, negative S3/S4/S6; red is for failures and churn only.
+           Consumed by components/analytics.css (.rc-tone--s1 … --s6). --- */
+    --rc-violet: #7746EC;
+    --rc-series-1: var(--rc-blue);
+    --rc-series-2: var(--rc-teal);
+    --rc-series-3: var(--rc-amber);
+    --rc-series-4: var(--rc-red);
+    --rc-series-5: var(--rc-violet);
+    --rc-series-6: #9CA3AF;
+    --rc-series-ink: var(--rc-ink);
+    /* Cohort heatmap shades: the accent at 8 / 18 / 30 / 55 % (≥55% carries white text). */
+    --rc-heat-1: rgba(59, 91, 219, .08);
+    --rc-heat-2: rgba(59, 91, 219, .18);
+    --rc-heat-3: rgba(59, 91, 219, .30);
+    --rc-heat-4: rgba(59, 91, 219, .55);
+    --rc-area-opacity: .12;
+    /* Plot heights — MUST equal ChartGeometry::HEIGHTS (one viewBox unit = 1px vertically). */
+    --rc-chart-h-sm: 160px;
+    --rc-chart-h-md: 220px;
+    --rc-chart-h-lg: 260px;
+    --rc-chart-pad: 10px;          /* = ChartGeometry::PAD_Y */
+    --rc-donut-size: 150px;
+    /* Entrance motion: everything settles within ~900ms, ease-out. */
+    --rc-motion-ease: cubic-bezier(.2, .7, .2, 1);
+    --rc-motion-grow: 450ms;
+    --rc-motion-draw: 700ms;
+    --rc-motion-fade: 400ms;
+    --rc-motion-stagger: 15ms;
+
     /* --- 2. Typography scale — Heebo carries Hebrew AND Latin (one face) --- */
     --rc-font: "Heebo", system-ui, -apple-system, "Segoe UI", sans-serif;
     --rc-type-title: 700 22px/1.25 var(--rc-font);
@@ -326,41 +357,474 @@
 .rc-accordion__panel > div { overflow: hidden; }
 .rc-accordion__body { padding: 0 var(--rc-space-5) var(--rc-space-5); border-block-start: 1px solid var(--rc-border); padding-block-start: var(--rc-space-4); }
 
-/* analytics.css — the Analytics page's server-drawn SVG trend chart + legend.
-   TOKENS: --rc-ink --rc-ink-muted --rc-border --rc-border-strong --rc-blue
-           --rc-red --rc-card --rc-type-caption --rc-space-* --rc-radius-pill
-   The SVG carries GEOMETRY only; every colour resolves here, so the chart
-   re-skins with the theme and needs no JS chart library at all. */
+/* analytics.css — the Analytics module: page shell, cards, the rc.chart.*
+   components and their ENTRANCE MOTION.
+   TOKENS: --rc-card --rc-bg --rc-border --rc-border-soft --rc-border-strong
+           --rc-surface-sunk --rc-ink --rc-ink-muted --rc-blue --rc-blue-600
+           --rc-blue-bg --rc-green-* --rc-red-* --rc-amber-* --rc-gray-*
+           --rc-series-1…6 --rc-series-ink --rc-heat-1…4 --rc-area-opacity
+           --rc-chart-h-sm/md/lg --rc-chart-pad --rc-donut-size
+           --rc-motion-ease/grow/draw/fade/stagger --rc-radius-* --rc-shadow-*
+           --rc-shadow-thumb --rc-type-* --rc-space-*
+   RULES: geometry lives in SVG ATTRIBUTES (ChartGeometry); colour, type and
+   motion live HERE. Logical properties only; the plots mirror in RTL. */
 
-.rc-chart { inline-size: 100%; }
-.rc-chart svg { inline-size: 100%; block-size: auto; display: block; }
+/* =========================================================================
+   1. Page shell — header, section tabs, sub-tab pills, filter chips
+   ========================================================================= */
+.rc-an { display: flex; flex-direction: column; gap: 20px; }
+.rc-an__head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--rc-space-4); flex-wrap: wrap; }
+.rc-an__title-block { display: flex; flex-direction: column; gap: var(--rc-space-1); min-inline-size: 0; }
+.rc-an__title { margin: 0; font: var(--rc-type-title); color: var(--rc-ink); }
+.rc-an__meta { margin: 0; font: var(--rc-type-body); font-size: 13px; color: var(--rc-ink-muted); }
+.rc-an__actions { display: flex; gap: var(--rc-space-2); flex-wrap: wrap; }
 
-/* the active-subscriptions line + its day dots */
-.rc-chart__line { fill: none; stroke: var(--rc-ink); stroke-width: 2; }
-.rc-chart__dot { fill: var(--rc-ink); stroke: var(--rc-card); stroke-width: 1.5; }
+.rc-an-btn {
+    display: inline-flex; align-items: center; gap: var(--rc-space-2);
+    block-size: 36px; padding-inline: var(--rc-space-3);
+    border: 1px solid var(--rc-border-strong); border-radius: var(--rc-radius-control);
+    background: var(--rc-card); color: var(--rc-ink);
+    font: var(--rc-type-body-strong); cursor: pointer; white-space: nowrap;
+}
+.rc-an-btn:hover { border-color: var(--rc-ink-muted); }
+.rc-an-btn:focus-visible { outline: none; box-shadow: var(--rc-ring); }
+.rc-an-btn--quiet { color: var(--rc-ink-muted); font-weight: 500; }
+.rc-an-btn[disabled] { opacity: .5; cursor: not-allowed; }
+.rc-an-btn__icon { inline-size: 16px; block-size: 16px; flex-shrink: 0; }
+.rc-an-btn__caret { inline-size: 14px; block-size: 14px; flex-shrink: 0; }
 
-/* new (brand violet) vs cancelled (red) daily bars */
-.rc-chart__bar--new { fill: var(--rc-blue); opacity: .75; }
-.rc-chart__bar--churn { fill: var(--rc-red); opacity: .8; }
+/* dropdown bodies (inside Filament's dropdown panel) */
+.rc-an-menu { display: flex; flex-direction: column; gap: var(--rc-space-1); padding: var(--rc-space-1); min-inline-size: 220px; }
+.rc-an-menu__item {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--rc-space-3);
+    padding: var(--rc-space-2) var(--rc-space-3); border: 0; border-radius: var(--rc-radius-control);
+    background: transparent; color: var(--rc-ink); font: var(--rc-type-body); text-align: start; cursor: pointer;
+}
+.rc-an-menu__item:hover { background: var(--rc-blue-bg); }
+.rc-an-menu__item--active { color: var(--rc-blue-600); font-weight: 600; }
+.rc-an-menu__check { inline-size: 16px; block-size: 16px; color: var(--rc-blue); flex-shrink: 0; }
+.rc-an-menu__sep { block-size: 1px; background: var(--rc-border-soft); margin-block: var(--rc-space-1); }
+.rc-an-menu__custom { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rc-space-2); padding: var(--rc-space-2) var(--rc-space-3); }
+.rc-an-menu__field { display: flex; flex-direction: column; gap: var(--rc-space-1); font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+.rc-an-menu__input {
+    block-size: 32px; padding-inline: var(--rc-space-2);
+    border: 1px solid var(--rc-border-strong); border-radius: var(--rc-radius-control);
+    background: var(--rc-card); color: var(--rc-ink); font: var(--rc-type-body); font-size: 13px;
+}
+.rc-an-menu__apply { grid-column: 1 / -1; justify-content: center; block-size: 32px; }
+.rc-an-menu__empty { padding: var(--rc-space-2) var(--rc-space-3); font: var(--rc-type-caption); color: var(--rc-ink-muted); }
 
-/* scaffolding */
-.rc-chart__grid { stroke: var(--rc-border); stroke-dasharray: 4 4; }
-.rc-chart__zero { stroke: var(--rc-border-strong); }
-.rc-chart__tick { fill: var(--rc-ink-muted); font: var(--rc-type-caption); }
+.rc-an-tabs { display: flex; gap: var(--rc-space-1); border-block-end: 1px solid var(--rc-border); overflow-x: auto; }
+.rc-an-tabs__tab {
+    display: inline-flex; align-items: center; block-size: 40px; padding-inline: var(--rc-space-3);
+    border-block-end: 2px solid transparent; margin-block-end: -1px;
+    color: var(--rc-ink-muted); text-decoration: none; font: var(--rc-type-body); font-weight: 500; white-space: nowrap;
+}
+.rc-an-tabs__tab:hover { color: var(--rc-ink); }
+.rc-an-tabs__tab--active { border-block-end-color: var(--rc-blue); color: var(--rc-blue); font-weight: 600; }
 
-/* The all-future upcoming-charges table: a year of yearly members is hundreds
-   of day-rows, so the region scrolls instead of stretching the page. The
-   header row stays put while the body scrolls under it. */
-.rc-scroll-region { max-block-size: 480px; overflow-y: auto; }
-.rc-scroll-region .rc-table thead th { position: sticky; inset-block-start: 0; background: var(--rc-card); z-index: 1; }
+.rc-an__bar { display: flex; align-items: center; justify-content: space-between; gap: var(--rc-space-4); flex-wrap: wrap; }
+.rc-an__chips { display: flex; gap: var(--rc-space-2); flex-wrap: wrap; margin-inline-start: auto; }
 
-/* legend chips under the chart */
-.rc-chart-legend { display: flex; gap: var(--rc-space-5); margin-block-start: var(--rc-space-3); flex-wrap: wrap; }
-.rc-chart-legend__item { display: inline-flex; align-items: center; gap: var(--rc-space-2); font: var(--rc-type-caption); color: var(--rc-ink-muted); }
-.rc-chart-legend__swatch { inline-size: 10px; block-size: 10px; border-radius: var(--rc-radius-pill); }
-.rc-chart-legend__swatch--line { background: var(--rc-ink); }
-.rc-chart-legend__swatch--new { background: var(--rc-blue); }
-.rc-chart-legend__swatch--churn { background: var(--rc-red); }
+/* segmented control — sub-tab pills (28px) and chart toggles (26px, --sm) */
+.rc-seg {
+    display: inline-flex; padding: 3px; gap: 2px;
+    border: 1px solid var(--rc-border); border-radius: var(--rc-radius-pill); background: var(--rc-bg);
+}
+.rc-seg__item {
+    display: inline-flex; align-items: center; block-size: 28px; padding-inline: var(--rc-space-3);
+    border: 0; border-radius: var(--rc-radius-pill); background: transparent;
+    color: var(--rc-ink-muted); font: var(--rc-type-body); font-size: 13px; font-weight: 500;
+    text-decoration: none; cursor: pointer; white-space: nowrap;
+}
+.rc-seg__item:hover { color: var(--rc-ink); }
+.rc-seg__item:focus-visible { outline: none; box-shadow: var(--rc-ring); }
+.rc-seg__item--active { background: var(--rc-card); box-shadow: var(--rc-shadow-thumb); color: var(--rc-ink); font-weight: 600; }
+.rc-seg--sm .rc-seg__item { block-size: 26px; padding-inline: 10px; font-size: 12px; }
+
+/* filter chips — dashed when empty, solid with value + clear when chosen */
+.rc-an-chip {
+    display: inline-flex; align-items: center; gap: 6px; block-size: 32px;
+    padding-inline: var(--rc-space-3) 10px;
+    border: 1px dashed var(--rc-border-strong); border-radius: var(--rc-radius-pill);
+    background: var(--rc-card); color: var(--rc-ink-muted);
+    font: var(--rc-type-body); font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap;
+}
+.rc-an-chip:hover { border-color: var(--rc-ink-muted); color: var(--rc-ink); }
+.rc-an-chip--active { border-style: solid; border-color: var(--rc-ink); color: var(--rc-ink); }
+.rc-an-chip--disabled, .rc-an-chip--disabled:hover { cursor: not-allowed; opacity: .6; border-color: var(--rc-border-strong); color: var(--rc-ink-muted); }
+.rc-an-chip__caret { inline-size: 12px; block-size: 12px; }
+.rc-an-chip__clear {
+    display: inline-flex; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer;
+}
+.rc-an-chip__clear svg { inline-size: 12px; block-size: 12px; }
+
+/* =========================================================================
+   2. Layout grids + cards
+   ========================================================================= */
+.rc-an-body { display: flex; flex-direction: column; gap: var(--rc-space-4); }
+.rc-an-grid { display: grid; gap: var(--rc-space-4); grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.rc-an-grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.rc-an-grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.rc-an-grid--main-side { grid-template-columns: 2fr 1fr; }
+.rc-an-grid > .rc-an-span-2 { grid-column: span 2; }
+@media (max-width: 1100px) {
+    .rc-an-grid, .rc-an-grid--3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .rc-an-grid--main-side, .rc-an-grid--2 { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+    .rc-an-grid, .rc-an-grid--3 { grid-template-columns: minmax(0, 1fr); }
+    .rc-an-grid > .rc-an-span-2 { grid-column: auto; }
+}
+
+.rc-an-card {
+    display: flex; flex-direction: column; min-inline-size: 0; overflow: hidden;
+    background: var(--rc-card); border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-card); box-shadow: var(--rc-shadow-card);
+}
+.rc-an-card__head {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--rc-space-3);
+    padding: var(--rc-space-3) 20px; border-block-end: 1px solid var(--rc-border);
+}
+.rc-an-card__titles { display: flex; flex-direction: column; gap: 2px; min-inline-size: 0; }
+.rc-an-card__title { margin: 0; font: var(--rc-type-subh); color: var(--rc-ink); }
+.rc-an-card__sub { margin: 0; font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+.rc-an-card__actions { display: flex; align-items: center; gap: var(--rc-space-2); flex-shrink: 0; }
+.rc-an-card__link { font: var(--rc-type-body-strong); font-size: 13px; color: var(--rc-blue); text-decoration: none; white-space: nowrap; }
+.rc-an-card__link:hover { color: var(--rc-blue-600); }
+.rc-an-card__body { display: flex; flex-direction: column; gap: var(--rc-space-3); padding: var(--rc-space-4) 20px 20px; flex-grow: 1; }
+.rc-an-card--flush .rc-an-card__body { padding: 0; gap: 0; }
+.rc-an-card__note { margin: 0; font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+
+/* KPI value rows inside a card (churn overview) */
+.rc-an-kpi-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--rc-space-4); }
+.rc-an-mini { display: flex; flex-direction: column; gap: var(--rc-space-1); min-inline-size: 0; }
+.rc-an-mini__label { font: var(--rc-type-label); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--rc-ink-muted); }
+[dir="rtl"] .rc-an-mini__label { text-transform: none; letter-spacing: normal; }
+.rc-an-mini__value { font: var(--rc-type-h); font-size: 20px; color: var(--rc-ink); }
+.rc-an-mini__value--empty { color: var(--rc-ink-muted); }
+.rc-an-mini__sub { font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+
+/* =========================================================================
+   3. Series tones — one class sets --rc-tone; every shape reads it
+   ========================================================================= */
+.rc-tone--s1 { --rc-tone: var(--rc-series-1); }
+.rc-tone--s2 { --rc-tone: var(--rc-series-2); }
+.rc-tone--s3 { --rc-tone: var(--rc-series-3); }
+.rc-tone--s4 { --rc-tone: var(--rc-series-4); }
+.rc-tone--s5 { --rc-tone: var(--rc-series-5); }
+.rc-tone--s6 { --rc-tone: var(--rc-series-6); }
+.rc-tone--ink { --rc-tone: var(--rc-series-ink); }
+
+/* =========================================================================
+   4. KPI card delta chip (extends kpi-card.css) + delta chips anywhere
+   ========================================================================= */
+.rc-delta {
+    align-self: flex-start; display: inline-flex; align-items: center; gap: 3px; padding: 2px var(--rc-space-2);
+    border-radius: var(--rc-radius-pill); font: var(--rc-type-label); white-space: nowrap;
+}
+.rc-delta--good { color: var(--rc-green-ink); background: var(--rc-green-bg); }
+.rc-delta--bad  { color: var(--rc-red-ink); background: var(--rc-red-bg); }
+.rc-delta--flat { color: var(--rc-gray-ink); background: var(--rc-gray-bg); }
+.rc-kpi__foot { display: flex; align-items: center; gap: var(--rc-space-2); flex-wrap: wrap; }
+.rc-kpi__compare { font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+.rc-kpi__empty { font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+
+/* =========================================================================
+   5. Legend
+   ========================================================================= */
+.rc-legend { display: flex; flex-wrap: wrap; gap: var(--rc-space-1) 14px; }
+.rc-legend__item { display: inline-flex; align-items: center; gap: 6px; font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+.rc-legend__swatch { inline-size: 10px; block-size: 10px; border-radius: 2px; background: var(--rc-tone); flex-shrink: 0; }
+.rc-legend__swatch--line { inline-size: 14px; block-size: 3px; border-radius: 2px; }
+.rc-legend__swatch--dashed {
+    inline-size: 14px; block-size: 0; border-radius: 0; background: transparent;
+    border-block-start: 2px dashed var(--rc-tone);
+}
+
+/* =========================================================================
+   6. Cartesian chart frame — start axis | plot | end axis, x-axis beneath
+   ========================================================================= */
+.rc-chart { --rc-chart-h: var(--rc-chart-h-md); display: flex; flex-direction: column; gap: var(--rc-space-2); min-inline-size: 0; }
+.rc-chart--sm { --rc-chart-h: var(--rc-chart-h-sm); }
+.rc-chart--lg { --rc-chart-h: var(--rc-chart-h-lg); }
+.rc-chart__frame { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: var(--rc-space-2); row-gap: 6px; }
+.rc-chart__axis {
+    display: flex; flex-direction: column; justify-content: space-between;
+    block-size: var(--rc-chart-h); padding-block: var(--rc-chart-pad); box-sizing: border-box;
+    font: var(--rc-type-caption); color: var(--rc-ink-muted); min-inline-size: 24px;
+}
+.rc-chart__axis > span { line-height: 0; white-space: nowrap; direction: ltr; unicode-bidi: isolate; }
+.rc-chart__axis--start { grid-column: 1; text-align: end; }
+.rc-chart__axis--end { grid-column: 3; text-align: start; }
+.rc-chart__plot { grid-column: 2; }
+.rc-chart__plot { position: relative; block-size: var(--rc-chart-h); min-inline-size: 0; }
+.rc-chart__svg { display: block; inline-size: 100%; block-size: 100%; overflow: visible; }
+[dir="rtl"] .rc-chart__svg,
+[dir="rtl"] .rc-hbar__track { transform: scaleX(-1); }
+.rc-chart__xaxis {
+    grid-column: 2; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
+    font: var(--rc-type-caption); color: var(--rc-ink-muted);
+}
+.rc-chart__xaxis > span { display: flex; justify-content: center; white-space: nowrap; }
+.rc-chart__caps {
+    grid-column: 2; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
+    font: var(--rc-type-label); font-size: 11px; color: var(--rc-ink-muted);
+}
+.rc-chart__caps > span { display: flex; justify-content: center; white-space: nowrap; }
+
+.rc-chart__grid { stroke: var(--rc-border-soft); stroke-width: 1; }
+.rc-chart__zero { stroke: var(--rc-border); stroke-width: 1; }
+.rc-chart__bar { fill: var(--rc-tone); }
+.rc-chart__bar:hover { opacity: .85; }
+.rc-chart__line { fill: none; stroke: var(--rc-tone); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.rc-chart__line--dashed { stroke-dasharray: 6 4; stroke-linecap: butt; }
+.rc-chart__area { fill: var(--rc-tone); opacity: var(--rc-area-opacity); stroke: none; }
+.rc-chart__dot { fill: none; stroke: var(--rc-tone); stroke-width: 6; stroke-linecap: round; }
+.rc-chart__dot--quiet { stroke-width: 4; }
+
+/* =========================================================================
+   7. Donut
+   ========================================================================= */
+.rc-donut { display: flex; flex-direction: column; align-items: center; gap: var(--rc-space-4); }
+.rc-donut__figure { position: relative; inline-size: var(--rc-donut-size); block-size: var(--rc-donut-size); flex-shrink: 0; }
+.rc-donut__svg { display: block; inline-size: 100%; block-size: 100%; transform: rotate(0deg); }
+.rc-donut__track { fill: none; stroke: var(--rc-border-soft); stroke-width: 6; }
+.rc-donut__slice { fill: none; stroke: var(--rc-tone); stroke-width: 6; }
+.rc-donut__centre {
+    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; pointer-events: none;
+}
+.rc-donut__value { font: var(--rc-type-kpi); font-size: 22px; color: var(--rc-ink); }
+.rc-donut__caption { font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+.rc-donut__legend {
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center;
+    gap: 6px var(--rc-space-3); inline-size: 100%; margin: 0;
+}
+.rc-donut__legend dt { display: contents; }
+.rc-donut__legend dd { margin: 0; }
+.rc-donut__name { font: var(--rc-type-caption); font-size: 13px; color: var(--rc-ink); min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-donut__num { font: var(--rc-type-label); font-size: 13px; color: var(--rc-ink); text-align: end; font-variant-numeric: tabular-nums; }
+.rc-donut__pct { font: var(--rc-type-caption); color: var(--rc-ink-muted); text-align: end; font-variant-numeric: tabular-nums; }
+
+/* =========================================================================
+   8. Horizontal bars, funnel, heatmap
+   ========================================================================= */
+.rc-hbars { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.rc-hbar { display: grid; grid-template-columns: minmax(80px, 140px) minmax(0, 1fr) auto; align-items: center; gap: var(--rc-space-3); }
+.rc-hbar__label { font: var(--rc-type-body); font-size: 13px; color: var(--rc-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-hbar__track { display: block; inline-size: 100%; block-size: 12px; }
+.rc-hbar__rail { fill: var(--rc-border-soft); }
+.rc-hbar__fill { fill: var(--rc-tone); }
+.rc-hbar__value { font: var(--rc-type-label); font-size: 13px; color: var(--rc-ink); text-align: end; font-variant-numeric: tabular-nums; }
+
+.rc-funnel { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.rc-funnel__stage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, auto); align-items: center; gap: var(--rc-space-3); }
+.rc-funnel__bar { display: block; inline-size: 100%; block-size: 44px; }
+.rc-funnel__shape { fill: var(--rc-tone); }
+.rc-funnel__text { display: flex; flex-direction: column; gap: 2px; font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+.rc-funnel__name { font: var(--rc-type-body-strong); font-size: 13px; color: var(--rc-ink); }
+.rc-funnel__leaks { display: flex; flex-wrap: wrap; gap: 2px var(--rc-space-3); margin: 0; padding: 0; list-style: none; }
+
+.rc-heat { inline-size: 100%; border-collapse: collapse; }
+.rc-heat th { font: var(--rc-type-label); font-size: 11px; color: var(--rc-ink-muted); text-align: center; padding: var(--rc-space-2) 4px; background: var(--rc-surface-sunk); border-block-end: 1px solid var(--rc-border); }
+.rc-heat th:first-child, .rc-heat td:first-child { text-align: start; padding-inline: 20px var(--rc-space-3); white-space: nowrap; }
+.rc-heat td { padding: 0; border-block-end: 1px solid var(--rc-border-soft); font: var(--rc-type-body); font-size: 13px; }
+.rc-heat__cell {
+    display: flex; align-items: center; justify-content: center; block-size: 34px;
+    font: var(--rc-type-label); color: var(--rc-ink); font-variant-numeric: tabular-nums;
+}
+.rc-heat__cell--0 { background: var(--rc-surface-sunk); color: var(--rc-series-6); }
+.rc-heat__cell--1 { background: var(--rc-heat-1); }
+.rc-heat__cell--2 { background: var(--rc-heat-2); }
+.rc-heat__cell--3 { background: var(--rc-heat-3); }
+.rc-heat__cell--4 { background: var(--rc-heat-4); color: var(--rc-ink-on-primary); }
+
+/* =========================================================================
+   9. Tables, pills, numbers panels
+   ========================================================================= */
+.rc-an-table { inline-size: 100%; border-collapse: collapse; }
+.rc-an-table th {
+    padding: 10px 14px; text-align: start; vertical-align: bottom;
+    font: var(--rc-type-label); font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--rc-ink-muted); background: var(--rc-surface-sunk); border-block-end: 1px solid var(--rc-border);
+}
+[dir="rtl"] .rc-an-table th { text-transform: none; letter-spacing: normal; }
+.rc-an-table td { padding: 11px 14px; text-align: start; font: var(--rc-type-body); color: var(--rc-ink); border-block-end: 1px solid var(--rc-border-soft); vertical-align: middle; }
+.rc-an-table th:first-child, .rc-an-table td:first-child { padding-inline-start: 20px; }
+.rc-an-table th:last-child, .rc-an-table td:last-child { padding-inline-end: 20px; }
+.rc-an-table tbody tr:last-child td { border-block-end: 0; }
+.rc-an-table tbody tr:hover td { background: var(--rc-surface-sunk); }
+.rc-an-table .rc-num { text-align: end; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rc-an-table .rc-strong-cell { font-weight: 600; white-space: nowrap; }
+.rc-an-table__wrap { overflow-x: auto; }
+
+.rc-an-pill {
+    display: inline-flex; align-items: center; gap: 6px; padding: 2px var(--rc-space-2);
+    border-radius: var(--rc-radius-pill); font: var(--rc-type-label); white-space: nowrap;
+}
+.rc-an-pill::before { content: ""; inline-size: 6px; block-size: 6px; border-radius: 50%; background: currentColor; }
+.rc-an-pill--good { background: var(--rc-green-bg); color: var(--rc-green-ink); }
+.rc-an-pill--bad { background: var(--rc-red-bg); color: var(--rc-red-ink); }
+.rc-an-pill--warn { background: var(--rc-amber-bg); color: var(--rc-amber-ink); }
+.rc-an-pill--neutral { background: var(--rc-gray-bg); color: var(--rc-gray-ink); }
+.rc-an-pill--info { background: var(--rc-blue-bg); color: var(--rc-blue-600); }
+
+/* numbers panel: label · value (· chip), grouped */
+.rc-numbers { display: flex; flex-direction: column; margin: 0; }
+.rc-numbers__row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: var(--rc-space-2); padding-block: 5px; }
+.rc-numbers__row--group { padding-block-start: var(--rc-space-3); }
+.rc-numbers__row--total { border-block-start: 1px solid var(--rc-border-soft); margin-block-start: var(--rc-space-2); padding-block-start: var(--rc-space-3); }
+.rc-numbers__label { font: var(--rc-type-body); font-size: 13px; color: var(--rc-ink-muted); }
+.rc-numbers__row--group .rc-numbers__label { font-weight: 600; color: var(--rc-ink); }
+.rc-numbers__value { font: var(--rc-type-body-strong); color: var(--rc-ink); text-align: end; font-variant-numeric: tabular-nums; }
+.rc-numbers__row--group .rc-numbers__value { font-size: 16px; }
+.rc-numbers__value--good { color: var(--rc-green-ink); }
+.rc-numbers__value--bad { color: var(--rc-red-ink); }
+.rc-numbers__value--empty { color: var(--rc-ink-muted); font-weight: 400; }
+.rc-numbers__chip { min-inline-size: 0; }
+.rc-numbers--split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--rc-space-6); }
+.rc-numbers__col { display: flex; flex-direction: column; }
+
+/* stat grid: label over value (subscriptions activity) */
+.rc-stat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--rc-space-4) var(--rc-space-3); }
+.rc-stat { display: flex; flex-direction: column; gap: 2px; min-inline-size: 0; }
+.rc-stat__label { font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+.rc-stat__value { display: flex; align-items: center; gap: var(--rc-space-2); font: var(--rc-type-h); font-size: 17px; color: var(--rc-ink); font-variant-numeric: tabular-nums; }
+
+/* =========================================================================
+   10. Empty states + placeholder screens
+   ========================================================================= */
+.rc-an-empty {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--rc-space-2);
+    min-block-size: 140px; padding: var(--rc-space-5); text-align: center;
+    border-radius: var(--rc-radius-control); background: var(--rc-surface-sunk);
+}
+.rc-an-empty--not-tracked { background: transparent; border: 1px dashed var(--rc-border-strong); }
+.rc-an-empty--compact { min-block-size: 0; padding: var(--rc-space-3); }
+.rc-an-empty__icon { inline-size: 22px; block-size: 22px; color: var(--rc-ink-muted); }
+.rc-an-empty__title { font: var(--rc-type-body-strong); color: var(--rc-ink); }
+.rc-an-empty__body { max-inline-size: 46ch; font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+
+.rc-an-soon { display: flex; flex-direction: column; align-items: flex-start; gap: var(--rc-space-3); padding: var(--rc-space-6); }
+.rc-an-soon__title { margin: 0; font: var(--rc-type-h); color: var(--rc-ink); }
+.rc-an-soon__body { margin: 0; max-inline-size: 60ch; font: var(--rc-type-body); color: var(--rc-ink-muted); }
+.rc-an-soon__list { display: flex; flex-wrap: wrap; gap: var(--rc-space-2); margin: 0; padding: 0; list-style: none; }
+
+/* screen-reader-only data tables behind every chart */
+.rc-sr-only {
+    position: absolute !important; inline-size: 1px; block-size: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* =========================================================================
+   11. ENTRANCE MOTION — the animation contract (docs/analytics/building-a-screen.md)
+   Every animated node is NEW in the DOM whenever its data changes: charts carry
+   a wire:key that hashes their data, so Livewire's morph REPLACES the node (and
+   the animation restarts) on a filter/toggle, and wire:navigate swaps the page
+   in with fresh nodes. Nothing here needs JavaScript. Total ≤ ~900ms.
+   Keyframes with only a `from` animate TO the element's own value — the
+   presentation attributes ChartGeometry wrote (donut dashes, area opacity).
+   ========================================================================= */
+@keyframes rc-grow-y { from { transform: scaleY(0); } }
+@keyframes rc-grow-x { from { transform: scaleX(0); } }
+@keyframes rc-fade-in { from { opacity: 0; } }
+@keyframes rc-rise { from { opacity: 0; transform: translateY(6px); } }
+@keyframes rc-sweep { from { stroke-dasharray: 0 100; } }
+/* The dash pattern exists ONLY inside the keyframes, so with motion off the
+   line is simply whole. pathLength="1" makes 1 the full length of any path. */
+@keyframes rc-draw {
+    from { stroke-dasharray: 1 1; stroke-dashoffset: 1; }
+    to   { stroke-dasharray: 1 1; stroke-dashoffset: 0; }
+}
+
+/* bars grow from the zero line: positive stacks upward, negative downward */
+.rc-chart__stack { transform-box: fill-box; animation: rc-grow-y var(--rc-motion-grow) var(--rc-motion-ease) both; }
+.rc-chart__stack--pos { transform-origin: 50% 100%; }
+.rc-chart__stack--neg { transform-origin: 50% 0%; }
+/* staggered per column (capped: column 31+ starts with the 30th) */
+.rc-chart__col:nth-child(n+30) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 29); }
+.rc-chart__col:nth-child(2) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 1); }
+.rc-chart__col:nth-child(3) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 2); }
+.rc-chart__col:nth-child(4) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 3); }
+.rc-chart__col:nth-child(5) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 4); }
+.rc-chart__col:nth-child(6) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 5); }
+.rc-chart__col:nth-child(7) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 6); }
+.rc-chart__col:nth-child(8) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 7); }
+.rc-chart__col:nth-child(9) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 8); }
+.rc-chart__col:nth-child(10) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 9); }
+.rc-chart__col:nth-child(11) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 10); }
+.rc-chart__col:nth-child(12) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 11); }
+.rc-chart__col:nth-child(13) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 12); }
+.rc-chart__col:nth-child(14) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 13); }
+.rc-chart__col:nth-child(15) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 14); }
+.rc-chart__col:nth-child(16) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 15); }
+.rc-chart__col:nth-child(17) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 16); }
+.rc-chart__col:nth-child(18) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 17); }
+.rc-chart__col:nth-child(19) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 18); }
+.rc-chart__col:nth-child(20) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 19); }
+.rc-chart__col:nth-child(21) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 20); }
+.rc-chart__col:nth-child(22) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 21); }
+.rc-chart__col:nth-child(23) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 22); }
+.rc-chart__col:nth-child(24) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 23); }
+.rc-chart__col:nth-child(25) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 24); }
+.rc-chart__col:nth-child(26) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 25); }
+.rc-chart__col:nth-child(27) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 26); }
+.rc-chart__col:nth-child(28) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 27); }
+.rc-chart__col:nth-child(29) .rc-chart__stack { animation-delay: calc(var(--rc-motion-stagger) * 28); }
+
+/* lines draw themselves after the bars start; areas + dots fade in after */
+.rc-chart__line { animation: rc-draw var(--rc-motion-draw) var(--rc-motion-ease) 200ms both; }
+.rc-chart__line--dashed { animation: rc-fade-in var(--rc-motion-fade) ease-out 300ms both; }
+.rc-chart__area { animation: rc-fade-in var(--rc-motion-fade) ease-out 500ms both; }
+.rc-chart__dot { animation: rc-fade-in 250ms ease-out 650ms both; }
+
+/* donut slices sweep in, one after another */
+.rc-donut__slice { animation: rc-sweep 600ms var(--rc-motion-ease) both; }
+.rc-donut__slice:nth-of-type(3) { animation-delay: 60ms; }
+.rc-donut__slice:nth-of-type(4) { animation-delay: 120ms; }
+.rc-donut__slice:nth-of-type(5) { animation-delay: 180ms; }
+.rc-donut__slice:nth-of-type(n+6) { animation-delay: 240ms; }
+.rc-donut__centre { animation: rc-fade-in var(--rc-motion-fade) ease-out 250ms both; }
+
+/* KPI values rise in, card by card */
+.rc-motion .rc-kpi__value, .rc-motion .rc-an-mini__value { animation: rc-rise var(--rc-motion-fade) ease-out both; }
+.rc-motion .rc-kpi:nth-child(2) .rc-kpi__value { animation-delay: 60ms; }
+.rc-motion .rc-kpi:nth-child(3) .rc-kpi__value { animation-delay: 120ms; }
+.rc-motion .rc-kpi:nth-child(n+4) .rc-kpi__value { animation-delay: 180ms; }
+
+/* horizontal bars + funnel grow from the inline start / centre */
+.rc-hbar__fill { transform-box: fill-box; transform-origin: 0% 50%; animation: rc-grow-x var(--rc-motion-grow) var(--rc-motion-ease) both; }
+.rc-hbar:nth-child(2) .rc-hbar__fill { animation-delay: 40ms; }
+.rc-hbar:nth-child(3) .rc-hbar__fill { animation-delay: 80ms; }
+.rc-hbar:nth-child(4) .rc-hbar__fill { animation-delay: 120ms; }
+.rc-hbar:nth-child(n+5) .rc-hbar__fill { animation-delay: 160ms; }
+.rc-funnel__shape { transform-box: fill-box; transform-origin: 50% 50%; animation: rc-grow-x var(--rc-motion-grow) var(--rc-motion-ease) both; }
+.rc-funnel__stage:nth-child(2) .rc-funnel__shape { animation-delay: 80ms; }
+.rc-funnel__stage:nth-child(n+3) .rc-funnel__shape { animation-delay: 160ms; }
+
+/* heatmap cells fade in row by row */
+.rc-heat__cell { animation: rc-fade-in 300ms ease-out both; }
+.rc-heat tbody tr:nth-child(2) .rc-heat__cell { animation-delay: 40ms; }
+.rc-heat tbody tr:nth-child(3) .rc-heat__cell { animation-delay: 80ms; }
+.rc-heat tbody tr:nth-child(4) .rc-heat__cell { animation-delay: 120ms; }
+.rc-heat tbody tr:nth-child(5) .rc-heat__cell { animation-delay: 160ms; }
+.rc-heat tbody tr:nth-child(6) .rc-heat__cell { animation-delay: 200ms; }
+.rc-heat tbody tr:nth-child(7) .rc-heat__cell { animation-delay: 240ms; }
+.rc-heat tbody tr:nth-child(8) .rc-heat__cell { animation-delay: 280ms; }
+.rc-heat tbody tr:nth-child(9) .rc-heat__cell { animation-delay: 320ms; }
+.rc-heat tbody tr:nth-child(10) .rc-heat__cell { animation-delay: 360ms; }
+.rc-heat tbody tr:nth-child(11) .rc-heat__cell { animation-delay: 400ms; }
+.rc-heat tbody tr:nth-child(n+12) .rc-heat__cell { animation-delay: 440ms; }
+
+/* Motion off when the visitor asks for it — everything renders in its final state. */
+@media (prefers-reduced-motion: reduce) {
+    .rc-motion, .rc-motion *,
+    .rc-chart, .rc-chart *, .rc-donut, .rc-donut *, .rc-hbars *, .rc-funnel *, .rc-heat * {
+        animation: none !important;
+        transition: none !important;
+    }
+}
 
 /* badge.css — status pill (component §4.2)
    TOKENS: --rc-radius-pill --rc-type-label --rc-{green|gray|teal|red|amber}
@@ -4518,7 +4982,8 @@ button.rc-fb-node:focus-visible {
     background: var(--rc-gray-bg); color: var(--rc-ink-muted);
     font: var(--rc-type-caption);
 }
-.rc-timeline__summary { font: var(--rc-type-body); color: var(--rc-ink-muted); }
+/* plaintext: a Hebrew summary reads RTL, an English one LTR, whatever the page. */
+.rc-timeline__summary { font: var(--rc-type-body); color: var(--rc-ink-muted); unicode-bidi: plaintext; }
 
 /* A merchant's free-text note: full ink (it is the content, not metadata),
    wraps as prose, keeps the author's line breaks. */

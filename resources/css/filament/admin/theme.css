@@ -57,6 +57,37 @@
     --rc-amber: #C77700;   --rc-amber-bg: #FBF1E0;  --rc-amber-ink: #8A5300;
     --rc-amber-border: #EED9AE;
 
+    /* --- 1.4 Analytics chart series (approved analytics sketch, brief §2). In
+           this order; they differ in LIGHTNESS, not only hue. Positive movements
+           take S1/S2/S5, negative S3/S4/S6; red is for failures and churn only.
+           Consumed by components/analytics.css (.rc-tone--s1 … --s6). --- */
+    --rc-violet: #7746EC;
+    --rc-series-1: var(--rc-blue);
+    --rc-series-2: var(--rc-teal);
+    --rc-series-3: var(--rc-amber);
+    --rc-series-4: var(--rc-red);
+    --rc-series-5: var(--rc-violet);
+    --rc-series-6: #9CA3AF;
+    --rc-series-ink: var(--rc-ink);
+    /* Cohort heatmap shades: the accent at 8 / 18 / 30 / 55 % (≥55% carries white text). */
+    --rc-heat-1: rgba(59, 91, 219, .08);
+    --rc-heat-2: rgba(59, 91, 219, .18);
+    --rc-heat-3: rgba(59, 91, 219, .30);
+    --rc-heat-4: rgba(59, 91, 219, .55);
+    --rc-area-opacity: .12;
+    /* Plot heights — MUST equal ChartGeometry::HEIGHTS (one viewBox unit = 1px vertically). */
+    --rc-chart-h-sm: 160px;
+    --rc-chart-h-md: 220px;
+    --rc-chart-h-lg: 260px;
+    --rc-chart-pad: 10px;          /* = ChartGeometry::PAD_Y */
+    --rc-donut-size: 150px;
+    /* Entrance motion: everything settles within ~900ms, ease-out. */
+    --rc-motion-ease: cubic-bezier(.2, .7, .2, 1);
+    --rc-motion-grow: 450ms;
+    --rc-motion-draw: 700ms;
+    --rc-motion-fade: 400ms;
+    --rc-motion-stagger: 15ms;
+
     /* --- 2. Typography scale — Heebo carries Hebrew AND Latin (one face) --- */
     --rc-font: "Heebo", system-ui, -apple-system, "Segoe UI", sans-serif;
     --rc-type-title: 700 22px/1.25 var(--rc-font);
