@@ -1,0 +1,64 @@
+/* =========================================================================
+   analytics-subscribers.css — layout helpers for Analytics › Subscribers
+   (Acquisition · Order funnel · Revenue · Lifetime value, + the Overview
+   plan × frequency table fit). Layout only: every colour, type ramp, space
+   and radius is a theme token.
+   TOKENS: --rc-space-1/2/3/4/6 --rc-type-label --rc-type-caption --rc-type-h --rc-type-kpi
+           --rc-type-body-strong --rc-type-subh --rc-ink --rc-ink-muted --rc-border --rc-border-soft
+           --rc-surface-sunk --rc-radius-card
+   ========================================================================= */
+
+/* Two panels side by side inside one card (acquisition by product). */
+.rc-ans-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rc-space-4) var(--rc-space-6); }
+.rc-ans-pair__col { display: flex; flex-direction: column; gap: var(--rc-space-2); min-inline-size: 0; }
+
+/* A small heading row above a panel/chart: label · value. */
+.rc-ans-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--rc-space-2); }
+.rc-ans-head__label { font: var(--rc-type-label); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--rc-ink-muted); }
+[dir="rtl"] .rc-ans-head__label { text-transform: none; letter-spacing: normal; }
+.rc-ans-head__title { font: var(--rc-type-body-strong); color: var(--rc-ink); }
+.rc-ans-head__value { font: var(--rc-type-body-strong); color: var(--rc-ink); white-space: nowrap; }
+
+/* Three small charts in a row (revenue: orders · revenue · AOV). */
+.rc-ans-trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--rc-space-4) var(--rc-space-6); }
+.rc-ans-trio__cell { display: flex; flex-direction: column; gap: var(--rc-space-2); min-inline-size: 0; }
+
+/* A KPI band inside a card, divided from what follows. */
+.rc-ans-band { padding-block-end: var(--rc-space-4); border-block-end: 1px solid var(--rc-border-soft); }
+.rc-ans-band.rc-an-kpi-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.rc-ans-band .rc-an-mini__value { font: var(--rc-type-kpi); }
+
+/* Funnel stage headings. */
+.rc-ans-stage { display: flex; flex-direction: column; gap: var(--rc-space-2); }
+.rc-ans-stage + .rc-ans-stage { padding-block-start: var(--rc-space-3); border-block-start: 1px solid var(--rc-border-soft); }
+
+/* A caption under a flush (edge-to-edge) table. */
+.rc-ans-flush-note { margin: 0; padding: var(--rc-space-3) 20px; font: var(--rc-type-caption); color: var(--rc-ink-muted); border-block-start: 1px solid var(--rc-border-soft); }
+
+/* Lifetime value summary sentence. */
+.rc-ans-summary {
+    display: flex; flex-direction: column; gap: var(--rc-space-1);
+    padding: var(--rc-space-4) 20px; background: var(--rc-surface-sunk);
+    border: 1px solid var(--rc-border); border-radius: var(--rc-radius-card);
+}
+.rc-ans-summary__lead { margin: 0; font: var(--rc-type-subh); color: var(--rc-ink); }
+.rc-ans-summary__lead strong { font: var(--rc-type-h); }
+.rc-ans-summary__note { margin: 0; font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+
+/* Tables that must fit a half-width card: tighter cells, wrapping headers and labels. */
+.rc-an-table.rc-ans-fit th,
+.rc-an-table.rc-ans-fit td { padding-inline: 10px; }
+.rc-an-table.rc-ans-fit th:first-child,
+.rc-an-table.rc-ans-fit td:first-child { padding-inline-start: 16px; }
+.rc-an-table.rc-ans-fit th:last-child,
+.rc-an-table.rc-ans-fit td:last-child { padding-inline-end: 16px; }
+.rc-an-table.rc-ans-fit th { white-space: normal; overflow-wrap: anywhere; }
+.rc-an-table.rc-ans-fit .rc-strong-cell { white-space: normal; overflow-wrap: anywhere; }
+
+@media (max-width: 1100px) {
+    .rc-ans-trio { grid-template-columns: minmax(0, 1fr); }
+    .rc-ans-band.rc-an-kpi-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+    .rc-ans-pair, .rc-ans-band.rc-an-kpi-row { grid-template-columns: minmax(0, 1fr); }
+}
