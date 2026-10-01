@@ -7,6 +7,7 @@ use App\Domain\Analytics\FilterOptions;
 use App\Domain\Analytics\Filters;
 use App\Domain\Analytics\Granularity;
 use App\Domain\Analytics\Period;
+use App\Domain\Analytics\Support\AnalyticsDownload;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Filament\Pages\Analytics\ScreenRegistry;
 use App\Filament\Pages\Analytics\Screens\AnalyticsScreen;
@@ -14,7 +15,6 @@ use App\Support\Tenant;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
 use Livewire\Attributes\Url;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Analytics — the module SHELL. One sidebar item; inside it, section tabs
@@ -46,9 +46,6 @@ class Analytics extends Page
     protected static ?string $slug = 'analytics';
 
     protected static ?int $navigationSort = -5; // right under Home
-
-    /** Characters that make a CSV cell a formula in a spreadsheet (CSV injection). */
-    public const CSV_FORMULA_PREFIXES = ['=', '+', '-', '@', "\t", "\r"];
 
     #[Url(as: 'section', history: true)]
     public string $section = ScreenRegistry::DEFAULT_SECTION;
@@ -180,34 +177,50 @@ class Analytics extends Page
         }
     }
 
-    /** CSV of what the current screen offers for export. */
-    public function export(): ?StreamedResponse
+    /**
+     * CSV of what the current screen offers: a redirect to a short-lived signed
+     * GET for THIS shop (AnalyticsDownload), streamed by the controller with
+     * CsvCell-neutralised cells — never a Livewire download (the whole file
+     * buffered and shipped base64 inside the component update's JSON).
+     */
+    public function export(): void
     {
-        $rows = $this->screen()->export($this->context());
-        if ($rows === null) {
-            return null;
+        if (! $this->screen()->exportable()) {
+            return;
         }
 
-        $name = 'analytics-'.$this->section.'-'.$this->sub.'-'.$this->period()->key().'.csv';
-
-        return response()->streamDownload(function () use ($rows): void {
-            $out = fopen('php://output', 'w');
-            fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel reads Hebrew
-            fputcsv($out, array_map(self::csvCell(...), $rows['headers']));
-            foreach ($rows['rows'] as $row) {
-                fputcsv($out, array_map(self::csvCell(...), $row));
-            }
-            fclose($out);
-        }, $name, ['Content-Type' => 'text/csv; charset=UTF-8']);
+        $url = AnalyticsDownload::url(AnalyticsDownload::KIND_SCREEN, $this->state());
+        if ($url !== null) {
+            $this->redirect($url);
+        }
     }
 
-    public static function csvCell(mixed $value): string
+    /** The view's whole URL state — what a download link must reproduce. @return array<string, mixed> */
+    public function state(): array
     {
-        $value = (string) ($value ?? '');
+        return [
+            'section' => $this->section, 'sub' => $this->sub, 'range' => $this->range, 'compare' => $this->compare,
+            'from' => $this->from, 'to' => $this->to, 'f' => $this->filters, 'g' => $this->grains, 'o' => $this->options,
+        ];
+    }
 
-        return $value !== '' && in_array($value[0], self::CSV_FORMULA_PREFIXES, true) && ! is_numeric($value)
-            ? "'".$value
-            : $value;
+    /**
+     * The Context a URL state describes. The page and the download controller
+     * both read state through this ONE function, so a CSV is exactly the screen.
+     *
+     * @param  array<string, mixed>  $state  state() shape; anything malformed falls back
+     */
+    public static function contextFrom(array $state): Context
+    {
+        $strings = static fn (mixed $v): array => is_array($v) ? array_map('strval', array_filter($v, 'is_string')) : [];
+        $text = static fn (string $k): ?string => is_string($state[$k] ?? null) ? $state[$k] : null;
+
+        return new Context(
+            Period::fromInput($text('range'), $text('compare'), $text('from'), $text('to')),
+            Filters::fromInput($state['f'] ?? []),
+            $strings($state['g'] ?? []),
+            $strings($state['o'] ?? []),
+        );
     }
 
     // === Read-side for the view ===
@@ -221,12 +234,7 @@ class Analytics extends Page
 
     public function context(): Context
     {
-        return new Context(
-            $this->period(),
-            Filters::fromInput($this->filters),
-            array_map('strval', array_filter($this->grains, 'is_string')),
-            array_map('strval', array_filter($this->options, 'is_string')),
-        );
+        return self::contextFrom($this->state());
     }
 
     public function screen(): AnalyticsScreen

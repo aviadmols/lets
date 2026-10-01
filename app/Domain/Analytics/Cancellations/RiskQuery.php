@@ -3,6 +3,8 @@
 namespace App\Domain\Analytics\Cancellations;
 
 use App\Domain\Analytics\Filters;
+use App\Domain\Analytics\Period;
+use App\Domain\Analytics\Support\AnalyticsCache;
 use App\Domain\Analytics\Support\Sql;
 use App\Models\InstallmentPaymentMethod;
 use App\Models\InstallmentPlan;
@@ -18,8 +20,11 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Cancellations › Risk analysis — every LIVE subscription scored for churn
- * risk, entirely in SQL so a shop with thousands of plans is filtered, sorted
- * and paginated by the database (spec §6.4; data-map §6 ✔).
+ * risk in ONE SQL pass (spec §6.4; data-map §6 ✔): the per-subscription
+ * ledger aggregate is a joined grouped subquery, never a correlated COUNT per
+ * plan. The at-risk rows + KPI totals are cached per shop + filters + day
+ * (AnalyticsCache, a few minutes), so paging, sorting, searching and both CSV
+ * exports never re-aggregate the ledger.
  *
  * Live = PayPlus recurring plans active | paused | failed | awaiting_payment,
  * Shopify contracts ACTIVE | PAUSED | FAILED.
@@ -92,6 +97,20 @@ final class RiskQuery
     /** A search term longer than this is cut. */
     public const MAX_SEARCH = 80;
 
+    /** AnalyticsCache key of the scored book (rows + totals). */
+    public const CACHE_BOOK = 'cancellations.risk_book';
+
+    /** The table's card filter → the card verdicts it selects ("expired" includes revoked). */
+    public const CARD_FILTER = [
+        self::CARD_NONE => [self::CARD_NONE],
+        self::CARD_EXPIRED => [self::CARD_EXPIRED, self::CARD_REVOKED],
+        self::CARD_EXPIRING => [self::CARD_EXPIRING],
+        self::CARD_VALID => [self::CARD_VALID],
+    ];
+
+    /** @var array{rows: list<array<string, mixed>>, totals: array<string, int|float>}|null the scored book, once per instance */
+    private ?array $book = null;
+
     public function __construct(private readonly Filters $filters, private readonly ?CarbonImmutable $today = null) {}
 
     private function today(): CarbonImmutable
@@ -105,7 +124,11 @@ final class RiskQuery
         return $date->year * 12 + $date->month;
     }
 
-    /** The scored rows, ready to filter / sort / paginate. */
+    /**
+     * The scored rows: one per live subscription with its ledger aggregate
+     * (completed, failed, successive failures) JOINED in once — no correlated
+     * subquery per plan — and its risk level.
+     */
     public function scored(): Builder
     {
         $now = self::monthIndex($this->today());
@@ -141,110 +164,132 @@ final class RiskQuery
      */
     public function page(string $search = '', string $level = '', string $card = '', string $sort = 'risk', string $dir = 'desc', int $page = 1, int $perPage = 25): array
     {
-        $query = $this->filtered($search, $level, $card);
-        $total = (clone $query)->count();
-        $rows = $this->sorted($query, $sort, $dir)
-            ->offset(max(0, $page - 1) * $perPage)
-            ->limit($perPage)
-            ->get();
+        $rows = $this->filtered($search, $level, $card);
 
-        return ['rows' => $rows->map(fn ($r): array => $this->shape($r))->all(), 'total' => $total];
+        return [
+            'rows' => array_slice($this->sorted($rows, $sort, $dir), max(0, $page - 1) * $perPage, max(1, $perPage)),
+            'total' => count($rows),
+        ];
     }
 
     /**
-     * Every at-risk row in order, streamed in chunks (the CSV export).
+     * Every at-risk row in order (the CSV exports).
      *
      * @return iterable<array<string, mixed>>
      */
     public function all(string $search = '', string $level = '', string $card = '', string $sort = 'risk', string $dir = 'desc'): iterable
     {
-        $page = 1;
-        do {
-            $rows = $this->sorted($this->filtered($search, $level, $card), $sort, $dir)->offset(($page - 1) * 500)->limit(500)->get();
-            foreach ($rows as $r) {
-                yield $this->shape($r);
-            }
-            $page++;
-        } while ($rows->count() === 500);
+        yield from $this->sorted($this->filtered($search, $level, $card), $sort, $dir);
     }
 
     /** @return array{at_risk: int, high: int, expiring: int, mrr_at_risk: float, live: int, live_mrr: float} */
     public function totals(): array
     {
+        return $this->book()['totals'];
+    }
+
+    /**
+     * The scored book, read ONCE per shop + filters + day and kept for
+     * AnalyticsCache's few minutes: every page, sort, search, level / card
+     * filter and both exports are answered from it instead of re-aggregating
+     * the whole ledger. Only the at-risk rows are kept (the list never shows
+     * the others); the KPI totals are folded in the same single pass.
+     *
+     * @return array{rows: list<array<string, mixed>>, totals: array<string, int|float>}
+     */
+    private function book(): array
+    {
+        return $this->book ??= AnalyticsCache::remember(
+            self::CACHE_BOOK,
+            Period::default($this->today()),
+            $this->filters,
+            fn (): array => $this->compute(),
+            $this->today()->format('Ymd'),
+        );
+    }
+
+    /** @return array{rows: list<array<string, mixed>>, totals: array<string, int|float>} */
+    private function compute(): array
+    {
         $now = self::monthIndex($this->today());
         $soon = self::monthIndex($this->today()->addDays(self::EXPIRING_DAYS));
+        $totals = ['at_risk' => 0, 'high' => 0, 'expiring' => 0, 'mrr_at_risk' => 0.0, 'live' => 0, 'live_mrr' => 0.0];
+        $rows = [];
 
-        $row = $this->scored()->selectRaw(implode(', ', [
-            'COUNT(*) as live',
-            'COALESCE(SUM(mrr), 0) as live_mrr',
-            'SUM(CASE WHEN risk > 0 THEN 1 ELSE 0 END) as at_risk',
-            'SUM(CASE WHEN risk = '.self::LEVEL_HIGH.' THEN 1 ELSE 0 END) as high',
-            "SUM(CASE WHEN card_idx IS NOT NULL AND card_idx >= {$now} AND card_idx <= {$soon} THEN 1 ELSE 0 END) as expiring",
-            'COALESCE(SUM(CASE WHEN risk > 0 THEN mrr ELSE 0 END), 0) as mrr_at_risk',
-        ]))->first();
-
-        return [
-            'at_risk' => (int) ($row->at_risk ?? 0),
-            'high' => (int) ($row->high ?? 0),
-            'expiring' => (int) ($row->expiring ?? 0),
-            'mrr_at_risk' => round((float) ($row->mrr_at_risk ?? 0), 2),
-            'live' => (int) ($row->live ?? 0),
-            'live_mrr' => round((float) ($row->live_mrr ?? 0), 2),
-        ];
-    }
-
-    private function filtered(string $search, string $level, string $card): Builder
-    {
-        $query = $this->scored()->where('risk', '>', 0);
-
-        if (isset(self::LEVELS[$level])) {
-            $query->where('risk', self::LEVELS[$level]);
+        foreach ($this->scored()->orderBy('rail')->orderBy('id')->cursor() as $r) {
+            $mrr = (float) ($r->mrr ?? 0);
+            $idx = $r->card_idx !== null ? (int) $r->card_idx : null;
+            $totals['live']++;
+            $totals['live_mrr'] += $mrr;
+            if ($idx !== null && $idx >= $now && $idx <= $soon) {
+                $totals['expiring']++;
+            }
+            if ((int) $r->risk > 0) {
+                $totals['at_risk']++;
+                $totals['mrr_at_risk'] += $mrr;
+                $totals['high'] += (int) $r->risk === self::LEVEL_HIGH ? 1 : 0;
+                $rows[] = $this->shape($r);
+            }
         }
 
+        $totals['live_mrr'] = round($totals['live_mrr'], 2);
+        $totals['mrr_at_risk'] = round($totals['mrr_at_risk'], 2);
+
+        return ['rows' => $rows, 'totals' => $totals];
+    }
+
+    /** @return list<array<string, mixed>> the at-risk rows matching the level, search and card filters */
+    private function filtered(string $search, string $level, string $card): array
+    {
+        $want = self::LEVELS[$level] ?? null;
         $search = mb_strtolower(trim(mb_substr($search, 0, self::MAX_SEARCH)));
-        if ($search !== '') {
-            $like = '%'.addcslashes($search, '%_\\').'%';
-            $digits = ltrim($search, '#');
-            $query->where(function ($q) use ($like, $digits): void {
-                $q->whereRaw("LOWER(COALESCE(name, '')) LIKE ? ESCAPE '\\'", [$like])
-                    ->orWhereRaw("LOWER(COALESCE(email, '')) LIKE ? ESCAPE '\\'", [$like])
-                    ->orWhereRaw("LOWER(COALESCE(ref, '')) LIKE ? ESCAPE '\\'", [$like]);
-                if ($digits !== '' && ctype_digit($digits)) {
-                    $q->orWhere('id', (int) $digits);
-                }
-            });
-        }
+        $digits = ltrim($search, '#');
+        $id = $digits !== '' && ctype_digit($digits) ? (int) $digits : null;
+        $cards = self::CARD_FILTER[$card] ?? null;
 
-        if ($card !== '') {
-            $now = self::monthIndex($this->today());
-            $soon = self::monthIndex($this->today()->addDays(self::EXPIRING_DAYS));
-            match ($card) {
-                self::CARD_NONE => $query->whereNull('card_idx')->whereNotIn(DB::raw("COALESCE(card_state, '')"), self::CARD_DEAD),
-                self::CARD_EXPIRED => $query->where(fn ($q) => $q->where('card_idx', '<', $now)->orWhereIn('card_state', self::CARD_DEAD)),
-                self::CARD_EXPIRING => $query->whereBetween('card_idx', [$now, $soon]),
-                self::CARD_VALID => $query->where('card_idx', '>', $soon)->whereNotIn(DB::raw("COALESCE(card_state, '')"), self::CARD_DEAD),
-                default => null,
-            };
-        }
+        return array_values(array_filter($this->book()['rows'], static function (array $r) use ($want, $search, $id, $cards): bool {
+            if ($want !== null && $r['risk'] !== $want) {
+                return false;
+            }
+            if ($cards !== null && ! in_array($r['card'], $cards, true)) {
+                return false;
+            }
+            if ($search === '') {
+                return true;
+            }
 
-        return $query;
+            return $r['id'] === $id
+                || str_contains(mb_strtolower($r['name']), $search)
+                || str_contains(mb_strtolower($r['email']), $search)
+                || str_contains(mb_strtolower($r['ref']), $search);
+        }));
     }
 
-    private function sorted(Builder $query, string $sort, string $dir): Builder
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function sorted(array $rows, string $sort, string $dir): array
     {
-        $dir = in_array($dir, self::DIRECTIONS, true) ? $dir : 'desc';
-        $flip = $dir === 'desc' ? 'asc' : 'desc';
+        $sign = in_array($dir, self::DIRECTIONS, true) && $dir === 'asc' ? 1 : -1;
+        $sort = in_array($sort, self::SORTS, true) ? $sort : 'risk';
+        // Rows with no attempt at all have no success % — always last.
+        $success = static fn (array $a, array $b, int $s): int => [$a['success'] === null, $s * ($a['success'] ?? 0)] <=> [$b['success'] === null, $s * ($b['success'] ?? 0)];
 
-        match (in_array($sort, self::SORTS, true) ? $sort : 'risk') {
-            'created' => $query->orderBy('created_at', $dir),
-            'orders' => $query->orderBy('ok', $dir),
-            // Rows with no attempt at all have no success % — always last.
-            'success' => $query->orderByRaw('CASE WHEN success IS NULL THEN 1 ELSE 0 END')->orderBy('success', $dir),
-            default => $query->orderBy('risk', $dir)->orderBy('streak', $dir)
-                ->orderByRaw('CASE WHEN success IS NULL THEN 1 ELSE 0 END')->orderBy('success', $flip),
-        };
+        usort($rows, static function (array $a, array $b) use ($sort, $sign, $success): int {
+            $cmp = match ($sort) {
+                'created' => $sign * ($a['created_at'] <=> $b['created_at']),
+                'orders' => $sign * ($a['orders'] <=> $b['orders']),
+                'success' => $success($a, $b, $sign),
+                default => ($sign * ($a['risk'] <=> $b['risk']))
+                    ?: ($sign * ($a['streak'] <=> $b['streak']))
+                    ?: $success($a, $b, -$sign),
+            };
 
-        return $query->orderBy('rail')->orderBy('id');
+            return $cmp ?: ([$a['rail'], $a['id']] <=> [$b['rail'], $b['id']]);
+        });
+
+        return $rows;
     }
 
     /** @return array<string, mixed> */
@@ -283,30 +328,47 @@ final class RiskQuery
         ];
     }
 
-    private function plans(): Builder
+    /**
+     * Per plan: completed, failed and successive failures (failures after the
+     * last success) in ONE grouped pass — the ledger joined to its own
+     * per-plan "last success" instead of a COUNT subquery per plan.
+     */
+    private function planLedger(): Builder
     {
         $ok = "'".LedgerStatus::SUCCEEDED->value."'";
         $bad = "'".LedgerStatus::FAILED->value."','".LedgerStatus::RETRY_SCHEDULED->value."'";
-        $excluded = "'".implode("','", CancellationLog::EXCLUDED_CONTEXTS)."'";
 
-        $ledger = PaymentLedger::query()
-            ->whereNotNull('plan_id')
-            ->whereNotIn('charge_context', CancellationLog::EXCLUDED_CONTEXTS)
-            ->selectRaw("plan_id, shop_id, SUM(CASE WHEN status = {$ok} THEN 1 ELSE 0 END) as ok, "
-                ."SUM(CASE WHEN status IN ({$bad}) THEN 1 ELSE 0 END) as bad, "
-                ."MAX(CASE WHEN status = {$ok} THEN created_at END) as last_ok")
-            ->groupBy('plan_id', 'shop_id')
+        $lastOk = PaymentLedger::query()
+            ->whereNotNull('payment_ledger.plan_id')
+            ->whereNotIn('payment_ledger.charge_context', CancellationLog::EXCLUDED_CONTEXTS)
+            ->selectRaw("payment_ledger.plan_id, payment_ledger.shop_id, MAX(CASE WHEN payment_ledger.status = {$ok} THEN payment_ledger.created_at END) as last_ok")
+            ->groupBy('payment_ledger.plan_id', 'payment_ledger.shop_id')
             ->toBase();
 
-        $streak = '(SELECT COUNT(*) FROM payment_ledger f WHERE f.shop_id = installment_plans.shop_id AND f.plan_id = installment_plans.id'
-            ." AND f.status IN ({$bad}) AND f.charge_context NOT IN ({$excluded})"
-            .' AND (l.last_ok IS NULL OR f.created_at > l.last_ok))';
+        return PaymentLedger::query()
+            ->joinSub($lastOk, 'lo', function ($join): void {
+                $join->on('lo.plan_id', '=', 'payment_ledger.plan_id')->on('lo.shop_id', '=', 'payment_ledger.shop_id');
+            })
+            ->whereNotIn('payment_ledger.charge_context', CancellationLog::EXCLUDED_CONTEXTS)
+            ->selectRaw(implode(', ', [
+                'payment_ledger.plan_id as plan_id',
+                'payment_ledger.shop_id as shop_id',
+                "SUM(CASE WHEN payment_ledger.status = {$ok} THEN 1 ELSE 0 END) as ok",
+                "SUM(CASE WHEN payment_ledger.status IN ({$bad}) THEN 1 ELSE 0 END) as bad",
+                "SUM(CASE WHEN payment_ledger.status IN ({$bad}) AND (lo.last_ok IS NULL OR payment_ledger.created_at > lo.last_ok) THEN 1 ELSE 0 END) as streak",
+            ]))
+            ->groupBy('payment_ledger.plan_id', 'payment_ledger.shop_id')
+            ->toBase();
+    }
+
+    private function plans(): Builder
+    {
         $year = 'CAST(m.exp_year AS INTEGER)';
         $cardIdx = "(CASE WHEN m.exp_year IS NULL OR m.exp_month IS NULL THEN NULL ELSE ((CASE WHEN {$year} < 100 THEN {$year} + 2000 ELSE {$year} END) * 12 + CAST(m.exp_month AS INTEGER)) END)";
 
         return $this->filters->applyToPlans(
             InstallmentPlan::query()
-                ->leftJoinSub($ledger, 'l', function ($join): void {
+                ->leftJoinSub($this->planLedger(), 'l', function ($join): void {
                     $join->on('l.plan_id', '=', 'installment_plans.id')->on('l.shop_id', '=', 'installment_plans.shop_id');
                 })
                 ->leftJoin('installment_payment_methods as m', function ($join): void {
@@ -327,34 +389,48 @@ final class RiskQuery
             Sql::planFrequencyKey().' as freq',
             'COALESCE(l.ok, 0) as ok',
             'COALESCE(l.bad, 0) as bad',
-            "{$streak} as streak",
+            'COALESCE(l.streak, 0) as streak',
             "{$cardIdx} as card_idx",
             'm.status as card_state',
         ]))->toBase();
     }
 
-    private function contracts(): Builder
+    /** The contract rail's aggregate: the same single pass over billing attempts. */
+    private function contractAttempts(): Builder
     {
         $ok = "'".SubscriptionBillingAttempt::STATUS_SUCCEEDED."'";
         $bad = "'".SubscriptionBillingAttempt::STATUS_FAILED."'";
+        $t = 'subscription_billing_attempts';
 
-        $attempts = SubscriptionBillingAttempt::query()
-            ->selectRaw("subscription_contract_id, shop_id, SUM(CASE WHEN status = {$ok} THEN 1 ELSE 0 END) as ok, "
-                ."SUM(CASE WHEN status = {$bad} THEN 1 ELSE 0 END) as bad, "
-                ."MAX(CASE WHEN status = {$ok} THEN created_at END) as last_ok")
-            ->groupBy('subscription_contract_id', 'shop_id')
+        $lastOk = SubscriptionBillingAttempt::query()
+            ->selectRaw("{$t}.subscription_contract_id, {$t}.shop_id, MAX(CASE WHEN {$t}.status = {$ok} THEN {$t}.created_at END) as last_ok")
+            ->groupBy("{$t}.subscription_contract_id", "{$t}.shop_id")
             ->toBase();
 
-        $streak = '(SELECT COUNT(*) FROM subscription_billing_attempts f WHERE f.shop_id = subscription_contracts.shop_id'
-            ." AND f.subscription_contract_id = subscription_contracts.id AND f.status = {$bad}"
-            .' AND (a.last_ok IS NULL OR f.created_at > a.last_ok))';
+        return SubscriptionBillingAttempt::query()
+            ->joinSub($lastOk, 'lo', function ($join) use ($t): void {
+                $join->on('lo.subscription_contract_id', '=', "{$t}.subscription_contract_id")->on('lo.shop_id', '=', "{$t}.shop_id");
+            })
+            ->selectRaw(implode(', ', [
+                "{$t}.subscription_contract_id as subscription_contract_id",
+                "{$t}.shop_id as shop_id",
+                "SUM(CASE WHEN {$t}.status = {$ok} THEN 1 ELSE 0 END) as ok",
+                "SUM(CASE WHEN {$t}.status = {$bad} THEN 1 ELSE 0 END) as bad",
+                "SUM(CASE WHEN {$t}.status = {$bad} AND (lo.last_ok IS NULL OR {$t}.created_at > lo.last_ok) THEN 1 ELSE 0 END) as streak",
+            ]))
+            ->groupBy("{$t}.subscription_contract_id", "{$t}.shop_id")
+            ->toBase();
+    }
+
+    private function contracts(): Builder
+    {
         // card_exp is "MM/YY" (ContractMirror).
         $cardIdx = "(CASE WHEN subscription_contracts.card_exp IS NULL OR LENGTH(subscription_contracts.card_exp) <> 5 THEN NULL ELSE "
             .'((CAST(SUBSTR(subscription_contracts.card_exp, 4, 2) AS INTEGER) + 2000) * 12 + CAST(SUBSTR(subscription_contracts.card_exp, 1, 2) AS INTEGER)) END)';
 
         return $this->filters->applyToContracts(
             SubscriptionContract::query()
-                ->leftJoinSub($attempts, 'a', function ($join): void {
+                ->leftJoinSub($this->contractAttempts(), 'a', function ($join): void {
                     $join->on('a.subscription_contract_id', '=', 'subscription_contracts.id')->on('a.shop_id', '=', 'subscription_contracts.shop_id');
                 })
                 ->whereIn('subscription_contracts.status', self::CONTRACT_LIVE)
@@ -371,7 +447,7 @@ final class RiskQuery
             Sql::contractFrequencyKey().' as freq',
             'COALESCE(a.ok, 0) as ok',
             'COALESCE(a.bad, 0) as bad',
-            "{$streak} as streak",
+            'COALESCE(a.streak, 0) as streak',
             "{$cardIdx} as card_idx",
             'CAST(NULL AS TEXT) as card_state',
         ]))->toBase();

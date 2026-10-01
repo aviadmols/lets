@@ -13,6 +13,7 @@ use App\Models\ActivityEvent;
 use App\Models\InstallmentPlan;
 use App\Models\Shop;
 use App\Models\User;
+use App\Support\CsvCell;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -120,6 +121,50 @@ final class CancellationsOverviewTest extends TestCase
         $this->assertSame($overview['churn']['lost'], $this->query()['subscriber']['lost']);
     }
 
+    /**
+     * The owner's churn rule: a payment-retry lapse is churn only if the plan
+     * is still lapsed at the END of the period; a lapse recovered inside the
+     * period is neither churn nor reactivation; a plan lapsed at the START and
+     * active again is a reactivation. Both screens agree, in the period and in
+     * the comparison window.
+     */
+    public function test_a_payment_retry_lapse_is_churn_only_if_still_lapsed_at_period_end(): void
+    {
+        $born = CarbonImmutable::now()->subDays(120);
+        $recovered = $this->plan($this->shop, '1', 50, createdAt: $born);   // lapses + recovers inside the period
+        $returned = $this->plan($this->shop, '2', 50, createdAt: $born);    // lapsed before the period, back inside it
+        $stuck = $this->plan($this->shop, '3', 50, status: 'awaiting_payment', createdAt: $born); // lapses inside, still lapsed
+        $left = $this->plan($this->shop, '4', 50, createdAt: $born);        // a plain cancellation
+        $this->plan($this->shop, '5', 50, createdAt: $born);
+
+        $this->move($recovered, 'active', 'failed', CarbonImmutable::now()->subDays(20));
+        $this->move($recovered, 'failed', 'active', CarbonImmutable::now()->subDays(10));
+        $this->move($returned, 'active', 'failed', CarbonImmutable::now()->subDays(50));
+        $this->move($returned, 'failed', 'active', CarbonImmutable::now()->subDays(10));
+        $this->move($stuck, 'active', 'awaiting_payment', CarbonImmutable::now()->subDays(3));
+        $this->cancel($left, CarbonImmutable::now()->subDays(5), 'admin:7');
+
+        $q = $this->query();
+        $overview = Tenant::run($this->shop, fn () => (new \App\Domain\Analytics\Subscribers\SubscribersOverviewQuery(Context::default()))->get());
+        $counts = $overview['activity']['subscription']['counts'];
+
+        $this->assertSame(2, $q['subscriber']['lost'], 'The stuck lapse + the cancellation; the recovered lapse is not churn.');
+        $this->assertSame(2, $q['subscription']['cancelled']);
+        $this->assertSame(4, $q['subscription']['start_active'], 'The plan lapsed since August is outside the book at the start.');
+        $this->assertSame(2, $counts['cancelled']);
+        $this->assertSame(1, $counts['reactivated'], 'Only the plan that was lapsed at the start.');
+        $this->assertSame($overview['churn']['lost'], $q['subscriber']['lost']);
+        $this->assertSame($overview['churn']['rate'], $q['subscriber']['rate']);
+
+        // August: the plan that lapsed then is still lapsed at that window's end → churn there.
+        $this->assertSame(1, $q['subscriber_previous']['lost']);
+        $this->assertSame(1, $overview['churn_previous']['lost']);
+        $this->assertSame(1, $overview['activity']['subscription']['previous']['cancelled']);
+
+        // The book line still dips and recovers: today's active count is exact.
+        $this->assertSame(3, $overview['kpis']['subscriptions']['value']);
+    }
+
     public function test_channels_and_reasons_are_grouped_without_guessing(): void
     {
         $this->fixture($this->shop);
@@ -177,7 +222,7 @@ final class CancellationsOverviewTest extends TestCase
         $export = Tenant::run($this->shop, fn () => (new CancellationsOverview())->export(Context::default()));
         $this->assertCount(3, $export['rows']);
 
-        $this->assertSame("'=HYPERLINK(\"x\")", Analytics::csvCell(end($export['rows'])[8]));
+        $this->assertSame("'=HYPERLINK(\"x\")", CsvCell::neutralise(end($export['rows'])[8]));
     }
 
     public function test_a_product_filter_narrows_the_cancellations(): void

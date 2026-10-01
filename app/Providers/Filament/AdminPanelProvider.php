@@ -12,6 +12,7 @@ use App\Filament\Pages\TwoFactorSecurity;
 use App\Domain\Upsell\Rendering\UpsellCardPresenter;
 use App\Http\Controllers\Admin\AdminAccountPreviewController;
 use App\Http\Controllers\Admin\AdminCustomerAccountViewController;
+use App\Http\Controllers\Admin\AnalyticsDownloadController;
 use App\Http\Middleware\BindDevTenant;
 use App\Http\Middleware\BindTenantFromUser;
 use App\Http\Middleware\DevAutoLogin;
@@ -41,6 +42,7 @@ use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
+use Illuminate\Routing\Middleware\ValidateSignature;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\URL;
@@ -350,6 +352,15 @@ class AdminPanelProvider extends PanelProvider
                 Route::get('account/view-as/{customer}', AdminCustomerAccountViewController::class)
                     ->middleware(Authenticate::class)
                     ->name('account.view_as');
+
+                // Every Analytics CSV (shell Export, risk table, report library),
+                // streamed. Only via a link minted minutes ago (relative signature:
+                // a proxy rewriting scheme/host cannot break it) AND only for the
+                // signed-in user's own bound shop — the controller compares.
+                //   → GET /admin/analytics/download  (name filament.admin.analytics.download)
+                Route::get('analytics/download', AnalyticsDownloadController::class)
+                    ->middleware([Authenticate::class, ValidateSignature::relative()])
+                    ->name('analytics.download');
             })
             ->navigationGroups($this->navigationGroups())
             // Platform-admin link to the Horizon dashboard (queues, throughput, FAILED

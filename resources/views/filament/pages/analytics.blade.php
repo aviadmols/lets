@@ -16,7 +16,7 @@
     $screen = $this->screen();
     $context = $this->context();
     $data = $screen->data($context);
-    $canExport = ! $screen->isPlaceholder();
+    $canExport = $screen->exportable();
 @endphp
 <x-filament-panels::page>
     <div class="rc-an rc-motion">

@@ -8,11 +8,13 @@ use App\Filament\Pages\Analytics\Screens\AnalyticsScreen;
 use App\Filament\Pages\Analytics\Screens\PlaceholderScreen;
 use App\Models\Shop;
 use App\Models\User;
+use App\Support\CsvCell;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Tests\Feature\Analytics\Concerns\BuildsSubscriptions;
+use Tests\Feature\Analytics\Concerns\FollowsAnalyticsDownloads;
 use Tests\TestCase;
 
 /**
@@ -23,6 +25,7 @@ use Tests\TestCase;
 final class AnalyticsPageTest extends TestCase
 {
     use BuildsSubscriptions;
+    use FollowsAnalyticsDownloads;
     use RefreshDatabase;
 
     private Shop $shop;
@@ -133,11 +136,19 @@ final class AnalyticsPageTest extends TestCase
     {
         $this->plan($this->shop, '1', 100);
 
-        Livewire::test(Analytics::class)->call('export')->assertFileDownloaded();
+        $csv = $this->fetchCsv($this->downloadLink(Livewire::test(Analytics::class)->call('export')));
+        $this->assertStringContainsString(__('analytics/subscribers_overview.kpi.mrr'), $csv);
 
-        $this->assertSame("'=SUM(A1)", Analytics::csvCell('=SUM(A1)'));
-        $this->assertSame('-12.5', Analytics::csvCell('-12.5'), 'A negative number stays a number.');
-        $this->assertSame('Book club', Analytics::csvCell('Book club'));
+        $this->assertSame("'=SUM(A1)", CsvCell::neutralise('=SUM(A1)'));
+        $this->assertSame('-12.5', CsvCell::neutralise('-12.5'), 'A negative number stays a number.');
+        $this->assertSame('Book club', CsvCell::neutralise('Book club'));
+    }
+
+    public function test_a_screen_without_an_export_mints_no_link(): void
+    {
+        $page = Livewire::test(Analytics::class)->call('go', 'reports', 'reports')->call('export');
+
+        $this->assertArrayNotHasKey('redirect', $page->effects);
     }
 
     /** @return array<string, string> chart id => wire:key */

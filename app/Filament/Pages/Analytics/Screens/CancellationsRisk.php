@@ -5,9 +5,7 @@ namespace App\Filament\Pages\Analytics\Screens;
 use App\Domain\Analytics\Cancellations\RiskQuery;
 use App\Domain\Analytics\Context;
 use App\Domain\Analytics\Filters;
-use App\Domain\Analytics\Support\AnalyticsCache;
 use App\Domain\Analytics\Support\Delta;
-use App\Domain\Analytics\Support\Frequency;
 use App\Livewire\Analytics\RiskTable;
 use App\Support\Ui\Charts\ChartFormat;
 
@@ -15,7 +13,7 @@ use App\Support\Ui\Charts\ChartFormat;
  * Cancellations › Risk analysis (sketch: RiskAnalysis.dc.html; spec §6.4).
  *
  * Risk is a point-in-time judgement ("as of today"): the date range does not
- * change it. KPIs come from one SQL aggregate (RiskQuery::totals); the list is
+ * change it. KPIs come from the cached scored book (RiskQuery::totals); the list is
  * the live RiskTable component — searchable, filterable, sortable, paginated,
  * exported as CSV. Scoring rules: RiskQuery's docblock.
  */
@@ -30,8 +28,6 @@ final class CancellationsRisk extends AnalyticsScreen
 
     public const FILTERS = [Filters::PLANS, Filters::FREQUENCIES];
 
-    public const CACHE = 'cancellations.risk';
-
     public function view(): string
     {
         return self::VIEW;
@@ -39,8 +35,7 @@ final class CancellationsRisk extends AnalyticsScreen
 
     public function data(Context $context): array
     {
-        $t = AnalyticsCache::remember(self::CACHE, $context->period, $context->filters,
-            fn (): array => (new RiskQuery($context->filters))->totals());
+        $t = (new RiskQuery($context->filters))->totals(); // cached inside RiskQuery (one scored book per shop + filters)
 
         return [
             'kpis' => [
@@ -73,27 +68,9 @@ final class CancellationsRisk extends AnalyticsScreen
     {
         $rows = [];
         foreach ((new RiskQuery($context->filters))->all() as $r) {
-            $rows[] = [
-                $r['ref'] !== '' ? $r['ref'] : '#'.$r['id'],
-                __(self::LANG.'level.'.RiskTable::LEVEL_KEYS[$r['risk']]),
-                $r['status'],
-                substr($r['created_at'], 0, 10),
-                $r['name'],
-                $r['email'],
-                number_format($r['price'], 2, '.', ''),
-                $r['orders'],
-                $r['success'] === null ? '' : number_format($r['success'], 1, '.', ''),
-                $r['streak'],
-                __(self::LANG.'card.'.$r['card']),
-                $r['card_exp'] ?? '',
-                Frequency::label($r['freq']),
-            ];
+            $rows[] = RiskTable::csvRow($r);
         }
 
-        return [
-            'headers' => array_map(static fn (string $k): string => __(self::LANG.'col.'.$k),
-                ['subscription', 'risk', 'status', 'created', 'customer', 'email', 'price', 'orders', 'success', 'streak', 'card', 'expiry', 'interval']),
-            'rows' => $rows,
-        ];
+        return ['headers' => RiskTable::csvHeaders(), 'rows' => $rows];
     }
 }

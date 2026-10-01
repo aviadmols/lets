@@ -5,13 +5,12 @@ namespace App\Livewire\Analytics;
 use App\Domain\Analytics\Filters;
 use App\Domain\Analytics\Period;
 use App\Domain\Analytics\Reports\ReportCatalog;
-use App\Domain\Analytics\Reports\ReportRunner;
+use App\Domain\Analytics\Support\AnalyticsDownload;
 use App\Support\Tenant;
 use Illuminate\Contracts\View\View;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Url;
 use Livewire\Component;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Analytics › Reports — the report library (spec §8): search + category
@@ -48,13 +47,27 @@ class ReportLibrary extends Component
     #[Url(as: 'rsearch')]
     public string $search = '';
 
-    public function run(string $report): ?StreamedResponse
+    /**
+     * "Run" = a redirect to a short-lived signed GET for this shop that streams
+     * the report in chunks (AnalyticsDownloadController → ReportRunner) — never
+     * a Livewire download, which would buffer the whole file into the update.
+     */
+    public function run(string $report): void
     {
         if (! Tenant::check() || ! ReportCatalog::exists($report) || ! ReportCatalog::isAvailable($report)) {
-            return null;
+            return;
         }
 
-        return (new ReportRunner($this->period(), Filters::fromInput($this->filters)))->download($report);
+        $period = $this->period();
+        $url = AnalyticsDownload::url(AnalyticsDownload::KIND_REPORT, [
+            'report' => $report,
+            'from' => $period->start()->format(Period::DATE_FORMAT),
+            'to' => $period->end()->format(Period::DATE_FORMAT),
+            'f' => Filters::fromInput($this->filters)->toArray(),
+        ]);
+        if ($url !== null) {
+            $this->redirect($url);
+        }
     }
 
     public function render(): View

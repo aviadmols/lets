@@ -16,9 +16,12 @@ use App\Models\User;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 use Tests\Feature\Analytics\Concerns\BuildsLedger;
 use Tests\Feature\Analytics\Concerns\BuildsSubscriptions;
+use Tests\Feature\Analytics\Concerns\FollowsAnalyticsDownloads;
 use Tests\TestCase;
 
 /**
@@ -32,6 +35,7 @@ final class CancellationsRiskTest extends TestCase
 {
     use BuildsLedger;
     use BuildsSubscriptions;
+    use FollowsAnalyticsDownloads;
     use RefreshDatabase;
 
     private Shop $shop;
@@ -156,6 +160,26 @@ final class CancellationsRiskTest extends TestCase
         });
     }
 
+    /** The ledger is aggregated once per shop + filters, then paging / sorting / searching read the cached book. */
+    public function test_the_scored_book_is_read_once_and_reused(): void
+    {
+        $this->fixture($this->shop);
+
+        Tenant::run($this->shop, function (): void {
+            $this->risk()->totals();
+            DB::flushQueryLog();
+            DB::enableQueryLog();
+            $this->risk()->page('dana');
+            $this->risk()->page('', 'high', '', 'success', 'asc', 1, 2);
+            iterator_to_array($this->risk()->all());
+            $this->risk()->totals();
+            $this->assertSame([], DB::getQueryLog(), 'No query after the book is cached.');
+            DB::disableQueryLog();
+        });
+
+        $this->assertSame(0, Tenant::run($this->other, fn () => $this->risk()->totals())['live'], 'Another shop gets its own (empty) book, never this one.');
+    }
+
     public function test_another_shops_subscriptions_never_appear(): void
     {
         $this->fixture($this->other);
@@ -171,9 +195,7 @@ final class CancellationsRiskTest extends TestCase
 
         Tenant::set($this->shop);
         $this->actingAs(User::factory()->forShop($this->shop)->create());
-        $response = Livewire::test(RiskTable::class)->call('export')->effects['download'] ?? null;
-        $this->assertNotNull($response);
-        $csv = base64_decode($response['content']);
+        $csv = $this->fetchCsv($this->downloadLink(Livewire::test(RiskTable::class)->call('export')));
         $this->assertStringNotContainsString('Dana Levi', $csv);
     }
 
@@ -183,8 +205,7 @@ final class CancellationsRiskTest extends TestCase
         Tenant::set($this->shop);
         $this->actingAs(User::factory()->forShop($this->shop)->create());
 
-        $download = Livewire::test(RiskTable::class)->call('export')->effects['download'];
-        $csv = base64_decode($download['content']);
+        $csv = $this->fetchCsv($this->downloadLink(Livewire::test(RiskTable::class)->call('export')));
 
         $this->assertStringContainsString("'=cmd|calc", $csv);
         $this->assertStringContainsString('Dana Levi', $csv);
@@ -201,6 +222,7 @@ final class CancellationsRiskTest extends TestCase
             ->assertSee(__('analytics/cancellations_risk.empty.title'));
 
         $this->fixture($this->shop);
+        Cache::flush(); // the scored book is cached for a few minutes
 
         Livewire::test(RiskTable::class)
             ->assertSee('Dana Levi')

@@ -55,6 +55,11 @@ final class PaymentsOverview extends AnalyticsScreen
 }
 ```
 
+`export()` feeds the shell's Export button, which never downloads through Livewire: it redirects to a signed,
+5-minute GET bound to the shop (`AnalyticsDownload::url()` → `AnalyticsDownloadController`, cells through
+`CsvCell`). Keep `export()` to bounded aggregates; a list that can grow with the book gets its own download
+kind in that controller and streams lazily (see the risk table and `ReportRunner`).
+
 `Context` gives you `$context->period` (`start()`, `end()`, `comparison()`, `earliest()`, `label()`,
 `days()`), `$context->filters` (`applyToPlans($q)`, `applyToContracts($q)`, `includesContracts()`),
 `$context->grain('<chart_id>', ?preferred)` and `$context->option('unit', self::OPTIONS['unit'])`.

@@ -17,6 +17,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Tests\Feature\Analytics\Concerns\BuildsLedger;
 use Tests\Feature\Analytics\Concerns\BuildsSubscriptions;
+use Tests\Feature\Analytics\Concerns\FollowsAnalyticsDownloads;
 use Tests\TestCase;
 
 /**
@@ -28,6 +29,7 @@ final class ReportsTest extends TestCase
 {
     use BuildsLedger;
     use BuildsSubscriptions;
+    use FollowsAnalyticsDownloads;
     use RefreshDatabase;
 
     // === CONSTANTS ===
@@ -149,24 +151,21 @@ final class ReportsTest extends TestCase
             ->assertSee(__('analytics/reports_reports.report.bundle_orders.title'))
             ->assertSee(__('analytics.empty.not_tracked_title'));
 
-        $library = Livewire::test(ReportLibrary::class, ['from' => '2026-08-31', 'to' => '2026-09-29'])
+        $logsUrl = $this->downloadLink(Livewire::test(ReportLibrary::class, ['from' => '2026-08-31', 'to' => '2026-09-29'])
             ->set('search', 'cancellation')
             ->assertSee(__('analytics/reports_reports.report.cancellation_logs.title'))
             ->assertDontSee(__('analytics/reports_reports.report.transaction_logs.title'))
-            ->call('run', 'cancellation_logs')
-            ->assertFileDownloaded();
-        $this->assertStringNotContainsString(self::THEIRS, base64_decode($library->effects['download']['content']));
+            ->call('run', 'cancellation_logs'));
+        $subscriptionsUrl = $this->downloadLink(Livewire::test(ReportLibrary::class, ['from' => '2026-08-31', 'to' => '2026-09-29'])
+            ->call('run', 'subscriptions'));
+        $untracked = Livewire::test(ReportLibrary::class, ['from' => '2026-08-31', 'to' => '2026-09-29'])
+            ->call('run', 'bundle_orders');
+        $this->assertArrayNotHasKey('redirect', $untracked->effects);
 
-        $subscriptions = Livewire::test(ReportLibrary::class, ['from' => '2026-08-31', 'to' => '2026-09-29'])
-            ->call('run', 'subscriptions')
-            ->assertFileDownloaded();
-        $content = base64_decode($subscriptions->effects['download']['content']);
+        $this->assertStringNotContainsString(self::THEIRS, $this->fetchCsv($logsUrl));
+        $content = $this->fetchCsv($subscriptionsUrl);
         $this->assertStringContainsString('mine.customer@x.test', $content);
         $this->assertStringNotContainsString('their.customer@x.test', $content);
-
-        Livewire::test(ReportLibrary::class, ['from' => '2026-08-31', 'to' => '2026-09-29'])
-            ->call('run', 'bundle_orders')
-            ->assertNoFileDownloaded();
     }
 
     public function test_the_exports_tab_is_an_honest_empty_state(): void

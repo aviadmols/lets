@@ -4,10 +4,10 @@ namespace App\Livewire\Analytics;
 
 use App\Domain\Analytics\Cancellations\RiskQuery;
 use App\Domain\Analytics\Filters;
+use App\Domain\Analytics\Support\AnalyticsDownload;
 use App\Domain\Analytics\Support\Frequency;
 use App\Filament\Resources\SubscriptionContractResource;
 use App\Filament\Resources\SubscriptionResource;
-use App\Support\CsvCell;
 use App\Support\Tenant;
 use App\Support\Ui\Charts\ChartFormat;
 use Carbon\CarbonImmutable;
@@ -15,11 +15,11 @@ use Illuminate\Contracts\View\View;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Url;
 use Livewire\Component;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Cancellations › Risk analysis — the live table (search, level + card filters,
- * sortable columns, pagination, CSV of exactly what is filtered).
+ * sortable columns, pagination, CSV of exactly what is filtered — streamed
+ * through a signed GET, AnalyticsDownload).
  *
  * A nested Livewire component because a screen class is plain and its URL
  * options are closed lists; free-text search needs its own state. Every value
@@ -47,6 +47,9 @@ class RiskTable extends Component
     ];
 
     public const CARD_FILTERS = [RiskQuery::CARD_EXPIRED, RiskQuery::CARD_EXPIRING, RiskQuery::CARD_VALID, RiskQuery::CARD_NONE];
+
+    /** CSV columns, in order (labels: col.<key>). */
+    public const CSV_COLUMNS = ['subscription', 'risk', 'status', 'created', 'customer', 'email', 'price', 'orders', 'success', 'streak', 'card', 'expiry', 'interval'];
 
     /** Success % below these colours red / amber (the sketch's legend). */
     public const SUCCESS_BAD = 70;
@@ -97,42 +100,67 @@ class RiskTable extends Component
         $this->page = max(1, $page);
     }
 
-    /** CSV of every row the current search + filters select, in the current order. */
-    public function export(): ?StreamedResponse
+    /**
+     * CSV of every row the current search + filters select, in the current
+     * order: a redirect to a short-lived signed GET for this shop, streamed by
+     * AnalyticsDownloadController — never a Livewire download.
+     */
+    public function export(): void
     {
-        $shop = Tenant::current();
-        if ($shop === null) {
-            return null;
-        }
         [$search, $level, $card, $sort, $dir] = $this->state();
-        $query = $this->query();
-        $headers = array_map(static fn (string $k): string => __(self::LANG.'col.'.$k), ['subscription', 'risk', 'status', 'created', 'customer', 'email', 'price', 'orders', 'success', 'streak', 'card', 'expiry', 'interval']);
+        $url = AnalyticsDownload::url(AnalyticsDownload::KIND_RISK, [
+            'f' => $this->filters, 'q' => $search, 'level' => $level, 'card' => $card, 'sort' => $sort, 'dir' => $dir,
+        ]);
+        if ($url !== null) {
+            $this->redirect($url);
+        }
+    }
 
-        return response()->streamDownload(function () use ($shop, $query, $headers, $search, $level, $card, $sort, $dir): void {
-            Tenant::run($shop, function () use ($query, $headers, $search, $level, $card, $sort, $dir): void {
-                $out = fopen('php://output', 'w');
-                fwrite($out, "\xEF\xBB\xBF");
-                fputcsv($out, CsvCell::neutraliseRow($headers), ',', '"', '');
-                foreach ($query->all($search, $level, $card, $sort, $dir) as $r) {
-                    fputcsv($out, CsvCell::neutraliseRow([
-                        $r['ref'] !== '' ? $r['ref'] : '#'.$r['id'],
-                        __(self::LANG.'level.'.self::LEVEL_KEYS[$r['risk']]),
-                        $r['status'],
-                        substr($r['created_at'], 0, 10),
-                        $r['name'],
-                        $r['email'],
-                        number_format($r['price'], 2, '.', ''),
-                        $r['orders'],
-                        $r['success'] === null ? '' : number_format($r['success'], 1, '.', ''),
-                        $r['streak'],
-                        __(self::LANG.'card.'.$r['card']),
-                        $r['card_exp'] ?? '',
-                        Frequency::label($r['freq']),
-                    ]), ',', '"', '');
-                }
-                fclose($out);
-            });
-        }, 'lets-risk-analysis-'.$shop->getKey().'-'.now()->format('Y-m-d').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    /** @return list<string> the CSV header (the screen's Export and the table's share it) */
+    public static function csvHeaders(): array
+    {
+        return array_map(static fn (string $k): string => __(self::LANG.'col.'.$k), self::CSV_COLUMNS);
+    }
+
+    /** @param array<string, mixed> $r a RiskQuery row @return list<string|int> */
+    public static function csvRow(array $r): array
+    {
+        return [
+            $r['ref'] !== '' ? $r['ref'] : '#'.$r['id'],
+            __(self::LANG.'level.'.self::LEVEL_KEYS[$r['risk']]),
+            $r['status'],
+            substr($r['created_at'], 0, 10),
+            $r['name'],
+            $r['email'],
+            number_format($r['price'], 2, '.', ''),
+            $r['orders'],
+            $r['success'] === null ? '' : number_format($r['success'], 1, '.', ''),
+            $r['streak'],
+            __(self::LANG.'card.'.$r['card']),
+            $r['card_exp'] ?? '',
+            Frequency::label($r['freq']),
+        ];
+    }
+
+    /**
+     * Search, level, card, sort and direction from untrusted input (the
+     * component's own props, or a download link's parameters), each snapped
+     * onto its closed list.
+     *
+     * @param  array<string, mixed>  $p  keys q, level, card, sort, dir
+     * @return array{0: string, 1: string, 2: string, 3: string, 4: string}
+     */
+    public static function stateFrom(array $p): array
+    {
+        $text = static fn (string $k): string => is_string($p[$k] ?? null) ? $p[$k] : '';
+
+        return [
+            mb_substr(trim($text('q')), 0, RiskQuery::MAX_SEARCH),
+            array_key_exists($text('level'), RiskQuery::LEVELS) ? $text('level') : '',
+            in_array($text('card'), self::CARD_FILTERS, true) ? $text('card') : '',
+            in_array($text('sort'), RiskQuery::SORTS, true) ? $text('sort') : 'risk',
+            in_array($text('dir'), RiskQuery::DIRECTIONS, true) ? $text('dir') : 'desc',
+        ];
     }
 
     public function render(): View
@@ -169,13 +197,7 @@ class RiskTable extends Component
     {
         $this->page = max(1, $this->page);
 
-        return [
-            mb_substr(trim($this->search), 0, RiskQuery::MAX_SEARCH),
-            array_key_exists($this->level, RiskQuery::LEVELS) ? $this->level : '',
-            in_array($this->card, self::CARD_FILTERS, true) ? $this->card : '',
-            in_array($this->sort, RiskQuery::SORTS, true) ? $this->sort : 'risk',
-            in_array($this->dir, RiskQuery::DIRECTIONS, true) ? $this->dir : 'desc',
-        ];
+        return self::stateFrom(['q' => $this->search, 'level' => $this->level, 'card' => $this->card, 'sort' => $this->sort, 'dir' => $this->dir]);
     }
 
     /** @return array<string, mixed> one row, formatted for the view */

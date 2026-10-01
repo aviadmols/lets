@@ -71,6 +71,13 @@ abstract class AnalyticsScreen
         return null;
     }
 
+    /** Does this screen offer a CSV at all? (It overrides export().) Cheap — computes nothing. */
+    public function exportable(): bool
+    {
+        return ! $this->isPlaceholder()
+            && (new \ReflectionMethod($this, 'export'))->getDeclaringClass()->getName() !== self::class;
+    }
+
     public function isPlaceholder(): bool
     {
         return false;
