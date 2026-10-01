@@ -4,6 +4,7 @@ namespace Tests\Feature\Analytics;
 
 use App\Domain\Analytics\Context;
 use App\Domain\Analytics\Forecast\ForecastQuery;
+use App\Domain\Analytics\Support\Sql;
 use App\Filament\Pages\Analytics;
 use App\Filament\Pages\Analytics\Screens\Forecast;
 use App\Models\PaymentLedger;
@@ -13,6 +14,7 @@ use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 use Tests\Feature\Analytics\Concerns\BuildsLedger;
 use Tests\Feature\Analytics\Concerns\BuildsSubscriptions;
@@ -78,6 +80,58 @@ final class ForecastTest extends TestCase
         $this->assertCount(13, $f['weeks']);
         $this->assertSame(6, end($f['weeks'])['days'], 'Week 13 holds the 85th–90th day.');
         $this->assertEqualsWithDelta(470.0, array_sum(array_column($f['weeks'], 'scheduled')), 0.01);
+    }
+
+    /**
+     * ceilDiv on literals: exact quotients stay exact (Postgres ROUNDS a
+     * numeric→int cast, so the old `+ 0.999` turned 2 into 3), fractions round
+     * up, zero stays zero, and binary-float noise never adds a payment.
+     */
+    public function test_ceil_div_is_exact_on_this_driver(): void
+    {
+        $cases = [
+            ['300', '100', 3], ['200', '100', 2], ['250', '100', 3], ['260', '100', 3],
+            ['0', '100', 0], ['0.0', '100', 0], ['-50', '100', 0],
+            ['1.1', '0.1', 11], ['100.30', '33.43', 4], ['0.01', '100', 1],
+        ];
+
+        foreach ($cases as [$num, $den, $expected]) {
+            $row = DB::selectOne('SELECT '.Sql::ceilDiv($num, $den).' AS v');
+            $this->assertSame($expected, (int) $row->v, "⌈{$num} ÷ {$den}⌉");
+        }
+    }
+
+    /** The same rule on real decimal columns: the forecast's remaining payments. */
+    public function test_remaining_instalments_are_a_true_ceiling(): void
+    {
+        $plans = [
+            'exact' => [300, 100, 100, 2],      // 200 left ÷ 100 = 2.0 → 2 (Postgres cast said 3)
+            'fraction' => [250, 0, 100, 3],     // 2.5 → 3
+            'fraction_low' => [210, 0, 100, 3], // 2.1 → 3
+            'zero' => [300, 300, 100, 0],       // nothing left
+        ];
+        $day = 1;
+        $expected = [];
+        foreach ($plans as $label => [$total, $charged, $amount, $remaining]) {
+            $at = CarbonImmutable::parse('2026-10-01 09:00:00')->addDays($day++);
+            $this->plan($this->shop, $label, $amount, attributes: [
+                'plan_kind' => 'installments',
+                'total_amount' => $total,
+                'total_charged' => $charged,
+                'next_charge_at' => $at,
+            ]);
+            $expected[$at->toDateString()] = $remaining;
+        }
+
+        $query = new ForecastQuery(Context::default());
+        $groups = Tenant::run($this->shop, fn () => (fn () => $this->groups())->call($query));
+
+        $got = [];
+        foreach ($groups as $g) {
+            $got[$g['day']] = $g['remaining'];
+        }
+        ksort($got);
+        $this->assertSame($expected, $got);
     }
 
     public function test_the_wilson_band_narrows_with_more_charges(): void

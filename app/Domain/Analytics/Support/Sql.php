@@ -20,6 +20,14 @@ final class Sql
     // === CONSTANTS ===
     public const DRIVER_SQLITE = 'sqlite';
 
+    /**
+     * ceilDiv() forgives a quotient this close above a whole number: SQLite
+     * divides money as binary floats (1.1 / 0.1 = 11.000000000000002), which a
+     * bare ceiling would turn into 12. Money has cent precision, so a real
+     * fraction is never this small.
+     */
+    public const CEIL_EPSILON = '0.000000001';
+
     /** Shopify customer gids carry this prefix; the tail is the id plans store. */
     public const CUSTOMER_GID_PREFIX = 'gid://shopify/Customer/';
 
@@ -47,6 +55,28 @@ final class Sql
         return self::isSqlite()
             ? "strftime('%Y-%m', {$column})"
             : "to_char({$column}, 'YYYY-MM')";
+    }
+
+    /**
+     * ⌈numerator ÷ denominator⌉ as an integer, identical on both dialects.
+     *
+     * Never spell this CAST(x / y + 0.999 AS INTEGER): Postgres ROUNDS a
+     * numeric→integer cast (2.0 + 0.999 → 3) where SQLite truncates (→ 2). And
+     * SQLite divides two whole-valued NUMERIC columns as integers (300/200 = 1),
+     * so the numerator is forced to a real first. The caller guards a zero
+     * denominator.
+     */
+    public static function ceilDiv(string $numerator, string $denominator): string
+    {
+        $eps = self::CEIL_EPSILON;
+
+        if (self::isSqlite()) {
+            $q = "((1.0 * ({$numerator})) / ({$denominator}) - {$eps})";
+
+            return "(CAST({$q} AS INTEGER) + (CASE WHEN {$q} > CAST({$q} AS INTEGER) THEN 1 ELSE 0 END))";
+        }
+
+        return "CAST(CEIL(CAST(({$numerator}) AS NUMERIC) / ({$denominator}) - {$eps}) AS INTEGER)";
     }
 
     /** A top-level JSON key as text (activity_events.details, payment_ledger meta…). */

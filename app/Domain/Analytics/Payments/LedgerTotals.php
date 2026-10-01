@@ -143,6 +143,16 @@ final class LedgerTotals
         };
     }
 
+    /**
+     * The GROUP BY list. The ungrained bucket is the constant 'all', and
+     * Postgres refuses a string constant in GROUP BY ("non-integer constant")
+     * where SQLite shrugs — so a constant group is simply left out.
+     */
+    private static function groupBy(string $group, string $status): string
+    {
+        return str_starts_with($group, "'") ? $status : "{$group}, {$status}";
+    }
+
     /** @return iterable<object> */
     private function payplus(CarbonImmutable $from, CarbonImmutable $to, ?string $grain): iterable
     {
@@ -161,7 +171,7 @@ final class LedgerTotals
 
         return $query
             ->selectRaw("{$group} as g, payment_ledger.status as status, COUNT(*) as n, COALESCE(SUM(payment_ledger.amount), 0) as total")
-            ->groupByRaw("{$group}, payment_ledger.status")
+            ->groupByRaw(self::groupBy($group, 'payment_ledger.status'))
             ->toBase()
             ->get();
     }
@@ -180,7 +190,7 @@ final class LedgerTotals
 
         return $this->filters->applyToContracts($query)
             ->selectRaw("{$group} as g, subscription_billing_attempts.status as status, COUNT(*) as n, COALESCE(SUM(subscription_contracts.amount), 0) as total")
-            ->groupByRaw("{$group}, subscription_billing_attempts.status")
+            ->groupByRaw(self::groupBy($group, 'subscription_billing_attempts.status'))
             ->toBase()
             ->get();
     }

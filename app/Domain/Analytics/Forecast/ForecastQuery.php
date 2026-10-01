@@ -231,7 +231,10 @@ final class ForecastQuery
         $installments = PlanKind::INSTALLMENTS->value;
         $remaining = "(CASE WHEN installment_plans.plan_kind = '{$installments}' THEN "
             .'(CASE WHEN COALESCE(installment_plans.installment_amount, 0) > 0 THEN '
-            .'CAST((COALESCE(installment_plans.total_amount, 0) - COALESCE(installment_plans.total_charged, 0)) / installment_plans.installment_amount + 0.999 AS INTEGER) ELSE 0 END)'
+            .Sql::ceilDiv(
+                'COALESCE(installment_plans.total_amount, 0) - COALESCE(installment_plans.total_charged, 0)',
+                'installment_plans.installment_amount'
+            ).' ELSE 0 END)'
             .' ELSE NULL END)';
         $day = Sql::day('installment_plans.next_charge_at');
 

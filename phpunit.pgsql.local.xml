@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+>
+    <testsuites>
+        <testsuite name="Unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Feature">
+            <directory>tests/Feature</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>app</directory>
+        </include>
+    </source>
+    <!-- The WHOLE suite (phpunit.xml, unchanged) on a REAL Postgres — the
+         production dialect. phpunit.pgsql.xml is the money suite against a
+         Postgres named by the environment (CI); this file pins a THROWAWAY
+         local cluster instead, so nothing in the shell or in .env can point it
+         anywhere else:
+
+             npx embedded-postgres on 127.0.0.1:54329, user lets_test /
+             lets_test_pw, database lets_analytics_test (initdb UTF8, locale C)
+             vendor/bin/phpunit -c phpunit.pgsql.local.xml tests/Feature/Analytics
+
+         Every DB_* value is force="true" (a shell variable cannot redirect it)
+         and DB_URL / DATABASE_URL are nulled exactly as in phpunit.xml.
+         RefreshDatabase wipes that database on every run — it must be one you
+         can lose. -->
+
+    <php>
+        <!-- The suite peaks around 130 MB, past PHP's 128 MB default — which
+             surfaced as "Allowed memory size exhausted" in the `artisan test`
+             worker processes rather than as a failing test. Set here so every
+             runner (phpunit, artisan test, CI) inherits the same headroom. -->
+        <ini name="memory_limit" value="512M"/>
+        <env name="APP_ENV" value="testing"/>
+        <env name="APP_MAINTENANCE_DRIVER" value="file"/>
+        <env name="BCRYPT_ROUNDS" value="4"/>
+        <env name="CACHE_STORE" value="array"/>
+        <env name="DB_CONNECTION" value="pgsql" force="true"/>
+        <env name="DB_HOST" value="127.0.0.1" force="true"/>
+        <env name="DB_PORT" value="54329" force="true"/>
+        <env name="DB_USERNAME" value="lets_test" force="true"/>
+        <env name="DB_PASSWORD" value="lets_test_pw" force="true"/>
+        <env name="DB_DATABASE" value="lets_analytics_test" force="true"/>
+        <!-- SAFETY: force DB_URL/DATABASE_URL to null so the sqlite connection's
+             `'url' => env('DB_URL')` is never parsed into a real (e.g. Railway)
+             database. Laravel's env() maps the string "null" to null; an empty
+             string would still be parsed. Without this, RefreshDatabase could
+             migrate:fresh the production DB. -->
+        <env name="DB_URL" value="null" force="true"/>
+        <env name="DATABASE_URL" value="null" force="true"/>
+        <env name="TENANT_CREDENTIALS_KEY" value="base64:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="/>
+        <env name="MAIL_MAILER" value="array"/>
+        <env name="PULSE_ENABLED" value="false"/>
+        <env name="QUEUE_CONNECTION" value="sync"/>
+        <env name="SESSION_DRIVER" value="array"/>
+        <env name="TELESCOPE_ENABLED" value="false"/>
+        <!-- Deterministic Shopify app identities: never inherit real credentials
+             from a developer's .env — tests set what they need via config(). -->
+        <env name="SHOPIFY_API_KEY" value=""/>
+        <env name="SHOPIFY_API_SECRET" value=""/>
+        <env name="SHOPIFY_WEBHOOK_SECRET" value=""/>
+        <env name="SHOPIFY_CUSTOM_API_KEY" value=""/>
+        <env name="SHOPIFY_CUSTOM_API_SECRET" value=""/>
+    </php>
+</phpunit>
