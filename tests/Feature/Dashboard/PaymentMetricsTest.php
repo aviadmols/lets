@@ -102,36 +102,32 @@ final class PaymentMetricsTest extends TestCase
         $this->assertSame(100.0, end($months)['realized']);
     }
 
-    public function test_each_upcoming_day_links_into_the_list_filtered_to_that_day(): void
+    /**
+     * Each upcoming day carries its date and count — what the Analytics
+     * Payments › Upcoming screen turns into a drill-down link into the
+     * subscriptions list filtered to that one day (docs/analytics/building-a-screen.md).
+     */
+    public function test_upcoming_days_are_grouped_by_date(): void
     {
         $due = now()->addDays(3)->startOfDay();
         $this->plan($due);
         $this->plan($due);
         $this->plan(now()->addDays(9)->startOfDay());
 
-        $rows = Livewire::test(Analytics::class)->instance()->upcoming();
-
-        $first = collect($rows)->firstWhere('date', $due->toDateString());
+        $first = collect(PaymentMetrics::upcoming(null))->firstWhere('date', $due->toDateString());
 
         $this->assertNotNull($first, 'the day with two subscriptions is listed');
         $this->assertSame(2, $first['count']);
-
-        // Both ends of the range are that one date — which is what makes the
-        // link a drill-down rather than "everything from here on".
-        $this->assertStringContainsString(urlencode($due->toDateString()), $first['url']);
-        $this->assertStringContainsString('next_charge_at', $first['url']);
     }
 
-    /** A yearly member's charge is a year out; the table must not stop at a window. */
-    public function test_the_upcoming_table_reaches_all_future_charges(): void
+    /** A yearly member's charge is a year out; the list must not stop at a window. */
+    public function test_the_upcoming_list_reaches_all_future_charges(): void
     {
         $farOut = now()->addMonths(11)->startOfDay();
         $this->plan($farOut);
 
-        $rows = Livewire::test(Analytics::class)->instance()->upcoming();
-
         $this->assertNotNull(
-            collect($rows)->firstWhere('date', $farOut->toDateString()),
+            collect(PaymentMetrics::upcoming(null))->firstWhere('date', $farOut->toDateString()),
             'a charge eleven months out is listed',
         );
     }

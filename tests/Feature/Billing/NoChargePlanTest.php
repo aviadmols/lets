@@ -2,7 +2,8 @@
 
 namespace Tests\Feature\Billing;
 
-use App\Domain\Dashboard\AnalyticsMetrics;
+use App\Domain\Analytics\Filters;
+use App\Domain\Analytics\Subscribers\ActiveBook;
 use App\Domain\Installments\CardUpdateService;
 use App\Domain\Lifecycle\SubscriptionLifecycleService;
 use App\Filament\Pages\HomeDashboard;
@@ -324,10 +325,10 @@ final class NoChargePlanTest extends TestCase
         $this->plan(noCharge: true, withCard: false, withConsent: false, due: false, amount: 120);
 
         Tenant::run($this->shop, function (): void {
-            $metrics = AnalyticsMetrics::forRange(30);
+            $totals = (new ActiveBook(Filters::none()))->totals();
 
-            $this->assertSame(1, $metrics['active_subscriptions']);
-            $this->assertSame(0.0, $metrics['mrr']);
+            $this->assertSame(1, $totals['subscriptions']);
+            $this->assertSame(0.0, $totals['mrr']);
         });
     }
 
