@@ -116,6 +116,48 @@ final class PaymentsRecoveryTest extends TestCase
         $this->assertFalse($q['has_data'], 'Its retry in September is not a new first attempt.');
     }
 
+    /**
+     * The SQL pre-grouping (one summary row per payment, attempts numbered by
+     * window functions) gives exactly what the PHP rules give over the raw
+     * attempt rows — on whichever driver runs the suite.
+     */
+    public function test_sql_summaries_match_the_php_rules_over_raw_attempts(): void
+    {
+        $this->septemberStory($this->shop);
+        $since = CarbonImmutable::parse('2026-08-01');
+
+        $fromSql = Tenant::run($this->shop, fn (): array => (new PaymentJourneys(\App\Domain\Analytics\Filters::none()))->since($since));
+        $fromSql = array_values(array_filter($fromSql, static fn (array $j): bool => $j['source'] === PaymentJourneys::SOURCE_PAYPLUS));
+
+        $raw = \Illuminate\Support\Facades\DB::table('activity_events as e')
+            ->join('installment_payments as p', 'p.id', '=', 'e.payment_id')
+            ->join('installment_plans as pl', 'pl.id', '=', 'p.plan_id')
+            ->where('e.shop_id', $this->shop->id)
+            ->whereIn('e.kind', PaymentJourneys::ATTEMPT_KINDS)
+            ->orderBy('e.created_at')->orderBy('e.id')
+            ->get(['e.payment_id', 'e.kind', 'e.created_at as at', 'e.details', 'p.amount', 'p.status as payment_status', 'pl.id as plan_id', 'pl.status as plan_status']);
+        $cards = \Illuminate\Support\Facades\DB::table('activity_events')->where('shop_id', $this->shop->id)
+            ->whereIn('kind', PaymentJourneys::CARD_KINDS)->orderBy('created_at')->get(['plan_id', 'kind', 'created_at']);
+
+        $expected = [];
+        foreach ($raw->groupBy('payment_id') as $paymentId => $attempts) {
+            $rows = $attempts->map(static function ($a): object {
+                $d = json_decode((string) $a->details, true) ?: [];
+
+                return (object) [...(array) $a, 'message' => $d['error_message'] ?? null, 'code' => $d['error_code'] ?? null];
+            })->all();
+            $planCards = $cards->where('plan_id', $rows[0]->plan_id)->map(static fn ($c): array => ['kind' => $c->kind, 'at' => (string) $c->created_at])->values()->all();
+            $expected[] = PaymentJourneys::build((int) $paymentId, $rows, $planCards);
+        }
+
+        $sort = static fn (array $a, array $b): int => $a['id'] <=> $b['id'];
+        usort($fromSql, $sort);
+        usort($expected, $sort);
+
+        $this->assertCount(5, $fromSql, 'One journey per payment, not per attempt.');
+        $this->assertEquals($expected, $fromSql);
+    }
+
     public function test_the_journey_rules(): void
     {
         $row = static fn (string $kind, string $at, string $status = 'succeeded', string $plan = 'active'): object => (object) [

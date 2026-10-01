@@ -12,6 +12,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Every payment's JOURNEY — first attempt, the retries after it, how it ended —
@@ -32,8 +33,10 @@ use Carbon\CarbonImmutable;
  * row per cycle with its final status, no retry history — they enter as
  * single-attempt journeys (source shopify) and never as recoveries.
  *
- * Volume: one row per ATTEMPT in the window (+ a payment's earlier attempts
- * are excluded in SQL so a journey is never cut in half), never one per plan.
+ * Volume: PHP receives one SUMMARY row per PAYMENT whose first attempt is in
+ * the window — attempts are numbered and folded in SQL (window functions,
+ * identical on SQLite and Postgres), a payment's earlier attempts are excluded
+ * in SQL so a journey is never cut in half, and nothing is one row per plan.
  */
 final class PaymentJourneys
 {
@@ -114,11 +117,20 @@ final class PaymentJourneys
         return $journeys;
     }
 
-    /** @return list<array<string, mixed>> */
+    /**
+     * PayPlus journeys, PRE-GROUPED in SQL: one summary row per payment (its
+     * first attempt, how many attempts up to the first success, the first
+     * failure's text), never the raw attempt rows. Attempts are numbered with
+     * ROW_NUMBER() per payment (created_at, id) — the same order build() walks.
+     *
+     * @return list<array<string, mixed>>
+     */
     private function payplus(CarbonImmutable $since): array
     {
         $kinds = self::ATTEMPT_KINDS;
-        $query = ActivityEvent::query()
+        $ok = "'".Timeline::KIND_CHARGE_SUCCEEDED."'";
+
+        $attempts = ActivityEvent::query()
             ->join('installment_payments', function ($join): void {
                 $join->on('installment_payments.id', '=', 'activity_events.payment_id')
                     ->on('installment_payments.shop_id', '=', 'activity_events.shop_id');
@@ -140,9 +152,8 @@ final class PaymentJourneys
                     ->where('earlier.created_at', '<', $since);
             });
 
-        $rows = $this->filters->applyToPlans($query)
+        $numbered = $this->filters->applyToPlans($attempts)
             ->selectRaw(implode(', ', [
-                'activity_events.id as event_id',
                 'activity_events.payment_id as payment_id',
                 'activity_events.kind as kind',
                 'activity_events.created_at as at',
@@ -152,24 +163,43 @@ final class PaymentJourneys
                 'installment_payments.status as payment_status',
                 'installment_plans.id as plan_id',
                 'installment_plans.status as plan_status',
+                'ROW_NUMBER() OVER (PARTITION BY activity_events.payment_id ORDER BY activity_events.created_at, activity_events.id) as rn',
             ]))
-            ->orderBy('activity_events.created_at')
-            ->orderBy('activity_events.id')
-            ->toBase()
+            ->toBase();
+
+        // The attempt number of each payment's FIRST success (null = never paid).
+        $marked = DB::query()->fromSub($numbered, 'e')
+            ->selectRaw("e.*, MIN(CASE WHEN e.kind = {$ok} THEN e.rn END) OVER (PARTITION BY e.payment_id) as ok_rn");
+
+        // The first attempt is the first failure unless it is the success itself.
+        $firstFailed = '(m.rn = 1 AND (m.ok_rn IS NULL OR m.ok_rn > 1))';
+        $rows = DB::query()->fromSub($marked, 'm')
+            ->selectRaw(implode(', ', [
+                'm.payment_id as payment_id',
+                'MAX(CASE WHEN m.rn = 1 THEN m.at END) as first_at',
+                'COALESCE(MAX(m.ok_rn), COUNT(*)) as attempts',
+                'SUM(CASE WHEN m.ok_rn IS NULL OR m.rn < m.ok_rn THEN 1 ELSE 0 END) as failures',
+                'MAX(CASE WHEN m.rn = m.ok_rn THEN m.at END) as success_at',
+                "MAX(CASE WHEN {$firstFailed} THEN m.at END) as failed_at",
+                "MAX(CASE WHEN {$firstFailed} THEN m.message END) as message",
+                "MAX(CASE WHEN {$firstFailed} THEN m.code END) as code",
+                'MAX(m.amount) as amount',
+                'MAX(m.payment_status) as payment_status',
+                'MAX(m.plan_id) as plan_id',
+                'MAX(m.plan_status) as plan_status',
+            ]))
+            ->groupBy('m.payment_id')
             ->get();
 
         if ($rows->isEmpty()) {
             return [];
         }
 
-        $cards = $this->cardEvents($rows->pluck('plan_id')->unique()->values()->all(), $since);
+        // Card events matter only to journeys that failed at least once.
+        $failedPlans = $rows->filter(static fn ($r): bool => (int) $r->failures > 0)->pluck('plan_id')->map('intval')->unique()->values()->all();
+        $cards = $this->cardEvents($failedPlans, $since);
 
-        $out = [];
-        foreach ($rows->groupBy('payment_id') as $paymentId => $attempts) {
-            $out[] = self::build((int) $paymentId, $attempts->all(), $cards[(int) $attempts->first()->plan_id] ?? []);
-        }
-
-        return $out;
+        return $rows->map(static fn ($r): array => self::fromSummary($r, $cards[(int) $r->plan_id] ?? []))->all();
     }
 
     /**
@@ -198,8 +228,8 @@ final class PaymentJourneys
     }
 
     /**
-     * One payment's attempts → its journey. Public + static so the rules are
-     * testable without a database.
+     * One payment's attempts (oldest first) → its journey: the PHP twin of the
+     * SQL summary in payplus(), so the rules stay testable without a database.
      *
      * @param  list<object>  $attempts  rows with kind, at, message, code, amount, payment_status, plan_id, plan_status
      * @param  list<array{kind: string, at: string}>  $cards
@@ -207,33 +237,55 @@ final class PaymentJourneys
      */
     public static function build(int $paymentId, array $attempts, array $cards = []): array
     {
+        $attempts = array_values($attempts);
         $first = $attempts[0];
-        $firstAt = CarbonImmutable::parse((string) $first->at);
-        $failures = 0;
-        $firstFailure = null;
-        $success = null;
-        $successAttempt = null;
-
-        foreach (array_values($attempts) as $i => $a) {
+        $okAt = null;
+        foreach ($attempts as $i => $a) {
             if ($a->kind === Timeline::KIND_CHARGE_SUCCEEDED) {
-                $success = CarbonImmutable::parse((string) $a->at);
-                $successAttempt = $i + 1;
+                $okAt = $i + 1;
                 break;
             }
-            $failures++;
-            $firstFailure ??= $a;
         }
+        $firstFailed = $okAt === null || $okAt > 1;
 
-        $count = $successAttempt ?? count($attempts);
+        return self::fromSummary((object) [
+            'payment_id' => $paymentId,
+            'first_at' => $first->at,
+            'attempts' => $okAt ?? count($attempts),
+            'failures' => $okAt === null ? count($attempts) : $okAt - 1,
+            'success_at' => $okAt === null ? null : $attempts[$okAt - 1]->at,
+            'failed_at' => $firstFailed ? $first->at : null,
+            'message' => $firstFailed ? ($first->message ?? null) : null,
+            'code' => $firstFailed ? ($first->code ?? null) : null,
+            'amount' => $first->amount,
+            'payment_status' => $first->payment_status,
+            'plan_id' => $first->plan_id,
+            'plan_status' => $first->plan_status,
+        ], $cards);
+    }
+
+    /**
+     * A payment's summary → its journey.
+     *
+     * @param  object  $s  payment_id, first_at, attempts, failures, success_at, failed_at, message, code, amount, payment_status, plan_id, plan_status
+     * @param  list<array{kind: string, at: string}>  $cards
+     * @return array<string, mixed>
+     */
+    public static function fromSummary(object $s, array $cards = []): array
+    {
+        $firstAt = CarbonImmutable::parse((string) $s->first_at);
+        $failures = (int) $s->failures;
+        $success = $s->success_at !== null ? CarbonImmutable::parse((string) $s->success_at) : null;
+
         $outcome = match (true) {
             $success !== null && $failures === 0 => self::SUCCEEDED,
             $success !== null => self::RECOVERED,
-            in_array((string) $first->payment_status, self::STILL_ASKING, true)
-                && ! in_array((string) $first->plan_status, self::STOPPED_PLANS, true) => self::UNDER_RECOVERY,
+            in_array((string) $s->payment_status, self::STILL_ASKING, true)
+                && ! in_array((string) $s->plan_status, self::STOPPED_PLANS, true) => self::UNDER_RECOVERY,
             default => self::LOST,
         };
 
-        $failedAt = $firstFailure ? CarbonImmutable::parse((string) $firstFailure->at) : null;
+        $failedAt = $s->failed_at !== null ? CarbonImmutable::parse((string) $s->failed_at) : null;
         $cardUpdated = false;
         $linkSent = false;
         foreach ($cards as $card) {
@@ -249,23 +301,23 @@ final class PaymentJourneys
         }
 
         return [
-            'id' => 'p'.$paymentId,
+            'id' => 'p'.(int) $s->payment_id,
             'source' => self::SOURCE_PAYPLUS,
-            'plan_id' => (int) $first->plan_id,
-            'amount' => round((float) $first->amount, 2),
+            'plan_id' => (int) $s->plan_id,
+            'amount' => round((float) $s->amount, 2),
             'first_at' => $firstAt->format('Y-m-d H:i:s'),
             'day' => $firstAt->format('Y-m-d'),
-            'attempts' => $count,
+            'attempts' => (int) $s->attempts,
             'failures' => $failures,
             'outcome' => $outcome,
             'recovered_day' => $outcome === self::RECOVERED ? $success->format('Y-m-d') : null,
-            'recovered_attempt' => $outcome === self::RECOVERED ? $successAttempt : null,
+            'recovered_attempt' => $outcome === self::RECOVERED ? (int) $s->attempts : null,
             'via' => $outcome === self::RECOVERED ? ($cardUpdated ? self::VIA_CARD_UPDATE : self::VIA_RETRY) : null,
             'card_path' => $cardUpdated || $linkSent,
             'lost_reason' => $outcome === self::LOST
-                ? (in_array((string) $first->plan_status, self::STOPPED_PLANS, true) ? self::LOST_STOPPED : self::LOST_PAYMENT_FAILED)
+                ? (in_array((string) $s->plan_status, self::STOPPED_PLANS, true) ? self::LOST_STOPPED : self::LOST_PAYMENT_FAILED)
                 : null,
-            'reason' => $firstFailure ? DeclineReason::of($firstFailure->message ?? null, $firstFailure->code ?? null) : null,
+            'reason' => $failedAt !== null ? DeclineReason::of($s->message ?? null, $s->code ?? null) : null,
         ];
     }
 
