@@ -11,6 +11,10 @@ namespace App\Domain\Analytics;
  */
 final class Context
 {
+    // === CONSTANTS ===
+    /** What option() answers when the allowed list is empty. */
+    public const NO_OPTION = '';
+
     /**
      * @param  array<string, string>  $grains   chart id => granularity value (?g[...])
      * @param  array<string, string>  $options  option key => value (?o[...])
@@ -42,7 +46,7 @@ final class Context
     {
         $value = (string) ($this->options[$key] ?? '');
 
-        return in_array($value, $allowed, true) ? $value : (string) ($allowed[0] ?? '');
+        return in_array($value, $allowed, true) ? $value : (string) ($allowed[0] ?? self::NO_OPTION);
     }
 
     public function withGrain(string $chartId, string $grain): self

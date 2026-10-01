@@ -9,6 +9,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\LedgerStatus;
 use App\Support\Ui\Charts\ChartFormat;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\View\View;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 /**
@@ -49,9 +50,12 @@ class UpcomingPaymentsTable extends Component
         'pending' => 'neutral',
     ];
 
+    /** The window, from the screen's closed ?o[days] list — never from the browser. */
+    #[Locked]
     public int $days = 7;
 
-    /** @var array<string, list<string>> */
+    /** @var array<string, list<string>> the shell's filter chips (re-sanitised by Filters::fromInput) */
+    #[Locked]
     public array $filters = [];
 
     public string $search = '';

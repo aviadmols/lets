@@ -179,6 +179,16 @@ final class PaymentsUpcomingTest extends TestCase
             ->call('sortBy', 'risk')
             ->assertSee('#SUB-1');
 
+        // The window and the chips come from the screen, never from the browser.
+        foreach (['days' => 90, 'filters' => ['plans' => ['1']]] as $prop => $value) {
+            try {
+                Livewire::test(UpcomingPaymentsTable::class, ['days' => 7, 'filters' => []])->set($prop, $value);
+                $this->fail("{$prop} must be #[Locked].");
+            } catch (\Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+
         Livewire::test(Analytics::class)->call('go', 'payments', 'upcoming')
             ->assertOk()
             ->call('setOption', 'days', '30')

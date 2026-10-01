@@ -22,6 +22,10 @@ use Illuminate\Support\Facades\DB;
  */
 final class ActiveBreakdown
 {
+    // === CONSTANTS ===
+    /** Alias of the per-subscription rows grouped by group(). */
+    private const ROWS = 'a';
+
     public function __construct(private readonly Filters $filters) {}
 
     /**
@@ -82,7 +86,7 @@ final class ActiveBreakdown
     /** @return list<array<string, mixed>> */
     private function group($rows): array
     {
-        return DB::query()->fromSub($rows, 'a')
+        return DB::query()->fromSub($rows, self::ROWS)
             ->selectRaw('product, MAX(product_title) as product_title, freq, sp, MAX(sp_name) as sp_name, orders, COUNT(*) as subscriptions, COALESCE(SUM(mrr), 0) as mrr')
             ->groupBy('product', 'freq', 'sp', 'orders')
             ->get()
