@@ -48,3 +48,12 @@ Original #1/#2 cleared. New: backfill migration had no per-plan savepoint (deplo
 ## 2026-09-29 — re-review ecffe3b — VERDICT: PASS-WITH-SUGGESTIONS
 Blocking: none. Per-shop/per-plan savepoints in 000006; APP_KEY canary (≥1 decrypt required, skip when unproven) in 000005.
 Suggestions: a pgsql-backed isolation test; try around the canary pluck.
+
+## 2026-10-01 — Analytics module (e219efb..1605455) — VERDICT: BLOCKED
+Reviewer: code-review-gatekeeper
+Tenant safety: PASS. Blocking: ForecastQuery Postgres CAST rounding (over-counted remaining instalments).
+Suggestions: streamed downloads, Postgres execution, data-map indexes, RiskQuery/PaymentJourneys aggregation, CsvCell reuse, dunning-as-churn (decided: churn only if still lapsed at period end).
+
+## 2026-10-01 — Analytics re-review (33df048..13c296d) — VERDICT: PASS-WITH-SUGGESTIONS
+Blocking: none. Analytics suite green on SQLite and a local Postgres 18 (which also caught a GROUP BY-constant crash on every Payments screen).
+Applied: indexes build CONCURRENTLY on Postgres. Open: platform-admin download tests.
