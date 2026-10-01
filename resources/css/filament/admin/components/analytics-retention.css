@@ -1,0 +1,120 @@
+/* =========================================================================
+   Analytics — Cancellations · Forecast · Reports screens
+   (resources/views/filament/pages/analytics/{cancellations,forecast,reports}/*)
+   TOKENS: --rc-space-* --rc-ink --rc-ink-muted --rc-card --rc-surface-sunk --rc-border --rc-border-soft
+           --rc-border-strong --rc-radius-card --rc-radius-control --rc-radius-pill --rc-shadow-card --rc-blue
+           --rc-blue-bg --rc-link --rc-ring --rc-type-* --rc-gray-bg --rc-gray-ink
+   Logical properties only — the screens mirror in RTL without a single left/right.
+   ========================================================================= */
+
+/* Section label above a KPI row ("Subscriber churn metrics") */
+.rc-an-heading {
+    margin: var(--rc-space-2) 0 calc(-1 * var(--rc-space-2));
+    font: var(--rc-type-label); font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--rc-ink-muted);
+}
+[dir="rtl"] .rc-an-heading { text-transform: none; letter-spacing: normal; }
+
+/* A column of cards inside one grid cell */
+.rc-an-stack { display: flex; flex-direction: column; gap: var(--rc-space-4); min-inline-size: 0; }
+
+/* One-line summary over a table ("1,371 subscriptions · 46 churned · …") */
+.rc-an-summary { margin: 0; padding: var(--rc-space-3) 20px 0; font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+
+/* ── Toolbar: search, selects, buttons above a live table ─────────────── */
+.rc-an-toolbar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: var(--rc-space-2);
+    padding: var(--rc-space-3) 20px; border-block-end: 1px solid var(--rc-border);
+}
+.rc-an-toolbar__grow { flex: 1 1 auto; }
+.rc-an-toolbar--bare { padding-inline: 0; padding-block-start: 0; border-block-end: 0; }
+.rc-an-summary--inline { padding: 0; }
+.rc-an-search {
+    display: inline-flex; align-items: center; gap: var(--rc-space-2);
+    block-size: 36px; min-inline-size: 240px; padding-inline: var(--rc-space-3);
+    border: 1px solid var(--rc-border-strong); border-radius: var(--rc-radius-control); background: var(--rc-card);
+}
+.rc-an-search:focus-within { box-shadow: 0 0 0 3px var(--rc-ring); border-color: var(--rc-blue); }
+.rc-an-search__icon { inline-size: 16px; block-size: 16px; color: var(--rc-ink-muted); flex: none; }
+.rc-an-search__input {
+    flex: 1 1 auto; min-inline-size: 0; border: 0; padding: 0; background: transparent;
+    font: var(--rc-type-body); color: var(--rc-ink); outline: none; box-shadow: none;
+}
+.rc-an-select {
+    block-size: 36px; padding-block: 0; padding-inline: var(--rc-space-3) var(--rc-space-6);
+    border: 1px solid var(--rc-border-strong); border-radius: var(--rc-radius-control);
+    background-color: var(--rc-card); font: var(--rc-type-body); color: var(--rc-ink);
+}
+.rc-an-select:focus { box-shadow: 0 0 0 3px var(--rc-ring); border-color: var(--rc-blue); outline: none; }
+
+/* Sortable column header */
+.rc-an-sort {
+    display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; cursor: pointer;
+    font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit;
+}
+.rc-an-sort:hover, .rc-an-sort--active { color: var(--rc-ink); }
+.rc-an-sort__icon { inline-size: 12px; block-size: 12px; }
+.rc-an-table .rc-num .rc-an-sort { flex-direction: row-reverse; }
+
+/* Two-line cell (name over email) */
+.rc-an-cell-sub { display: block; font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+.rc-an-cell-link { color: var(--rc-link); text-decoration: none; font-weight: 600; }
+.rc-an-cell-link:hover { text-decoration: underline; }
+
+/* Pager + footnote under a table */
+.rc-an-pager {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--rc-space-3);
+    padding: var(--rc-space-3) 20px; border-block-start: 1px solid var(--rc-border-soft);
+    font: var(--rc-type-caption); color: var(--rc-ink-muted);
+}
+.rc-an-pager__nav { display: inline-flex; align-items: center; gap: var(--rc-space-2); }
+.rc-an-pager__btn { block-size: 30px; }
+.rc-an-pager__btn:disabled { opacity: .45; cursor: default; }
+.rc-an-pager__icon { inline-size: 14px; block-size: 14px; }
+[dir="rtl"] .rc-an-pager__icon { transform: scaleX(-1); }
+
+/* Loading veil on a live table while Livewire answers */
+.rc-an-live { position: relative; transition: opacity .15s ease; }
+.rc-an-live__busy { opacity: .55; transition: opacity .15s ease; }
+
+/* ── Forecast: "how it is computed" + per-kind rates ─────────────────── */
+.rc-an-explain { margin: 0; font: var(--rc-type-body); color: var(--rc-ink-muted); line-height: 1.55; }
+.rc-an-explain + .rc-an-explain { margin-block-start: var(--rc-space-2); }
+
+/* ── Reports library ─────────────────────────────────────────────────── */
+.rc-report-grid {
+    display: grid; gap: var(--rc-space-4);
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); align-items: start;
+}
+.rc-report-cat {
+    display: flex; flex-direction: column; background: var(--rc-card);
+    border: 1px solid var(--rc-border); border-radius: var(--rc-radius-card); box-shadow: var(--rc-shadow-card); overflow: hidden;
+}
+.rc-report-cat__head {
+    display: flex; align-items: baseline; justify-content: space-between; gap: var(--rc-space-2);
+    padding: var(--rc-space-3) var(--rc-space-4); border-block-end: 1px solid var(--rc-border);
+}
+.rc-report-cat__title { margin: 0; font: var(--rc-type-subh); color: var(--rc-ink); }
+.rc-report-cat__count { font: var(--rc-type-caption); color: var(--rc-ink-muted); white-space: nowrap; }
+.rc-report-cat__list { margin: 0; padding: 0; list-style: none; }
+.rc-report {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--rc-space-3);
+    padding: var(--rc-space-3) var(--rc-space-4); border-block-end: 1px solid var(--rc-border-soft);
+}
+.rc-report:last-child { border-block-end: 0; }
+.rc-report__text { display: flex; flex-direction: column; gap: 2px; min-inline-size: 0; }
+.rc-report__title { font: var(--rc-type-body-strong); color: var(--rc-ink); }
+.rc-report__body { font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+.rc-report__run { flex: none; block-size: 30px; }
+.rc-report__icon { inline-size: 14px; block-size: 14px; }
+.rc-report--off .rc-report__title { color: var(--rc-ink-muted); }
+.rc-report__off {
+    flex: none; padding: 2px var(--rc-space-2); border-radius: var(--rc-radius-pill);
+    background: var(--rc-gray-bg); color: var(--rc-gray-ink); font: var(--rc-type-label); white-space: nowrap;
+}
+
+/* A note under a flush (edge-to-edge table) card keeps the card's inner gutter */
+.rc-an-card--flush .rc-an-card__note { padding: var(--rc-space-3) 20px; margin: 0; }
+
+/* Cells that must not wrap (dates) */
+.rc-an-table .rc-an-nowrap { white-space: nowrap; }

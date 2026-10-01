@@ -2,19 +2,36 @@
 
 namespace App\Filament\Pages\Analytics\Screens;
 
+use App\Domain\Analytics\Context;
+use App\Filament\Pages\Analytics;
+
 /**
- * PLACEHOLDER — 8 Reports — Exports.
+ * Reports › Exports (sketch: Reports.dc.html, "Recent exports"; spec §8).
  *
- * Not built yet: renders "Coming in this build". To build it, make this class
- * extend AnalyticsScreen (see docs/analytics/building-a-screen.md) and add its
- * partial + query class. ScreenRegistry already points here.
+ * Every Analytics export and report streams straight to the browser — none is
+ * stored, so there is no export history to list (docs/analytics/data-map.md
+ * §8: needs an analytics_exports table once exports run as queued jobs). The
+ * screen says so plainly and points back to the library, instead of drawing an
+ * empty table that looks like "you never exported anything".
  */
-final class ReportsExports extends PlaceholderScreen
+final class ReportsExports extends AnalyticsScreen
 {
     // === CONSTANTS ===
     public const SKETCH = 'Reports.dc.html';
 
-    public const SPEC = '8 Reports — Exports';
+    public const VIEW = 'filament.pages.analytics.reports.exports';
 
     public const FILTERS = [];
+
+    public function view(): string
+    {
+        return self::VIEW;
+    }
+
+    public function data(Context $context): array
+    {
+        return [
+            'library_url' => Analytics::getUrl(['section' => 'reports', 'tab' => 'reports']),
+        ];
+    }
 }
