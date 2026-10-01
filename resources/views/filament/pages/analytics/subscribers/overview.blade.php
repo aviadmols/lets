@@ -3,6 +3,7 @@
     Draws only: App\Filament\Pages\Analytics\Screens\SubscribersOverview::data() shapes every prop.
     TOKENS: .rc-an-grid(--main-side|--2) .rc-an-span-2 .rc-kpi-grid + rc.chart.* components
             .rc-numbers--split .rc-numbers__col .rc-stat-grid .rc-stat .rc-an-kpi-row .rc-an-mini*
+            .rc-ans-fit (analytics-subscribers.css — the plan × frequency table fits its half-width card)
     Vars: everything SubscribersOverview::data() returns, plus $context.
 --}}
 @php $grainLabel = __('analytics.grain.label'); @endphp
@@ -46,7 +47,7 @@
     </x-rc.chart.card>
 
     <x-rc.chart.card class="rc-an-span-2" flush :title="__('analytics/subscribers_overview.table.title')">
-        <x-rc.chart.table :columns="$plan_table['columns']" :rows="$plan_table['rows']"
+        <x-rc.chart.table class="rc-ans-fit" :columns="$plan_table['columns']" :rows="$plan_table['rows']"
                           :caption="__('analytics/subscribers_overview.table.title')" />
     </x-rc.chart.card>
 </div>
