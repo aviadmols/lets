@@ -1,0 +1,76 @@
+/* analytics-payments.css — Analytics › Payments (Overview · Recovery · Failures · Upcoming) and Cohorts.
+   Screen-level layout only; every chart is a shared rc.chart.* component (analytics.css).
+   TOKENS: --rc-card --rc-border --rc-border-soft --rc-border-strong --rc-surface-sunk --rc-ink --rc-ink-muted
+           --rc-blue --rc-blue-600 --rc-blue-bg --rc-radius-control --rc-ring --rc-space-1…5
+           --rc-type-body --rc-type-body-strong --rc-type-label --rc-type-caption
+   RULES: logical properties only (mirrors in RTL); no colour literals — tokens only. */
+
+/* ---- toolbars + grids --------------------------------------------------- */
+.rc-an-pay-toolbar { display: flex; justify-content: flex-end; align-items: center; gap: var(--rc-space-2); }
+
+.rc-an-pay-kpis { display: grid; gap: var(--rc-space-4); grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 1100px) { .rc-an-pay-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .rc-an-pay-kpis { grid-template-columns: minmax(0, 1fr); } }
+
+/* donut beside its table (Recovery contribution) */
+.rc-an-pay-split { display: grid; gap: var(--rc-space-5); grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); align-items: start; }
+@media (max-width: 1100px) { .rc-an-pay-split { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---- cohorts: the metric menu's level headings -------------------------- */
+.rc-an-cohort-group {
+    padding: var(--rc-space-2) var(--rc-space-3) var(--rc-space-1);
+    font: var(--rc-type-label); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--rc-ink-muted);
+}
+[dir="rtl"] .rc-an-cohort-group { text-transform: none; letter-spacing: normal; }
+
+/* ---- upcoming: per-day drill-down --------------------------------------- */
+.rc-an-pay-days {
+    display: grid; gap: var(--rc-space-2); margin: 0; padding: 0; list-style: none;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+.rc-an-pay-days__item {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px var(--rc-space-2);
+    padding: var(--rc-space-2) var(--rc-space-3);
+    border: 1px solid var(--rc-border); border-radius: var(--rc-radius-control);
+    background: var(--rc-card); color: var(--rc-ink); text-decoration: none;
+    transition: border-color .15s ease, background-color .15s ease;
+}
+.rc-an-pay-days__item:hover { border-color: var(--rc-blue); background: var(--rc-blue-bg); }
+.rc-an-pay-days__item:focus-visible { outline: none; box-shadow: var(--rc-ring); }
+.rc-an-pay-days__date { grid-column: 1 / -1; font: var(--rc-type-body-strong); }
+.rc-an-pay-days__count { font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+.rc-an-pay-days__amount { font: var(--rc-type-caption); color: var(--rc-ink); font-variant-numeric: tabular-nums; text-align: end; }
+
+/* ---- upcoming: the table ------------------------------------------------ */
+.rc-an-pay-table { display: flex; flex-direction: column; }
+.rc-an-pay-tablebar {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--rc-space-3); flex-wrap: wrap;
+    padding: var(--rc-space-3) 20px; border-block-end: 1px solid var(--rc-border);
+}
+.rc-an-pay-search {
+    display: inline-flex; align-items: center; gap: var(--rc-space-2);
+    inline-size: min(100%, 320px); block-size: 34px; padding-inline: var(--rc-space-3);
+    border: 1px solid var(--rc-border-strong); border-radius: var(--rc-radius-control); background: var(--rc-card);
+}
+.rc-an-pay-search:focus-within { box-shadow: var(--rc-ring); border-color: var(--rc-blue); }
+.rc-an-pay-search__icon { inline-size: 16px; block-size: 16px; color: var(--rc-ink-muted); flex-shrink: 0; }
+.rc-an-pay-search__input {
+    flex: 1; min-inline-size: 0; border: 0; padding: 0; background: transparent;
+    color: var(--rc-ink); font: var(--rc-type-body); font-size: 13px; outline: none; box-shadow: none;
+}
+.rc-an-pay-search__input:focus { outline: none; box-shadow: none; }
+
+.rc-an-pay-link { color: var(--rc-blue-600); text-decoration: none; font-weight: 600; }
+.rc-an-pay-link:hover { text-decoration: underline; }
+.rc-an-pay-link:focus-visible { outline: none; box-shadow: var(--rc-ring); border-radius: 2px; }
+.rc-an-pay-sub { display: block; font: var(--rc-type-caption); color: var(--rc-ink-muted); font-weight: 400; }
+.rc-an-pay-error { max-inline-size: 260px; font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+
+.rc-an-pay-pager {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--rc-space-3); flex-wrap: wrap;
+    padding: var(--rc-space-3) 20px; border-block-start: 1px solid var(--rc-border);
+}
+.rc-an-pay-pager__count { font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+.rc-an-pay-pager__buttons { display: inline-flex; align-items: center; gap: var(--rc-space-2); }
+.rc-an-pay-pager__buttons .rc-an-btn { block-size: 32px; }
+.rc-an-pay-pager__page { font: var(--rc-type-caption); color: var(--rc-ink-muted); font-variant-numeric: tabular-nums; }
