@@ -54,6 +54,10 @@ final class WooCommerceShopProvisioner
         if ($isNew) {
             $shop->installed_at = now();
         }
+        // The admin host `<handle>.app.lets.co.il`: the store domain with dots
+        // turned to dashes (`sellameir.ussl.co` → `sellameir-ussl-co`), suffixed
+        // on a collision. Set once; re-provisioning keeps the existing handle.
+        $shop->ensureHandle();
         $shop->save();
 
         $token = $this->mintToken($shop);

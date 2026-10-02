@@ -5,6 +5,9 @@ namespace App\Models;
 use App\Casts\EncryptedCredentials;
 use App\Casts\EncryptedString;
 use App\Domain\Billing\BillingPlan;
+use App\Domain\Tenancy\ShopHandle;
+use App\Domain\Tenancy\ShopHandleResolver;
+use App\Domain\Tenancy\ShopHosts;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusBaseUrl;
 use App\Services\Shopify\ShopifyToken;
 use App\Support\Ui\EmbeddedMenu;
@@ -156,6 +159,36 @@ class Shop extends Model
         'lets_api_secret',
     ];
 
+    /**
+     * Every shop has a HANDLE (its `<handle>.app.lets.co.il` admin host). The
+     * installers set it explicitly; this hook is the safety net for every other
+     * path that creates a row (seeders, tests, a future installer), so a shop
+     * can never be born without one. `handle` is deliberately NOT fillable: it
+     * changes only through ShopHandleChanger (platform admin, with an alias).
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (Shop $shop): void {
+            if (blank($shop->handle)) {
+                $shop->handle = ShopHandle::forShop($shop->shopify_domain, $shop->woocommerce_domain, $shop->name);
+            }
+        });
+
+        // A cached "no such store" / old answer must not outlive the change.
+        static::saved(function (Shop $shop): void {
+            if ($shop->wasRecentlyCreated || $shop->wasChanged('handle')) {
+                ShopHandleResolver::forget($shop->handle, $shop->getOriginal('handle'));
+            }
+        });
+
+        static::deleting(function (Shop $shop): void {
+            ShopHandleResolver::forget($shop->handle, ...ShopHandleAlias::query()
+                ->where('shop_id', $shop->getKey())
+                ->pluck('handle')
+                ->all());
+        });
+    }
+
     protected function casts(): array
     {
         return [
@@ -178,6 +211,44 @@ class Shop extends Model
             // The platform owner's per-shop embedded-menu allow-list (null = all).
             'embedded_menu' => 'array',
         ];
+    }
+
+    // === Handle (the shop's admin host) ===
+
+    /**
+     * Give this shop its handle if it has none yet — the installers call it on
+     * every install/connect, so a row the backfill had to skip is healed the next
+     * time its store reconnects. Never renames an existing handle (that is a
+     * platform-admin decision, ShopHandleChanger, with an alias).
+     */
+    public function ensureHandle(): void
+    {
+        if (filled($this->handle)) {
+            return;
+        }
+
+        $this->forceFill([
+            'handle' => ShopHandle::forShop(
+                $this->shopify_domain,
+                $this->woocommerce_domain,
+                $this->name,
+                $this->exists ? (int) $this->getKey() : null,
+            ),
+        ]);
+
+        if ($this->exists) {
+            $this->save();
+        }
+    }
+
+    /**
+     * THE builder for any link into this shop's admin: `https://<handle>.app.lets.co.il/admin<path>`
+     * once subdomains are switched on, else the root admin exactly as before.
+     * Mails, onboarding screens and platform "Open" links all read it.
+     */
+    public function adminUrl(string $path = ''): string
+    {
+        return ShopHosts::adminUrlFor($this, $path);
     }
 
     // === Embedded (wp-admin) menu ===

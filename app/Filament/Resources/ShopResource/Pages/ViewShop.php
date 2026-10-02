@@ -2,10 +2,14 @@
 
 namespace App\Filament\Resources\ShopResource\Pages;
 
+use App\Domain\Tenancy\ShopHandle;
+use App\Domain\Tenancy\ShopHandleChanger;
+use App\Domain\Tenancy\ShopHosts;
 use App\Filament\Pages\HomeDashboard;
 use App\Filament\Resources\ShopResource;
 use App\Models\ActivityEvent;
 use App\Models\Shop;
+use App\Models\ShopHandleAlias;
 use App\Services\WooCommerce\WooCommerceShopProvisioner;
 use App\Services\WooCommerce\WooConnectionTester;
 use App\Support\PlatformContext;
@@ -15,8 +19,11 @@ use App\Support\Ui\Money;
 use App\Support\Ui\PanelAccess;
 use Filament\Actions;
 use Filament\Forms\Components\CheckboxList;
+use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\Page;
+use Filament\Support\Exceptions\Halt;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
@@ -127,6 +134,7 @@ class ViewShop extends Page
         // reveal action is mountable only right after a mint (its prop is set).
         return array_values(array_filter([
             $this->enterAction(),
+            $this->handleAction(),
             $this->isWoo() ? $this->wooTestAction() : null,
             $this->isWoo() ? $this->wooTokenAction() : null,
             $this->isWoo() ? $this->wooDownloadAction() : null,
@@ -181,6 +189,58 @@ class ViewShop extends Page
                 $this->record->refresh();
 
                 Notification::make()->title(__('platform.embedded.saved'))->success()->send();
+            });
+    }
+
+    /**
+     * RENAME the shop's handle (its `<handle>.app.lets.co.il` host). Platform-admin
+     * only, re-checked before the write. ShopHandleChanger validates (format,
+     * reserved, taken by another shop or its live alias) and keeps the old handle
+     * as an alias that 301s to the new host for ShopHandleAlias::TTL_DAYS.
+     */
+    private function handleAction(): Actions\Action
+    {
+        return Actions\Action::make('editHandle')
+            ->label(__('tenancy.handle.edit.action'))
+            ->icon('heroicon-o-globe-alt')
+            ->color('gray')
+            ->visible(fn (): bool => PanelAccess::isPlatformAdmin())
+            ->modalHeading(__('tenancy.handle.edit.heading'))
+            ->modalDescription(__('tenancy.handle.edit.intro', ['days' => ShopHandleAlias::TTL_DAYS]))
+            ->modalSubmitActionLabel(__('tenancy.handle.edit.submit'))
+            ->fillForm(fn (): array => ['handle' => (string) $this->record->handle])
+            ->form([
+                TextInput::make('handle')
+                    ->label(__('tenancy.handle.label'))
+                    ->helperText(__('tenancy.handle.edit.help', ['root' => ShopHosts::rootHost()]))
+                    ->required()
+                    ->maxLength(ShopHandle::MAX_LENGTH)
+                    ->extraInputAttributes(['dir' => 'ltr']),
+            ])
+            ->action(function (array $data): void {
+                if (! PanelAccess::isPlatformAdmin()) {
+                    return; // platform-admin only (defensive; the resource already gates)
+                }
+
+                try {
+                    app(ShopHandleChanger::class)->change($this->record, (string) ($data['handle'] ?? ''));
+                } catch (ValidationException $e) {
+                    // The modal's field is `mountedActionsData.0.handle`; surface the
+                    // reason as a notice the admin can read and keep the modal open.
+                    Notification::make()
+                        ->title(collect($e->errors())->flatten()->first() ?? __('tenancy.handle.error.format'))
+                        ->danger()
+                        ->send();
+
+                    throw new Halt;
+                }
+
+                $this->record->refresh();
+
+                Notification::make()
+                    ->title(__('tenancy.handle.edit.saved', ['url' => $this->record->adminUrl()]))
+                    ->success()
+                    ->send();
             });
     }
 

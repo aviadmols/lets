@@ -49,6 +49,13 @@
                     <span class="rc-muted">{{ __('platform.shops.col.domain') }}</span>
                     <span class="rc-strong rc-ltr">{{ $record->displayDomain() }}</span>
 
+                    {{-- The shop's own admin address (<handle>.app.lets.co.il). --}}
+                    <span class="rc-muted">{{ __('tenancy.handle.label') }}</span>
+                    <span class="rc-strong rc-ltr">{{ $record->handle ?: __('common.none') }}</span>
+
+                    <span class="rc-muted">{{ __('tenancy.admin_url.label') }}</span>
+                    <span class="rc-strong rc-ltr">{{ $record->adminUrl() }}</span>
+
                     <span class="rc-muted">{{ __('platform.shops.col.name') }}</span>
                     <span class="rc-strong">{{ $record->name ?: __('common.none') }}</span>
 

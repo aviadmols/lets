@@ -118,6 +118,12 @@ class ShopResource extends Resource
                     ->sortable()
                     ->weight('medium'),
 
+                // The admin host label (`<handle>.app.lets.co.il`).
+                Tables\Columns\TextColumn::make('handle')
+                    ->label(__('tenancy.handle.label'))
+                    ->searchable()
+                    ->toggleable(),
+
                 Tables\Columns\TextColumn::make('name')
                     ->label(__('platform.shops.col.name'))
                     ->searchable()

@@ -57,6 +57,10 @@ final class ShopInstaller
             ['name' => $shopDomain, 'platform' => Shop::PLATFORM_SHOPIFY, 'status' => Shop::STATUS_INSTALLED],
         );
         $shop->forceFill(['shopify_app_key' => in_array($appKey, Shop::APP_KEYS, true) ? $appKey : Shop::APP_PUBLIC])->save();
+        // The admin host `<handle>.app.lets.co.il`: the myshopify handle
+        // (`tracki-inc-sp.myshopify.com` → `tracki-inc-sp`), suffixed on a
+        // collision. Set once; a reinstall keeps the handle it already has.
+        $shop->ensureHandle();
         $shop->captureShopifyInstall($token);
 
         // Provision/link an admin login BOUND to this shop, so the merchant gets a
