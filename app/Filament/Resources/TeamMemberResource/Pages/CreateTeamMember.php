@@ -2,8 +2,10 @@
 
 namespace App\Filament\Resources\TeamMemberResource\Pages;
 
+use App\Domain\Tenancy\ShopHosts;
 use App\Filament\Resources\TeamMemberResource;
 use App\Support\Tenant;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
 
 /**
@@ -35,5 +37,20 @@ class CreateTeamMember extends CreateRecord
     protected function getRedirectUrl(): string
     {
         return $this->getResource()::getUrl('index');
+    }
+
+    /**
+     * Tell the merchant WHERE the colleague signs in: this store's own admin
+     * login (`https://<handle>.app.lets.co.il/admin/login` once subdomains are
+     * on) — the one address that works for them, built by Shop::adminUrl().
+     */
+    protected function getCreatedNotification(): ?Notification
+    {
+        $shop = Tenant::current();
+
+        return Notification::make()
+            ->success()
+            ->title($this->getCreatedNotificationTitle())
+            ->body($shop !== null ? __('tenancy.team.sign_in_at', ['url' => $shop->adminUrl(ShopHosts::LOGIN_PATH)]) : null);
     }
 }

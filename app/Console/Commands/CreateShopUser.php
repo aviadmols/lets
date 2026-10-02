@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Domain\Tenancy\ShopHosts;
 use App\Models\Shop;
 use App\Models\User;
 use Illuminate\Console\Command;
@@ -89,6 +90,7 @@ class CreateShopUser extends Command
         ])->save();
 
         $this->info("Created [{$email}] for {$shop->name} (shop #{$shop->getKey()}).");
+        $this->line('Sign in at: '.$shop->adminUrl(ShopHosts::LOGIN_PATH));
 
         if ($generated) {
             // Printed ONCE, and only when we made it up. A password the operator

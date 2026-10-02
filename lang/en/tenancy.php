@@ -36,4 +36,10 @@ return [
         'body' => 'There is no store at :host. Check the address you were given.',
         'hint' => 'Go to the LETS sign-in page',
     ],
+    'onboarding' => [
+        'admin_url_intro' => "Your store's admin address:",
+    ],
+    'team' => [
+        'sign_in_at' => 'They sign in at :url',
+    ],
 ];

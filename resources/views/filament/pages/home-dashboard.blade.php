@@ -75,6 +75,14 @@
                 <div class="rc-banner__text">
                     <span class="rc-banner__title">{{ __('dashboard.empty.first_run.title') }}</span>
                     <span class="rc-banner__body">{{ __('dashboard.empty.first_run.body') }}</span>
+                    {{-- Onboarding ends by telling the merchant their store's own admin
+                         address (<handle>.app.lets.co.il) — once subdomains are on. --}}
+                    @if(\App\Domain\Tenancy\ShopHosts::enabled() && \App\Support\Tenant::current() !== null)
+                        <span class="rc-banner__body">
+                            {{ __('tenancy.onboarding.admin_url_intro') }}
+                            <a href="{{ \App\Support\Tenant::current()->adminUrl() }}" class="rc-link rc-ltr" target="_blank" rel="noopener">{{ \App\Support\Tenant::current()->adminUrl() }}</a>
+                        </span>
+                    @endif
                 </div>
                 <x-rc.cta variant="primary" href="{{ \App\Filament\Pages\ManagePayPlusConnection::getUrl() }}">
                     {{ __('dashboard.empty.first_run.cta') }}

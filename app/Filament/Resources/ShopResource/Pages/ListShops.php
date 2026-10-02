@@ -28,7 +28,7 @@ class ListShops extends ListRecords
      * that closes the reveal modal — then cleared. Never persisted; this is the one
      * place the plaintext connection token exists after mint.
      *
-     * @var array{token: string, plugin_url: string, domain: string}|null
+     * @var array{token: string, plugin_url: string, domain: string, admin_url: string}|null
      */
     public ?array $wcConnection = null;
 
@@ -73,6 +73,8 @@ class ListShops extends ListRecords
                         'token' => $result['connection_token'],
                         'plugin_url' => $result['plugin_url'],
                         'domain' => $result['domain'],
+                        // Where the merchant's admin lives once connected.
+                        'admin_url' => $result['shop']->adminUrl(),
                     ];
 
                     Notification::make()

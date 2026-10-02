@@ -57,7 +57,7 @@ class ViewShop extends Page
      * the api_key HASH + the encrypted secret are stored), so re-issuing it always
      * re-mints — invalidating any previous token (the action confirms first).
      *
-     * @var array{token: string, plugin_url: string, domain: string}|null
+     * @var array{token: string, plugin_url: string, domain: string, admin_url: string}|null
      */
     public ?array $wcConnection = null;
 
@@ -328,6 +328,7 @@ class ViewShop extends Page
                     'token' => $token,
                     'plugin_url' => $this->pluginDownloadUrl(),
                     'domain' => (string) $this->record->woocommerce_domain,
+                    'admin_url' => $this->record->adminUrl(),
                 ];
 
                 // Swap to the reveal modal (the token is shown once).

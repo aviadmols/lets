@@ -8,6 +8,7 @@
 @php($token = $connection['token'] ?? '')
 @php($pluginUrl = $connection['plugin_url'] ?? '#')
 @php($domain = $connection['domain'] ?? '')
+@php($adminUrl = (string) ($connection['admin_url'] ?? ''))
 
 <div class="space-y-4 text-sm">
     <p class="text-gray-600 dark:text-gray-400">
@@ -44,6 +45,14 @@
         <li>{{ __('platform.woo.step_install') }}</li>
         <li>{{ __('platform.woo.step_paste') }}</li>
     </ol>
+
+    {{-- Where this store's admin lives once connected (Shop::adminUrl()). --}}
+    @if($adminUrl !== '')
+        <p class="text-gray-700 dark:text-gray-300">
+            {{ __('tenancy.onboarding.admin_url_intro') }}
+            <a href="{{ $adminUrl }}" target="_blank" rel="noopener" class="font-mono text-primary-600 underline" dir="ltr">{{ $adminUrl }}</a>
+        </p>
+    @endif
 
     <a
         href="{{ $pluginUrl }}"
