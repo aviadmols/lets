@@ -1,6 +1,7 @@
 # Work plan — one subdomain per shop (`<handle>.app.lets.co.il`)
 
-Status: PROPOSED (2026-10-02). Not started. Owner decisions are listed at the end.
+Status: phases 1–3 BUILT (2026-10-02), behind `SHOP_SUBDOMAINS_ENABLED` (off). Phase 0 (DNS +
+Railway wildcard) and phase 4 (release) are open. See "As built" at the end.
 
 ## Goal
 
@@ -116,3 +117,54 @@ hosts-file edits; tests set `HTTP_HOST` per case.
 - **A.** One shared login across all subdomains (recommended) or a separate login per store?
 - **B.** WooCommerce handle: derived from the store domain, or chosen by the merchant at connect?
 - **C.** Should the customer-facing account and loyalty pages move to the shop host too (phase 5)?
+
+Answered 2026-10-02: **A** one shared login; **B** WooCommerce handle derived from the domain;
+**C** customer-facing pages stay on `app.lets.co.il`.
+
+## As built (phases 1–3, 2026-10-02)
+
+**Switch.** Everything host-related is behind `SHOP_SUBDOMAINS_ENABLED` (default `false`). Off,
+no host is resolved, every admin link is APP_URL's, and the session cookie is host-only — so the
+code deploys safely before phase 0. Turn it on only after `curl -I https://anything.app.lets.co.il/up`
+answers 200 with a valid certificate.
+
+**Handle (phase 1).** `shops.handle` (63, unique) + `shop_handle_aliases`
+(migration `2026_10_02_000001_add_handle_to_shops`): column added nullable, every shop backfilled
+by `App\Domain\Tenancy\ShopHandleBackfill` (per-shop try/savepoint, skips logged as
+`migration.shop_handle_skipped`), NOT NULL set only if no shop is left without one (else
+`migration.shop_handles_left_nullable` and the column stays nullable). `ShopHandle` owns the
+rules (regex, reserved list, Shopify/Woo derivation, `-2`/`-3` suffixing; a live alias counts as
+taken). Both installers call `Shop::ensureHandle()`; a `creating` hook covers every other path.
+Platform admins rename on the shop page ("Change address", `ShopHandleChanger`): the old handle
+becomes a 30-day alias.
+
+**Resolution (phase 2).** `ResolveShopFromHost` is first in the panel stack and Livewire-persistent;
+it sets `App\Support\RequestedShop` (cached per handle 5 min by `ShopHandleResolver`), 301s an
+alias, 404s anything else under the root (`tenancy.no-such-store`, never the login form). The WALL
+lives in `BindTenantFromUser`: merchant ≠ host shop → signed out (session invalidated) + redirect
+to their own host's login (403 on a Livewire update); platform admin on a store host → bound to
+that store; an embedded binding that disagrees with the host → 403. `PlatformContext` reads host
+first, session second (the session "Enter shop" path still works on the root host).
+`HostAwareLoginResponse` lands merchants on their own host after password/2FA login (session
+regenerated). "Open", the switcher and the banner are subdomain links; Horizon stays on the root.
+`URL::formatHostUsing` keeps admin routes (`admin/*`, `livewire/*`, `filament/*`) on the store
+host and builds every other route on APP_URL — customer pages, signed links AND machine URLs
+(e.g. the PayPlus card-update callback) can never be minted on a store host. `trustHosts`:
+root, `*.root`, APP_URL's host, `*.railway.app`, `*.railway.internal`, loopback,
+`TRUSTED_HOSTS_EXTRA`; `X-Forwarded-Host` removed from the trusted proxy headers.
+
+**Links (phase 3).** `Shop::adminUrl($path)` is the one builder. Used by: "Open" actions, the
+switcher, the WooCommerce connect reveal ("Your store's admin address"), the first-run Home
+banner (Shopify + WooCommerce onboarding end), the team-member "created" notice, and
+`lets:user:create`. There is no password-reset flow and no invite/admin-linking email today
+(checked every Mailable) — when one is added it must build its link with `Shop::adminUrl()`.
+Analytics downloads are relative-signed and verify on any host (tested).
+
+**Production env when phase 0 is green:** `SHOP_SUBDOMAINS_ENABLED=true`; `ADMIN_ROOT_HOST`
+only if not `app.lets.co.il`; `SESSION_DOMAIN` may stay unset (defaults to `.app.lets.co.il`).
+If `SESSION_COOKIE` is set on Railway, change its value at the same time (a stale host-only
+cookie of the same name can shadow the new domain cookie). Everyone signs in once.
+
+**Deferred:** phase 0 (DNS/Railway), phase 4 (Postgres run of the migration, review gate,
+two-store smoke test), phase 5; host in the auth logs is only on the new `tenancy.*` /
+`auth.login_cross_host` lines; the WooCommerce plugin and the toml are unchanged by design.
