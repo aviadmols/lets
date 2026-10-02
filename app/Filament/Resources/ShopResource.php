@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Domain\Billing\BillingPlan;
+use App\Domain\Tenancy\ShopHosts;
 use App\Filament\Pages\HomeDashboard;
 use App\Filament\Resources\ShopResource\Pages;
 use App\Models\InstallmentPlan;
@@ -205,10 +206,14 @@ class ShopResource extends Resource
                         ->all()),
             ])
             ->actions([
+                // "Open": with subdomains on, a plain link to the shop's own host
+                // (`https://<handle>.app.lets.co.il/admin`) — the host IS the entry.
+                // Off, the session "Enter shop" path runs exactly as before.
                 Tables\Actions\Action::make('enter')
-                    ->label(__('platform.enter.action'))
+                    ->label(fn (): string => ShopHosts::enabled() ? __('tenancy.open.action') : __('platform.enter.action'))
                     ->icon('heroicon-o-arrow-right-on-rectangle')
                     ->visible(fn (): bool => PanelAccess::canSeePlatform())
+                    ->url(fn (Shop $record): ?string => ShopHosts::enabled() ? $record->adminUrl() : null)
                     ->action(fn (Shop $record) => self::enterShop($record)),
 
                 Tables\Actions\ViewAction::make()

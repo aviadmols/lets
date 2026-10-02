@@ -28,6 +28,9 @@ final class ShopHosts
 
     public const ADMIN_PATH = '/admin';
 
+    /** The panel's login, relative to ADMIN_PATH. */
+    public const LOGIN_PATH = '/login';
+
     /**
      * Route URIs that belong to the ADMIN surface and therefore stay on the host
      * they were generated on. Every other route (customer pages, signed links,
@@ -106,7 +109,7 @@ final class ShopHosts
     /** `https://<handle>.app.lets.co.il/admin<path>` (scheme + port follow APP_URL). */
     public static function shopAdminUrl(string $handle, string $path = ''): string
     {
-        return self::origin($handle.'.'.self::rootHost()).self::ADMIN_PATH.self::path($path);
+        return self::shopOrigin($handle).self::ADMIN_PATH.self::path($path);
     }
 
     /**
@@ -186,6 +189,18 @@ final class ShopHosts
     public static function appOrigin(): string
     {
         return rtrim((string) config('app.url'), '/');
+    }
+
+    /** `https://<handle>.app.lets.co.il` — no path. */
+    public static function shopOrigin(string $handle): string
+    {
+        return self::origin($handle.'.'.self::rootHost());
+    }
+
+    /** `https://app.lets.co.il` — the root host's origin, no path. */
+    public static function rootOrigin(): string
+    {
+        return self::origin(self::rootHost());
     }
 
     /** scheme://host[:port], scheme and port taken from APP_URL. */

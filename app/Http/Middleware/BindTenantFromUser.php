@@ -2,11 +2,17 @@
 
 namespace App\Http\Middleware;
 
+use App\Domain\Tenancy\ShopHosts;
 use App\Models\Shop;
+use App\Models\User;
 use App\Support\PlatformContext;
+use App\Support\RequestedShop;
 use App\Support\Tenant;
 use Closure;
+use Filament\Notifications\Notification;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -28,6 +34,12 @@ use Symfony\Component\HttpFoundation\Response;
  *      that shop for the request — the SAME Tenant::set + global scope a merchant
  *      uses, so entering shop A scopes them to A only and never leaks B.
  *
+ * HOST WALL (one subdomain per shop): on `<handle>.app.lets.co.il` the shop the
+ * host names (RequestedShop, set by ResolveShopFromHost) must agree with the
+ * binding — a merchant of another shop is signed out and sent to their own host,
+ * a platform admin is entered into exactly the host's shop, an embedded binding
+ * that disagrees is a 403. The host never binds a tenant by itself.
+ *
  * FAIL CLOSED: a merchant user whose shop_id is null, or whose shop row is
  * missing / not live, is DENIED (403) and no tenant is bound. We never guess a
  * shop, never fall through to "the last shop", never default to the first row.
@@ -38,10 +50,25 @@ use Symfony\Component\HttpFoundation\Response;
  */
 final class BindTenantFromUser
 {
+    // === CONSTANTS ===
+    /** Sent by Livewire on every component update (/livewire/update). */
+    public const LIVEWIRE_HEADER = 'X-Livewire';
+
     public function handle(Request $request, Closure $next): Response
     {
-        // 1. A verified embedded session already bound the shop → respect it.
+        // THE HOST WALL (one subdomain per shop). On `<handle>.app.lets.co.il`
+        // ResolveShopFromHost recorded the shop the host names. It never binds a
+        // tenant on its own — it only REFUSES a binding that disagrees with it.
+        $requested = RequestedShop::current();
+
+        // 1. A verified embedded session already bound the shop → respect it —
+        //    unless the host names a different store (embedded flows live on the
+        //    root host, so this is never a legitimate shape).
         if (Tenant::check()) {
+            if ($requested !== null && (int) Tenant::id() !== (int) $requested->getKey()) {
+                abort(Response::HTTP_FORBIDDEN);
+            }
+
             return $next($request);
         }
 
@@ -51,6 +78,19 @@ final class BindTenantFromUser
         // the redirect to login. We only bind for authenticated requests.
         if ($user === null) {
             return $next($request);
+        }
+
+        // A platform admin on a shop host is ENTERED into exactly that shop for
+        // this request — the host IS the entry (two tabs, two shops, no shared
+        // session state). Same Tenant::set + global scope as every other path.
+        if ($requested !== null && $user->isPlatformAdmin()) {
+            return $this->bindForRequest($requested, $request, $next);
+        }
+
+        // A merchant on ANOTHER store's host is signed out and sent to their own
+        // store's login — nothing of the requested store is ever bound or drawn.
+        if ($requested !== null && (int) $user->shop_id !== (int) $requested->getKey()) {
+            return $this->leaveForeignHost($request, $user, $requested);
         }
 
         // 3. Platform owner. Default = UNBOUND (platform mode → the Shops list,
@@ -109,6 +149,48 @@ final class BindTenantFromUser
      * request, after the response is sent — so the binding lasts through hydrate + render,
      * yet a long-lived worker (Octane/FrankenPHP) still never leaks it to the next request.
      */
+    /**
+     * A merchant's session reached a store host that is not theirs (a shared
+     * cookie across `*.app.lets.co.il` makes this one click away). Sign out —
+     * the session is invalidated, not just the guard — and send them to THEIR
+     * store's login with a notice. A Livewire update cannot follow a redirect
+     * from persistent middleware (its pipeline discards the response), so it
+     * gets a plain 403 after the same sign-out.
+     */
+    private function leaveForeignHost(Request $request, User $user, Shop $requested): Response
+    {
+        $own = $user->shop_id !== null ? Shop::query()->whereKey($user->shop_id)->first() : null;
+
+        Log::warning('tenancy.host_mismatch', [
+            'user_id' => $user->getKey(),
+            'user_shop_id' => $user->shop_id,
+            'requested_shop_id' => $requested->getKey(),
+            'host' => $request->getHost(),
+        ]);
+
+        Auth::guard()->logout();
+        if ($request->hasSession()) {
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+        }
+
+        if ($request->hasHeader(self::LIVEWIRE_HEADER)) {
+            abort(Response::HTTP_FORBIDDEN);
+        }
+
+        Notification::make()
+            ->title(__('tenancy.wall.signed_out'))
+            ->body(__('tenancy.wall.signed_out_body'))
+            ->warning()
+            ->send();
+
+        $target = $own !== null
+            ? ShopHosts::adminUrlFor($own, ShopHosts::LOGIN_PATH)
+            : ShopHosts::rootAdminUrl(ShopHosts::LOGIN_PATH);
+
+        return redirect()->away($target);
+    }
+
     private function bindForRequest(Shop $shop, Request $request, Closure $next): Response
     {
         Tenant::set($shop);

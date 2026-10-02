@@ -14,6 +14,25 @@ use Illuminate\Support\Str;
 // this default is the fail-safe for a fresh environment that forgot to.
 $sessionIsLocalLike = in_array(env('APP_ENV', 'production'), ['local', 'testing'], true);
 
+// ONE LOGIN ACROSS EVERY STORE HOST (owner decision A, docs/plans/shop-subdomains.md).
+// A shop's admin lives on `<handle>.app.lets.co.il`; one session cookie on the PARENT
+// domain (`.app.lets.co.il`) signs a platform admin — or a merchant with two stores —
+// in once. Isolation never rests on the cookie: every request re-checks user ↔ host.
+// Default: `.` + ADMIN_ROOT_HOST once SHOP_SUBDOMAINS_ENABLED is on, outside
+// local/testing; host-only (null) everywhere else. SESSION_DOMAIN overrides — an
+// empty value or "null" means host-only (e.g. a staging service on *.up.railway.app,
+// where a `.app.lets.co.il` cookie would be refused by the browser).
+$sessionDomain = env('SESSION_DOMAIN', (! $sessionIsLocalLike && (bool) env('SHOP_SUBDOMAINS_ENABLED', false))
+    ? '.'.env('ADMIN_ROOT_HOST', 'app.lets.co.il')
+    : null);
+$sessionDomain = is_string($sessionDomain) && trim($sessionDomain) !== '' ? trim($sessionDomain) : null;
+
+// A domain-wide cookie gets its OWN name. A browser that still holds the old
+// host-only cookie would otherwise send two cookies of one name, and the stale one
+// can win — a login that "does not stick". A new name sidesteps it (everyone signs
+// in once after the switch). An explicit SESSION_COOKIE still wins.
+$sessionCookieSuffix = $sessionDomain !== null ? '_shared' : '';
+
 return [
 
     /*
@@ -141,7 +160,7 @@ return [
 
     'cookie' => env(
         'SESSION_COOKIE',
-        Str::slug(env('APP_NAME', 'laravel'), '_').'_session'
+        Str::slug(env('APP_NAME', 'laravel'), '_').'_session'.$sessionCookieSuffix
     ),
 
     /*
@@ -168,7 +187,7 @@ return [
     |
     */
 
-    'domain' => env('SESSION_DOMAIN'),
+    'domain' => $sessionDomain,
 
     /*
     |--------------------------------------------------------------------------

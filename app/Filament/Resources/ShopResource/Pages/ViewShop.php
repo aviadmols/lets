@@ -286,7 +286,10 @@ class ViewShop extends Page
     private function enterAction(): Actions\Action
     {
         return Actions\Action::make('enter')
-            ->label(__('platform.enter.action'))
+            // With subdomains on, "Open" is a plain link to the shop's own host —
+            // the host IS the entry. Off, the session "Enter" path runs as before.
+            ->label(fn (): string => ShopHosts::enabled() ? __('tenancy.open.action') : __('platform.enter.action'))
+            ->url(fn (): ?string => ShopHosts::enabled() ? $this->record->adminUrl() : null)
             ->icon('heroicon-o-arrow-right-on-rectangle')
             ->action(function (): mixed {
                 PlatformContext::enter($this->record->getKey());

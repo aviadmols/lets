@@ -24,4 +24,16 @@ return [
     'admin_url' => [
         'label' => 'Admin URL',
     ],
+    'open' => [
+        'action' => 'Open',
+    ],
+    'wall' => [
+        'signed_out' => 'You were signed out',
+        'signed_out_body' => 'That address belongs to a different store. Sign in to your own store here.',
+    ],
+    'no_such_store' => [
+        'title' => 'No such store',
+        'body' => 'There is no store at :host. Check the address you were given.',
+        'hint' => 'Go to the LETS sign-in page',
+    ],
 ];

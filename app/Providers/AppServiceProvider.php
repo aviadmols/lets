@@ -15,9 +15,14 @@ use App\Listeners\SendChargeSucceededNotification;
 use App\Services\Orders\PlatformDepositTokenResolver;
 use App\Services\Shopify\Orders\DefaultShopifyOrderStrategy;
 use App\Services\Shopify\Orders\ShopifyOrderStrategy;
+use App\Domain\Tenancy\ShopHosts;
 use App\Http\Middleware\BindDevTenant;
 use App\Http\Middleware\BindTenantFromUser;
+use App\Http\Middleware\ResolveShopFromHost;
+use App\Http\Responses\HostAwareLoginResponse;
 use App\Support\DestructiveCommandGuard;
+use App\Support\RequestedShop;
+use Filament\Http\Responses\Auth\Contracts\LoginResponse as LoginResponseContract;
 use App\Support\PublicRouteLimits;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Support\Facades\Event;
@@ -115,10 +120,34 @@ class AppServiceProvider extends ServiceProvider
         // re-runs them on every Livewire update. Both safely no-op without an authed
         // user and respect an already-bound embedded session, so this never weakens
         // tenant isolation — it only restores the binding the page load already had.
+        // ResolveShopFromHost joins them: a component update on a shop host must
+        // re-read the host, or the host wall (inside BindTenantFromUser) would see
+        // no requested shop on every Livewire POST.
         Livewire::addPersistentMiddleware([
+            ResolveShopFromHost::class,
             BindTenantFromUser::class,
             BindDevTenant::class,
         ]);
+
+        // ONE SUBDOMAIN PER SHOP — where a link points. Inside a request on a shop
+        // host (`<handle>.app.lets.co.il`) the admin's own routes stay on that host
+        // (Laravel's default: the request's root), but every OTHER route — the
+        // customer pages, signed links, callbacks — is built on APP_URL, because
+        // customer-facing pages stay on app.lets.co.il (owner decision C). A signed
+        // link is signed over the URL this produces, so it verifies where it lands.
+        // Off the shop hosts (root, console, queue) this is a no-op.
+        URL::formatHostUsing(static function (string $root, $route): string {
+            if (! RequestedShop::check() || ShopHosts::isAdminRoute($route)) {
+                return $root;
+            }
+
+            return ShopHosts::appOrigin();
+        });
+
+        // After a password (or two-factor) login a merchant lands on THEIR store's
+        // host; everyone else stays where they signed in. Bound in boot(), after
+        // Filament registered its own default in the register phase.
+        $this->app->bind(LoginResponseContract::class, HostAwareLoginResponse::class);
 
         // TEMP perf trace (gated by the PERF_TRACE=1 env var, read from the live OS env so
         // it works under cached config). Logs, per request, the total wall time, the DB

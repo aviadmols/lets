@@ -3,6 +3,7 @@
 namespace Tests\Feature\Analytics;
 
 use App\Domain\Analytics\Support\AnalyticsDownload;
+use App\Domain\Tenancy\ShopHosts;
 use App\Filament\Pages\Analytics;
 use App\Livewire\Analytics\ReportLibrary;
 use App\Livewire\Analytics\RiskTable;
@@ -107,6 +108,22 @@ final class AnalyticsDownloadTest extends TestCase
         $this->assertStringNotContainsString('Their Customer', $report);
 
         $this->assertStringNotContainsString('Their Customer', $this->fetchCsv($subscriptionsUrl));
+    }
+
+    public function test_the_link_verifies_on_the_store_host_and_the_root_alike(): void
+    {
+        // One subdomain per shop: the signature is RELATIVE, so a link minted on
+        // one host streams on another — and only ever for the user's own shop.
+        config(['tenancy.subdomains_enabled' => true, 'tenancy.admin_root_host' => 'app.lets.co.il']);
+        $url = $this->shellLink();
+
+        $this->assertStringContainsString('Mine Customer', $this->fetchCsv('https://'.$this->shop->handle.'.app.lets.co.il'.$url));
+        $this->assertStringContainsString('Mine Customer', $this->fetchCsv('https://app.lets.co.il'.$url));
+
+        Tenant::clear();
+        $this->get('https://'.$this->other->handle.'.app.lets.co.il'.$url)
+            ->assertRedirect(ShopHosts::shopAdminUrl($this->shop->handle, ShopHosts::LOGIN_PATH));
+        $this->assertGuest();
     }
 
     public function test_another_shops_user_cannot_use_the_link(): void

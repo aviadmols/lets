@@ -20,7 +20,10 @@ use App\Http\Middleware\EmbeddedAuthenticate;
 use App\Http\Middleware\EnsureEmbeddedSession;
 use App\Http\Middleware\PersistEmbeddedContext;
 use App\Http\Middleware\RequireTwoFactorEnrollment;
+use App\Http\Middleware\ResolveShopFromHost;
 use App\Http\Middleware\SetAdminLocale;
+use App\Domain\Tenancy\ShopHosts;
+use App\Support\RequestedShop;
 use App\Support\Ui\PanelAccess;
 use BezhanSalleh\FilamentLanguageSwitch\LanguageSwitch;
 use Filament\Http\Middleware\Authenticate;
@@ -86,6 +89,9 @@ class AdminPanelProvider extends PanelProvider
     public const MARK_PATH = 'images/lets-mark.svg';
 
     public const LOCALES = ['en', 'he'];
+
+    /** Horizon's dashboard — on the platform root host, never a shop host. */
+    public const HORIZON_PATH = '/horizon';
 
     /** The sketch's sidebar: 248px (theme.css --rc-sidebar-w). */
     public const SIDEBAR_WIDTH = '15.5rem';
@@ -370,7 +376,8 @@ class AdminPanelProvider extends PanelProvider
             ->navigationItems([
                 NavigationItem::make('horizon')
                     ->label(__('platform.jobs.nav'))
-                    ->url('/horizon', shouldOpenInNewTab: true)
+                    // Horizon lives on the root host only — from a shop host, link there.
+                    ->url(fn (): string => RequestedShop::check() ? ShopHosts::rootOrigin().self::HORIZON_PATH : self::HORIZON_PATH, shouldOpenInNewTab: true)
                     ->icon('heroicon-o-cpu-chip')
                     ->group(__('nav.group.platform'))
                     ->sort(99)
@@ -382,6 +389,12 @@ class AdminPanelProvider extends PanelProvider
             // Settings is ONE sidebar item with an in-page index (Clusters\Settings).
             ->discoverClusters(in: app_path('Filament/Clusters'), for: 'App\\Filament\\Clusters')
             ->middleware([
+                // FIRST: which store does the HOST name? `<handle>.app.lets.co.il` →
+                // RequestedShop (an alias 301s, an unknown host 404s — never the login
+                // form); the root host → nothing, the panel behaves as before. A wall
+                // only: BindTenantFromUser still binds from the user and refuses a
+                // user whose shop differs. Livewire-persistent (AppServiceProvider).
+                ResolveShopFromHost::class,
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,
                 StartSession::class,

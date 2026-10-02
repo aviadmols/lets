@@ -45,18 +45,37 @@ final class PlatformContext
         Session::forget(self::SESSION_KEY);
     }
 
-    /** The shop id the platform admin is entered into, or null in platform mode. */
+    /**
+     * The shop id the platform admin is entered into, or null in platform mode.
+     *
+     * HOST FIRST, session second: on `<handle>.app.lets.co.il` the host IS the
+     * entry (RequestedShop), whatever an older session selection says — so two
+     * tabs on two shop hosts can never share one entered-shop state. The session
+     * selection is read only on the root host, where the "Enter shop" POST
+     * path keeps working (embedded flows and the switch-off rollout state).
+     */
     public static function enteredShopId(): ?int
     {
+        $hostShopId = RequestedShop::id();
+        if ($hostShopId !== null) {
+            return $hostShopId;
+        }
+
         $value = Session::get(self::SESSION_KEY);
 
         return is_numeric($value) ? (int) $value : null;
     }
 
-    /** True when there is an entered shop selection in the session. */
+    /** True when a shop is entered — by the host, or by the session on the root. */
     public static function isEntered(): bool
     {
         return self::enteredShopId() !== null;
+    }
+
+    /** True when the entry comes from the HOST (nothing to "exit" in the session). */
+    public static function isEnteredByHost(): bool
+    {
+        return RequestedShop::check();
     }
 
     /**

@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Tenancy\ShopHosts;
 use App\Http\Middleware\AddHstsHeader;
 use App\Http\Middleware\AddSecurityHeaders;
 use App\Http\Middleware\AllowExtensionCors;
@@ -84,14 +85,26 @@ return Application::configure(basePath: dirname(__DIR__))
         // callbacks) — otherwise asset URLs come out http:// on an https page and
         // the browser blocks them (mixed content → broken admin). Railway is the
         // only hop, so trust all proxies.
+        //
+        // X-Forwarded-Host is deliberately NOT trusted: the host now decides which
+        // store's admin a request is for (`<handle>.app.lets.co.il`), so it must
+        // be the REAL Host header — a forwarded one is client-controlled. (It is
+        // also what Shopify's App Proxy sets to the storefront's domain, which
+        // the trusted-host check below would then refuse.)
         $middleware->trustProxies(
             at: '*',
             headers: Request::HEADER_X_FORWARDED_FOR
-                | Request::HEADER_X_FORWARDED_HOST
                 | Request::HEADER_X_FORWARDED_PORT
                 | Request::HEADER_X_FORWARDED_PROTO
                 | Request::HEADER_X_FORWARDED_PREFIX,
         );
+
+        // Only hosts we serve: the root, `*.app.lets.co.il` (one per store),
+        // APP_URL's host, Railway (its health check arrives as
+        // healthcheck.railway.app) and loopback, plus TRUSTED_HOSTS_EXTRA.
+        // Judged on the real Host header (above). Laravel skips this in local +
+        // unit tests; an untrusted host gets a 400/404, never a page.
+        $middleware->trustHosts(at: fn (): array => ShopHosts::trustedHostPatterns(), subdomains: false);
 
         // Pin https in the browser (HSTS) so it never falls back to http and the
         // stale uPress vhost. Global so it covers admin + storefront + proxy. Only

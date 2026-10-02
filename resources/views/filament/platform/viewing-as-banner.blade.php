@@ -2,10 +2,16 @@
     Persistent "Viewing as {shop} — Exit" banner (W2). Rendered at BODY_START of the
     panel, but ONLY paints when a platform admin is currently ENTERED into a shop —
     a merchant (or a platform admin in platform mode) sees nothing.
+
+    Entered by the HOST (`<handle>.app.lets.co.il`): "Exit" is a link back to the
+    platform root's Shops list — there is no session selection to clear. Entered by
+    the SESSION (root host): the POST platform.exit form, as before.
     TOKENS: .rc-platform-banner* (components/platform.css, published theme). ZERO
     inline CSS. Mirrors in RTL via logical properties. EN/HE via __().
 --}}
 @php
+    use App\Domain\Tenancy\ShopHosts;
+    use App\Filament\Resources\ShopResource;
     use App\Support\PlatformContext;
     use App\Support\Ui\PanelAccess;
     use App\Models\Shop;
@@ -17,6 +23,7 @@
         // shopify_domain, so reading that left the banner blank for WC shops.
         $shopName = $shop?->displayDomain();
     }
+    $byHost = PlatformContext::isEnteredByHost();
 @endphp
 
 @if($shopName !== null)
@@ -25,9 +32,13 @@
             <span class="rc-platform-banner__title">{{ __('platform.banner.viewing_as', ['shop' => $shopName]) }}</span>
             <span class="rc-platform-banner__note">{{ __('platform.banner.note') }}</span>
         </div>
-        <form method="POST" action="{{ route('platform.exit') }}" class="rc-platform-banner__form">
-            @csrf
-            <button type="submit" class="rc-platform-banner__exit">{{ __('platform.exit.action') }}</button>
-        </form>
+        @if($byHost)
+            <a href="{{ ShopHosts::rootAdminUrl('/'.ShopResource::getSlug()) }}" class="rc-platform-banner__exit">{{ __('platform.exit.action') }}</a>
+        @else
+            <form method="POST" action="{{ route('platform.exit') }}" class="rc-platform-banner__form">
+                @csrf
+                <button type="submit" class="rc-platform-banner__exit">{{ __('platform.exit.action') }}</button>
+            </form>
+        @endif
     </div>
 @endif
