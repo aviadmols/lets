@@ -57,3 +57,10 @@ Suggestions: streamed downloads, Postgres execution, data-map indexes, RiskQuery
 ## 2026-10-01 — Analytics re-review (33df048..13c296d) — VERDICT: PASS-WITH-SUGGESTIONS
 Blocking: none. Analytics suite green on SQLite and a local Postgres 18 (which also caught a GROUP BY-constant crash on every Payments screen).
 Applied: indexes build CONCURRENTLY on Postgres. Open: platform-admin download tests.
+
+## 2026-10-02 — shop subdomains 7ea705f..bf01aef — VERDICT: BLOCKED
+Blocking: trustHosts active with SHOP_SUBDOMAINS_ENABLED off (unproven host inventory). Tenant safety, migration, sessions: PASS.
+
+## 2026-10-02 — shop subdomains re-review (6e8e33c) — VERDICT: PASS-WITH-SUGGESTIONS
+Clears the blocker: no host restriction and no session-cookie change while the switch is off; an end-to-end TrustHosts test drives /up, the App Proxy and a webhook in both states.
+Applied the same day: the derived-handle retry matches only the handle index (shops_handle_unique / shops.handle), and the derived flag resets after a save.

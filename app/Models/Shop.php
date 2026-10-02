@@ -133,6 +133,9 @@ class Shop extends Model
     /** A derived handle that lost a race to a concurrent install is re-derived this many times. */
     public const HANDLE_SAVE_ATTEMPTS = 5;
 
+    /** Laravel's name for the unique index on shops.handle. */
+    private const HANDLE_UNIQUE_INDEX = 'shops_handle_unique';
+
     /** True when the handle on this instance was derived here (so a collision may be retried). */
     private bool $handleDerived = false;
 
@@ -256,11 +259,15 @@ class Shop extends Model
     {
         for ($attempt = 1; ; $attempt++) {
             try {
-                return $this->getConnection()->transaction(fn (): bool => parent::save($options));
+                $saved = $this->getConnection()->transaction(fn (): bool => parent::save($options));
+                // A later caller-chosen handle on this instance must fail loudly, not be re-derived.
+                $this->handleDerived = false;
+
+                return $saved;
             } catch (UniqueConstraintViolationException $e) {
                 if (! $this->handleDerived
                     || $attempt >= self::HANDLE_SAVE_ATTEMPTS
-                    || ! str_contains($e->getMessage(), 'handle')
+                    || ! self::isHandleCollision($e)
                 ) {
                     throw $e;
                 }
@@ -268,6 +275,18 @@ class Shop extends Model
                 $this->forceFill(['handle' => $this->deriveHandle()]);
             }
         }
+    }
+
+    /**
+     * Was it the HANDLE index that refused the row? Postgres names the index
+     * (shops_handle_unique), SQLite names the column (shops.handle). Any other
+     * unique violation (a shopify_domain race) is not ours to retry.
+     */
+    private static function isHandleCollision(UniqueConstraintViolationException $e): bool
+    {
+        $message = $e->getMessage();
+
+        return str_contains($message, self::HANDLE_UNIQUE_INDEX) || str_contains($message, 'shops.handle');
     }
 
     private function deriveHandle(): string
