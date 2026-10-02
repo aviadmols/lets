@@ -140,10 +140,19 @@ final class ShopHosts
      * (X-Forwarded-Host is not a trusted proxy header). Root, its subdomains,
      * APP_URL's host, Railway, loopback, and any TRUSTED_HOSTS_EXTRA entries.
      *
+     * EMPTY while the switch is off: no host restriction at all, exactly as
+     * before this feature — a host we never listed (a webhook, a PayPlus
+     * callback, the plugin API on some other name) must keep working until
+     * subdomains are deliberately turned on.
+     *
      * @return list<string>
      */
     public static function trustedHostPatterns(): array
     {
+        if (! self::enabled()) {
+            return [];
+        }
+
         $patterns = ['^(.+\.)?'.preg_quote(self::rootHost(), '#').'$'];
 
         $appHost = parse_url((string) config('app.url'), PHP_URL_HOST);

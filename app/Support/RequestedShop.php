@@ -17,6 +17,10 @@ use App\Models\Shop;
  */
 final class RequestedShop
 {
+    // === CONSTANTS ===
+    /** The key a log line carries the requested shop under. */
+    public const LOG_KEY = 'requested_shop_id';
+
     // === STATE ===
     private static ?Shop $shop = null;
 

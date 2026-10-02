@@ -124,9 +124,16 @@ Answered 2026-10-02: **A** one shared login; **B** WooCommerce handle derived fr
 ## As built (phases 1–3, 2026-10-02)
 
 **Switch.** Everything host-related is behind `SHOP_SUBDOMAINS_ENABLED` (default `false`). Off,
-no host is resolved, every admin link is APP_URL's, and the session cookie is host-only — so the
-code deploys safely before phase 0. Turn it on only after `curl -I https://anything.app.lets.co.il/up`
-answers 200 with a valid certificate.
+no host is resolved, every admin link is APP_URL's, NO host is refused (the trusted-host list is
+empty), and the session cookie domain + name are exactly what they were (`SESSION_DOMAIN` as
+given, no rename) — so the code deploys safely before phase 0. Turn it on only after
+`curl -I https://anything.app.lets.co.il/up` answers 200 with a valid certificate.
+
+**One change that is NOT behind the switch:** `X-Forwarded-Host` is no longer a trusted proxy
+header, always. Safe: review found nothing that reads a forwarded host (Railway forwards the
+real Host), and it fixes a latent bug — on Shopify App Proxy requests (which carry
+`X-Forwarded-Host: <store>.myshopify.com`) `asset()`/`url()` were built on the storefront's
+domain instead of ours. It is also what lets the host decide the store once the switch is on.
 
 **Handle (phase 1).** `shops.handle` (63, unique) + `shop_handle_aliases`
 (migration `2026_10_02_000001_add_handle_to_shops`): column added nullable, every shop backfilled
@@ -149,9 +156,10 @@ first, session second (the session "Enter shop" path still works on the root hos
 regenerated). "Open", the switcher and the banner are subdomain links; Horizon stays on the root.
 `URL::formatHostUsing` keeps admin routes (`admin/*`, `livewire/*`, `filament/*`) on the store
 host and builds every other route on APP_URL — customer pages, signed links AND machine URLs
-(e.g. the PayPlus card-update callback) can never be minted on a store host. `trustHosts`:
-root, `*.root`, APP_URL's host, `*.railway.app`, `*.railway.internal`, loopback,
-`TRUSTED_HOSTS_EXTRA`; `X-Forwarded-Host` removed from the trusted proxy headers.
+(e.g. the PayPlus card-update callback) can never be minted on a store host. `trustHosts`
+(switch ON only; empty = unrestricted while off): root, `*.root`, APP_URL's host,
+`*.railway.app`, `*.railway.internal`, loopback, `TRUSTED_HOSTS_EXTRA` — judged on the real
+Host header (`TrustedHostsTest` drives webhook, App Proxy and `/up` end to end in both states).
 
 **Links (phase 3).** `Shop::adminUrl($path)` is the one builder. Used by: "Open" actions, the
 switcher, the WooCommerce connect reveal ("Your store's admin address"), the first-run Home

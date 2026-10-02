@@ -14,6 +14,7 @@ use App\Support\Ui\EmbeddedMenu;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\UniqueConstraintViolationException;
 
 /**
  * The tenant. One row per installed Shopify store. Holds that store's OWN,
@@ -129,6 +130,12 @@ class Shop extends Model
 
     public const INVOICING_ENV_SANDBOX = 'sandbox';
 
+    /** A derived handle that lost a race to a concurrent install is re-derived this many times. */
+    public const HANDLE_SAVE_ATTEMPTS = 5;
+
+    /** True when the handle on this instance was derived here (so a collision may be retried). */
+    private bool $handleDerived = false;
+
     protected $fillable = [
         'shopify_domain',
         'name',
@@ -171,6 +178,7 @@ class Shop extends Model
         static::creating(function (Shop $shop): void {
             if (blank($shop->handle)) {
                 $shop->handle = ShopHandle::forShop($shop->shopify_domain, $shop->woocommerce_domain, $shop->name);
+                $shop->handleDerived = true;
             }
         });
 
@@ -227,18 +235,49 @@ class Shop extends Model
             return;
         }
 
-        $this->forceFill([
-            'handle' => ShopHandle::forShop(
-                $this->shopify_domain,
-                $this->woocommerce_domain,
-                $this->name,
-                $this->exists ? (int) $this->getKey() : null,
-            ),
-        ]);
+        $this->forceFill(['handle' => $this->deriveHandle()]);
+        $this->handleDerived = true;
 
         if ($this->exists) {
             $this->save();
         }
+    }
+
+    /**
+     * Save, surviving a RACE on a derived handle: two installs whose stores
+     * derive the same base can both read it as free, and the second insert hits
+     * the unique index. Only a handle WE derived is retried (a caller-chosen one
+     * fails loudly), up to HANDLE_SAVE_ATTEMPTS times, each in its own savepoint
+     * so a failed statement never poisons a surrounding Postgres transaction.
+     * By the time the violation is raised the winner has committed, so the
+     * re-derivation sees it and takes the next suffix.
+     */
+    public function save(array $options = []): bool
+    {
+        for ($attempt = 1; ; $attempt++) {
+            try {
+                return $this->getConnection()->transaction(fn (): bool => parent::save($options));
+            } catch (UniqueConstraintViolationException $e) {
+                if (! $this->handleDerived
+                    || $attempt >= self::HANDLE_SAVE_ATTEMPTS
+                    || ! str_contains($e->getMessage(), 'handle')
+                ) {
+                    throw $e;
+                }
+
+                $this->forceFill(['handle' => $this->deriveHandle()]);
+            }
+        }
+    }
+
+    private function deriveHandle(): string
+    {
+        return ShopHandle::forShop(
+            $this->shopify_domain,
+            $this->woocommerce_domain,
+            $this->name,
+            $this->exists ? (int) $this->getKey() : null,
+        );
     }
 
     /**

@@ -110,6 +110,34 @@ final class ShopHandleTest extends TestCase
         $this->assertSame('acme', ShopHandle::unique('acme'));
     }
 
+    public function test_a_concurrent_install_that_takes_the_derived_handle_first_is_survived(): void
+    {
+        // The race: the winner committed `racer` after our derivation read it as
+        // free. Reproduced by handing our insert that stale answer once.
+        $this->shopify('racer.myshopify.com'); // the winner, committed
+        $raced = false;
+        Shop::creating(function (Shop $shop) use (&$raced): void {
+            if (! $raced) {
+                $raced = true;
+                $shop->handle = 'racer'; // what a derivation made a moment earlier
+            }
+        });
+
+        $loser = Shop::create(['woocommerce_domain' => 'racer', 'name' => 'x', 'platform' => Shop::PLATFORM_WOOCOMMERCE, 'status' => Shop::STATUS_INSTALLED]);
+
+        $this->assertTrue($raced);
+        $this->assertTrue($loser->exists);
+        $this->assertSame('racer-2', $loser->fresh()->handle);
+    }
+    public function test_a_caller_chosen_handle_that_collides_is_not_silently_renamed(): void
+    {
+        $this->shopify('taken.myshopify.com');
+
+        $this->expectException(\Illuminate\Database\UniqueConstraintViolationException::class);
+        $shop = new Shop(['name' => 'x', 'status' => Shop::STATUS_INSTALLED]);
+        $shop->forceFill(['handle' => 'taken'])->save();
+    }
+
     // === Install / provision ===
 
     public function test_every_new_shop_row_gets_a_handle(): void

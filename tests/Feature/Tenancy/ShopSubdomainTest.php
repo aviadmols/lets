@@ -399,6 +399,14 @@ final class ShopSubdomainTest extends TestCase
             $off = require config_path('session.php');
             $this->assertNull($off['domain'], 'Switch off: host-only, as before.');
 
+            // Switch off + a SESSION_DOMAIN already on the deploy: honoured exactly
+            // as before, and the cookie is NOT renamed (nobody is signed out).
+            $set('SESSION_DOMAIN', '.'.self::ROOT);
+            $offWithDomain = require config_path('session.php');
+            $this->assertSame('.'.self::ROOT, $offWithDomain['domain']);
+            $this->assertStringEndsNotWith('_shared', $offWithDomain['cookie']);
+            $set('SESSION_DOMAIN', null);
+
             $set('SHOP_SUBDOMAINS_ENABLED', 'true');
             $on = require config_path('session.php');
             $this->assertSame('.'.self::ROOT, $on['domain']);

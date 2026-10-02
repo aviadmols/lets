@@ -103,7 +103,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // APP_URL's host, Railway (its health check arrives as
         // healthcheck.railway.app) and loopback, plus TRUSTED_HOSTS_EXTRA.
         // Judged on the real Host header (above). Laravel skips this in local +
-        // unit tests; an untrusted host gets a 400/404, never a page.
+        // unit tests; an untrusted host gets a 400, never a page. While
+        // SHOP_SUBDOMAINS_ENABLED is off the list is EMPTY = no host restriction,
+        // exactly as before (ShopHosts::trustedHostPatterns).
         $middleware->trustHosts(at: fn (): array => ShopHosts::trustedHostPatterns(), subdomains: false);
 
         // Pin https in the browser (HSTS) so it never falls back to http and the

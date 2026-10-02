@@ -164,7 +164,7 @@ final class BindTenantFromUser
         Log::warning('tenancy.host_mismatch', [
             'user_id' => $user->getKey(),
             'user_shop_id' => $user->shop_id,
-            'requested_shop_id' => $requested->getKey(),
+            RequestedShop::LOG_KEY => $requested->getKey(),
             'host' => $request->getHost(),
         ]);
 
