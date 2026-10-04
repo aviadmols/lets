@@ -29,7 +29,7 @@
         {{-- Alpine, not a raw onfocus attribute: the panel already ships it, and
              one click should select the whole link rather than half of it. --}}
         <input
-            class="rc-input rc-ltr"
+            class="rc-input rc-ident"
             type="text"
             readonly
             value="{{ $url }}"

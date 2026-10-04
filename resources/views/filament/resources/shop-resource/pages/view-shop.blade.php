@@ -47,14 +47,14 @@
                 <div class="rc-section__title">{{ __('platform.overview.account') }}</div>
                 <div class="rc-kv">
                     <span class="rc-muted">{{ __('platform.shops.col.domain') }}</span>
-                    <span class="rc-strong rc-ltr">{{ $record->displayDomain() }}</span>
+                    <span class="rc-strong rc-ident">{{ $record->displayDomain() }}</span>
 
                     {{-- The shop's own admin address (<handle>.app.lets.co.il). --}}
                     <span class="rc-muted">{{ __('tenancy.handle.label') }}</span>
-                    <span class="rc-strong rc-ltr">{{ $record->handle ?: __('common.none') }}</span>
+                    <span class="rc-strong rc-ident">{{ $record->handle ?: __('common.none') }}</span>
 
                     <span class="rc-muted">{{ __('tenancy.admin_url.label') }}</span>
-                    <span class="rc-strong rc-ltr">{{ $record->adminUrl() }}</span>
+                    <span class="rc-strong rc-ident">{{ $record->adminUrl() }}</span>
 
                     <span class="rc-muted">{{ __('platform.shops.col.name') }}</span>
                     <span class="rc-strong">{{ $record->name ?: __('common.none') }}</span>
@@ -81,10 +81,10 @@
                     @endif
 
                     <span class="rc-muted">{{ __('platform.shops.col.installed_at') }}</span>
-                    <span class="rc-strong rc-ltr">{{ optional($record->installed_at)->format('d M Y') ?? __('common.none') }}</span>
+                    <span class="rc-strong rc-iso">{{ optional($record->installed_at)->format('d M Y') ?? __('common.none') }}</span>
 
                     <span class="rc-muted">{{ __('platform.shops.col.uninstalled_at') }}</span>
-                    <span class="rc-strong rc-ltr">{{ optional($record->uninstalled_at)->format('d M Y') ?? __('common.none') }}</span>
+                    <span class="rc-strong rc-iso">{{ optional($record->uninstalled_at)->format('d M Y') ?? __('common.none') }}</span>
                 </div>
             </div>
         </div>

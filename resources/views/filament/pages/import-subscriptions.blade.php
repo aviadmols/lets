@@ -1,7 +1,7 @@
 {{--
     Subscription CSV import + export.
     TOKENS: .rc-section/.rc-stack/.rc-row/.rc-kpi-grid/.rc-kpi/.rc-field/.rc-check/
-            .rc-table/.rc-banner/.rc-cta/.rc-muted/.rc-ltr (published theme). ZERO inline CSS.
+            .rc-table/.rc-banner/.rc-cta/.rc-muted/.rc-iso (published theme). ZERO inline CSS.
     Renders only — every number comes from the report the page already computed.
 --}}
 <x-filament-panels::page>
@@ -43,20 +43,20 @@
                 <div class="rc-form__group">
                     <div class="rc-field">
                         <label class="rc-field__label" for="import-product">{{ __('import.option.default_product') }}</label>
-                        <input id="import-product" type="text" class="rc-input rc-ltr" wire:model="defaultProduct">
+                        <input id="import-product" type="text" class="rc-input rc-ident" wire:model="defaultProduct">
                     </div>
                     <div class="rc-field">
                         <label class="rc-field__label" for="import-currency">{{ __('import.option.currency') }}</label>
-                        <input id="import-currency" type="text" class="rc-input rc-ltr" wire:model="currency">
+                        <input id="import-currency" type="text" class="rc-input rc-ident" wire:model="currency">
                     </div>
                     <div class="rc-field">
                         <label class="rc-field__label" for="import-dateformat">{{ __('import.option.date_format') }}</label>
-                        <input id="import-dateformat" type="text" class="rc-input rc-ltr" wire:model="dateFormat" placeholder="d/m/Y">
+                        <input id="import-dateformat" type="text" class="rc-input rc-ident" wire:model="dateFormat" placeholder="d/m/Y">
                     </div>
                     {{-- Try one member before trusting the file with five thousand. --}}
                     <div class="rc-field">
                         <label class="rc-field__label" for="import-only">{{ __('import.option.only') }}</label>
-                        <input id="import-only" type="text" class="rc-input rc-ltr" wire:model="only" placeholder="1001">
+                        <input id="import-only" type="text" class="rc-input rc-ident" wire:model="only" placeholder="1001">
                         <p class="rc-field__hint">{{ __('import.option.only_help') }}</p>
                     </div>
                 </div>
@@ -174,7 +174,7 @@
                                 <tbody>
                                     @foreach($report[$bucket] as $issue)
                                         <tr wire:key="{{ $bucket }}-{{ $loop->index }}">
-                                            <td class="rc-ltr">{{ $issue['line'] }}</td>
+                                            <td class="rc-iso">{{ $issue['line'] }}</td>
                                             <td>{{ $issue['message'] }}</td>
                                         </tr>
                                     @endforeach
@@ -249,10 +249,10 @@
                         <tbody>
                             @foreach($rel['rows'] as $row)
                                 <tr wire:key="rel-{{ $loop->index }}">
-                                    <td class="rc-ltr">{{ $row['membership_id'] ?? '—' }}</td>
+                                    <td class="rc-iso">{{ $row['membership_id'] ?? '—' }}</td>
                                     <td>{{ $row['customer'] }}</td>
-                                    <td class="rc-ltr">{{ $row['amount'] }}</td>
-                                    <td class="rc-ltr">{{ $row['next_charge_at'] ?? '—' }}</td>
+                                    <td class="rc-iso">{{ $row['amount'] }}</td>
+                                    <td class="rc-iso">{{ $row['next_charge_at'] ?? '—' }}</td>
                                 </tr>
                             @endforeach
                         </tbody>
@@ -272,7 +272,7 @@
         {{-- The columns, so a merchant can build the file without leaving the screen. --}}
         <div class="rc-section">
             <x-rc.accordion title="import.report.columns">
-                <p class="rc-muted rc-ltr">{{ implode(', ', $this->columns()) }}</p>
+                <p class="rc-muted rc-ident">{{ implode(', ', $this->columns()) }}</p>
             </x-rc.accordion>
         </div>
 

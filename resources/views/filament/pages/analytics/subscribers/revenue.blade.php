@@ -22,7 +22,7 @@
         </div>
         <div class="rc-an-mini">
             <span class="rc-an-mini__label">{{ __($t.'orders.subscription') }}</span>
-            <span class="rc-an-mini__value rc-ltr">{{ $subscription_revenue }}</span>
+            <span class="rc-an-mini__value rc-iso">{{ $subscription_revenue }}</span>
             <x-rc.chart.delta :delta="$subscription_delta" />
         </div>
         <div class="rc-an-mini">
@@ -43,7 +43,7 @@
         @foreach($split as $cell)
             <div class="rc-an-mini">
                 <span class="rc-an-mini__label">{{ $cell['label'] }}</span>
-                <span class="rc-an-mini__value rc-ltr">{{ $cell['value'] }}</span>
+                <span class="rc-an-mini__value rc-iso">{{ $cell['value'] }}</span>
                 <x-rc.chart.delta :delta="$cell['delta']" />
             </div>
         @endforeach

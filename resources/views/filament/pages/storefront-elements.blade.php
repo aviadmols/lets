@@ -54,7 +54,7 @@
                         <label class="rc-label" for="sfel-url-{{ $key }}">{{ __('storefront_admin.action.page_url_label') }}</label>
                         <div class="rc-row">
                             <input id="sfel-url-{{ $key }}" type="text" readonly x-ref="value"
-                                   class="rc-input rc-ltr rc-grow" value="{{ $element['page_url'] }}">
+                                   class="rc-input rc-ident rc-grow" value="{{ $element['page_url'] }}">
                             <button type="button" class="rc-cta rc-cta--ghost"
                                     x-on:click="navigator.clipboard.writeText($refs.value.value); copied = true; setTimeout(() => copied = false, 1500)">
                                 <span x-show="!copied">{{ __('storefront_admin.action.copy') }}</span>
@@ -69,7 +69,7 @@
                         <label class="rc-label" for="sfel-sc-{{ $key }}">{{ __('storefront_admin.action.shortcode_label') }}</label>
                         <div class="rc-row">
                             <input id="sfel-sc-{{ $key }}" type="text" readonly x-ref="value"
-                                   class="rc-input rc-ltr rc-grow" value="{{ $element['shortcode'] }}">
+                                   class="rc-input rc-ident rc-grow" value="{{ $element['shortcode'] }}">
                             <button type="button" class="rc-cta rc-cta--ghost"
                                     x-on:click="navigator.clipboard.writeText($refs.value.value); copied = true; setTimeout(() => copied = false, 1500)">
                                 <span x-show="!copied">{{ __('storefront_admin.action.copy') }}</span>
@@ -95,7 +95,7 @@
                         <div class="rc-sfel__copy" x-data="{ copied: false }">
                             <div class="rc-row">
                                 <input type="text" readonly x-ref="value"
-                                       class="rc-input rc-ltr rc-grow" value="{{ $element['snippet'] }}"
+                                       class="rc-input rc-ident rc-grow" value="{{ $element['snippet'] }}"
                                        aria-label="{{ __('storefront_admin.action.snippet_heading') }}">
                                 <button type="button" class="rc-cta rc-cta--ghost"
                                         x-on:click="navigator.clipboard.writeText($refs.value.value); copied = true; setTimeout(() => copied = false, 1500)">

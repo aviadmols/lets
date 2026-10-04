@@ -48,21 +48,21 @@
                         <tr wire:key="upcoming-row-{{ $row['key'] }}">
                             <td class="rc-strong-cell">
                                 @if($row['url'])
-                                    <a class="rc-an-pay-link rc-ltr" href="{{ $row['url'] }}">{{ $row['ref'] }}</a>
+                                    <a class="rc-an-pay-link rc-iso" href="{{ $row['url'] }}">{{ $row['ref'] }}</a>
                                 @else
-                                    <span class="rc-ltr">{{ $row['ref'] }}</span>
+                                    <span class="rc-iso">{{ $row['ref'] }}</span>
                                 @endif
                                 <span class="rc-an-pay-sub">{{ $row['source'] }}</span>
                             </td>
                             <td><x-rc.chart.pill :tone="$row['risk']['pill']" :label="$row['risk']['text']" /></td>
                             <td>
                                 {{ $row['customer'] }}
-                                @if($row['email'] !== '')<span class="rc-an-pay-sub rc-ltr">{{ $row['email'] }}</span>@endif
+                                @if($row['email'] !== '')<span class="rc-an-pay-sub rc-ident">{{ $row['email'] }}</span>@endif
                             </td>
                             <td><x-rc.chart.pill :tone="$row['method']['pill']" :label="$row['method']['text']" /></td>
                             <td><a class="rc-an-pay-link" href="{{ $row['date_url'] }}" title="{{ __($l.'by_day.link') }}">{{ $row['date'] }}</a></td>
-                            <td class="rc-num"><span class="rc-ltr">{{ $row['amount'] }}</span></td>
-                            <td class="rc-num"><span class="rc-ltr">{{ $row['retries'] }}</span></td>
+                            <td class="rc-num"><span class="rc-iso">{{ $row['amount'] }}</span></td>
+                            <td class="rc-num"><span class="rc-iso">{{ $row['retries'] }}</span></td>
                             <td>
                                 @if($row['status'])
                                     <x-rc.chart.pill :tone="$row['status']['pill']" :label="$row['status']['text']" />
@@ -82,7 +82,7 @@
         <span class="rc-an-pay-pager__count">{{ __($l.'pager.showing', ['from' => $from, 'to' => $to, 'total' => $total]) }}</span>
         <div class="rc-an-pay-pager__buttons">
             <button type="button" class="rc-an-btn rc-an-btn--quiet" wire:click="goToPage({{ $page - 1 }})" @disabled($page <= 1)>{{ __($l.'pager.previous') }}</button>
-            <span class="rc-an-pay-pager__page rc-ltr">{{ __($l.'pager.page', ['page' => $page, 'pages' => $pages]) }}</span>
+            <span class="rc-an-pay-pager__page rc-iso">{{ __($l.'pager.page', ['page' => $page, 'pages' => $pages]) }}</span>
             <button type="button" class="rc-an-btn rc-an-btn--quiet" wire:click="goToPage({{ $page + 1 }})" @disabled($page >= $pages)>{{ __($l.'pager.next') }}</button>
         </div>
     </div>

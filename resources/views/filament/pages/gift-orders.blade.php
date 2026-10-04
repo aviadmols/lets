@@ -1,7 +1,7 @@
 {{--
     Gift orders — pick a loyalty rule, see exactly who qualifies, create the orders.
     TOKENS: component classes (.rc-form/.rc-field/.rc-chips/.rc-picker__*/.rc-section/
-            .rc-summary/.rc-table/.rc-muted/.rc-ltr) from the published theme.
+            .rc-summary/.rc-table/.rc-muted/.rc-iso) from the published theme.
             ZERO inline CSS. The page class computes; this view renders.
 
     The form reads as two questions — WHO gets a gift, and WHAT they get — because
@@ -33,7 +33,7 @@
                     <div class="rc-field">
                         <label class="rc-field__label" for="gift-cycles">{{ __('gifts.field.min_cycles') }}</label>
                         {{-- A small number does not need the width of the card. --}}
-                        <input id="gift-cycles" type="number" min="1" class="rc-input rc-input--narrow rc-ltr"
+                        <input id="gift-cycles" type="number" min="1" class="rc-input rc-input--narrow rc-iso"
                                wire:model.live="minCycles">
                         <p class="rc-field__hint">{{ __('gifts.field.min_cycles_hint') }}</p>
                     </div>
@@ -210,7 +210,7 @@
                     {{-- The number is the thing being confirmed, so it is the thing
                          that reads first. --}}
                     <div class="rc-summary">
-                        <span class="rc-summary__count rc-ltr">{{ $ready }}</span>
+                        <span class="rc-summary__count rc-iso">{{ $ready }}</span>
                         <span class="rc-summary__label">
                             {{ __('gifts.preview_summary', ['qualify' => $rows->count()]) }}
                         </span>
@@ -236,8 +236,8 @@
                                             <span class="rc-muted">· {{ __('gifts.already_gifted') }}</span>
                                         @endif
                                     </td>
-                                    <td class="rc-ltr">{{ $row['cycles'] }}</td>
-                                    <td class="rc-ltr">{{ __('gifts.rail.'.$row['rail']) }}</td>
+                                    <td class="rc-iso">{{ $row['cycles'] }}</td>
+                                    <td>{{ __('gifts.rail.'.$row['rail']) }}</td>
                                 </tr>
                             @endforeach
                         </tbody>
@@ -291,14 +291,14 @@
                             <div class="rc-progress__fill rc-progress__fill--{{ $exportRun->progressStep() }}"></div>
                         </div>
                         <div class="rc-progress__meta">
-                            <span class="rc-ltr">
+                            <span class="rc-iso">
                                 @if((int) $exportRun->total > 0)
                                     {{ number_format($exportRun->processed) }} / {{ number_format($exportRun->total) }}
                                 @else
                                     …
                                 @endif
                             </span>
-                            <span class="rc-ltr">{{ $exportRun->progressStep() }}%</span>
+                            <span class="rc-iso">{{ $exportRun->progressStep() }}%</span>
                         </div>
                     </div>
                     <p class="rc-muted">
@@ -334,7 +334,7 @@
                     <div class="rc-stack rc-stack--tight">
                         <div class="rc-row rc-row--between">
                             <span class="rc-strong">{{ $campaign->title }}</span>
-                            <span class="rc-muted rc-ltr">
+                            <span class="rc-muted rc-iso">
                                 {{ optional($campaign->generated_at)->format('d M Y, H:i') ?? '—' }}
                             </span>
                         </div>
@@ -382,7 +382,7 @@
                                 @foreach($counts as $status => $total)
                                     <span class="rc-pill rc-pill--info">
                                         {{ __('gifts.recipient_status.'.$status) }}
-                                        <span class="rc-ltr">{{ $total }}</span>
+                                        <span class="rc-iso">{{ $total }}</span>
                                     </span>
                                 @endforeach
                             </div>
@@ -408,7 +408,7 @@
                                                 <div class="rc-muted">{{ __('gifts.reason.'.$recipient->reason) }}</div>
                                             @endif
                                         </td>
-                                        <td class="rc-ltr">{{ $recipient->external_order_id ?: '—' }}</td>
+                                        <td class="rc-iso">{{ $recipient->external_order_id ?: '—' }}</td>
                                         <td>
                                             {{-- FAILED and SKIPPED never reached the store, so a
                                                  retry is safe — fix the cause (an address on the

@@ -80,7 +80,7 @@
                     @if(\App\Domain\Tenancy\ShopHosts::enabled() && \App\Support\Tenant::current() !== null)
                         <span class="rc-banner__body">
                             {{ __('tenancy.onboarding.admin_url_intro') }}
-                            <a href="{{ \App\Support\Tenant::current()->adminUrl() }}" class="rc-link rc-ltr" target="_blank" rel="noopener">{{ \App\Support\Tenant::current()->adminUrl() }}</a>
+                            <a href="{{ \App\Support\Tenant::current()->adminUrl() }}" class="rc-link rc-ident" target="_blank" rel="noopener">{{ \App\Support\Tenant::current()->adminUrl() }}</a>
                         </span>
                     @endif
                 </div>
@@ -121,11 +121,11 @@
                         @php $change = $this->perfChange($perf[$row], $goodUp); @endphp
                         <tr>
                             <td>{{ __('dashboard.performance.metric.'.$row) }}</td>
-                            <td class="rc-ltr rc-strong">{{ $this->perfDisplay($perf[$row], 'this') }}</td>
-                            <td class="rc-ltr rc-muted">{{ $this->perfDisplay($perf[$row], 'prev') }}</td>
+                            <td class="rc-iso rc-strong">{{ $this->perfDisplay($perf[$row], 'this') }}</td>
+                            <td class="rc-iso rc-muted">{{ $this->perfDisplay($perf[$row], 'prev') }}</td>
                             <td>
                                 @if($change)
-                                    <span class="rc-change rc-change--{{ $change['tone'] }} rc-ltr">{{ $change['text'] }}</span>
+                                    <span class="rc-change rc-change--{{ $change['tone'] }} rc-iso">{{ $change['text'] }}</span>
                                 @else
                                     <span class="rc-muted">—</span>
                                 @endif
@@ -163,8 +163,8 @@
                                 <td class="rc-strong">
                                     <a class="rc-link" href="{{ $row['url'] }}" wire:navigate>{{ $row['customer'] }}</a>
                                 </td>
-                                <td class="rc-ltr">{{ $row['amount'] }}</td>
-                                <td class="rc-ltr">{{ $row['due'] }}</td>
+                                <td class="rc-iso">{{ $row['amount'] }}</td>
+                                <td class="rc-iso">{{ $row['due'] }}</td>
                                 <td class="rc-muted">{{ $row['since'] }}</td>
                             </tr>
                         @endforeach
@@ -197,8 +197,8 @@
                             <tr>
                                 <td class="rc-strong"><a class="rc-link" href="{{ $row['url'] }}" wire:navigate>{{ $row['customer'] }}</a></td>
                                 <td>{{ $row['kind'] }}</td>
-                                <td class="rc-ltr">{{ $row['amount'] }}</td>
-                                <td class="rc-ltr">{{ $row['date'] }}</td>
+                                <td class="rc-iso">{{ $row['amount'] }}</td>
+                                <td class="rc-iso">{{ $row['date'] }}</td>
                             </tr>
                         @empty
                             <tr>

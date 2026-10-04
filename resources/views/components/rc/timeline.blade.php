@@ -38,16 +38,16 @@
                 <div class="rc-timeline__body">
                     <span class="rc-timeline__title">{{ EventPresenter::label($event) }}</span>
                     @if($summary)
-                        {{-- Not rc-ltr: the summary is "Label: value" prose in the admin's language. --}}
+                        {{-- Not rc-iso: the summary is "Label: value" prose in the admin's language. --}}
                         <span class="rc-timeline__summary">{{ $summary }}</span>
                     @endif
-                    {{-- A merchant's note is prose in their own language — no rc-ltr. --}}
+                    {{-- A merchant's note is prose in their own language — no rc-iso. --}}
                     @if($note)
                         <p class="rc-timeline__note">{{ $note }}</p>
                     @endif
                     <span class="rc-timeline__meta">
                         <span class="rc-timeline__actor">{{ EventPresenter::actorLabel($event) }}</span>
-                        <span class="rc-ltr">{{ optional($event->created_at)->format('d M Y, H:i') }}</span>
+                        <span class="rc-iso">{{ optional($event->created_at)->format('d M Y, H:i') }}</span>
                         @if($previewAction && $event->isEmailPreviewable())
                             <button
                                 type="button"

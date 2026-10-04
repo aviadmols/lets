@@ -9,8 +9,8 @@ use NumberFormatter;
  * value to go through ONE formatter so the ₪ symbol placement follows the active
  * locale (Hebrew typically trails the number) — never glued with string concat.
  *
- * Numeric/currency strings stay LTR even inside an RTL row; the calling Blade
- * wraps them in .rc-ltr.
+ * A formatted value sits in the page direction (RTL in Hebrew); the calling Blade
+ * wraps it in .rc-iso so it is bidi-isolated and still reads in its own order.
  */
 final class Money
 {

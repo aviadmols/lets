@@ -41,7 +41,7 @@
             <div class="rc-ans-pair__col">
                 <div class="rc-ans-head">
                     <span class="rc-ans-head__label">{{ __($t.'product.by_revenue') }}</span>
-                    <span class="rc-ans-head__value rc-ltr">{{ $revenue }}</span>
+                    <span class="rc-ans-head__value rc-iso">{{ $revenue }}</span>
                 </div>
                 <x-rc.chart.hbars id="acq_revenue" :title="__($t.'product.by_revenue')" :rows="$by_revenue" format="money" tone="s2" />
             </div>

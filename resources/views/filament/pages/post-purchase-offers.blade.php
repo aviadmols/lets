@@ -133,7 +133,7 @@
                                             {{ trans_choice('upsell.admin.flows.offer_count', $flow->offers_count, ['count' => $flow->offers_count]) }}
                                         </span>
                                     </td>
-                                    <td class="rc-muted rc-ltr">{{ $flow->created_at?->isoFormat('LL') }}</td>
+                                    <td class="rc-muted rc-iso">{{ $flow->created_at?->isoFormat('LL') }}</td>
                                     <td>
                                         <span class="rc-badge rc-badge--{{ $tone }}">
                                             <span class="rc-badge__dot"></span>
@@ -172,7 +172,7 @@
                         </svg>
                         <div class="rc-pp-chart__axis">
                             <span class="rc-muted">{{ trans_choice('upsell.admin.perf.chart_days', $chart['days'], ['count' => $chart['days']]) }}</span>
-                            <span class="rc-muted rc-ltr">{{ __('upsell.admin.perf.chart_peak', ['amount' => \App\Support\Ui\Money::format($chart['max'])]) }}</span>
+                            <span class="rc-muted rc-iso">{{ __('upsell.admin.perf.chart_peak', ['amount' => \App\Support\Ui\Money::format($chart['max'])]) }}</span>
                         </div>
                     </div>
                 @else
@@ -205,7 +205,7 @@
                         @foreach($events as $event)
                             @php $type = $event->event_type->value; @endphp
                             <tr wire:key="ev-{{ $event->id }}">
-                                <td class="rc-muted rc-ltr">{{ $event->occurred_at?->isoFormat('LLL') }}</td>
+                                <td class="rc-muted rc-iso">{{ $event->occurred_at?->isoFormat('LLL') }}</td>
                                 <td>
                                     <span class="rc-badge rc-badge--{{ $this->eventTone($type) }}">
                                         {{ __('upsell.event.' . $type) }}
@@ -217,9 +217,9 @@
                                         <span class="rc-pp-flows__meta">{{ $event->offer->offer_title }}</span>
                                     @endif
                                 </td>
-                                <td class="rc-muted rc-ltr">{{ $event->customer_ref ?? '—' }}</td>
-                                <td class="rc-ltr">{{ $event->revenue_amount ? \App\Support\Ui\Money::format((float) $event->revenue_amount, $event->currency) : '—' }}</td>
-                                <td class="rc-muted rc-ltr">{{ $event->parent_order_id ?? '—' }}</td>
+                                <td class="rc-muted rc-iso">{{ $event->customer_ref ?? '—' }}</td>
+                                <td class="rc-iso">{{ $event->revenue_amount ? \App\Support\Ui\Money::format((float) $event->revenue_amount, $event->currency) : '—' }}</td>
+                                <td class="rc-muted rc-iso">{{ $event->parent_order_id ?? '—' }}</td>
                             </tr>
                         @endforeach
                     </tbody>

@@ -78,23 +78,23 @@
                 <tbody>
                     @foreach($rows as $row)
                         <tr wire:key="risk-{{ $row['ref'] }}">
-                            <td class="rc-strong-cell"><a class="rc-an-cell-link rc-ltr" href="{{ $row['url'] }}">{{ $row['ref'] }}</a></td>
+                            <td class="rc-strong-cell"><a class="rc-an-cell-link rc-iso" href="{{ $row['url'] }}">{{ $row['ref'] }}</a></td>
                             <td><x-rc.chart.pill :tone="$row['risk']['pill']" :label="$row['risk']['text']" /></td>
                             <td><x-rc.chart.pill :tone="$row['status_tone']" :label="$row['status']" /></td>
                             <td class="rc-an-nowrap">{{ $row['created'] }}</td>
                             <td>{{ $row['name'] }}@if($row['email'] !== '')<span class="rc-an-cell-sub">{{ $row['email'] }}</span>@endif</td>
-                            <td class="rc-num"><span class="rc-ltr">{{ $row['price'] }}</span></td>
-                            <td class="rc-num"><span class="rc-ltr">{{ $row['orders'] }}</span></td>
+                            <td class="rc-num"><span class="rc-iso">{{ $row['price'] }}</span></td>
+                            <td class="rc-num"><span class="rc-iso">{{ $row['orders'] }}</span></td>
                             <td class="rc-num">
                                 @if($row['success_tone'])
                                     <x-rc.chart.pill :tone="$row['success_tone']" :label="$row['success']" />
                                 @else
-                                    <span class="rc-ltr">{{ $row['success'] }}</span>
+                                    <span class="rc-iso">{{ $row['success'] }}</span>
                                 @endif
                             </td>
-                            <td class="rc-num"><span class="rc-ltr">{{ $row['streak'] }}</span></td>
+                            <td class="rc-num"><span class="rc-iso">{{ $row['streak'] }}</span></td>
                             <td><x-rc.chart.pill :tone="$row['card']['pill']" :label="$row['card']['text']" /></td>
-                            <td><span class="rc-ltr">{{ $row['expiry'] }}</span></td>
+                            <td><span class="rc-iso">{{ $row['expiry'] }}</span></td>
                             <td>{{ $row['interval'] }}</td>
                         </tr>
                     @endforeach

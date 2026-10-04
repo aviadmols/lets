@@ -24,7 +24,7 @@
 @endphp
 <div {{ $attributes->class(['rc-kpi']) }} wire:key="kpi-{{ md5($label.'|'.$value.'|'.$delta.'|'.$empty) }}">
     <span class="rc-kpi__label">{{ $label }}</span>
-    <span @class(['rc-kpi__value', 'rc-ltr', 'rc-kpi__value--empty' => $isEmpty])>{{ $isEmpty ? '—' : $value }}</span>
+    <span @class(['rc-kpi__value', 'rc-iso', 'rc-kpi__value--empty' => $isEmpty])>{{ $isEmpty ? '—' : $value }}</span>
     @if($isEmpty && $empty)
         <span class="rc-kpi__empty">{{ __('analytics.empty.'.$empty.'_title') }}</span>
     @elseif($delta !== null || $compare)

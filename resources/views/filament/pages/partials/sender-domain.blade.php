@@ -11,7 +11,7 @@
     NO SECRET IS ON THIS PAGE. The provider key belongs to the platform; a
     merchant sees only the public records their own DNS will publish.
 
-    TOKENS: .rc-stack/.rc-muted/.rc-strong/.rc-table/.rc-ltr/.rc-pill/.rc-row/
+    TOKENS: .rc-stack/.rc-muted/.rc-strong/.rc-table/.rc-iso/.rc-pill/.rc-row/
             .rc-cta/.rc-link/.rc-dns (theme + components/mail-settings.css).
     ZERO inline CSS.
 
@@ -30,7 +30,7 @@
         <p class="rc-muted">{{ __('mail.sender.none') }}</p>
     @else
         <div class="rc-row">
-            <span class="rc-strong rc-ltr">{{ $domain->sendingDomain() }}</span>
+            <span class="rc-strong rc-ident">{{ $domain->sendingDomain() }}</span>
 
             <span @class([
                 'rc-pill',
@@ -70,11 +70,11 @@
                 <tbody>
                     @foreach ($records as $record)
                         <tr>
-                            <td class="rc-ltr">{{ $record['type'] }}</td>
+                            <td class="rc-ident">{{ $record['type'] }}</td>
                             {{-- Selectable, LTR, and never truncated: these are
                                  values a person copies by hand. --}}
-                            <td class="rc-ltr rc-dns__value">{{ $record['host'] }}</td>
-                            <td class="rc-ltr rc-dns__value">{{ $record['value'] }}</td>
+                            <td class="rc-ident rc-dns__value">{{ $record['host'] }}</td>
+                            <td class="rc-ident rc-dns__value">{{ $record['value'] }}</td>
                             <td>
                                 @if (($record['resolved'] ?? null) === true)
                                     <span class="rc-pill rc-pill--success">{{ __('mail.sender.record.live') }}</span>

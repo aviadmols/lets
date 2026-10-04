@@ -56,7 +56,7 @@
                         <span class="rc-obs__health-label">{{ __('observability.scheduler.label') }}</span>
                         <span class="rc-obs__health-value">
                             @if($heartbeat['last_run'])
-                                <span class="rc-ltr">{{ $heartbeat['last_run']->format('d M Y, H:i') }}</span>
+                                <span class="rc-iso">{{ $heartbeat['last_run']->format('d M Y, H:i') }}</span>
                                 <span class="rc-muted">{{ __('observability.scheduler.ago', ['minutes' => $heartbeat['age_minutes']]) }}</span>
                             @else
                                 <span class="rc-muted">{{ __('observability.scheduler.never') }}</span>
@@ -69,7 +69,7 @@
                 @foreach($d['queues'] as $queue => $depth)
                     <div class="rc-obs__queue">
                         <span class="rc-obs__queue-name">{{ $queue }}</span>
-                        <span class="rc-obs__queue-depth rc-ltr">{{ $this->count($depth) }}</span>
+                        <span class="rc-obs__queue-depth rc-iso">{{ $this->count($depth) }}</span>
                     </div>
                 @endforeach
             </div>
@@ -82,7 +82,7 @@
                 @foreach($d['plans'] as $status => $countValue)
                     <div class="rc-obs__plan">
                         <x-rc.badge :status="$status" :label="'billing.status.' . $status" />
-                        <span class="rc-obs__plan-count rc-ltr">{{ $this->count($countValue) }}</span>
+                        <span class="rc-obs__plan-count rc-iso">{{ $this->count($countValue) }}</span>
                     </div>
                 @endforeach
             </div>
@@ -107,11 +107,11 @@
                     <tbody>
                         @foreach($d['failures'] as $failure)
                             <tr>
-                                @if($d['is_platform'])<td class="rc-ltr rc-muted">#{{ $failure['shop_id'] }}</td>@endif
+                                @if($d['is_platform'])<td class="rc-iso rc-muted">#{{ $failure['shop_id'] }}</td>@endif
                                 <td>{{ __('billing.charge_context.' . $failure['context']) }}</td>
-                                <td class="rc-ltr">{{ $this->money($failure['amount'], $failure['currency']) }}</td>
+                                <td class="rc-iso">{{ $this->money($failure['amount'], $failure['currency']) }}</td>
                                 <td class="rc-muted">{{ $failure['failure_message'] ?: $failure['failure_code'] ?: __('observability.failures.no_reason') }}</td>
-                                <td class="rc-ltr rc-muted">{{ optional($failure['created_at'])->format('d M Y, H:i') ?? '—' }}</td>
+                                <td class="rc-iso rc-muted">{{ optional($failure['created_at'])->format('d M Y, H:i') ?? '—' }}</td>
                             </tr>
                         @endforeach
                     </tbody>

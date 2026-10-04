@@ -8,7 +8,7 @@
     the two from drifting — the link is revealed ONCE (the row keeps only a hash),
     so a version of this that fell behind would be a version that loses it.
 
-    TOKENS: .rc-field/.rc-field__label/.rc-field__hint/.rc-input/.rc-ltr/
+    TOKENS: .rc-field/.rc-field__label/.rc-field__hint/.rc-input/.rc-iso/
             .rc-form__actions/.rc-cta/.rc-muted. ZERO inline CSS.
 
     Reads the page's own public properties; computes nothing.
@@ -18,7 +18,7 @@
         <span class="rc-field__label">{{ __('card_update.status.link_label') }}</span>
         {{-- Selects itself on focus: the only thing anybody does with this field
              is copy all of it. --}}
-        <input type="text" class="rc-input rc-ltr" readonly onfocus="this.select()"
+        <input type="text" class="rc-input rc-ident" readonly onfocus="this.select()"
                value="{{ $this->cardLinkUrl }}">
         <span class="rc-field__hint">{{ __('card_update.status.durable_hint') }}</span>
     </label>
@@ -26,7 +26,7 @@
     @if($this->cardLinkDirectUrl !== '')
         <label class="rc-field">
             <span class="rc-field__label">{{ __('card_update.status.direct_label') }}</span>
-            <input type="text" class="rc-input rc-ltr" readonly onfocus="this.select()"
+            <input type="text" class="rc-input rc-ident" readonly onfocus="this.select()"
                    value="{{ $this->cardLinkDirectUrl }}">
             <span class="rc-field__hint">{{ __('card_update.status.direct_hint') }}</span>
         </label>

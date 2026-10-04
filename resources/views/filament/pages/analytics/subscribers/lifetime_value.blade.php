@@ -11,7 +11,7 @@
 <div class="rc-ans-summary" wire:key="ltv-summary-{{ md5(($ltv ?? '').'|'.$customers) }}">
     @if($ltv !== null)
         <p class="rc-ans-summary__lead">
-            {{ __($t.'summary.lead_before') }} <strong class="rc-ltr">{{ $ltv }}</strong>
+            {{ __($t.'summary.lead_before') }} <strong class="rc-iso">{{ $ltv }}</strong>
             {{ trans_choice($t.'summary.lead_after', $customer_count, ['n' => $customers, 'date' => $as_of]) }}
             <x-rc.chart.delta :delta="$ltv_delta" />
         </p>

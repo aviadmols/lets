@@ -41,15 +41,15 @@
                 @endforeach
             </svg>
             <div class="rc-donut__centre" aria-hidden="true">
-                <span class="rc-donut__value rc-ltr">{{ $centre ?? \App\Support\Ui\Charts\ChartFormat::value($g['total'], $format) }}</span>
+                <span class="rc-donut__value rc-iso">{{ $centre ?? \App\Support\Ui\Charts\ChartFormat::value($g['total'], $format) }}</span>
                 @if($caption)<span class="rc-donut__caption">{{ $caption }}</span>@endif
             </div>
         </div>
         <dl class="rc-donut__legend">
             @foreach($g['slices'] as $slice)
                 <dt><span class="rc-legend__swatch rc-tone--{{ $slice['tone'] }}" aria-hidden="true"></span><span class="rc-donut__name">{{ $slice['label'] }}</span></dt>
-                <dd class="rc-donut__num rc-ltr">{{ $slice['display'] ?? \App\Support\Ui\Charts\ChartFormat::value($slice['value'], $format) }}</dd>
-                <dd class="rc-donut__pct rc-ltr">{{ number_format($slice['pct'], $slice['pct'] < 10 ? 1 : 0) }}%</dd>
+                <dd class="rc-donut__num rc-iso">{{ $slice['display'] ?? \App\Support\Ui\Charts\ChartFormat::value($slice['value'], $format) }}</dd>
+                <dd class="rc-donut__pct rc-iso">{{ number_format($slice['pct'], $slice['pct'] < 10 ? 1 : 0) }}%</dd>
             @endforeach
         </dl>
     @endif

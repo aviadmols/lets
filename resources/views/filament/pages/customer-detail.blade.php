@@ -39,7 +39,7 @@
                             </div>
                             <div class="rc-field">
                                 <label class="rc-field__label" for="c-phone">{{ __('customers.contact.phone') }}</label>
-                                <input id="c-phone" type="text" class="rc-input rc-ltr" wire:model="contactForm.phone">
+                                <input id="c-phone" type="text" class="rc-input rc-ident" wire:model="contactForm.phone">
                             </div>
                         </div>
 
@@ -59,11 +59,11 @@
                             </div>
                             <div class="rc-field">
                                 <label class="rc-field__label" for="c-zip">{{ __('gifts.export.col.zip') }}</label>
-                                <input id="c-zip" type="text" class="rc-input rc-input--narrow rc-ltr" wire:model="contactForm.zip">
+                                <input id="c-zip" type="text" class="rc-input rc-input--narrow rc-iso" wire:model="contactForm.zip">
                             </div>
                             <div class="rc-field">
                                 <label class="rc-field__label" for="c-country">{{ __('gifts.export.col.country') }}</label>
-                                <input id="c-country" type="text" class="rc-input rc-input--narrow rc-ltr"
+                                <input id="c-country" type="text" class="rc-input rc-input--narrow rc-ident"
                                        maxlength="2" wire:model="contactForm.country">
                                 <p class="rc-field__hint">{{ __('customers.contact.country_hint') }}</p>
                             </div>
@@ -92,7 +92,7 @@
                         @endif
                         @if($contact->phone)
                             <span class="rc-kv__k">{{ __('customers.contact.phone') }}</span>
-                            <span class="rc-kv__v rc-ltr">{{ $contact->phone }}</span>
+                            <span class="rc-kv__v rc-ident">{{ $contact->phone }}</span>
                         @endif
                         @if($contact->address?->address1)
                             <span class="rc-kv__k">{{ __('customers.contact.address') }}</span>
@@ -133,11 +133,11 @@
                         <tbody>
                             @foreach($orderFeed['orders'] as $order)
                                 <tr wire:key="ord-{{ $order['id'] }}">
-                                    <td class="rc-ltr">
+                                    <td class="rc-iso">
                                         {{ $order['date'] ? \Illuminate\Support\Carbon::parse($order['date'])->format('d M Y') : '—' }}
                                     </td>
-                                    <td class="rc-ltr">{{ $order['number'] }}</td>
-                                    <td class="rc-ltr">{{ \App\Support\Ui\Money::format($order['total']) }}</td>
+                                    <td class="rc-iso">{{ $order['number'] }}</td>
+                                    <td class="rc-iso">{{ \App\Support\Ui\Money::format($order['total']) }}</td>
                                     <td>
                                         @if($order['from_lets'])
                                             <span class="rc-chip">{{ __('customers.orders.from_lets') }}</span>
@@ -179,7 +179,7 @@
                                         :tone="$contract->status === \App\Models\SubscriptionContract::STATUS_ACTIVE ? 'green'
                                             : ($contract->status === \App\Models\SubscriptionContract::STATUS_FAILED ? 'red' : 'gray')" />
                                 </div>
-                                <span class="rc-muted rc-ltr">
+                                <span class="rc-muted rc-iso">
                                     {{ $contract->amount !== null ? \App\Support\Ui\Money::format((float) $contract->amount, (string) $contract->currency) : '—' }}
                                     · {{ optional($contract->next_billing_date)->format('d M Y') ?? '—' }}
                                 </span>
@@ -210,7 +210,7 @@
                                     <span class="rc-strong">{{ $this->kindLabel($plan) }} · PLN-{{ $plan->getKey() }}</span>
                                     <x-rc.badge :status="$statusValue" />
                                 </div>
-                                <span class="rc-muted rc-ltr">{{ $this->planSummary($plan) }}</span>
+                                <span class="rc-muted rc-iso">{{ $this->planSummary($plan) }}</span>
                             </a>
                         @endforeach
                     </div>
@@ -235,7 +235,7 @@
                 <div class="rc-section__subtitle">{{ __('customers.detail.panel.overview') }}</div>
                 <div class="rc-kv">
                     <span class="rc-kv__k">{{ __('customers.detail.overview.customer_id') }}</span>
-                    <span class="rc-kv__v rc-ltr">{{ $customer }}</span>
+                    <span class="rc-kv__v rc-iso">{{ $customer }}</span>
                 </div>
             </div>
             <div class="rc-section">

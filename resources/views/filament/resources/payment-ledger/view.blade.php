@@ -1,7 +1,7 @@
 {{--
     Payment detail — one ledger row's full record.
     TOKENS: consumed via component classes (.rc-stack/.rc-section/.rc-kv/.rc-row/
-            .rc-muted/.rc-ltr) defined in the published theme. ZERO inline CSS.
+            .rc-muted/.rc-iso) defined in the published theme. ZERO inline CSS.
     Renders only — every value is precomputed on the ViewPayment page.
 --}}
 <x-filament-panels::page>
@@ -25,26 +25,26 @@
 
             <div class="rc-kv">
                 <span class="rc-kv__k">{{ __('subscriptions.detail.col.amount') }}</span>
-                <span class="rc-kv__v rc-ltr">
+                <span class="rc-kv__v rc-iso">
                     {{ \App\Support\Ui\Money::format((float) $record->amount, (string) $record->currency) }}
                 </span>
 
                 <span class="rc-kv__k">{{ __('subscriptions.detail.col.date') }}</span>
-                <span class="rc-kv__v rc-ltr">{{ $record->created_at?->format('d M Y, H:i') }}</span>
+                <span class="rc-kv__v rc-iso">{{ $record->created_at?->format('d M Y, H:i') }}</span>
 
                 @if($record->customer_email)
                     <span class="rc-kv__k">{{ __('billing.detail.email') }}</span>
-                    <span class="rc-kv__v rc-ltr">{{ $record->customer_email }}</span>
+                    <span class="rc-kv__v rc-ident">{{ $record->customer_email }}</span>
                 @endif
 
                 @if($record->shopify_order_id)
                     <span class="rc-kv__k">{{ __('billing.col.order') }}</span>
-                    <span class="rc-kv__v rc-ltr">{{ $record->shopify_order_id }}</span>
+                    <span class="rc-kv__v rc-iso">{{ $record->shopify_order_id }}</span>
                 @endif
 
                 @if($record->plan)
                     <span class="rc-kv__k">{{ __('nav.subscriptions') }}</span>
-                    <span class="rc-kv__v rc-ltr">PLN-{{ $record->plan->getKey() }}</span>
+                    <span class="rc-kv__v rc-iso">PLN-{{ $record->plan->getKey() }}</span>
                 @endif
             </div>
         </div>
@@ -55,11 +55,11 @@
 
             <div class="rc-kv">
                 <span class="rc-kv__k">{{ __('subscriptions.detail.col.tx') }}</span>
-                <span class="rc-kv__v rc-ltr">{{ $record->payplus_transaction_uid ?: '—' }}</span>
+                <span class="rc-kv__v rc-ident">{{ $record->payplus_transaction_uid ?: '—' }}</span>
 
                 @foreach($this->transactionFacts() as $key => $value)
                     <span class="rc-kv__k">{{ __('billing.detail.fact.' . $key) }}</span>
-                    <span class="rc-kv__v rc-ltr">{{ $value }}</span>
+                    <span class="rc-kv__v rc-iso">{{ $value }}</span>
                 @endforeach
             </div>
 
@@ -79,7 +79,7 @@
             @else
                 <div class="rc-kv">
                     <span class="rc-kv__k">{{ __('invoices.col.number') }}</span>
-                    <span class="rc-kv__v rc-ltr">
+                    <span class="rc-kv__v rc-iso">
                         @if($docHref = \App\Support\SafeHref::web($document->document_url))
                             <a href="{{ $docHref }}" target="_blank" rel="noopener">
                                 {{ $document->document_number ?: $document->provider_document_id }} ↗
@@ -90,7 +90,7 @@
                     </span>
 
                     <span class="rc-kv__k">{{ __('subscriptions.detail.col.date') }}</span>
-                    <span class="rc-kv__v rc-ltr">{{ optional($document->issued_at)->format('d M Y, H:i') ?? '—' }}</span>
+                    <span class="rc-kv__v rc-iso">{{ optional($document->issued_at)->format('d M Y, H:i') ?? '—' }}</span>
                 </div>
             @endif
         </div>

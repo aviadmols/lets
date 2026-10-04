@@ -69,7 +69,7 @@
             @foreach($subscriptions_activity['cells'] as $cell)
                 <div class="rc-stat">
                     <span class="rc-stat__label">{{ $cell['label'] }}</span>
-                    <span class="rc-stat__value"><span class="rc-ltr">{{ $cell['value'] }}</span>
+                    <span class="rc-stat__value"><span class="rc-iso">{{ $cell['value'] }}</span>
                         <x-rc.chart.delta :delta="$cell['delta']" :good-up="$cell['goodUp']" /></span>
                 </div>
             @endforeach
@@ -107,17 +107,17 @@
         <div class="rc-an-kpi-row">
             <div class="rc-an-mini">
                 <span class="rc-an-mini__label">{{ __('analytics/subscribers_overview.churn.rate') }}</span>
-                <span @class(['rc-an-mini__value', 'rc-ltr', 'rc-an-mini__value--empty' => $churn['rate'] === null])>{{ $churn['rate'] ?? '—' }}</span>
+                <span @class(['rc-an-mini__value', 'rc-iso', 'rc-an-mini__value--empty' => $churn['rate'] === null])>{{ $churn['rate'] ?? '—' }}</span>
                 <x-rc.chart.delta :delta="$churn['rate_delta']" unit="points" :good-up="false" />
             </div>
             <div class="rc-an-mini">
                 <span class="rc-an-mini__label">{{ __('analytics/subscribers_overview.churn.lost') }}</span>
-                <span class="rc-an-mini__value rc-ltr">{{ $churn['lost'] }}</span>
+                <span class="rc-an-mini__value rc-iso">{{ $churn['lost'] }}</span>
                 <span class="rc-an-mini__sub">{{ __('analytics/subscribers_overview.churn.of_start', ['count' => $churn['start_active']]) }}</span>
             </div>
             <div class="rc-an-mini">
                 <span class="rc-an-mini__label">{{ __('analytics/subscribers_overview.churn.zero_day') }}</span>
-                <span @class(['rc-an-mini__value', 'rc-ltr', 'rc-an-mini__value--empty' => $churn['zero_day'] === null])>{{ $churn['zero_day'] ?? '—' }}</span>
+                <span @class(['rc-an-mini__value', 'rc-iso', 'rc-an-mini__value--empty' => $churn['zero_day'] === null])>{{ $churn['zero_day'] ?? '—' }}</span>
                 <span class="rc-an-mini__sub">{{ __('analytics/subscribers_overview.churn.n_of_lost', ['n' => $churn['zero_day_count'], 'lost' => $churn['lost_count']]) }}</span>
             </div>
             <div class="rc-an-mini">

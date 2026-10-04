@@ -32,8 +32,20 @@
 .rc-kv--stacked { grid-template-columns: minmax(0, 1fr); gap: 2px; }
 .rc-kv--stacked .rc-kv__v { margin-block-end: var(--rc-space-2); overflow-wrap: anywhere; }
 
-/* monospace / LTR-locked numeric + masked refs inside RTL rows. */
-.rc-ltr { direction: ltr; unicode-bidi: isolate; text-align: start; }
+/* Bidi for values inside RTL text — two classes, one rule each.
+   .rc-iso   — numbers, money, percents, signed deltas, dates, ranges, counts.
+               ISOLATED but in the PAGE direction: in Hebrew the value sits in the
+               RTL flow and aligns right like its neighbours. The leading LRM
+               (generated, never copied) makes a leading sign or range read in its
+               own order: "+53", "−4", "1–5", "3 / 12" — never "53+" or "5–1".
+   .rc-ident — identifiers that must never be reordered: emails, URLs, domains,
+               DNS records, coupon codes, card tokens, gids, keys, phone numbers.
+               Truly LTR inside, but aligned to the PAGE start (right in Hebrew). */
+.rc-iso { unicode-bidi: isolate; }
+[dir="rtl"] .rc-iso::before { content: "\200E"; }
+.rc-ident { direction: ltr; unicode-bidi: isolate; text-align: start; }
+/* Its own direction is LTR, so the RTL page's start (right) is ITS end. */
+[dir="rtl"] .rc-ident { text-align: end; }
 
 /* simple plain table for schedule + ledger inside detail pages. */
 .rc-table { inline-size: 100%; border-collapse: collapse; }

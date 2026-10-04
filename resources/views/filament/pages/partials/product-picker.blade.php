@@ -91,7 +91,7 @@
                                         {{ __('upsell.admin.picker.sku', ['sku' => $row['sku']]) }}
                                     @endif
                                     @if(filled($row['price']))
-                                        <span class="rc-picker__option-price rc-ltr">{{ $row['price'] }}</span>
+                                        <span class="rc-picker__option-price rc-iso">{{ $row['price'] }}</span>
                                     @endif
                                 </span>
                             </span>
@@ -109,7 +109,7 @@
                                             x-on:click="open = false"
                                         >
                                             <span class="rc-picker__variant-title">{{ $variant['title'] ?: __('upsell.admin.picker.default_variant') }}</span>
-                                            <span class="rc-picker__variant-price rc-ltr">{{ $variant['price'] }}</span>
+                                            <span class="rc-picker__variant-price rc-iso">{{ $variant['price'] }}</span>
                                         </button>
                                     </li>
                                 @endforeach

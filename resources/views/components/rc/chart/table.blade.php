@@ -31,7 +31,7 @@
                                 @if(is_array($cell) && isset($cell['pill']))
                                     <x-rc.chart.pill :tone="$cell['pill']" :label="$cell['text']" />
                                 @elseif(! empty($col['numeric']))
-                                    <span class="rc-ltr">{{ $cell }}</span>
+                                    <span class="rc-iso">{{ $cell }}</span>
                                 @else
                                     {{ $cell }}
                                 @endif

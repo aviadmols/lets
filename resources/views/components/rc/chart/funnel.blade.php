@@ -25,10 +25,10 @@
                 </svg>
                 <div class="rc-funnel__text">
                     <span class="rc-funnel__name">{{ $stage['label'] }}</span>
-                    <span class="rc-ltr">{{ $fmt($stage['value']) }} · {{ number_format($stage['share'], 1) }}%</span>
+                    <span class="rc-iso">{{ $fmt($stage['value']) }} · {{ number_format($stage['share'], 1) }}%</span>
                     @if(! empty($stage['leaks']))
                         <ul class="rc-funnel__leaks">
-                            @foreach($stage['leaks'] as $leak)<li>{{ $leak['label'] }} <span class="rc-ltr">{{ $fmt($leak['value']) }}</span></li>@endforeach
+                            @foreach($stage['leaks'] as $leak)<li>{{ $leak['label'] }} <span class="rc-iso">{{ $fmt($leak['value']) }}</span></li>@endforeach
                         </ul>
                     @endif
                 </div>

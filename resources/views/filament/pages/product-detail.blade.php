@@ -48,7 +48,7 @@
                     <div class="rc-prod-details__info">
                         <div class="rc-prod-details__name">{{ $product->title }}</div>
                         <div class="rc-prod-details__meta">
-                            <span class="rc-ltr rc-strong">{{ \App\Support\Ui\Money::format($this->primaryPrice()) }}</span>
+                            <span class="rc-iso rc-strong">{{ \App\Support\Ui\Money::format($this->primaryPrice()) }}</span>
                             <span class="rc-muted">·</span>
                             <span class="rc-muted">{{ $product->skuForList() ?? __('products.detail.no_sku') }}</span>
                         </div>
@@ -107,9 +107,9 @@
                                 <x-filament::icon icon="heroicon-o-swatch" class="rc-plan-group__icon" />
                                 <span class="rc-strong">{{ $group['title'] }}</span>
                                 @if($group['sku'])
-                                    <span class="rc-muted rc-ltr">{{ $group['sku'] }}</span>
+                                    <span class="rc-muted rc-ident">{{ $group['sku'] }}</span>
                                 @endif
-                                <span class="rc-muted rc-ltr">{{ \App\Support\Ui\Money::format($group['price']) }}</span>
+                                <span class="rc-muted rc-iso">{{ \App\Support\Ui\Money::format($group['price']) }}</span>
                             </div>
                             <div class="rc-row rc-plan-group__actions">
                                 <button type="button" class="rc-cta rc-cta--ghost rc-cta--sm"
@@ -146,7 +146,7 @@
                                     <div class="rc-plan-row__line">
                                         <span class="rc-badge rc-badge--{{ $plan['is_subscription'] ? 'teal' : 'gray' }}">{{ $plan['type_label'] }}</span>
                                         <span class="rc-strong">{{ $plan['name'] }}</span>
-                                        <span class="rc-plan-row__price rc-ltr">{{ $plan['price'] }}</span>
+                                        <span class="rc-plan-row__price rc-iso">{{ $plan['price'] }}</span>
                                     </div>
                                     <div class="rc-plan-row__meta">
                                         @if($plan['cadence'])
@@ -223,10 +223,10 @@
                 <div class="rc-section__subtitle rc-prod-side__title">{{ __('products.detail.side.title') }}</div>
                 <dl class="rc-kv">
                     <dt class="rc-kv__k">{{ __('products.detail.side.product_id') }}</dt>
-                    <dd class="rc-kv__v rc-ltr">{{ $product->external_id }}</dd>
+                    <dd class="rc-kv__v rc-ident">{{ $product->external_id }}</dd>
 
                     <dt class="rc-kv__k">{{ __('products.detail.side.variant_id') }}</dt>
-                    <dd class="rc-kv__v rc-ltr">{{ $product->primaryVariant()?->external_variant_id ?? __('common.none') }}</dd>
+                    <dd class="rc-kv__v rc-ident">{{ $product->primaryVariant()?->external_variant_id ?? __('common.none') }}</dd>
 
                     <dt class="rc-kv__k">{{ __('products.detail.side.shopify_status') }}</dt>
                     <dd class="rc-kv__v">{{ __('products.status.' . $product->status) }}</dd>
@@ -342,7 +342,7 @@
                             <div class="rc-field">
                                 <label class="rc-field__label" for="rc-plan-interval">{{ __('products.plan_drawer.ship_label') }}</label>
                                 <div class="rc-row rc-plan-ship">
-                                    <input id="rc-plan-interval" type="number" min="1" max="60" class="rc-input rc-ltr rc-plan-ship__count" wire:model.live="intervalCount">
+                                    <input id="rc-plan-interval" type="number" min="1" max="60" class="rc-input rc-iso rc-plan-ship__count" wire:model.live="intervalCount">
                                     <select class="rc-pp-select rc-plan-ship__unit" wire:model.live="frequencyUnit" aria-label="{{ __('products.plan_drawer.frequency_unit') }}">
                                         @foreach($this->frequencyOptions() as $value => $unitLabel)
                                             <option value="{{ $value }}">{{ $unitLabel }}</option>
@@ -385,7 +385,7 @@
                             @if($pricingMode === \App\Models\ProductSubscriptionPlan::PRICING_FIXED)
                                 <div class="rc-field">
                                     <label class="rc-field__label" for="rc-plan-fixed-amount">{{ __('products.plan_drawer.fixed_amount_label') }}</label>
-                                    <input id="rc-plan-fixed-amount" type="number" min="0" step="0.01" class="rc-input rc-ltr rc-plan-ship__count" wire:model.live="fixedAmount">
+                                    <input id="rc-plan-fixed-amount" type="number" min="0" step="0.01" class="rc-input rc-iso rc-plan-ship__count" wire:model.live="fixedAmount">
                                 </div>
                             @endif
                         @endif
@@ -401,7 +401,7 @@
                             <div class="rc-field">
                                 <label class="rc-field__label" for="rc-plan-discount">{{ __('products.plan_drawer.discount_label') }}</label>
                                 <div class="rc-input-suffix">
-                                    <input id="rc-plan-discount" type="number" min="0" max="100" class="rc-input rc-ltr" wire:model.live="discountPercent">
+                                    <input id="rc-plan-discount" type="number" min="0" max="100" class="rc-input rc-iso" wire:model.live="discountPercent">
                                     <span class="rc-input-suffix__unit">%</span>
                                 </div>
                             </div>
@@ -418,7 +418,7 @@
                             @if($limitDiscountCycles)
                                 <div class="rc-field">
                                     <label class="rc-field__label" for="rc-plan-discount-cycles">{{ __('products.plan_drawer.intro_limit_count') }}</label>
-                                    <input id="rc-plan-discount-cycles" type="number" min="1" max="120" class="rc-input rc-ltr rc-plan-ship__count" wire:model.live="discountCyclesCount">
+                                    <input id="rc-plan-discount-cycles" type="number" min="1" max="120" class="rc-input rc-iso rc-plan-ship__count" wire:model.live="discountCyclesCount">
                                 </div>
                             @endif
                         @endif
@@ -478,7 +478,7 @@
                                             @if($expireEnabled)
                                                 <div class="rc-field">
                                                     <label class="rc-field__label" for="rc-plan-expire">{{ __('products.plan_drawer.expire_count_label') }}</label>
-                                                    <input id="rc-plan-expire" type="number" min="1" class="rc-input rc-ltr rc-plan-ship__count" wire:model="expireAfterCharges">
+                                                    <input id="rc-plan-expire" type="number" min="1" class="rc-input rc-iso rc-plan-ship__count" wire:model="expireAfterCharges">
                                                 </div>
                                             @endif
 
@@ -495,7 +495,7 @@
                                             @if($commitmentEnabled)
                                                 <div class="rc-field">
                                                     <label class="rc-field__label" for="rc-plan-commitment">{{ __('products.plan_drawer.commitment_count_label') }}</label>
-                                                    <input id="rc-plan-commitment" type="number" min="1" max="120" class="rc-input rc-ltr rc-plan-ship__count" wire:model="minCyclesBeforeExit">
+                                                    <input id="rc-plan-commitment" type="number" min="1" max="120" class="rc-input rc-iso rc-plan-ship__count" wire:model="minCyclesBeforeExit">
                                                 </div>
                                             @endif
                                         </div>

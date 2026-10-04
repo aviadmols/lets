@@ -33,7 +33,7 @@
                 @foreach($first_attempt as $stat)
                     <div class="rc-an-mini">
                         <span class="rc-an-mini__label">{{ $stat['label'] }}</span>
-                        <span @class(['rc-an-mini__value', 'rc-ltr', 'rc-an-mini__value--empty' => $stat['value'] === null])>{{ $stat['value'] ?? '—' }}</span>
+                        <span @class(['rc-an-mini__value', 'rc-iso', 'rc-an-mini__value--empty' => $stat['value'] === null])>{{ $stat['value'] ?? '—' }}</span>
                     </div>
                 @endforeach
             </div>
@@ -57,7 +57,7 @@
                     @foreach($cycle['stats'] as $stat)
                         <div class="rc-an-mini">
                             <span class="rc-an-mini__label">{{ $stat['label'] }}</span>
-                            <span @class(['rc-an-mini__value', 'rc-ltr', 'rc-an-mini__value--empty' => $stat['value'] === null])>{{ $stat['value'] ?? '—' }}</span>
+                            <span @class(['rc-an-mini__value', 'rc-iso', 'rc-an-mini__value--empty' => $stat['value'] === null])>{{ $stat['value'] ?? '—' }}</span>
                         </div>
                     @endforeach
                 </div>

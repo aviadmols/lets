@@ -15,7 +15,7 @@
 <div class="rc-stack rc-stack--tight">
     <div class="rc-stack rc-stack--tight">
         <span class="rc-label">{{ __('mail.field.subject') }}</span>
-        <span class="rc-strong rc-ltr">{{ $subject }}</span>
+        <span class="rc-strong" dir="auto">{{ $subject }}</span>
     </div>
 
     {{-- $note overrides the settings-page wording. The Timeline preview shows a

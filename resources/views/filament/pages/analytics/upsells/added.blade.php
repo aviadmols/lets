@@ -62,7 +62,7 @@
         @foreach($sold as $cell)
             <div class="rc-an-mini">
                 <span class="rc-an-mini__label">{{ $cell['label'] }}</span>
-                <span @class(['rc-an-mini__value', 'rc-ltr', 'rc-an-mini__value--empty' => $cell['value'] === '—'])>{{ $cell['value'] }}</span>
+                <span @class(['rc-an-mini__value', 'rc-iso', 'rc-an-mini__value--empty' => $cell['value'] === '—'])>{{ $cell['value'] }}</span>
             </div>
         @endforeach
     </div>

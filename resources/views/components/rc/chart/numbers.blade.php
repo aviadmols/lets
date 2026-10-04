@@ -20,7 +20,7 @@
         ])>
             <dt class="rc-numbers__label">{{ $row['label'] }}</dt>
             <dd @class([
-                'rc-numbers__value', 'rc-ltr',
+                'rc-numbers__value', 'rc-iso',
                 'rc-numbers__value--good' => ($row['tone'] ?? null) === 'good',
                 'rc-numbers__value--bad' => ($row['tone'] ?? null) === 'bad',
                 'rc-numbers__value--empty' => ($row['value'] ?? null) === null,

@@ -7,7 +7,7 @@
     NO SECRET IS ON THIS PAGE. The key is write-only; these are the public
     records the platform's own DNS will publish.
 
-    TOKENS: .rc-stack/.rc-muted/.rc-strong/.rc-table/.rc-ltr/.rc-pill/.rc-row/
+    TOKENS: .rc-stack/.rc-muted/.rc-strong/.rc-table/.rc-iso/.rc-pill/.rc-row/
             .rc-cta/.rc-link/.rc-dns (theme + components/mail-settings.css).
     ZERO inline CSS.
 
@@ -27,7 +27,7 @@
         <p class="rc-muted">{{ __('platform_mail.domain.none') }}</p>
     @else
         <div class="rc-row">
-            <span class="rc-strong rc-ltr">{{ $settings->sendingDomain() }}</span>
+            <span class="rc-strong rc-ident">{{ $settings->sendingDomain() }}</span>
 
             <span @class([
                 'rc-pill',
@@ -71,9 +71,9 @@
                 <tbody>
                     @foreach ($records as $record)
                         <tr>
-                            <td class="rc-ltr">{{ $record['type'] }}</td>
-                            <td class="rc-ltr rc-dns__value">{{ $record['host'] }}</td>
-                            <td class="rc-ltr rc-dns__value">{{ $record['value'] }}</td>
+                            <td class="rc-ident">{{ $record['type'] }}</td>
+                            <td class="rc-ident rc-dns__value">{{ $record['host'] }}</td>
+                            <td class="rc-ident rc-dns__value">{{ $record['value'] }}</td>
                             <td>
                                 @if (($record['resolved'] ?? null) === true)
                                     <span class="rc-pill rc-pill--success">{{ __('mail.sender.record.live') }}</span>

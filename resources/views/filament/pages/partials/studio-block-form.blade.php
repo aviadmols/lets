@@ -75,7 +75,7 @@
 
         @case('spacer')
             <label class="rc-field__label">{{ __('studio.field.height') }}</label>
-            <input type="number" class="rc-input rc-input--narrow rc-ltr" min="4" max="120"
+            <input type="number" class="rc-input rc-input--narrow rc-iso" min="4" max="120"
                    wire:model="blockStyles.height">
             @break
 

@@ -43,14 +43,14 @@
                                     </a>
                                     {{-- The email under the name, when the name is not itself the email. --}}
                                     @if($row['email'] && $row['email'] !== $row['label'])
-                                        <div class="rc-muted rc-ltr">{{ $row['email'] }}</div>
+                                        <div class="rc-muted rc-ident">{{ $row['email'] }}</div>
                                     @endif
                                 </td>
                                 {{-- From the plan captured at checkout, not a per-row store read. --}}
-                                <td class="rc-ltr">{{ $row['phone'] ?? '—' }}</td>
-                                <td class="rc-ltr">{{ $row['active_subs'] }}</td>
+                                <td class="rc-ident">{{ $row['phone'] ?? '—' }}</td>
+                                <td class="rc-iso">{{ $row['active_subs'] }}</td>
                                 {{-- SUCCEEDED charges only — money actually received. --}}
-                                <td class="rc-ltr rc-strong">{{ $row['spend'] }}</td>
+                                <td class="rc-iso rc-strong">{{ $row['spend'] }}</td>
                                 <td><span class="rc-dot rc-dot--{{ $row['dot'] }}" aria-hidden="true"></span></td>
                             </tr>
                         @endforeach

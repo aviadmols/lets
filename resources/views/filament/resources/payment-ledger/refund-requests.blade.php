@@ -1,7 +1,7 @@
 {{--
     The refund decisions made against this order — the result panel.
     TOKENS: component classes only (.rc-section/.rc-kv/.rc-row/.rc-stack/.rc-muted/
-            .rc-ltr) from the published theme. ZERO inline CSS.
+            .rc-iso) from the published theme. ZERO inline CSS.
 
     It POLLS while a request is still running, because the legs are handed to a
     queued job: the merchant presses one button and then watches the money, the
@@ -36,7 +36,7 @@
                     <div class="rc-kv">
                         {{-- What actually went back, not what was asked for. --}}
                         <span class="rc-kv__k">{{ __('refunds.summary.money') }}</span>
-                        <span class="rc-kv__v rc-ltr">
+                        <span class="rc-kv__v rc-iso">
                             @if($request->refundedTotal() > 0)
                                 {{ \App\Support\Ui\Money::format($request->refundedTotal(), (string) $request->currency) }}
                             @else
@@ -59,7 +59,7 @@
 
                         @php $documents = $this->refundDocuments($request); @endphp
                         <span class="rc-kv__k">{{ __('refunds.summary.document') }}</span>
-                        <span class="rc-kv__v rc-ltr">
+                        <span class="rc-kv__v rc-iso">
                             @forelse($documents as $document)
                                 @if($docHref = \App\Support\SafeHref::web($document->document_url))
                                     <a href="{{ $docHref }}" target="_blank" rel="noopener">
@@ -79,7 +79,7 @@
                         @endif
 
                         <span class="rc-kv__k">{{ __('subscriptions.detail.col.date') }}</span>
-                        <span class="rc-kv__v rc-ltr">{{ $request->created_at?->format('d M Y, H:i') }}</span>
+                        <span class="rc-kv__v rc-iso">{{ $request->created_at?->format('d M Y, H:i') }}</span>
                     </div>
 
                     {{-- The task, stated in full where the merchant is already looking. --}}
@@ -96,7 +96,7 @@
                          through are not re-listed, because the total above is them. --}}
                     @foreach(($request->money_result['charges'] ?? []) as $charge)
                         @if(! ($charge['ok'] ?? false))
-                            <span class="rc-muted rc-ltr">
+                            <span class="rc-muted rc-iso">
                                 #{{ $charge['ledger_id'] ?? '' }} —
                                 {{ __('refunds.failure.' . ($charge['message'] ?? 'refund_failed')) }}
                             </span>

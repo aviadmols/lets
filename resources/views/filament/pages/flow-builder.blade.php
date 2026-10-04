@@ -96,7 +96,7 @@
                             <span class="rc-diag__hint">
                                 {{ __('upsell.admin.diagnostic.check.'.$check['key'].'.'.$check['status']) }}
                                 @if($check['detail'])
-                                    <span class="rc-ltr">({{ $check['detail'] }})</span>
+                                    <span class="rc-iso">({{ $check['detail'] }})</span>
                                 @endif
                             </span>
                         </span>
@@ -257,7 +257,7 @@
                                 <div class="rc-fb-offer__info">
                                     <span class="rc-fb-offer__name">{{ $offer['title'] }}</span>
                                     <span class="rc-fb-offer__meta">{{ __('upsell.admin.configure.variants_all') }}</span>
-                                    <span class="rc-fb-offer__price rc-ltr">
+                                    <span class="rc-fb-offer__price rc-iso">
                                         {{ __('upsell.admin.configure.price', ['price' => $offer['price']]) }}
                                         @if($offer['has_discount'])
                                             <span class="rc-fb-offer__was">{{ $offer['base_price'] }}</span>
@@ -435,7 +435,7 @@
                                             </span>
                                             <span class="rc-picker__selected-info">
                                                 <span class="rc-fb-offer__name">{{ $row['title'] }}</span>
-                                                <span class="rc-fb-offer__meta rc-ltr">{{ $row['price'] }}</span>
+                                                <span class="rc-fb-offer__meta rc-iso">{{ $row['price'] }}</span>
                                             </span>
                                             <button type="button" class="rc-link rc-picker__change" wire:click="removeBundleProduct({{ $row['id'] }})" aria-label="{{ __('upsell.admin.configure.bundle_remove', ['product' => $row['title']]) }}">
                                                 <x-filament::icon icon="heroicon-o-x-mark" class="rc-picker__refresh-icon" />
@@ -448,14 +448,14 @@
 
                                 <div class="rc-field">
                                     <label class="rc-field__label" for="rc-bundle-quantity">{{ __('upsell.admin.configure.bundle_quantity') }}</label>
-                                    <input id="rc-bundle-quantity" type="number" min="1" step="1" class="rc-input rc-ltr" wire:model="bundleQuantity">
+                                    <input id="rc-bundle-quantity" type="number" min="1" step="1" class="rc-input rc-iso" wire:model="bundleQuantity">
                                 </div>
 
                                 <div class="rc-field">
                                     <label class="rc-field__label" for="rc-bundle-price">{{ __('upsell.admin.configure.bundle_price') }}</label>
                                     <div class="rc-input-prefix">
                                         <span class="rc-input-prefix__unit">{{ __('upsell.admin.trigger_config.currency_symbol') }}</span>
-                                        <input id="rc-bundle-price" type="number" min="0" step="0.01" class="rc-input rc-ltr" wire:model="bundlePrice">
+                                        <input id="rc-bundle-price" type="number" min="0" step="0.01" class="rc-input rc-iso" wire:model="bundlePrice">
                                     </div>
                                 </div>
 
@@ -512,7 +512,7 @@
                             <label class="rc-field__label" for="rc-offer-price">{{ __('upsell.admin.configure.base_price_label') }}</label>
                             <div class="rc-input-prefix">
                                 <span class="rc-input-prefix__unit">{{ __('upsell.admin.trigger_config.currency_symbol') }}</span>
-                                <input id="rc-offer-price" type="number" min="0" step="0.01" class="rc-input rc-ltr" wire:model="offerBasePrice">
+                                <input id="rc-offer-price" type="number" min="0" step="0.01" class="rc-input rc-iso" wire:model="offerBasePrice">
                             </div>
                         </div>
 
@@ -559,7 +559,7 @@
                         <div class="rc-field">
                             <label class="rc-field__label" for="rc-discount">{{ __('upsell.admin.configure.discount_label') }}</label>
                             <div class="rc-input-suffix">
-                                <input id="rc-discount" type="number" min="0" max="100" class="rc-input rc-ltr" wire:model="discountPercent">
+                                <input id="rc-discount" type="number" min="0" max="100" class="rc-input rc-iso" wire:model="discountPercent">
                                 <span class="rc-input-suffix__unit">%</span>
                             </div>
                         </div>
@@ -605,7 +605,7 @@
                             </label>
                             <div class="rc-field">
                                 <label class="rc-field__label" for="rc-timer-minutes">{{ __('upsell.admin.configure.timer_minutes') }}</label>
-                                <input id="rc-timer-minutes" type="number" min="1" max="{{ \App\Domain\Upsell\Models\UpsellFlowOffer::MAX_WINDOW_MINUTES }}" step="1" class="rc-input rc-ltr" wire:model="timerMinutes" placeholder="{{ \App\Domain\Upsell\Models\UpsellFlowOffer::MAX_WINDOW_MINUTES }}">
+                                <input id="rc-timer-minutes" type="number" min="1" max="{{ \App\Domain\Upsell\Models\UpsellFlowOffer::MAX_WINDOW_MINUTES }}" step="1" class="rc-input rc-iso" wire:model="timerMinutes" placeholder="{{ \App\Domain\Upsell\Models\UpsellFlowOffer::MAX_WINDOW_MINUTES }}">
                                 <p class="rc-muted">{{ __('upsell.admin.configure.timer_minutes_hint') }}</p>
                             </div>
                         </fieldset>
@@ -731,7 +731,7 @@
                                         <span class="rc-pp-radio__hint">{{ __('upsell.admin.trigger_config.collection_hint') }}</span>
                                         <span class="rc-drawer__subfield" x-show="mt === 'collection'" x-cloak>
                                             <label class="rc-label" for="rc-trigger-collection">{{ __('upsell.admin.trigger_config.collection_gid_label') }}</label>
-                                            <input id="rc-trigger-collection" type="text" class="rc-input rc-ltr" placeholder="gid://shopify/Collection/123" wire:model="triggerCollectionGid">
+                                            <input id="rc-trigger-collection" type="text" class="rc-input rc-ident" placeholder="gid://shopify/Collection/123" wire:model="triggerCollectionGid">
                                         </span>
                                     </span>
                                 </label>
@@ -759,7 +759,7 @@
                                             <label class="rc-label" for="rc-trigger-amount">{{ __('upsell.admin.trigger_config.amount_label') }}</label>
                                             <div class="rc-input-prefix">
                                                 <span class="rc-input-prefix__unit">{{ __('upsell.admin.trigger_config.currency_symbol') }}</span>
-                                                <input id="rc-trigger-amount" type="number" min="0" step="0.01" class="rc-input rc-ltr" wire:model="triggerMinOrderValue">
+                                                <input id="rc-trigger-amount" type="number" min="0" step="0.01" class="rc-input rc-iso" wire:model="triggerMinOrderValue">
                                             </div>
                                         </span>
                                     </span>

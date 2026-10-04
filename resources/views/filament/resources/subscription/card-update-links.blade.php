@@ -10,7 +10,7 @@
     was shown once when it was created. Revoking is offered instead, which is the
     thing a merchant actually needs after "I sent that to the wrong person".
 
-    TOKENS: component classes only (.rc-section/.rc-kv/.rc-row/.rc-muted/.rc-ltr/
+    TOKENS: component classes only (.rc-section/.rc-kv/.rc-row/.rc-muted/.rc-iso/
     .rc-banner/.rc-banner--success/.rc-banner--danger).
     ZERO inline CSS. Every value is precomputed on the page; this renders.
 --}}
@@ -72,9 +72,9 @@
                     <span class="rc-kv__v">
                         {{ __('card_update.channel.' . $link->channel) }}
                         @if($link->sent_to)
-                            <span class="rc-ltr rc-muted">· {{ $link->sent_to }}</span>
+                            <span class="rc-ident rc-muted">· {{ $link->sent_to }}</span>
                         @endif
-                        <span class="rc-ltr rc-muted">· {{ $link->created_at?->format('d M Y, H:i') }}</span>
+                        <span class="rc-iso rc-muted">· {{ $link->created_at?->format('d M Y, H:i') }}</span>
                     </span>
                 @endforeach
             </div>

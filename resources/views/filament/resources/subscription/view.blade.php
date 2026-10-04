@@ -20,7 +20,7 @@
                         <span class="rc-kv__k">{{ __('subscriptions.detail.customer') }}</span>
                         <span class="rc-kv__v">{{ $record->customerLabel() }}</span>
                     </span>
-                    <span class="rc-muted rc-ltr">{{ $this->summaryLine() }}</span>
+                    <span class="rc-muted rc-iso">{{ $this->summaryLine() }}</span>
                 </div>
                 {{-- A subscriber the shop gives away. Beside the status and not
                      instead of it: they really are active — they simply owe
@@ -50,8 +50,8 @@
                                 <div class="rc-progress__fill rc-progress__fill--{{ $this->progressStep() }}"></div>
                             </div>
                             <div class="rc-progress__meta">
-                                <span class="rc-ltr">{{ \App\Support\Ui\Money::format($record->total_charged) }} / {{ \App\Support\Ui\Money::format($record->total_amount) }}</span>
-                                <span class="rc-ltr">{{ $this->progressPercent() }}%</span>
+                                <span class="rc-iso">{{ \App\Support\Ui\Money::format($record->total_charged) }} / {{ \App\Support\Ui\Money::format($record->total_amount) }}</span>
+                                <span class="rc-iso">{{ $this->progressPercent() }}%</span>
                             </div>
                         </div>
 
@@ -69,11 +69,11 @@
                         {{-- recurring rendering --}}
                         <div class="rc-kv">
                             <span class="rc-kv__k">{{ __('subscriptions.list.col.amount_balance') }}</span>
-                            <span class="rc-kv__v rc-ltr">{{ \App\Filament\Resources\SubscriptionResource::amountBalance($record) }}</span>
+                            <span class="rc-kv__v rc-iso">{{ \App\Filament\Resources\SubscriptionResource::amountBalance($record) }}</span>
                             <span class="rc-kv__k">{{ __('subscriptions.detail.next_cycle') }}</span>
-                            <span class="rc-kv__v rc-ltr">{{ optional($record->next_charge_at)->format('d M Y') ?? '—' }}</span>
+                            <span class="rc-kv__v rc-iso">{{ optional($record->next_charge_at)->format('d M Y') ?? '—' }}</span>
                             <span class="rc-kv__k">{{ __('subscriptions.detail.started') }}</span>
-                            <span class="rc-kv__v rc-ltr">{{ optional($record->created_at)->format('d M Y') }}</span>
+                            <span class="rc-kv__v rc-iso">{{ optional($record->created_at)->format('d M Y') }}</span>
 
                             {{--
                                 WHEN IT ENDS — and "it does not" is an answer, not a gap.
@@ -84,13 +84,13 @@
                             --}}
                             <span class="rc-kv__k">{{ __('subscriptions.detail.expires') }}</span>
                             @php $expires = $record->expiresAt(); @endphp
-                            <span class="rc-kv__v {{ $expires ? 'rc-ltr' : '' }}">
+                            <span class="rc-kv__v {{ $expires ? 'rc-iso' : '' }}">
                                 {{ $expires ? $expires->format('d M Y') : __('subscriptions.detail.no_expiry') }}
                             </span>
                             @php $checkout = $this->checkoutOrder(); @endphp
                             @if($checkout)
                                 <span class="rc-kv__k">{{ __('subscriptions.detail.checkout_order') }}</span>
-                                <span class="rc-kv__v rc-ltr">
+                                <span class="rc-kv__v rc-iso">
                                     @if($checkout['url'])
                                         <a href="{{ $checkout['url'] }}" target="_blank" rel="noopener">#{{ $checkout['id'] }} ↗</a>
                                     @else
@@ -102,9 +102,9 @@
                             @if($coupon)
                                 <span class="rc-kv__k">{{ __('subscriptions.detail.coupon_applied') }}</span>
                                 <span class="rc-kv__v">
-                                    <span class="rc-ltr">{{ $coupon['codes'] }}</span>
+                                    <span class="rc-ident">{{ $coupon['codes'] }}</span>
                                     @if($coupon['amount'])
-                                        <span class="rc-ltr">(-{{ $coupon['amount'] }})</span>
+                                        <span class="rc-iso">(-{{ $coupon['amount'] }})</span>
                                     @endif
                                 </span>
                             @endif
@@ -120,7 +120,7 @@
                             @php $card = $this->paymentCard(); @endphp
                             @if($card && ($card['brand'] || $card['last_four']))
                                 <span class="rc-kv__k">{{ __('shopify_subscriptions.payment.title') }}</span>
-                                <span class="rc-kv__v rc-ltr">
+                                <span class="rc-kv__v rc-iso">
                                     {{ strtoupper((string) ($card['brand'] ?? '')) }} •••• {{ $card['last_four'] ?? '' }}
                                     @if($card['exp'])
                                         · {{ __('shopify_subscriptions.payment.expires') }} {{ $card['exp'] }}
@@ -154,14 +154,14 @@
                                 @foreach($this->nextOrderRows() as $row)
                                     <tr>
                                         <td>{{ $row['name'] }}</td>
-                                        <td class="rc-ltr">{{ $row['quantity'] }}</td>
-                                        <td class="rc-ltr">{{ $row['amount'] }}</td>
+                                        <td class="rc-iso">{{ $row['quantity'] }}</td>
+                                        <td class="rc-iso">{{ $row['amount'] }}</td>
                                     </tr>
                                 @endforeach
                                 <tr>
                                     <td class="rc-strong">{{ __('subscriptions.detail.total') }}</td>
                                     <td></td>
-                                    <td class="rc-ltr rc-strong">{{ $this->nextOrderTotal() }}</td>
+                                    <td class="rc-iso rc-strong">{{ $this->nextOrderTotal() }}</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -176,9 +176,9 @@
                         <div class="rc-row">
                             @foreach($pastOrders as $order)
                                 @if($order['url'])
-                                    <a class="rc-ltr" href="{{ $order['url'] }}" target="_blank" rel="noopener">#{{ $order['id'] }} ↗</a>
+                                    <a class="rc-iso" href="{{ $order['url'] }}" target="_blank" rel="noopener">#{{ $order['id'] }} ↗</a>
                                 @else
-                                    <span class="rc-ltr rc-muted">#{{ $order['id'] }}</span>
+                                    <span class="rc-iso rc-muted">#{{ $order['id'] }}</span>
                                 @endif
                             @endforeach
                         </div>
@@ -211,11 +211,11 @@
                                     @foreach($scheduleRows as $row)
                                         <tr>
                                             <td>{{ $row['sequence_label'] }}</td>
-                                            <td class="rc-ltr">{{ $row['amount'] }}</td>
-                                            <td class="rc-ltr">{{ $row['scheduled_for'] }}</td>
+                                            <td class="rc-iso">{{ $row['amount'] }}</td>
+                                            <td class="rc-iso">{{ $row['scheduled_for'] }}</td>
                                             <td><x-rc.badge :status="$row['status']" :label="$row['status_label_key']" /></td>
-                                            <td class="rc-ltr">{{ $row['attempts'] }}</td>
-                                            <td class="rc-ltr">{{ $row['charged_at'] }}</td>
+                                            <td class="rc-iso">{{ $row['attempts'] }}</td>
+                                            <td class="rc-iso">{{ $row['charged_at'] }}</td>
                                             <td class="rc-muted">{{ $row['admin_note'] }}</td>
                                         </tr>
                                     @endforeach
@@ -249,18 +249,18 @@
                             <tbody>
                                 @foreach($rows as $row)
                                     <tr>
-                                        <td class="rc-ltr">{{ optional($row->created_at)->format('d M Y, H:i') }}</td>
+                                        <td class="rc-iso">{{ optional($row->created_at)->format('d M Y, H:i') }}</td>
                                         <td>{{ __('billing.charge_context.' . $row->charge_context) }}</td>
-                                        <td class="rc-ltr">{{ \App\Support\Ui\Money::format($row->amount, $row->currency) }}</td>
+                                        <td class="rc-iso">{{ \App\Support\Ui\Money::format($row->amount, $row->currency) }}</td>
                                         <td><x-rc.badge :status="$row->status" :label="'billing.ledger_status.' . $row->status" /></td>
-                                        <td class="rc-ltr rc-muted">{{ $row->payplus_transaction_uid ? '••••' . \Illuminate\Support\Str::substr($row->payplus_transaction_uid, -4) : '—' }}</td>
+                                        <td class="rc-ident rc-muted">{{ $row->payplus_transaction_uid ? '••••' . \Illuminate\Support\Str::substr($row->payplus_transaction_uid, -4) : '—' }}</td>
                                         {{-- Through to the payment's own page, which owns the
                                              refund/cancel drawer. A LINK rather than a second
                                              drawer here: this plan's cycles all share the
                                              original checkout order, so an order-scoped refund
                                              opened from this table would sweep every cycle the
                                              customer ever paid. --}}
-                                        <td class="rc-ltr">
+                                        <td>
                                             <a href="{{ \App\Filament\Resources\PaymentLedgerResource\Pages\ViewPayment::getUrl(['payment' => $row->getKey()]) }}">
                                                 {{ __('refunds.action.open') }}
                                             </a>
@@ -298,14 +298,14 @@
                         <span class="rc-kv__v">{{ $contact['name'] ?? '—' }}</span>
 
                         <span class="rc-kv__k">{{ __('subscriptions.detail.contact.email') }}</span>
-                        <span class="rc-kv__v rc-ltr">{{ $contact['email'] ?? '—' }}</span>
+                        <span class="rc-kv__v rc-ident">{{ $contact['email'] ?? '—' }}</span>
 
                         <span class="rc-kv__k">{{ __('subscriptions.detail.contact.phone') }}</span>
-                        <span class="rc-kv__v rc-ltr">{{ $contact['phone'] ?? '—' }}</span>
+                        <span class="rc-kv__v rc-ident">{{ $contact['phone'] ?? '—' }}</span>
 
                         @if($contact['national_id'])
                             <span class="rc-kv__k">{{ __('subscriptions.detail.contact.national_id') }}</span>
-                            <span class="rc-kv__v rc-ltr">{{ $contact['national_id'] }}</span>
+                            <span class="rc-kv__v rc-iso">{{ $contact['national_id'] }}</span>
                         @endif
 
                         <span class="rc-kv__k">{{ __('subscriptions.detail.contact.address') }}</span>

@@ -15,7 +15,7 @@
 @if($delta !== null)
     <span {{ $attributes->class(['rc-delta', 'rc-delta--'.$tone]) }}>
         <span aria-hidden="true">{{ $arrow }}</span>
-        <span class="rc-ltr">{{ $unit === 'points' ? __('analytics.delta.points', ['value' => $amount]) : $amount.'%' }}</span>
+        <span class="rc-iso">{{ $unit === 'points' ? __('analytics.delta.points', ['value' => $amount]) : $amount.'%' }}</span>
         <span class="rc-sr-only">{{ __('analytics.delta.sr_'.$tone) }}</span>
     </span>
 @endif

@@ -32,8 +32,8 @@
                         <div class="rc-progress__fill rc-progress__fill--{{ $run->progressStep() }}"></div>
                     </div>
                     <div class="rc-progress__meta">
-                        <span class="rc-ltr">{{ number_format($run->processed) }} / {{ number_format($run->total) }}</span>
-                        <span class="rc-ltr">{{ $run->progressStep() }}%</span>
+                        <span class="rc-iso">{{ number_format($run->processed) }} / {{ number_format($run->total) }}</span>
+                        <span class="rc-iso">{{ $run->progressStep() }}%</span>
                     </div>
                 </div>
 

@@ -15,7 +15,7 @@
     @foreach($kpis as $kpi)
         <div class="rc-kpi" wire:key="upcoming-kpi-{{ md5($kpi['label'].$kpi['value'].$kpi['caption']) }}">
             <span class="rc-kpi__label">{{ $kpi['label'] }}</span>
-            <span class="rc-kpi__value rc-ltr">{{ $kpi['value'] }}</span>
+            <span class="rc-kpi__value rc-iso">{{ $kpi['value'] }}</span>
             @if($kpi['caption'])<span class="rc-kpi__foot"><span class="rc-kpi__compare">{{ $kpi['caption'] }}</span></span>@endif
         </div>
     @endforeach
@@ -36,8 +36,8 @@
                 <li>
                     <a class="rc-an-pay-days__item" href="{{ $day['url'] }}">
                         <span class="rc-an-pay-days__date">{{ $day['label'] }}</span>
-                        <span class="rc-an-pay-days__count rc-ltr">{{ trans_choice($l.'by_day.count', $day['n'], ['count' => $day['count']]) }}</span>
-                        <span class="rc-an-pay-days__amount rc-ltr">{{ $day['amount'] }}</span>
+                        <span class="rc-an-pay-days__count rc-iso">{{ trans_choice($l.'by_day.count', $day['n'], ['count' => $day['count']]) }}</span>
+                        <span class="rc-an-pay-days__amount rc-iso">{{ $day['amount'] }}</span>
                     </a>
                 </li>
             @endforeach

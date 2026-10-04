@@ -2,7 +2,7 @@
     Bulk edit subscriptions — filter, look, confirm, hand to a worker.
     TOKENS: .rc-section/.rc-stack/.rc-row/.rc-form/.rc-form__group/.rc-field/
             .rc-input/.rc-check/.rc-table/.rc-banner/.rc-kpi-grid/.rc-progress/
-            .rc-summary/.rc-muted/.rc-strong/.rc-ltr (published theme). ZERO inline CSS.
+            .rc-summary/.rc-muted/.rc-strong/.rc-iso (published theme). ZERO inline CSS.
     Renders only — every count comes from the plan the page already computed.
 
     THE APPLY BUTTON ONLY EXISTS ONCE A PREVIEW HAS BEEN ASKED FOR, and any change
@@ -69,7 +69,7 @@
                          "every 3 months" are two different rows in the engine. --}}
                     <div class="rc-field">
                         <label class="rc-field__label" for="bulk-interval">{{ __('subscriptions.bulk.criteria.interval') }}</label>
-                        <input id="bulk-interval" type="number" min="1" class="rc-input rc-input--narrow rc-ltr" wire:model.live="intervalCount">
+                        <input id="bulk-interval" type="number" min="1" class="rc-input rc-input--narrow rc-iso" wire:model.live="intervalCount">
                         <p class="rc-field__hint">{{ __('subscriptions.bulk.criteria.interval_help') }}</p>
                     </div>
                 </div>
@@ -77,19 +77,19 @@
                 <div class="rc-form__group">
                     <div class="rc-field">
                         <label class="rc-field__label" for="bulk-charge-from">{{ __('subscriptions.filter.charge_from') }}</label>
-                        <input id="bulk-charge-from" type="date" class="rc-input rc-ltr" wire:model.live="chargeFrom" @disabled($this->withoutNextCharge)>
+                        <input id="bulk-charge-from" type="date" class="rc-input rc-iso" wire:model.live="chargeFrom" @disabled($this->withoutNextCharge)>
                     </div>
                     <div class="rc-field">
                         <label class="rc-field__label" for="bulk-charge-until">{{ __('subscriptions.filter.charge_until') }}</label>
-                        <input id="bulk-charge-until" type="date" class="rc-input rc-ltr" wire:model.live="chargeUntil" @disabled($this->withoutNextCharge)>
+                        <input id="bulk-charge-until" type="date" class="rc-input rc-iso" wire:model.live="chargeUntil" @disabled($this->withoutNextCharge)>
                     </div>
                     <div class="rc-field">
                         <label class="rc-field__label" for="bulk-created-from">{{ __('subscriptions.filter.created_from') }}</label>
-                        <input id="bulk-created-from" type="date" class="rc-input rc-ltr" wire:model.live="createdFrom">
+                        <input id="bulk-created-from" type="date" class="rc-input rc-iso" wire:model.live="createdFrom">
                     </div>
                     <div class="rc-field">
                         <label class="rc-field__label" for="bulk-created-until">{{ __('subscriptions.filter.created_until') }}</label>
-                        <input id="bulk-created-until" type="date" class="rc-input rc-ltr" wire:model.live="createdUntil">
+                        <input id="bulk-created-until" type="date" class="rc-input rc-iso" wire:model.live="createdUntil">
                     </div>
                 </div>
 
@@ -140,7 +140,7 @@
                 @if($this->isDateOperation())
                     <div class="rc-field">
                         <label class="rc-field__label" for="bulk-date">{{ __('subscriptions.action.edit_next.date') }}</label>
-                        <input id="bulk-date" type="date" class="rc-input rc-ltr" wire:model.live="date">
+                        <input id="bulk-date" type="date" class="rc-input rc-iso" wire:model.live="date">
                     </div>
                 @endif
 
@@ -148,7 +148,7 @@
                     <div class="rc-form__group">
                         <div class="rc-field">
                             <label class="rc-field__label" for="bulk-shift-amount">{{ __('subscriptions.bulk.op.shift.amount') }}</label>
-                            <input id="bulk-shift-amount" type="number" class="rc-input rc-input--narrow rc-ltr" wire:model.live="shiftAmount">
+                            <input id="bulk-shift-amount" type="number" class="rc-input rc-input--narrow rc-iso" wire:model.live="shiftAmount">
                             <p class="rc-field__hint">{{ __('subscriptions.bulk.op.shift.amount_help') }}</p>
                         </div>
                         <div class="rc-field">
@@ -166,7 +166,7 @@
                     <div class="rc-form__group">
                         <div class="rc-field">
                             <label class="rc-field__label" for="bulk-freq-interval">{{ __('subscriptions.action.frequency.every') }}</label>
-                            <input id="bulk-freq-interval" type="number" min="1" max="{{ \App\Domain\Bulk\Operations\ChangeBillingFrequency::MAX_INTERVAL }}" class="rc-input rc-input--narrow rc-ltr" wire:model.live="freqInterval">
+                            <input id="bulk-freq-interval" type="number" min="1" max="{{ \App\Domain\Bulk\Operations\ChangeBillingFrequency::MAX_INTERVAL }}" class="rc-input rc-input--narrow rc-iso" wire:model.live="freqInterval">
                         </div>
                         <div class="rc-field">
                             <label class="rc-field__label" for="bulk-freq-unit">{{ __('subscriptions.action.frequency.unit') }}</label>
@@ -276,8 +276,8 @@
                                         <td>{{ $row['customer'] }}</td>
                                         <td>{{ $row['product'] }}</td>
                                         <td>{{ $row['status'] }}</td>
-                                        <td class="rc-ltr">{{ $row['before'] }}</td>
-                                        <td class="rc-ltr rc-strong">{{ $row['after'] }}</td>
+                                        <td class="rc-iso">{{ $row['before'] }}</td>
+                                        <td class="rc-iso rc-strong">{{ $row['after'] }}</td>
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -292,7 +292,7 @@
                             <label class="rc-field__label" for="bulk-confirm">
                                 {{ __('subscriptions.bulk.confirm.label', ['count' => number_format($plan['eligible'])]) }}
                             </label>
-                            <input id="bulk-confirm" type="text" inputmode="numeric" class="rc-input rc-input--narrow rc-ltr" wire:model="confirmCount" placeholder="{{ $plan['eligible'] }}">
+                            <input id="bulk-confirm" type="text" inputmode="numeric" class="rc-input rc-input--narrow rc-iso" wire:model="confirmCount" placeholder="{{ $plan['eligible'] }}">
                             <p class="rc-field__hint">{{ __('subscriptions.bulk.confirm.help') }}</p>
                         </div>
                     @endif
@@ -328,8 +328,8 @@
                             <div class="rc-progress__fill rc-progress__fill--{{ $run['progress_step'] }}"></div>
                         </div>
                         <div class="rc-progress__meta">
-                            <span class="rc-ltr">{{ number_format($run['processed']) }} / {{ number_format($run['eligible']) }}</span>
-                            <span class="rc-ltr">{{ $run['progress_step'] }}%</span>
+                            <span class="rc-iso">{{ number_format($run['processed']) }} / {{ number_format($run['eligible']) }}</span>
+                            <span class="rc-iso">{{ $run['progress_step'] }}%</span>
                         </div>
                     </div>
 
@@ -382,12 +382,12 @@
                     <tbody>
                         @foreach($history as $past)
                             <tr wire:key="run-{{ $past['id'] }}">
-                                <td class="rc-ltr">{{ $past['requested_at'] }}</td>
+                                <td class="rc-iso">{{ $past['requested_at'] }}</td>
                                 <td>{{ $past['summary'] }}</td>
                                 <td><x-rc.badge :status="$past['status']" :label="'subscriptions.bulk.status.' . $past['status']" /></td>
-                                <td class="rc-ltr">{{ number_format($past['changed']) }}</td>
-                                <td class="rc-ltr">{{ number_format($past['skipped']) }}</td>
-                                <td class="rc-ltr">{{ number_format($past['failed']) }}</td>
+                                <td class="rc-iso">{{ number_format($past['changed']) }}</td>
+                                <td class="rc-iso">{{ number_format($past['skipped']) }}</td>
+                                <td class="rc-iso">{{ number_format($past['failed']) }}</td>
                             </tr>
                         @endforeach
                     </tbody>

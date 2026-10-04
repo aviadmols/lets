@@ -54,7 +54,7 @@
         <div class="rc-chart__frame">
             @if($caps)
                 <div class="rc-chart__caps" aria-hidden="true">
-                    @foreach($caps as $cap)<span class="rc-ltr">{{ $cap }}</span>@endforeach
+                    @foreach($caps as $cap)<span class="rc-iso">{{ $cap }}</span>@endforeach
                 </div>
             @endif
 

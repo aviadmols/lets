@@ -31,12 +31,12 @@
                             <span class="rc-line__thumb" aria-hidden="true">{{ mb_substr(trim($line['title']) !== '' ? trim($line['title']) : '?', 0, 1) }}</span>
                             <span class="rc-line__body">
                                 <span class="rc-line__title">{{ $line['title'] }}</span>
-                                <span class="rc-line__meta rc-ltr">
+                                <span class="rc-line__meta rc-iso">
                                     {{ $line['amount'] !== '' ? \App\Support\Ui\Money::format((float) $line['amount'], (string) $record->currency) : '—' }}
                                     × {{ $line['quantity'] }}
                                 </span>
                             </span>
-                            <span class="rc-line__amount rc-ltr">
+                            <span class="rc-line__amount rc-iso">
                                 {{ $line['amount'] !== '' ? \App\Support\Ui\Money::format((float) $line['amount'] * $line['quantity'], (string) $record->currency) : '—' }}
                             </span>
                             @if($this->linesEditable() && $line['line_gid'] !== null)
@@ -60,7 +60,7 @@
                     @endforeach
                     <div class="rc-line-total">
                         <span class="rc-strong">{{ __('shopify_subscriptions.detail.per_cycle_total') }}</span>
-                        <span class="rc-strong rc-ltr">{{ $this->perCycleTotal() }}</span>
+                        <span class="rc-strong rc-iso">{{ $this->perCycleTotal() }}</span>
                     </div>
                 @endif
             </div>
@@ -90,8 +90,8 @@
                             @foreach($upcoming as $cycle)
                                 <div class="rc-sched__row">
                                     <div class="rc-sched__head">
-                                        <span class="rc-sched__num rc-ltr">#{{ $cycle['ordinal'] }}</span>
-                                        <span class="rc-sched__date rc-ltr">{{ $cycle['date']->format('d M Y') }}</span>
+                                        <span class="rc-sched__num rc-iso">#{{ $cycle['ordinal'] }}</span>
+                                        <span class="rc-sched__date rc-iso">{{ $cycle['date']->format('d M Y') }}</span>
                                         <span class="rc-chip rc-chip--scheduled">{{ __('shopify_subscriptions.detail.scheduled') }}</span>
                                     </div>
                                     @if($cycle['actionable'])
@@ -137,14 +137,14 @@
                             <tbody>
                                 @foreach($attempts as $attempt)
                                     <tr>
-                                        <td class="rc-ltr">{{ $attempt->billing_cycle_key }}</td>
+                                        <td class="rc-ident">{{ $attempt->billing_cycle_key }}</td>
                                         <td>
                                             <x-rc.badge
                                                 :label="'shopify_subscriptions.attempt.' . $attempt->status"
                                                 :tone="$attempt->status === \App\Models\SubscriptionBillingAttempt::STATUS_SUCCEEDED ? 'green'
                                                     : ($attempt->status === \App\Models\SubscriptionBillingAttempt::STATUS_FAILED ? 'red' : 'gray')" />
                                         </td>
-                                        <td class="rc-ltr">{{ optional($attempt->requested_at)->format('d M Y H:i') ?? '—' }}</td>
+                                        <td class="rc-iso">{{ optional($attempt->requested_at)->format('d M Y H:i') ?? '—' }}</td>
                                         <td>{{ $attempt->error_message ?: ($attempt->isResolved() ? '—' : __('shopify_subscriptions.attempt.pending')) }}</td>
                                     </tr>
                                 @endforeach
@@ -176,16 +176,16 @@
                 </div>
                 <div class="rc-kv">
                     <span class="rc-kv__k">{{ __('shopify_subscriptions.detail.created_on') }}</span>
-                    <span class="rc-kv__v rc-ltr">{{ optional($record->created_at)->format('d M Y') ?? '—' }}</span>
+                    <span class="rc-kv__v rc-iso">{{ optional($record->created_at)->format('d M Y') ?? '—' }}</span>
 
                     <span class="rc-kv__k">{{ __('subscriptions.list.col.next_charge') }}</span>
-                    <span class="rc-kv__v rc-ltr">{{ optional($record->next_billing_date)->format('d M Y') ?? '—' }}</span>
+                    <span class="rc-kv__v rc-iso">{{ optional($record->next_billing_date)->format('d M Y') ?? '—' }}</span>
 
                     <span class="rc-kv__k">{{ __('shopify_subscriptions.detail.paid_cycles') }}</span>
-                    <span class="rc-kv__v rc-ltr">{{ $this->paidCyclesCount() }}</span>
+                    <span class="rc-kv__v rc-iso">{{ $this->paidCyclesCount() }}</span>
 
                     <span class="rc-kv__k">{{ __('subscriptions.detail.col.amount') }}</span>
-                    <span class="rc-kv__v rc-ltr">{{ $this->perCycleTotal() }}</span>
+                    <span class="rc-kv__v rc-iso">{{ $this->perCycleTotal() }}</span>
                 </div>
             </div>
 
@@ -202,7 +202,7 @@
                         <span class="rc-strong">{{ $this->customerLabel() ?? __('common.none') }}</span>
                     @endif
                     @if($record->customer_email && $record->customer_name)
-                        <span class="rc-muted rc-ltr">{{ $record->customer_email }}</span>
+                        <span class="rc-muted rc-ident">{{ $record->customer_email }}</span>
                     @endif
                     @if($this->customerAwaitsApproval())
                         {{-- Name/email are PROTECTED CUSTOMER DATA — a separate Shopify
@@ -217,11 +217,11 @@
                 <div class="rc-section__title">{{ __('shopify_subscriptions.payment.title') }}</div>
                 <div class="rc-stack rc-stack--tight">
                     @if($record->card_brand || $record->card_last_four)
-                        <span class="rc-strong rc-ltr">
+                        <span class="rc-strong rc-ident">
                             {{ strtoupper((string) $record->card_brand) }} •••• {{ $record->card_last_four }}
                         </span>
                         @if($record->card_exp)
-                            <span class="rc-muted rc-ltr">{{ __('shopify_subscriptions.payment.expires') }} {{ $record->card_exp }}</span>
+                            <span class="rc-muted rc-iso">{{ __('shopify_subscriptions.payment.expires') }} {{ $record->card_exp }}</span>
                         @endif
                     @elseif($record->payment_method_gid)
                         {{-- The card lives in Shopify's vault; its brand/last4 are protected
@@ -249,10 +249,10 @@
                     <span class="rc-kv__v">{{ $this->cadenceLabel() }}</span>
 
                     <span class="rc-kv__k">{{ __('subscriptions.detail.col.amount') }}</span>
-                    <span class="rc-kv__v rc-ltr">{{ $this->perCycleTotal() }}</span>
+                    <span class="rc-kv__v rc-iso">{{ $this->perCycleTotal() }}</span>
 
                     <span class="rc-kv__k">{{ __('shopify_subscriptions.col.synced') }}</span>
-                    <span class="rc-kv__v rc-ltr">
+                    <span class="rc-kv__v rc-iso">
                         {{ $this->isStale() ? __('shopify_subscriptions.col.stale') : $record->synced_at->diffForHumans() }}
                     </span>
                 </div>

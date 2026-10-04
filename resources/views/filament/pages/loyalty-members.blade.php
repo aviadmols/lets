@@ -38,13 +38,13 @@
                                 <td>
                                     <span class="rc-strong">{{ $member->label() }}</span>
                                     @if($member->customer_email && $member->customer_email !== $member->label())
-                                        <div class="rc-muted rc-ltr">{{ $member->customer_email }}</div>
+                                        <div class="rc-muted rc-ident">{{ $member->customer_email }}</div>
                                     @endif
                                 </td>
                                 <td>{{ $member->tier?->name ?? '—' }}</td>
-                                <td class="rc-ltr rc-strong">{{ \App\Support\Ui\Money::number($member->points_balance) }}</td>
-                                <td class="rc-ltr">{{ \App\Support\Ui\Money::format((float) $member->lifetime_spend) }}</td>
-                                <td class="rc-ltr">{{ optional($member->joined_at)->format('d M Y') ?? '—' }}</td>
+                                <td class="rc-iso rc-strong">{{ \App\Support\Ui\Money::number($member->points_balance) }}</td>
+                                <td class="rc-iso">{{ \App\Support\Ui\Money::format((float) $member->lifetime_spend) }}</td>
+                                <td class="rc-iso">{{ optional($member->joined_at)->format('d M Y') ?? '—' }}</td>
                                 <td>
                                     <button type="button" class="rc-ghost-btn"
                                             wire:click="mountAction('adjustPoints', { account: {{ $member->getKey() }} })">
