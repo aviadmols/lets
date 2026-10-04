@@ -117,7 +117,18 @@ All take already-translated strings and plain data; geometry comes from
 
 Layout classes: `.rc-an-grid` (4 columns), `--2`, `--3`, `--main-side` (2fr 1fr), `.rc-an-span-2`;
 `.rc-stat-grid`, `.rc-an-kpi-row` + `.rc-an-mini*` for KPI rows inside a card. Every chart carries an
-`aria-label`, an SVG `<title>` and a visually-hidden data table. Charts mirror in RTL by CSS.
+`aria-label`, an SVG `<title>` and a visually-hidden data table.
+
+**RTL (Hebrew) is fully RTL — no LTR islands.** Charts mirror in GEOMETRY, never with a CSS
+`scaleX(-1)` (that would flip text and arrows): `ChartGeometry` reads `TextDirection::isRtl()` and
+mirrors every x, so time runs right→left (oldest at the right), hbars grow from the right, and a
+line still starts at its oldest point (it draws in reading direction). Axes, legends, toggles and
+x-labels follow the page direction by themselves (grid + logical properties): the value axis sits on
+the right, a combo's second axis on the left. Values in text use two classes from `data-table.css`:
+`.rc-iso` for numbers / money / % / signed deltas / dates / ranges (isolated, in the page direction,
+with a generated LRM so "+53" and "1–5" read correctly) and `.rc-ident` ONLY for identifiers that
+must never reorder — emails, URLs, domains, coupon codes, card tokens, gids, keys, phones.
+Numeric table columns (`rc-num`) align to the END in both languages.
 
 **Never** write `style="…"`, a Tailwind arbitrary value, or a hex colour in a view — the conventions test
 fails the build. New colours/sizes go into `theme.css` as `--rc-*` tokens, classes into

@@ -24,10 +24,10 @@
                 <svg class="rc-hbar__track" viewBox="0 0 100 12" preserveAspectRatio="none" aria-hidden="true" focusable="false">
                     <rect class="rc-hbar__rail" x="0" y="0" width="100" height="12" rx="6" />
                     @if($row['pct'] > 0)
-                        <rect class="rc-hbar__fill rc-tone--{{ $row['tone'] ?? $tone }}" x="0" y="0" width="{{ $row['pct'] }}" height="12" rx="6" />
+                        <rect class="rc-hbar__fill rc-tone--{{ $row['tone'] ?? $tone }}" x="{{ $row['x'] }}" y="0" width="{{ $row['pct'] }}" height="12" rx="6" />
                     @endif
                 </svg>
-                <span class="rc-hbar__value rc-ltr">{{ $row['display'] ?? \App\Support\Ui\Charts\ChartFormat::value($row['value'], $format) }}</span>
+                <span class="rc-hbar__value rc-iso">{{ $row['display'] ?? \App\Support\Ui\Charts\ChartFormat::value($row['value'], $format) }}</span>
             </li>
         @endforeach
     </ol>

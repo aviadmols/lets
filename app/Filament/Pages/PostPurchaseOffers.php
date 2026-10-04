@@ -15,6 +15,7 @@ use App\Domain\Upsell\UpsellMetrics;
 use App\Models\MerchantCheckoutSettings;
 use App\Support\Tenant;
 use App\Support\Ui\Money;
+use App\Support\Ui\TextDirection;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
@@ -194,15 +195,17 @@ class PostPurchaseOffers extends Page
         $max = max(1.0, max(array_map(static fn ($r): float => (float) $r['revenue'], $rows)));
         $stepX = $count > 1 ? 100 / ($count - 1) : 0;
 
+        // RTL mirrors the time axis in geometry (oldest at the right), never with CSS.
+        $rtl = TextDirection::isRtl();
         $coords = [];
         foreach (array_values($rows) as $i => $row) {
-            $x = round($i * $stepX, 2);
+            $x = round($rtl ? 100 - $i * $stepX : $i * $stepX, 2);
             $y = round(100 - ((float) $row['revenue'] / $max * 100), 2);
             $coords[] = "{$x},{$y}";
         }
 
         $line = implode(' ', $coords);
-        $area = "0,100 {$line} 100,100";
+        $area = $rtl ? "100,100 {$line} 0,100" : "0,100 {$line} 100,100";
 
         return [
             'points' => $line,

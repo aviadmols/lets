@@ -195,14 +195,16 @@
     block-size: var(--rc-chart-h); padding-block: var(--rc-chart-pad); box-sizing: border-box;
     font: var(--rc-type-caption); color: var(--rc-ink-muted); min-inline-size: 24px;
 }
-.rc-chart__axis > span { line-height: 0; white-space: nowrap; direction: ltr; unicode-bidi: isolate; }
+/* Ticks sit in the page direction (start axis on the RIGHT in Hebrew, the combo's end
+   axis on the LEFT); isolated + a leading LRM so "-200" never reads "200-". */
+.rc-chart__axis > span { line-height: 0; white-space: nowrap; unicode-bidi: isolate; }
+[dir="rtl"] .rc-chart__axis > span::before { content: "\200E"; } /* LRM */
 .rc-chart__axis--start { grid-column: 1; text-align: end; }
 .rc-chart__axis--end { grid-column: 3; text-align: start; }
 .rc-chart__plot { grid-column: 2; }
 .rc-chart__plot { position: relative; block-size: var(--rc-chart-h); min-inline-size: 0; }
 .rc-chart__svg { display: block; inline-size: 100%; block-size: 100%; overflow: visible; }
-[dir="rtl"] .rc-chart__svg,
-[dir="rtl"] .rc-hbar__track { transform: scaleX(-1); }
+/* RTL is NOT a scaleX(-1) here: ChartGeometry mirrors the x positions itself. */
 .rc-chart__xaxis {
     grid-column: 2; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
     font: var(--rc-type-caption); color: var(--rc-ink-muted);
@@ -434,8 +436,10 @@
 .rc-motion .rc-kpi:nth-child(3) .rc-kpi__value { animation-delay: 120ms; }
 .rc-motion .rc-kpi:nth-child(n+4) .rc-kpi__value { animation-delay: 180ms; }
 
-/* horizontal bars + funnel grow from the inline start / centre */
+/* horizontal bars + funnel grow from the inline start / centre (the right edge in RTL,
+   where ChartGeometry::hbars() anchors the fill) */
 .rc-hbar__fill { transform-box: fill-box; transform-origin: 0% 50%; animation: rc-grow-x var(--rc-motion-grow) var(--rc-motion-ease) both; }
+[dir="rtl"] .rc-hbar__fill { transform-origin: 100% 50%; }
 .rc-hbar:nth-child(2) .rc-hbar__fill { animation-delay: 40ms; }
 .rc-hbar:nth-child(3) .rc-hbar__fill { animation-delay: 80ms; }
 .rc-hbar:nth-child(4) .rc-hbar__fill { animation-delay: 120ms; }

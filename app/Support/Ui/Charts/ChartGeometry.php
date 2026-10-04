@@ -2,6 +2,8 @@
 
 namespace App\Support\Ui\Charts;
 
+use App\Support\Ui\TextDirection;
+
 /**
  * Server-side chart geometry for the rc.chart.* Blade components.
  *
@@ -18,9 +20,15 @@ namespace App\Support\Ui\Charts;
  *
  * TIME runs along evenly spaced SLOTS (one per bucket); bars centre in their
  * slot and line points sit on slot centres, so bars, lines and the x-axis
- * label grid share one rhythm. RTL mirrors the whole plot in CSS
- * ([dir=rtl] .rc-chart__svg { transform: scaleX(-1) }) — geometry is always
- * computed left-to-right.
+ * label grid share one rhythm.
+ *
+ * RTL is GEOMETRY, never a CSS scaleX(-1) (which would mirror tooltips, text
+ * and arrows too): in a right-to-left locale every x is mirrored here, so time
+ * runs from the right (oldest) to the left (newest), horizontal bars grow from
+ * the right, and a line's path still STARTS at the oldest point — so the
+ * draw-in animation runs in reading direction. The HTML axes and labels around
+ * the plot follow the page direction on their own (grid + logical properties).
+ * Every builder takes ?bool $rtl; null = the active locale (TextDirection).
  */
 final class ChartGeometry
 {
@@ -77,7 +85,9 @@ final class ChartGeometry
         string $format = ChartFormat::NUMBER,
         string $size = 'md',
         bool $sharedAxis = false,
+        ?bool $rtl = null,
     ): array {
+        $rtl ??= TextDirection::isRtl();
         $n = max(1, count($labels));
         $h = self::height($size);
         $slot = self::VIEW_W / $n;
@@ -133,7 +143,7 @@ final class ChartGeometry
                     $hgt = round($v > 0 ? $v * $unit : 0, 2);
                     $isNeg = ($series['sign'] ?? 1) < 0;
                     $col['groups'][] = [
-                        'x' => round($x0 + $s * $barW, 2),
+                        'x' => self::x($x0 + $s * $barW, $barW * 0.92, $rtl),
                         'w' => round($barW * 0.92, 2),
                         'y' => round($isNeg ? $zero : $zero - $hgt, 2),
                         'h' => $hgt,
@@ -144,7 +154,7 @@ final class ChartGeometry
                 }
             } else {
                 $barW = min(self::BAR_MAX, $slot * self::BAR_RATIO);
-                $x = round($i * $slot + ($slot - $barW) / 2, 2);
+                $x = self::x($i * $slot + ($slot - $barW) / 2, $barW, $rtl);
                 $col['x'] = $x;
                 $col['w'] = round($barW, 2);
                 $up = $zero;
@@ -200,7 +210,7 @@ final class ChartGeometry
                     $endTicks[] = ChartFormat::value($fit['low'] + $k * $fit['step'], $lineFormat);
                 }
             }
-            $lineGeo = self::path($values, $labels, $slot, $y, (string) $line['label'], $lineFormat)
+            $lineGeo = self::path($values, $labels, $slot, $y, (string) $line['label'], $lineFormat, $rtl)
                 + ['tone' => $line['tone'] ?? 'ink', 'label' => (string) $line['label']];
         }
 
@@ -215,6 +225,7 @@ final class ChartGeometry
             'start_ticks' => $startTicks,
             'end_ticks' => $endTicks,
             'line' => $lineGeo,
+            'rtl' => $rtl,
             'x_labels' => self::xLabels($labels),
             'has_data' => $posPeak > 0 || $negPeak > 0 || ($line !== null && array_filter($line['values'], static fn ($v): bool => (float) $v !== 0.0) !== []),
         ];
@@ -227,8 +238,9 @@ final class ChartGeometry
      * @param  list<array{key: string, label: string, tone: string, values: list<float|int|null>, dashed?: bool, area?: bool}>  $series
      * @return array<string, mixed>
      */
-    public static function lines(array $labels, array $series, string $format = ChartFormat::NUMBER, string $size = 'md', bool $fromZero = true): array
+    public static function lines(array $labels, array $series, string $format = ChartFormat::NUMBER, string $size = 'md', bool $fromZero = true, ?bool $rtl = null): array
     {
+        $rtl ??= TextDirection::isRtl();
         $n = max(1, count($labels));
         $h = self::height($size);
         $slot = self::VIEW_W / $n;
@@ -263,7 +275,7 @@ final class ChartGeometry
 
         $out = [];
         foreach ($series as $s) {
-            $geo = self::path(array_values($s['values']), $labels, $slot, $y, (string) $s['label'], $format);
+            $geo = self::path(array_values($s['values']), $labels, $slot, $y, (string) $s['label'], $format, $rtl);
             $geo['area'] = ! empty($s['area']) && $geo['points'] !== []
                 ? $geo['d'].' L'.end($geo['points'])[0].' '.$baseline.' L'.$geo['points'][0][0].' '.$baseline.' Z'
                 : null;
@@ -280,6 +292,7 @@ final class ChartGeometry
             'h' => $h,
             'size' => $size,
             'series' => $out,
+            'rtl' => $rtl,
             'grid' => $grid,
             'start_ticks' => $ticks,
             'x_labels' => self::xLabels($labels),
@@ -315,18 +328,22 @@ final class ChartGeometry
     }
 
     /**
-     * Horizontal bars: each row's fill as a percentage of the longest row.
+     * Horizontal bars: each row's fill as a percentage of the longest row, and
+     * the fill's x in the 0–100 track (0 in LTR; anchored to the right in RTL).
      *
      * @param  list<array{label: string, value: float|int}>  $rows
      * @return list<array<string, mixed>>
      */
-    public static function hbars(array $rows): array
+    public static function hbars(array $rows, ?bool $rtl = null): array
     {
+        $rtl ??= TextDirection::isRtl();
         $max = (float) max(array_map(static fn (array $r): float => (float) $r['value'], $rows) ?: [0]);
 
-        return array_map(static fn (array $r): array => $r + [
-            'pct' => $max > 0 ? round(max(0.0, (float) $r['value']) / $max * 100, 2) : 0.0,
-        ], $rows);
+        return array_map(static function (array $r) use ($max, $rtl): array {
+            $pct = $max > 0 ? round(max(0.0, (float) $r['value']) / $max * 100, 2) : 0.0;
+
+            return $r + ['pct' => $pct, 'x' => $rtl ? round(100 - $pct, 2) : 0.0];
+        }, $rows);
     }
 
     /**
@@ -374,13 +391,22 @@ final class ChartGeometry
     // === Internals ===
 
     /**
+     * The left edge of a shape $w wide whose LTR left edge is $x — mirrored
+     * across the plot in RTL (a point is a shape 0 wide).
+     */
+    private static function x(float $x, float $w, bool $rtl): float
+    {
+        return round($rtl ? self::VIEW_W - $x - $w : $x, 2);
+    }
+
+    /**
      * A polyline through slot centres as an SVG path, broken at null values,
      * plus the points (for dots + tooltips).
      *
      * @param  list<float|int|null>  $values
      * @return array{d: string, points: list<array{0: float, 1: float, 2: string}>}
      */
-    private static function path(array $values, array $labels, float $slot, callable $y, string $seriesLabel, string $format): array
+    private static function path(array $values, array $labels, float $slot, callable $y, string $seriesLabel, string $format, bool $rtl = false): array
     {
         $d = '';
         $points = [];
@@ -391,7 +417,7 @@ final class ChartGeometry
 
                 continue;
             }
-            $px = round($i * $slot + $slot / 2, 2);
+            $px = self::x($i * $slot + $slot / 2, 0.0, $rtl);
             $py = round($y((float) $v), 2);
             $d .= ($pen ? ' L' : ($d === '' ? 'M' : ' M')).$px.' '.$py;
             $pen = true;

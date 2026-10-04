@@ -150,6 +150,73 @@ final class ChartGeometryTest extends TestCase
         $this->assertSame('d30', end($shown)['text']);
     }
 
+    public function test_rtl_mirrors_x_in_geometry_and_ltr_is_untouched(): void
+    {
+        $labels = ['oldest', 'mid', 'newest'];
+        $bars = [['key' => 'n', 'label' => 'N', 'tone' => 's1', 'values' => [3, 5, 2]]];
+        $line = ['label' => 'L', 'values' => [10, 12, 11]];
+
+        $ltr = ChartGeometry::columns($labels, $bars, $line, rtl: false);
+        $rtl = ChartGeometry::columns($labels, $bars, $line, rtl: true);
+
+        $this->assertFalse($ltr['rtl']);
+        $this->assertTrue($rtl['rtl']);
+        // Time runs right→left: the OLDEST bucket sits at the right edge in RTL.
+        $this->assertLessThan($ltr['cols'][2]['x'], $ltr['cols'][0]['x']);
+        $this->assertGreaterThan($rtl['cols'][2]['x'], $rtl['cols'][0]['x']);
+        foreach ([0, 1, 2] as $i) {
+            $this->assertEqualsWithDelta(
+                ChartGeometry::VIEW_W - $ltr['cols'][$i]['x'] - $ltr['cols'][$i]['w'],
+                $rtl['cols'][$i]['x'], 0.02, 'An exact mirror, bar for bar.',
+            );
+            $this->assertSame($ltr['cols'][$i]['pos'][0]['y'], $rtl['cols'][$i]['pos'][0]['y'], 'Heights never mirror.');
+            $this->assertSame($rtl['cols'][$i]['x'], $rtl['cols'][$i]['pos'][0]['x']);
+        }
+        // The line still STARTS at the oldest point (draws in reading direction) — on the right in RTL.
+        $this->assertGreaterThan($rtl['line']['points'][2][0], $rtl['line']['points'][0][0]);
+        $this->assertStringStartsWith('M'.$rtl['line']['points'][0][0].' ', $rtl['line']['d']);
+        $this->assertEqualsWithDelta(ChartGeometry::VIEW_W - $ltr['line']['points'][0][0], $rtl['line']['points'][0][0], 0.02);
+        // Ticks, gridlines and labels are direction-free data.
+        $this->assertSame($ltr['start_ticks'], $rtl['start_ticks']);
+        $this->assertSame($ltr['x_labels'], $rtl['x_labels']);
+
+        // Grouped: the first series sits on the reading-start side of its group.
+        $grouped = ChartGeometry::columns(['a'], [
+            ['key' => 'x', 'label' => 'X', 'tone' => 's1', 'values' => [5]],
+            ['key' => 'y', 'label' => 'Y', 'tone' => 's2', 'values' => [3]],
+        ], null, 'grouped', rtl: true);
+        [$x, $y] = $grouped['cols'][0]['groups'];
+        $this->assertGreaterThan($y['x'], $x['x']);
+
+        // Lines + areas mirror too.
+        $lines = ChartGeometry::lines(['a', 'b'], [['key' => 's', 'label' => 'S', 'tone' => 's1', 'values' => [1, 2], 'area' => true]], rtl: true);
+        $this->assertGreaterThan($lines['series'][0]['points'][1][0], $lines['series'][0]['points'][0][0]);
+
+        // Horizontal bars grow from the right in RTL, from the left in LTR.
+        $h = ChartGeometry::hbars([['label' => 'a', 'value' => 4], ['label' => 'b', 'value' => 1]], rtl: true);
+        $this->assertSame(0.0, $h[0]['x']);
+        $this->assertSame(75.0, $h[1]['x']);
+        $this->assertSame(100.0, $h[1]['x'] + $h[1]['pct']);
+        $this->assertSame(0.0, ChartGeometry::hbars([['label' => 'b', 'value' => 1], ['label' => 'a', 'value' => 4]], rtl: false)[0]['x']);
+    }
+
+    public function test_the_default_direction_follows_the_active_locale(): void
+    {
+        $labels = ['a', 'b'];
+        $bars = [['key' => 'n', 'label' => 'N', 'tone' => 's1', 'values' => [1, 2]]];
+
+        app()->setLocale('en');
+        $en = ChartGeometry::columns($labels, $bars);
+        app()->setLocale('he');
+        $he = ChartGeometry::columns($labels, $bars);
+        app()->setLocale('en');
+
+        $this->assertFalse($en['rtl']);
+        $this->assertTrue($he['rtl']);
+        $this->assertLessThan($en['cols'][1]['x'], $en['cols'][0]['x']);
+        $this->assertGreaterThan($he['cols'][1]['x'], $he['cols'][0]['x']);
+    }
+
     public function test_formats(): void
     {
         $this->assertSame('1,284', ChartFormat::value(1284));
