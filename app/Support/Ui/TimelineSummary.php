@@ -31,6 +31,15 @@ final class TimelineSummary
     /** Separator between the facts of one row. */
     public const GLUE = ' · ';
 
+    /**
+     * A card reads left to right in every language ("visa •••• 4242"). Wrapped
+     * in a left-to-right isolate (LRI … PDI) so a Hebrew row places it as one unit
+     * and never flips it to "4242 ••••".
+     */
+    private const LTR_ISOLATE_OPEN = "⁦";
+
+    private const LTR_ISOLATE_CLOSE = "⁩";
+
     /** Free text (gateway messages, errors, typed reasons) is cut at this length. */
     public const MAX_TEXT = 160;
 
@@ -300,7 +309,8 @@ final class TimelineSummary
         $brand = $safe['card_brand'] ?? $safe['brand'] ?? null;
         $last4 = $safe['card_last_four'] ?? $safe['last_four'] ?? null;
         if (is_scalar($last4) && preg_match('/^\d{4}$/', (string) $last4) === 1) {
-            $parts[] = self::labelled('card', trim((is_scalar($brand) ? self::text($brand).' ' : '').'•••• '.$last4));
+            $card = trim((is_scalar($brand) ? self::text($brand).' ' : '').'•••• '.$last4);
+            $parts[] = self::labelled('card', self::LTR_ISOLATE_OPEN.$card.self::LTR_ISOLATE_CLOSE);
         }
         if (isset($safe['approval_number']) && is_scalar($safe['approval_number']) && (string) $safe['approval_number'] !== '') {
             $parts[] = self::labelled('approval_number', self::text($safe['approval_number']));

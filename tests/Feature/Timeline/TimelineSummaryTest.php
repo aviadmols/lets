@@ -133,7 +133,8 @@ final class TimelineSummaryTest extends TestCase
 
         $this->assertStringStartsWith('חידוש אוטומטי', $summary);
         $this->assertStringContainsString('חיוב מס׳ 4', $summary);
-        $this->assertStringContainsString('כרטיס: visa •••• 4242', $summary);
+        // The card sits in a left-to-right isolate so Hebrew never flips it to "4242 ••••".
+        $this->assertStringContainsString("כרטיס: \u{2066}visa •••• 4242\u{2069}", $summary);
         $this->assertStringContainsString('מספר אישור: 0123456', $summary);
         $this->assertStringNotContainsString('a3f1c2d4', $summary);
         $this->assertStringNotContainsString('recurring:1', $summary);

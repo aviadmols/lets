@@ -114,7 +114,8 @@ final class ChargeTimelineFactsTest extends TestCase
         app()->setLocale('he');
         $summary = (string) EventPresenter::summarize($succeeded);
         $this->assertStringStartsWith('חידוש אוטומטי', $summary);
-        $this->assertStringContainsString('כרטיס: visa •••• 4242', $summary);
+        // The card sits in a left-to-right isolate so Hebrew never flips it to "4242 ••••".
+        $this->assertStringContainsString("כרטיס: \u{2066}visa •••• 4242\u{2069}", $summary);
         $this->assertStringContainsString('מספר אישור: 0654321', $summary);
         $this->assertStringNotContainsString(self::UID, $summary);
         $this->assertStringNotContainsString('recurring:', $summary);
