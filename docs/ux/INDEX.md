@@ -63,3 +63,9 @@
 | Thank-you upsell block | planned | W11 P4 |
 | Full `WC_Payment_Gateway` mode | planned | W11 P5 |
 | Packaging / distribution (zip, readme, i18n) | planned | W11 P6 |
+
+## Cross-cutting design docs
+
+| Doc | What it answers |
+|---|---|
+| [02-system-design-and-shop-subdomains.md](02-system-design-and-shop-subdomains.md) | The whole system from the UX/UI side, in Hebrew: actors, host map, the per-shop admin host (`<handle>.app.lets.co.il`) end to end, the design tokens, the shell, the customer surfaces, and the open UX findings. |
