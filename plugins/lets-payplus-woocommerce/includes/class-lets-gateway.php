@@ -19,6 +19,7 @@ if (! defined('ABSPATH')) {
 /** Register the gateway with WooCommerce (only when connected). */
 add_filter('woocommerce_payment_gateways', function ($gateways) {
     $gateways[] = 'LETS_PayPlus_Gateway';
+    $gateways[] = 'LETS_PayPlus_PayPal_Gateway';
 
     return $gateways;
 });
@@ -27,6 +28,21 @@ add_filter('woocommerce_payment_gateways', function ($gateways) {
 /** The gateway's WooCommerce id — compared against an order's payment method. */
 define('LETS_PAYPLUS_GATEWAY_ID', 'lets_payplus');
 
+/** The PayPal checkout option: the same PayPlus page, opened on PayPal only. */
+define('LETS_PAYPLUS_PAYPAL_GATEWAY_ID', 'lets_payplus_paypal');
+
+/**
+ * Was this order paid through one of OUR checkout options (card or PayPal)? Both are
+ * PayPlus pages minted by LETS: verified on return, refunded through PayPlus.
+ *
+ * @param  string  $payment_method  the order's WooCommerce payment method id
+ * @return bool
+ */
+function lets_payplus_is_lets_gateway($payment_method)
+{
+    return in_array((string) $payment_method, array(LETS_PAYPLUS_GATEWAY_ID, LETS_PAYPLUS_PAYPAL_GATEWAY_ID), true);
+}
+
 add_action('plugins_loaded', function () {
     if (! class_exists('WC_Payment_Gateway') || class_exists('LETS_PayPlus_Gateway')) {
         return;
@@ -34,11 +50,17 @@ add_action('plugins_loaded', function () {
 
     class LETS_PayPlus_Gateway extends WC_Payment_Gateway
     {
+        /** WooCommerce gateway id. */
+        const GATEWAY_ID = 'lets_payplus';
+
+        /** PayPlus method the page opens on ('' = the merchant's own page defaults). */
+        const CHARGE_METHOD = '';
+
         public function __construct()
         {
-            $this->id = 'lets_payplus';
-            $this->method_title = __('PayPlus', 'lets-payplus');
-            $this->method_description = __('Accept credit-card payments through PayPlus.', 'lets-payplus');
+            $this->id = static::GATEWAY_ID;
+            $this->method_title = $this->default_method_title();
+            $this->method_description = $this->default_method_description();
             $this->has_fields = false;
             // WooCommerce shows the "Refund" button on an order only for a gateway
             // that says it can. The money goes back through PayPlus, via the SaaS.
@@ -47,10 +69,37 @@ add_action('plugins_loaded', function () {
             $this->init_form_fields();
             $this->init_settings();
 
-            $this->title = $this->get_option('title', __('Pay with PayPlus', 'lets-payplus'));
+            $this->title = $this->get_option('title', $this->default_title());
             $this->description = $this->get_option('description', '');
 
             add_action('woocommerce_update_options_payment_gateways_' . $this->id, array($this, 'process_admin_options'));
+        }
+
+        /** What the merchant reads in WooCommerce → Settings → Payments. */
+        protected function default_method_title()
+        {
+            return __('PayPlus', 'lets-payplus');
+        }
+
+        protected function default_method_description()
+        {
+            return __('Accept credit-card payments through PayPlus.', 'lets-payplus');
+        }
+
+        /** What the shopper reads at checkout (until the merchant renames it). */
+        protected function default_title()
+        {
+            return __('Pay with PayPlus', 'lets-payplus');
+        }
+
+        protected function default_description()
+        {
+            return __('You will be redirected to PayPlus to complete your payment securely.', 'lets-payplus');
+        }
+
+        protected function enable_label()
+        {
+            return __('Enable PayPlus checkout', 'lets-payplus');
         }
 
         public function init_form_fields()
@@ -59,18 +108,18 @@ add_action('plugins_loaded', function () {
                 'enabled' => array(
                     'title' => __('Enable/Disable', 'lets-payplus'),
                     'type' => 'checkbox',
-                    'label' => __('Enable PayPlus checkout', 'lets-payplus'),
+                    'label' => $this->enable_label(),
                     'default' => 'no',
                 ),
                 'title' => array(
                     'title' => __('Title', 'lets-payplus'),
                     'type' => 'text',
-                    'default' => __('Pay with PayPlus', 'lets-payplus'),
+                    'default' => $this->default_title(),
                 ),
                 'description' => array(
                     'title' => __('Description', 'lets-payplus'),
                     'type' => 'textarea',
-                    'default' => __('You will be redirected to PayPlus to complete your payment securely.', 'lets-payplus'),
+                    'default' => $this->default_description(),
                 ),
                 'display_mode' => array(
                     'title' => __('Display', 'lets-payplus'),
@@ -148,6 +197,9 @@ add_action('plugins_loaded', function () {
                 // The WC customer id (0 for a guest) — links the recurring plan to the shopper.
                 'customer_id' => (string) $order->get_customer_id(),
                 'subscription_items' => $subscription_items,
+                // Which method the PayPlus page opens on: the PayPal option asks for
+                // PayPal only; the card option sends '' (the merchant's own defaults).
+                'charge_method' => static::CHARGE_METHOD,
                 'return_url' => $this->get_return_url($order),
                 'cancel_url' => $order->get_cancel_order_url_raw(),
             );
@@ -256,9 +308,51 @@ add_action('plugins_loaded', function () {
         }
     }
 
+    /**
+     * PayPal at checkout — the SAME PayPlus page as the card option, opened on PayPal
+     * with every other method hidden. Everything after the page (the callback, the
+     * verify-on-return, the refund, the invoice) is the card option's path; the
+     * invoice declares the payment as PayPal because PayPlus reports the method used.
+     *
+     * PayPal must also be switched on for the merchant's payment page inside PayPlus.
+     * Never offered on a cart with a subscription (class-lets-subscriptions keeps those
+     * on the card option): PayPal leaves no card to charge next month.
+     */
+    class LETS_PayPlus_PayPal_Gateway extends LETS_PayPlus_Gateway
+    {
+        const GATEWAY_ID = LETS_PAYPLUS_PAYPAL_GATEWAY_ID;
+
+        const CHARGE_METHOD = 'paypal';
+
+        protected function default_method_title()
+        {
+            return __('PayPal (through PayPlus)', 'lets-payplus');
+        }
+
+        protected function default_method_description()
+        {
+            return __('Accept PayPal through your PayPlus payment page. PayPal must also be enabled for that page in your PayPlus account.', 'lets-payplus');
+        }
+
+        protected function default_title()
+        {
+            return __('PayPal', 'lets-payplus');
+        }
+
+        protected function default_description()
+        {
+            return __('You will be redirected to pay securely with PayPal.', 'lets-payplus');
+        }
+
+        protected function enable_label()
+        {
+            return __('Enable PayPal checkout', 'lets-payplus');
+        }
+    }
+
     // Receipt (order-pay) page for iframe mode: render the PayPlus page embedded. Guarded so
-    // it only shows for THIS order's owner and only in iframe mode.
-    add_action('woocommerce_receipt_lets_payplus', function ($order_id) {
+    // it only shows for THIS order's owner and only in iframe mode. Both checkout options.
+    $lets_payplus_receipt = function ($order_id) {
         $order = wc_get_order($order_id);
         if (! $order) {
             return;
@@ -285,5 +379,7 @@ add_action('plugins_loaded', function () {
         echo '<p style="margin-top:10px"><a href="' . esc_url($url) . '" target="_blank" rel="noopener">'
             . esc_html__('Trouble seeing the payment form? Open it in a new tab.', 'lets-payplus') . '</a></p>';
         echo '</div>';
-    });
+    };
+    add_action('woocommerce_receipt_' . LETS_PAYPLUS_GATEWAY_ID, $lets_payplus_receipt);
+    add_action('woocommerce_receipt_' . LETS_PAYPLUS_PAYPAL_GATEWAY_ID, $lets_payplus_receipt);
 }, 11);

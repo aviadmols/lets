@@ -102,6 +102,78 @@ final class WooCommerceGatewayTest extends TestCase
         $this->assertSame(2, $this->gatewayPayloads[0]['charge_method']);
     }
 
+    /** The plugin's "PayPal" option: the same PayPlus page, opened on PayPal only. */
+    public function test_the_paypal_option_opens_the_page_on_paypal_only(): void
+    {
+        [, $key, $secret] = $this->connectedShop('gw-paypal.example.com');
+        $this->fakeGatewayPage('https://pay.example/page/GW-PP');
+
+        $this->signedPost($key, $secret, self::SESSION, [
+            'order_id' => '4250', 'amount' => 80.0, 'currency' => 'ILS', 'charge_method' => 'paypal',
+        ])->assertOk()->assertJsonPath('redirect_url', 'https://pay.example/page/GW-PP');
+
+        $payload = $this->gatewayPayloads[0];
+        $this->assertSame('paypal', $payload['charge_default']);
+        $this->assertSame(['paypal'], $payload['allowed_charge_methods']);
+        $this->assertTrue($payload['hide_other_charge_methods']);
+        $this->assertArrayNotHasKey('create_token', $payload, 'PayPal leaves no card to tokenise.');
+        $this->assertSame(1, $payload['charge_method'], 'The capture mode is untouched.');
+    }
+
+    /** The card option still gets the merchant's own page — nothing PayPal-specific leaks in. */
+    public function test_the_card_option_gets_the_merchants_own_page(): void
+    {
+        [, $key, $secret] = $this->connectedShop('gw-card.example.com');
+        $this->fakeGatewayPage('https://pay.example/page/GW-CC');
+
+        $this->signedPost($key, $secret, self::SESSION, [
+            'order_id' => '4251', 'amount' => 80.0, 'currency' => 'ILS', 'charge_method' => '',
+        ])->assertOk();
+
+        $this->assertArrayNotHasKey('charge_default', $this->gatewayPayloads[0]);
+        $this->assertArrayNotHasKey('allowed_charge_methods', $this->gatewayPayloads[0]);
+    }
+
+    /**
+     * A PayPal payment on the page: the order is stamped with the method in the
+     * SAME write that marks it paid (the plugin's invoicing hook fires on that
+     * write), the note says PayPal, and the document is declared as PayPal with
+     * no card digits.
+     */
+    public function test_a_paypal_payment_is_stamped_and_invoiced_as_paypal(): void
+    {
+        Queue::fake();
+        Http::fake([
+            ...$this->payplusIpn('gw:6710', ['amount' => '80.00', 'alternative_method_name' => 'paypal', 'four_digits' => '0000']),
+            '*/wp-json/wc/v3/orders/6710' => Http::response([
+                'id' => 6710, 'number' => '6710', 'status' => 'processing',
+                'total' => '80.00', 'currency' => 'ILS', 'payment_method' => 'lets_payplus_paypal',
+                'billing' => ['first_name' => 'Noa', 'last_name' => 'Bar', 'email' => 'noa@example.com'],
+                'line_items' => [['name' => 'Mug', 'quantity' => 1, 'total' => '80.00', 'sku' => 'MUG']],
+            ], 200),
+            '*/wp-json/wc/v3/orders/6710/notes' => Http::response(['id' => 1], 201),
+        ]);
+        [$shop] = $this->connectedShop('gw-paypal-paid.example.com');
+        $this->enableAllOrdersInvoicing($shop);
+
+        $this->postJson('/woocommerce/gateway/callback/'.(string) $shop->wc_shop_token, $this->callbackFor([
+            'more_info' => 'gw:6710', 'status_code' => '000', 'amount' => '80.00',
+        ]))->assertOk();
+
+        Http::assertSent(fn (HttpRequest $req): bool => $req->method() === 'PUT'
+            && str_ends_with($req->url(), '/orders/6710')
+            && ($req->data()['set_paid'] ?? false) === true
+            && ($req->data()['meta_data'][0] ?? null) === ['key' => 'lets_payplus_charge_method', 'value' => 'paypal']);
+
+        Http::assertSent(fn (HttpRequest $req): bool => str_ends_with($req->url(), '/orders/6710/notes')
+            && str_contains((string) ($req->data()['note'] ?? ''), 'Method: PayPal'));
+
+        Queue::assertPushed(IssueDocumentJob::class, fn (IssueDocumentJob $job): bool => ($job->order['order_id'] ?? null) === '6710'
+            && ($job->order['payment_gateway'] ?? null) === 'lets_payplus_paypal'
+            && array_key_exists('card_last4', $job->order)
+            && $job->order['card_last4'] === null);
+    }
+
     public function test_session_rejects_a_zero_amount_order(): void
     {
         [, $key, $secret] = $this->connectedShop('gw-zero.example.com');

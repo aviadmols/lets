@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.56.0
+Stable tag: 0.57.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,16 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.57.0 =
+* Webhooks: every order on the site is sent to the webhook URLs set in LETS (Settings →
+  Webhooks) once it is paid — processing or completed — whatever the payment method. Each
+  order is sent once.
+* PayPal at checkout: a new "PayPal" payment option opens your PayPlus payment page on PayPal
+  only (PayPal must also be enabled for that page in your PayPlus account). Not offered on a
+  cart with a subscription.
+* Invoices: an order paid with PayPal is declared as PayPal on its Green Invoice document,
+  whichever checkout option the shopper used.
 
 = 0.56.0 =
 * New Shelf layout for the thank-you offer: a centred, static page — a "thank you" mark, the

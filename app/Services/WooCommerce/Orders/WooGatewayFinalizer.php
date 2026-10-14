@@ -12,6 +12,7 @@ use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\LedgerStatus;
 use App\Modules\PayPlusShopifyInstallments\Support\ResponseMasker;
 use App\Services\PayPlus\PayPlusCallbackVerifier;
+use App\Services\PayPlus\PayPlusChargeMethod;
 use App\Services\WooCommerce\WooClientFactory;
 use App\Support\Tenant;
 use Illuminate\Support\Facades\Log;
@@ -72,10 +73,7 @@ final class WooGatewayFinalizer
                     return false;
                 }
 
-                $order = WooClientFactory::for($shop)->updateOrder($orderId, [
-                    'status' => 'processing',
-                    'set_paid' => true,
-                ]);
+                $order = WooClientFactory::for($shop)->updateOrder($orderId, $this->paidUpdate($payplusBody));
 
                 // Vault problems must NEVER un-pay a paid order — log, don't throw.
                 try {
@@ -143,6 +141,28 @@ final class WooGatewayFinalizer
                 return false;
             }
         });
+    }
+
+    /**
+     * The WC REST update that marks the order paid — and, when the shopper paid with
+     * PayPal on the PayPlus page, names that IN THE SAME WRITE. The plugin's
+     * invoicing hook fires on this very status change and reads the meta to declare
+     * the document's payment as PayPal; stamped in a later write, the hook would
+     * already have reported a card.
+     *
+     * @param  array<string, mixed>  $payplusBody
+     * @return array<string, mixed>
+     */
+    private function paidUpdate(array $payplusBody): array
+    {
+        $update = ['status' => 'processing', 'set_paid' => true];
+
+        $method = PayPlusChargeMethod::fromBody($payplusBody);
+        if ($method !== null) {
+            $update['meta_data'] = [['key' => PayPlusChargeMethod::ORDER_META, 'value' => $method]];
+        }
+
+        return $update;
     }
 
     /**
@@ -270,6 +290,9 @@ final class WooGatewayFinalizer
         $brand = $this->pick($payplusBody, ['data.transaction.brand_name', 'transaction.brand_name', 'data.brand_name', 'brand_name']);
 
         $parts = ['PayPlus payment confirmed.'];
+        if (PayPlusChargeMethod::isPayPal($payplusBody)) {
+            $parts[] = 'Method: PayPal';
+        }
         if ($txnUid !== '') {
             $parts[] = 'Transaction: '.$txnUid;
         }

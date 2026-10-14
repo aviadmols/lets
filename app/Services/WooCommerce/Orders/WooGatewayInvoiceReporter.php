@@ -9,6 +9,7 @@ use App\Models\InstallmentPlan;
 use App\Models\IssuedDocument;
 use App\Models\MerchantInvoicingSettings;
 use App\Models\Shop;
+use App\Services\PayPlus\PayPlusChargeMethod;
 use App\Support\Tenant;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Log;
@@ -41,9 +42,6 @@ final class WooGatewayInvoiceReporter
     // === CONSTANTS ===
     /** Line-item cap, mirroring InvoicingController::MAX_LINES. */
     private const MAX_LINES = 100;
-
-    /** The gateway id reported as the document's payment method context. */
-    private const PAYMENT_GATEWAY = 'lets_payplus';
 
     /**
      * Queue the document for a gateway order just marked paid, if the merchant's
@@ -178,6 +176,10 @@ final class WooGatewayInvoiceReporter
             ?? data_get($payplusBody, 'four_digits') ?? ''
         )) ?? '';
 
+        // HOW the shopper paid on the page: PayPal is declared as PayPal, never as a
+        // card — and a PayPal payment has no card digits to print.
+        $isPayPal = PayPlusChargeMethod::isPayPal($payplusBody);
+
         return [
             'order_id' => $orderId,
             'order_number' => ((string) ($order['number'] ?? '')) ?: $orderId,
@@ -190,8 +192,8 @@ final class WooGatewayInvoiceReporter
                 'tax_id' => null,
             ],
             'lines' => $lines,
-            'payment_gateway' => self::PAYMENT_GATEWAY,
-            'card_last4' => strlen($lastFour) === 4 ? $lastFour : null,
+            'payment_gateway' => PayPlusChargeMethod::wooGatewayFor($payplusBody),
+            'card_last4' => ! $isPayPal && strlen($lastFour) === 4 ? $lastFour : null,
         ];
     }
 }

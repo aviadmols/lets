@@ -293,9 +293,32 @@ function lets_payplus_invoicing_order_body(WC_Order $order)
             : '',
         'customer_email'   => (string) $order->get_billing_email(),
         'customer_phone'   => (string) $order->get_billing_phone(),
-        'payment_gateway'  => (string) $order->get_payment_method(),
+        'payment_gateway'  => lets_payplus_invoicing_payment_gateway($order),
         'lines'            => $lines,
     );
+}
+
+/**
+ * HOW the order was paid, as the document must declare it.
+ *
+ * The order's own gateway id — except when the shopper paid with PayPal on a
+ * PayPlus page LETS minted: LETS stamps the method PayPlus reported
+ * (lets_payplus_charge_method) in the same write that marks the order paid, so a
+ * PayPal payment made through the card option is still declared as PayPal, never
+ * as a card.
+ *
+ * @return string
+ */
+function lets_payplus_invoicing_payment_gateway(WC_Order $order)
+{
+    $gateway = (string) $order->get_payment_method();
+
+    if ('paypal' === strtolower((string) $order->get_meta('lets_payplus_charge_method'))
+        && function_exists('lets_payplus_is_lets_gateway') && lets_payplus_is_lets_gateway($gateway)) {
+        return defined('LETS_PAYPLUS_PAYPAL_GATEWAY_ID') ? LETS_PAYPLUS_PAYPAL_GATEWAY_ID : 'lets_payplus_paypal';
+    }
+
+    return $gateway;
 }
 
 /** The product SKU behind a line item, or null. */

@@ -50,6 +50,28 @@ final class WooCommerceCartSubscriptionFlowTest extends TestCase
         parent::tearDown();
     }
 
+    /**
+     * A subscription cart asked to pay with PayPal still gets the CARD token page:
+     * PayPal would pay the first cycle and leave nothing to bill the second with.
+     * (The plugin never offers PayPal on such a cart; this is the server's wall.)
+     */
+    public function test_a_subscription_cart_never_gets_the_paypal_page(): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop('cart-sub-pp.example.com');
+        Tenant::run($shop, fn () => $this->makeSubscriptionProduct($shop, '501', 100.0, discountPercent: 10));
+        $this->fakeGateway();
+
+        $this->signedPost($key, $secret, self::SESSION, [
+            'order_id' => '8401', 'amount' => 90.0, 'currency' => 'ILS', 'charge_method' => 'paypal',
+            'customer_id' => '55', 'email' => 'dana@example.com',
+            'subscription_items' => [['product_id' => '501', 'variant_id' => '501', 'quantity' => 1]],
+        ])->assertOk();
+
+        $this->assertSame(['credit-card'], $this->gatewayPayloads[0]['allowed_charge_methods']);
+        $this->assertTrue((bool) $this->gatewayPayloads[0]['create_token']);
+        $this->assertNotSame('paypal', $this->gatewayPayloads[0]['charge_default'] ?? null);
+    }
+
     public function test_session_creates_a_recurring_plan_from_the_template_and_forces_create_token(): void
     {
         [$shop, $key, $secret] = $this->connectedShop('cart-sub.example.com');

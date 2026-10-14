@@ -7,6 +7,7 @@ use App\Domain\Invoicing\DocumentCustomer;
 use App\Domain\Invoicing\DocumentLine;
 use App\Domain\Invoicing\GreenInvoice\GreenInvoiceClient;
 use App\Domain\Invoicing\GreenInvoice\GreenInvoiceDocumentType;
+use App\Domain\Invoicing\GreenInvoice\GreenInvoicePaymentType;
 use App\Domain\Invoicing\GreenInvoice\GreenInvoiceProvider;
 use App\Domain\Invoicing\IssueDocumentRequest;
 use App\Models\MerchantInvoicingSettings;
@@ -58,6 +59,28 @@ final class GreenInvoiceProviderTest extends TestCase
         $this->assertSame(GreenInvoiceDocumentType::TAX_INVOICE_RECEIPT->value, $payload['type']);
         $this->assertCount(1, $payload['payment']);
         $this->assertSame(120.0, $payload['payment'][0]['price']);
+    }
+
+    public function test_a_paypal_payment_is_declared_as_paypal_with_no_card_digits(): void
+    {
+        $this->fakeApi();
+
+        $this->provider()->issue(new IssueDocumentRequest(
+            shop: $this->shop(),
+            context: DocumentContext::PLATFORM_ORDER,
+            customer: new DocumentCustomer(name: 'Dana Buyer', email: 'buyer@example.com'),
+            lines: [DocumentLine::single('Order 1001', 80.0)],
+            amount: 80.0,
+            currency: 'ILS',
+            paymentGateway: 'lets_payplus_paypal',
+            cardLast4: '4242',
+        ));
+
+        $payment = $this->lastDocumentPayload()['payment'][0];
+
+        $this->assertSame(GreenInvoicePaymentType::PAYPAL->value, $payment['type']);
+        $this->assertSame(5, $payment['type'], 'Green Invoice declares PayPal as payment type 5.');
+        $this->assertArrayNotHasKey('cardNum', $payment);
     }
 
     public function test_a_deposit_is_a_receipt_not_a_tax_invoice(): void

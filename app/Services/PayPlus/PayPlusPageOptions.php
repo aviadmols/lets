@@ -197,6 +197,33 @@ final class PayPlusPageOptions
     }
 
     /**
+     * The page the plugin's "PayPal" checkout option opens: PayPal only.
+     *
+     * The shopper already chose PayPal on the store's checkout, so the page opens
+     * straight on it with the other methods hidden — overriding the merchant's
+     * page defaults for this page only. No card token is asked for: PayPal leaves
+     * nothing to charge again (which is also why a subscription cart never gets
+     * this page — the plugin offers PayPal only on carts without one, and the
+     * session controller re-checks).
+     *
+     * PayPal must also be switched on for the merchant's page inside PayPlus.
+     *
+     * @return array<string, mixed>
+     */
+    public function forPayPalPage(Shop $shop): array
+    {
+        $options = $this->for($shop);
+        unset($options['create_token'], $options['payments'], $options['payments_selected'], $options['payments_credit']);
+
+        return [
+            ...$options,
+            'charge_default' => MerchantCheckoutSettings::METHOD_PAYPAL,
+            'allowed_charge_methods' => [MerchantCheckoutSettings::METHOD_PAYPAL],
+            'hide_other_charge_methods' => true,
+        ];
+    }
+
+    /**
      * Read the shop's row under ITS tenant scope. Callers may be mid-request for another
      * tenant (jobs, webhooks), so bind explicitly rather than trusting the ambient Tenant.
      */

@@ -119,7 +119,7 @@ function lets_payplus_refunds_on_order_refunded($order_id, $refund_id)
         return;
     }
 
-    if ($order->get_payment_method() === LETS_PAYPLUS_GATEWAY_ID) {
+    if (lets_payplus_is_lets_gateway($order->get_payment_method())) {
         return;
     }
 

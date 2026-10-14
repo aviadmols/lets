@@ -186,7 +186,7 @@ function lets_payplus_verify_order($order)
     if (! is_object($order) || ! method_exists($order, 'get_payment_method')) {
         return;
     }
-    if ($order->get_payment_method() !== 'lets_payplus' || ! $order->needs_payment()) {
+    if (! lets_payplus_is_lets_gateway($order->get_payment_method()) || ! $order->needs_payment()) {
         return; // not our gateway order, or already paid
     }
     $uid = (string) $order->get_meta('_lets_payplus_page_request_uid');

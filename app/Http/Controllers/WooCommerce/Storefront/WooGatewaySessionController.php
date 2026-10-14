@@ -2,15 +2,16 @@
 
 namespace App\Http\Controllers\WooCommerce\Storefront;
 
-use App\Support\StoreCurrency;
 use App\Domain\Installments\ProductPriceResolver;
 use App\Domain\Installments\RecurringPlanService;
 use App\Domain\Products\ProductPlanTemplateResolver;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
+use App\Services\PayPlus\PayPlusChargeMethod;
 use App\Services\PayPlus\PayPlusPageOptions;
 use App\Services\WooCommerce\Orders\WooGatewayPageRegistry;
+use App\Support\StoreCurrency;
 use App\Support\Tenant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -105,16 +106,9 @@ final class WooGatewaySessionController extends WooStorefrontController
                  * keys below always win; PayPlusPageOptions can only emit documented,
                  * allow-listed keys, and PayPlusGateway forces
                  * payment_page_uid/terminal_uid to this shop's own credentials.
-                 *
-                 * A cart carrying a SUBSCRIPTION gets the token page instead: card
-                 * only, everything else hidden. Paying the first cycle with Bit or
-                 * PayPal works perfectly and leaves nothing to bill the second one
-                 * with — the subscription would go live and fail at every renewal,
-                 * while the shopper believes they subscribed.
+                 * Which page (token / PayPal-only / the merchant's own): pageOptions().
                  */
-                ...($subscriptionPlanIds !== []
-                    ? app(PayPlusPageOptions::class)->forTokenPage($shop)
-                    : app(PayPlusPageOptions::class)->for($shop)),
+                ...$this->pageOptions($shop, $request, $subscriptionPlanIds !== []),
                 'amount' => $amount,
                 'currency_code' => $currency,
                 'product_name' => (string) ($request->input('product_name') ?: __('storefront.installments.default_item')),
@@ -189,6 +183,33 @@ final class WooGatewaySessionController extends WooStorefrontController
             // as order meta so WooGatewayFinalizer activates them when the order is marked paid.
             'subscription_plan_ids' => $subscriptionPlanIds,
         ], Response::HTTP_OK);
+    }
+
+    /**
+     * Which page this order gets.
+     *
+     *  - a cart carrying a SUBSCRIPTION → the token page (card only). This wins over
+     *    everything: paying the first cycle with Bit or PayPal works and leaves
+     *    nothing to bill the second one with — the subscription would go live and
+     *    fail at every renewal while the shopper believes they subscribed.
+     *  - the plugin's "PayPal" checkout option (charge_method=paypal) → PayPal only.
+     *  - otherwise → the merchant's own page options.
+     *
+     * @return array<string, mixed>
+     */
+    private function pageOptions(Shop $shop, Request $request, bool $hasSubscription): array
+    {
+        $options = app(PayPlusPageOptions::class);
+
+        if ($hasSubscription) {
+            return $options->forTokenPage($shop);
+        }
+
+        if ($request->input('charge_method') === PayPlusChargeMethod::PAYPAL) {
+            return $options->forPayPalPage($shop);
+        }
+
+        return $options->for($shop);
     }
 
     /**
