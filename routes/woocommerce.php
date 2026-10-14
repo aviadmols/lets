@@ -13,6 +13,7 @@ use App\Http\Controllers\WooCommerce\DiagnosticsController;
 use App\Http\Controllers\WooCommerce\EmbedSessionController;
 use App\Http\Controllers\WooCommerce\InstallController;
 use App\Http\Controllers\WooCommerce\InvoicingController;
+use App\Http\Controllers\WooCommerce\OrderWebhookController;
 use App\Http\Controllers\WooCommerce\PortalSettingsController;
 use App\Http\Controllers\WooCommerce\RefundMirrorController;
 use App\Http\Controllers\WooCommerce\Storefront\WooCardUpdateCallbackController;
@@ -131,6 +132,18 @@ Route::middleware(VerifyWooCommerceSignature::class)
         // POST, not GET — the plugin's GET signer excludes the query string.
         Route::post('/orders/documents', [InvoicingController::class, 'documents'])
             ->name('woocommerce.invoicing.documents');
+
+        /*
+        | Outbound webhooks — EVERY WooCommerce order to the merchant's own URL.
+        | /webhook-settings tells the plugin's order hook whether anyone listens
+        | (a shop with no webhook costs zero calls); /orders/webhook reports one
+        | paid order, once. See OrderWebhookController.
+        */
+        Route::get('/webhook-settings', [OrderWebhookController::class, 'settings'])
+            ->name('woocommerce.webhooks.settings');
+        Route::post('/orders/webhook', [OrderWebhookController::class, 'report'])
+            ->middleware(RejectReplayedWooSignature::class)
+            ->name('woocommerce.webhooks.report');
 
         /*
          * REFUNDS MADE INSIDE WOOCOMMERCE. Merchants do not work in one admin,

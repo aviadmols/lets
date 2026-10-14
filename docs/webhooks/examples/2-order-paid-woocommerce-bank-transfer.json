@@ -1,0 +1,96 @@
+{
+    "event_id": "evt_8a17c3789ab034ec9b3d413bfcd94c89",
+    "topic": "order.paid",
+    "api_version": "2026-10-14",
+    "created_at": "2026-10-14T14:15:18+00:00",
+    "test": true,
+    "shop": {
+        "id": 1,
+        "name": "קפה הבית",
+        "domain": "coffee-example.co.il",
+        "platform": "woocommerce"
+    },
+    "data": {
+        "charge": {
+            "id": null,
+            "status": "succeeded",
+            "context": "store_order",
+            "amount": 349.0,
+            "currency": "ILS",
+            "gateway": "bacs",
+            "transaction_uid": null,
+            "idempotency_key": null,
+            "attempt": null,
+            "failure_code": null,
+            "failure_message": null,
+            "will_retry": false,
+            "next_retry_at": null,
+            "charged_at": "2026-10-14T10:05:00+03:00"
+        },
+        "order": {
+            "id": "10458",
+            "number": "10458",
+            "status": "processing",
+            "role": "checkout",
+            "parent_order_id": null,
+            "currency": "ILS",
+            "total": 349.0,
+            "subtotal": 335.0,
+            "discount_total": 0.0,
+            "shipping_total": 14.0,
+            "tax_total": 53.24,
+            "payment_method": "bacs",
+            "payment_method_title": "העברה בנקאית",
+            "transaction_id": null,
+            "customer_note": null,
+            "created_at": "2026-10-13T18:40:10+03:00",
+            "paid_at": "2026-10-14T10:05:00+03:00",
+            "billing": {
+                "first_name": "יוסי",
+                "last_name": "כהן",
+                "company": null,
+                "address_1": "הנביאים 4",
+                "address_2": null,
+                "city": "ירושלים",
+                "state": null,
+                "postcode": "6100000",
+                "country": "IL",
+                "email": "yossi.cohen@example.com",
+                "phone": "052-7654321"
+            },
+            "shipping": {
+                "first_name": "יוסי",
+                "last_name": "כהן",
+                "company": null,
+                "address_1": "הנביאים 4",
+                "address_2": null,
+                "city": "ירושלים",
+                "state": null,
+                "postcode": "6100000",
+                "country": "IL",
+                "email": "yossi.cohen@example.com",
+                "phone": "052-7654321"
+            },
+            "items": [
+                {
+                    "product_id": "140",
+                    "variation_id": null,
+                    "sku": "GRN-PRO",
+                    "name": "מטחנת קפה ידנית",
+                    "quantity": 1,
+                    "subtotal": 335.0,
+                    "total": 335.0,
+                    "after_sell": false
+                }
+            ],
+            "coupons": []
+        },
+        "customer": {
+            "name": "יוסי כהן",
+            "email": "yossi.cohen@example.com",
+            "phone": "052-7654321",
+            "external_id": null
+        },
+        "subscription": null
+    }
+}

@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Domain\Installments\Contracts\DepositTokenResolver;
+use App\Domain\OutboundWebhooks\Listeners\PublishChargeFailedWebhook;
+use App\Domain\OutboundWebhooks\Listeners\PublishLedgerSucceededWebhook;
 use App\Events\ChargeFailed;
 use App\Events\ChargeSucceeded;
 use App\Events\LedgerRowRefunded;
@@ -109,6 +111,13 @@ class AppServiceProvider extends ServiceProvider
         Event::listen('shopify.order.paid', AccruePointsFromShopifyOrder::class);
         // ...and the reverse: a refund takes back what the refunded money earned.
         Event::listen(LedgerRowRefunded::class, ClawbackPointsOnRefund::class);
+
+        // OUTBOUND WEBHOOKS — the merchant's own URL hears every paid order and
+        // every recurring charge, won or lost. Observers again: the publisher
+        // waits for the commit and never throws. (The Shopify-Payments rail's
+        // cycles are announced by SubscriptionWebhookHandler, where they resolve.)
+        Event::listen(LedgerRowSucceeded::class, PublishLedgerSucceededWebhook::class);
+        Event::listen(ChargeFailed::class, PublishChargeFailedWebhook::class);
 
         // TENANT BINDING ON LIVEWIRE UPDATES. Filament does NOT make the panel's
         // ->middleware() persistent for /livewire/update requests (only a hardcoded

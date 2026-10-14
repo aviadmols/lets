@@ -1,0 +1,75 @@
+{
+    "event_id": "evt_4ce90317fabe78defdde4af64bbb4c32",
+    "topic": "recurring_charge.failed",
+    "api_version": "2026-10-14",
+    "created_at": "2026-10-14T14:15:18+00:00",
+    "test": true,
+    "shop": {
+        "id": 1,
+        "name": "קפה הבית",
+        "domain": "coffee-example.co.il",
+        "platform": "woocommerce"
+    },
+    "data": {
+        "charge": {
+            "id": null,
+            "status": "failed",
+            "context": "recurring",
+            "amount": 129.9,
+            "currency": "ILS",
+            "gateway": "payplus",
+            "transaction_uid": null,
+            "idempotency_key": null,
+            "attempt": 1,
+            "failure_code": "1",
+            "failure_message": "עסקה לא אושרה - סירוב חברת האשראי",
+            "will_retry": true,
+            "next_retry_at": "2026-10-17T09:00:00+00:00",
+            "charged_at": null
+        },
+        "order": {
+            "id": "9871",
+            "number": null,
+            "status": null,
+            "role": null,
+            "parent_order_id": null,
+            "currency": "ILS",
+            "total": null,
+            "subtotal": null,
+            "discount_total": null,
+            "shipping_total": null,
+            "tax_total": null,
+            "payment_method": null,
+            "payment_method_title": null,
+            "transaction_id": null,
+            "customer_note": null,
+            "created_at": null,
+            "paid_at": null,
+            "billing": null,
+            "shipping": null,
+            "items": [],
+            "coupons": []
+        },
+        "customer": {
+            "name": "מיכל אברהם",
+            "email": "michal.a@example.com",
+            "phone": "054-1112233",
+            "external_id": "402"
+        },
+        "subscription": {
+            "id": 1,
+            "public_id": "pln_8kq2m7x4",
+            "kind": "recurring",
+            "status": "active",
+            "product_title": "מנוי פולי קפה חודשי",
+            "amount": 129.9,
+            "frequency": "monthly",
+            "interval_count": 1,
+            "next_charge_at": "2026-11-14T09:00:00+00:00",
+            "total_amount": 0.0,
+            "total_charged": 649.5,
+            "remaining_amount": null,
+            "payment_sequence": 6
+        }
+    }
+}

@@ -1,0 +1,72 @@
+{
+    "event_id": "evt_84a0ebc1d82b6c53f98140b25ad677f8",
+    "topic": "recurring_charge.succeeded",
+    "api_version": "2026-10-14",
+    "created_at": "2026-10-14T14:15:18+00:00",
+    "test": true,
+    "shop": {
+        "id": 2,
+        "name": "קפה הבית",
+        "domain": "coffee-example.myshopify.com",
+        "platform": "shopify"
+    },
+    "data": {
+        "charge": {
+            "id": 1,
+            "status": "succeeded",
+            "context": "recurring",
+            "amount": 99.0,
+            "currency": "ILS",
+            "gateway": "shopify_payments",
+            "transaction_uid": "gid://shopify/SubscriptionBillingAttempt/61190227",
+            "idempotency_key": "sba:1:2026-10-14",
+            "attempt": null,
+            "failure_code": null,
+            "failure_message": null,
+            "will_retry": false,
+            "next_retry_at": null,
+            "charged_at": "2026-10-14T09:02:11+00:00"
+        },
+        "order": {
+            "id": "gid://shopify/Order/5839377",
+            "number": null,
+            "status": null,
+            "role": null,
+            "parent_order_id": null,
+            "currency": "ILS",
+            "total": 99.0,
+            "subtotal": null,
+            "discount_total": null,
+            "shipping_total": null,
+            "tax_total": null,
+            "payment_method": "shopify_payments",
+            "payment_method_title": null,
+            "transaction_id": null,
+            "customer_note": null,
+            "created_at": null,
+            "paid_at": null,
+            "billing": null,
+            "shipping": null,
+            "items": [],
+            "coupons": []
+        },
+        "customer": {
+            "name": "יוסי כהן",
+            "email": "yossi.cohen@example.com",
+            "phone": null,
+            "external_id": "gid://shopify/Customer/7712004551"
+        },
+        "subscription": {
+            "id": 1,
+            "public_id": "gid://shopify/SubscriptionContract/28451930",
+            "kind": "recurring",
+            "status": "active",
+            "product_title": "קפסולות 60 יחידות",
+            "amount": 99.0,
+            "frequency": "monthly",
+            "interval_count": 1,
+            "next_charge_at": "2026-11-14T00:00:00+00:00",
+            "billing_cycle": "2026-10-14"
+        }
+    }
+}

@@ -11,6 +11,7 @@ use App\Domain\Campaigns\Models\GiftExportRun;
 use App\Domain\Campaigns\Models\GiftRecipient;
 use App\Domain\Installments\Models\CardUpdateLink;
 use App\Domain\Installments\Models\TokenRecoveryResult;
+use App\Domain\OutboundWebhooks\Models\WebhookDelivery;
 use App\Domain\Refunds\Models\RefundRequest;
 use App\Domain\Upsell\Models\UpsellOfferEvent;
 use App\Models\CustomerLoginCode;
@@ -101,6 +102,7 @@ final class PersonalDataEraser
                 ->where(fn (Builder $q) => $this->byIdOrEmail($q, 'shopify_customer_gid',
                     $customerId !== null ? self::GID_CUSTOMER_PREFIX.$customerId : null, 'customer_email', $email))),
             'webhook_events' => $this->scrubWebhooks($shopId, $customerId, $email, $orderIds),
+            'webhook_deliveries' => $this->deleteOutboundDeliveries($shopId, $customerId, $email, $ledgerIds),
             'email_campaign_recipients' => EmailCampaignRecipient::query()->where('shop_id', $shopId)
                 ->where(fn (Builder $q) => $this->byIdOrEmail($q, 'customer_ref', $customerId, 'email', $email))->delete(),
             'customer_login_tokens' => CustomerLoginToken::query()->where('shop_id', $shopId)
@@ -149,6 +151,7 @@ final class PersonalDataEraser
             'installment_payments' => $this->scrubJsonColumns(InstallmentPayment::query()->where('shop_id', $shopId), ['raw_response_masked']),
             'subscription_contracts' => $this->scrubContracts(SubscriptionContract::query()->where('shop_id', $shopId), true),
             'webhook_events' => WebhookEvent::query()->where('shop_id', $shopId)->whereNotNull('raw_payload')->update(['raw_payload' => null]),
+            'webhook_deliveries' => WebhookDelivery::query()->where('shop_id', $shopId)->delete(),
             'email_campaign_recipients' => EmailCampaignRecipient::query()->where('shop_id', $shopId)->delete(),
             'customer_login_tokens' => CustomerLoginToken::query()->where('shop_id', $shopId)->delete(),
             'customer_login_codes' => CustomerLoginCode::query()->where('shop_id', $shopId)->delete(),
@@ -266,6 +269,33 @@ final class PersonalDataEraser
             });
 
         return $count;
+    }
+
+    /**
+     * The outbound-webhook log is a copy of what we sent the merchant — the
+     * customer's name, email and phone sit inside `payload`. It is a log, so the
+     * customer's rows are deleted outright: matched by email anywhere in the
+     * payload, by their store id, or by a ledger row of theirs.
+     *
+     * @param  Collection<int, mixed>  $ledgerIds
+     */
+    private function deleteOutboundDeliveries(int $shopId, ?string $customerId, ?string $email, Collection $ledgerIds): int
+    {
+        return WebhookDelivery::query()
+            ->where('shop_id', $shopId)
+            ->where(function (Builder $q) use ($customerId, $email, $ledgerIds): void {
+                $q->whereRaw('1 = 0');
+                if ($email !== null) {
+                    $q->orWhereRaw('LOWER(CAST(payload AS TEXT)) LIKE ?', ['%'.addcslashes($email, '%_\\').'%']);
+                }
+                if ($customerId !== null) {
+                    $q->orWhereRaw('CAST(payload AS TEXT) LIKE ?', ['%"external_id":"'.addcslashes($customerId, '%_\\').'"%']);
+                }
+                foreach ($ledgerIds as $ledgerId) {
+                    $q->orWhere('event_key', 'ledger:'.(int) $ledgerId.':succeeded');
+                }
+            })
+            ->delete();
     }
 
     /** @param Collection<int, mixed> $phones */

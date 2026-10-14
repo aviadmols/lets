@@ -5434,3 +5434,34 @@ button.rc-fb-node:focus-visible {
     color: var(--rc-ink-muted);
 }
 
+/* ============================================================
+   Webhooks — Settings → Webhooks (the JSON blocks + the generator row).
+   TOKENS: --rc-space-*, --rc-radius-control, --rc-border, --rc-surface-sunk,
+   --rc-ink. Logical properties only (RTL-safe); JSON always reads LTR (.rc-ident).
+   ============================================================ */
+
+.rc-webhooks-json {
+    margin: 0;
+    margin-block: var(--rc-space-2);
+    padding: var(--rc-space-3);
+    max-block-size: 420px;
+    overflow: auto;
+    background: var(--rc-surface-sunk);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    color: var(--rc-ink);
+    font: 400 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: pre;
+}
+
+.rc-webhooks-generator {
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: var(--rc-space-3);
+    margin-block-start: var(--rc-space-3);
+}
+
+.rc-webhooks-generator__head { margin-block-start: var(--rc-space-4); }
+
+.rc-webhooks-pager { margin-block-start: var(--rc-space-4); }
+

@@ -51,6 +51,7 @@ final class PersonalDataRegistry
         'installment_payments' => ['raw_response_masked'],
         'subscription_contracts' => ['customer_email', 'customer_name', 'shopify_customer_gid', 'card_brand', 'card_last_four', 'card_exp', 'lines'],
         'webhook_events' => ['raw_payload'],
+        'webhook_deliveries' => ['payload', 'response_body'],                               // row deleted
         'email_campaign_recipients' => ['email', 'customer_name', 'customer_ref'],          // row deleted
         'customer_login_tokens' => ['email', 'customer_name', 'customer_ref', 'recipient_id', 'consumed_ip_hash', 'consumed_user_agent'], // row deleted
         'customer_login_codes' => ['destination_hash', 'ip_hash'],                          // row deleted

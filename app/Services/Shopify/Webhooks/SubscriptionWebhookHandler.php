@@ -2,6 +2,7 @@
 
 namespace App\Services\Shopify\Webhooks;
 
+use App\Domain\OutboundWebhooks\WebhookPublisher;
 use App\Domain\ShopifySubscriptions\ContractActivation;
 use App\Domain\ShopifySubscriptions\ContractBackfill;
 use App\Domain\ShopifySubscriptions\ContractMirror;
@@ -38,6 +39,7 @@ final class SubscriptionWebhookHandler implements WebhookHandler
         private readonly ContractMirror $mirror,
         private readonly ContractBackfill $backfill,
         private readonly ContractActivation $activation,
+        private readonly WebhookPublisher $webhooks,
     ) {}
 
     public function handle(WebhookEvent $event): void
@@ -156,6 +158,10 @@ final class SubscriptionWebhookHandler implements WebhookHandler
             if ($status === SubscriptionBillingAttempt::STATUS_SUCCEEDED) {
                 AdvanceContractScheduleJob::dispatch((int) $shop->getKey(), (int) $attempt->getKey());
             }
+
+            // The merchant's own webhook URL hears the outcome (keyed per attempt +
+            // status, so this twice-delivered webhook announces it once).
+            $this->webhooks->billingAttemptResolved($attempt);
         }
 
         // Whatever happened, our copy of the contract just changed (next billing

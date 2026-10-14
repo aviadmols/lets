@@ -1,0 +1,109 @@
+{
+    "event_id": "evt_3c6c375681bba5949ef9e77f6a74c74d",
+    "topic": "order.paid",
+    "api_version": "2026-10-14",
+    "created_at": "2026-10-14T14:15:18+00:00",
+    "test": true,
+    "shop": {
+        "id": 1,
+        "name": "קפה הבית",
+        "domain": "coffee-example.co.il",
+        "platform": "woocommerce"
+    },
+    "data": {
+        "charge": {
+            "id": null,
+            "status": "succeeded",
+            "context": "store_order",
+            "amount": 129.9,
+            "currency": "ILS",
+            "gateway": "lets_payplus",
+            "transaction_uid": "c41e9d02-77aa-4b3e-8f15-2d9c6e0b5a13",
+            "idempotency_key": null,
+            "attempt": null,
+            "failure_code": null,
+            "failure_message": null,
+            "will_retry": false,
+            "next_retry_at": null,
+            "charged_at": "2026-10-14T09:00:07+03:00"
+        },
+        "order": {
+            "id": "10461",
+            "number": "10461",
+            "status": "processing",
+            "role": "recurring_order",
+            "parent_order_id": null,
+            "currency": "ILS",
+            "total": 129.9,
+            "subtotal": 129.9,
+            "discount_total": 0.0,
+            "shipping_total": 0.0,
+            "tax_total": 19.82,
+            "payment_method": "lets_payplus",
+            "payment_method_title": "כרטיס אשראי (PayPlus)",
+            "transaction_id": "c41e9d02-77aa-4b3e-8f15-2d9c6e0b5a13",
+            "customer_note": null,
+            "created_at": "2026-10-14T09:00:07+03:00",
+            "paid_at": "2026-10-14T09:00:07+03:00",
+            "billing": {
+                "first_name": "מיכל",
+                "last_name": "אברהם",
+                "company": null,
+                "address_1": "הגפן 8",
+                "address_2": null,
+                "city": "חיפה",
+                "state": null,
+                "postcode": "6100000",
+                "country": "IL",
+                "email": "michal.a@example.com",
+                "phone": "054-1112233"
+            },
+            "shipping": {
+                "first_name": "מיכל",
+                "last_name": "אברהם",
+                "company": null,
+                "address_1": "הגפן 8",
+                "address_2": null,
+                "city": "חיפה",
+                "state": null,
+                "postcode": "6100000",
+                "country": "IL",
+                "email": "michal.a@example.com",
+                "phone": "054-1112233"
+            },
+            "items": [
+                {
+                    "product_id": "88",
+                    "variation_id": "91",
+                    "sku": "COF-ETH-1KG",
+                    "name": "מנוי פולי קפה חודשי",
+                    "quantity": 1,
+                    "subtotal": 129.9,
+                    "total": 129.9,
+                    "after_sell": false
+                }
+            ],
+            "coupons": []
+        },
+        "customer": {
+            "name": "מיכל אברהם",
+            "email": "michal.a@example.com",
+            "phone": "054-1112233",
+            "external_id": "402"
+        },
+        "subscription": {
+            "id": 1,
+            "public_id": "pln_8kq2m7x4",
+            "kind": "recurring",
+            "status": "active",
+            "product_title": "מנוי פולי קפה חודשי",
+            "amount": 129.9,
+            "frequency": "monthly",
+            "interval_count": 1,
+            "next_charge_at": "2026-11-14T09:00:00+00:00",
+            "total_amount": 0.0,
+            "total_charged": 519.6,
+            "remaining_amount": null
+        }
+    }
+}

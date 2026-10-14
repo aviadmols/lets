@@ -25,8 +25,9 @@ use Illuminate\Support\Facades\Log;
  *     connect (DNS rebinding, TTL 0) cannot slip between the two lookups.
  *
  * The same walls guard every OTHER merchant-steered outbound host — the
- * WooCommerce store (WooStoreEndpoint) and the merchant's own SMTP relay
- * (MailTransport) — through vet() / refusalForHost(), so there is one
+ * WooCommerce store (WooStoreEndpoint), the merchant's own SMTP relay
+ * (MailTransport) and the merchant's outbound webhook URLs (WebhookSender) —
+ * through vet() / refusalForHost(), so there is one
  * definition of "an address we may connect to", not three.
  *
  * Never throws: an unfetchable site is a typed reason on the profile row.

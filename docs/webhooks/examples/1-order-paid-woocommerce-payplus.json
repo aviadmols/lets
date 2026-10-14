@@ -1,0 +1,108 @@
+{
+    "event_id": "evt_cd36ec10f6182f94146ea01b738bd772",
+    "topic": "order.paid",
+    "api_version": "2026-10-14",
+    "created_at": "2026-10-14T14:15:18+00:00",
+    "test": true,
+    "shop": {
+        "id": 1,
+        "name": "קפה הבית",
+        "domain": "coffee-example.co.il",
+        "platform": "woocommerce"
+    },
+    "data": {
+        "charge": {
+            "id": null,
+            "status": "succeeded",
+            "context": "store_order",
+            "amount": 229.8,
+            "currency": "ILS",
+            "gateway": "lets_payplus",
+            "transaction_uid": "7f3c2a10-5b8e-4c1d-9a2f-0e6b4d8c1a57",
+            "idempotency_key": null,
+            "attempt": null,
+            "failure_code": null,
+            "failure_message": null,
+            "will_retry": false,
+            "next_retry_at": null,
+            "charged_at": "2026-10-14T09:13:02+03:00"
+        },
+        "order": {
+            "id": "10452",
+            "number": "10452",
+            "status": "processing",
+            "role": "checkout",
+            "parent_order_id": null,
+            "currency": "ILS",
+            "total": 229.8,
+            "subtotal": 239.8,
+            "discount_total": 24.0,
+            "shipping_total": 14.0,
+            "tax_total": 35.06,
+            "payment_method": "lets_payplus",
+            "payment_method_title": "כרטיס אשראי (PayPlus)",
+            "transaction_id": "7f3c2a10-5b8e-4c1d-9a2f-0e6b4d8c1a57",
+            "customer_note": "נא להשאיר ליד הדלת",
+            "created_at": "2026-10-14T09:12:44+03:00",
+            "paid_at": "2026-10-14T09:13:02+03:00",
+            "billing": {
+                "first_name": "דנה",
+                "last_name": "לוי",
+                "company": null,
+                "address_1": "הרצל 12",
+                "address_2": null,
+                "city": "תל אביב",
+                "state": null,
+                "postcode": "6100000",
+                "country": "IL",
+                "email": "dana.levi@example.com",
+                "phone": "050-1234567"
+            },
+            "shipping": {
+                "first_name": "דנה",
+                "last_name": "לוי",
+                "company": null,
+                "address_1": "הרצל 12",
+                "address_2": null,
+                "city": "תל אביב",
+                "state": null,
+                "postcode": "6100000",
+                "country": "IL",
+                "email": "dana.levi@example.com",
+                "phone": "050-1234567"
+            },
+            "items": [
+                {
+                    "product_id": "88",
+                    "variation_id": "91",
+                    "sku": "COF-ETH-1KG",
+                    "name": "פולי קפה אתיופיה 1 קילו",
+                    "quantity": 2,
+                    "subtotal": 179.8,
+                    "total": 161.82,
+                    "after_sell": false
+                },
+                {
+                    "product_id": "120",
+                    "variation_id": null,
+                    "sku": "MUG-01",
+                    "name": "ספל קרמיקה",
+                    "quantity": 1,
+                    "subtotal": 60.0,
+                    "total": 53.98,
+                    "after_sell": false
+                }
+            ],
+            "coupons": [
+                "WELCOME10"
+            ]
+        },
+        "customer": {
+            "name": "דנה לוי",
+            "email": "dana.levi@example.com",
+            "phone": "050-1234567",
+            "external_id": "318"
+        },
+        "subscription": null
+    }
+}

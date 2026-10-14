@@ -2,6 +2,7 @@
 
 namespace App\Domain\ShopifySubscriptions\Jobs;
 
+use App\Domain\OutboundWebhooks\WebhookPublisher;
 use App\Models\Shop;
 use App\Models\SubscriptionBillingAttempt;
 use App\Models\SubscriptionContract;
@@ -149,6 +150,8 @@ final class BillingAttemptJob implements ShouldQueue, ShouldBeUnique
                 'error_message' => json_encode($errors, JSON_UNESCAPED_UNICODE),
                 'resolved_at' => now(),
             ])->save();
+
+            app(WebhookPublisher::class)->billingAttemptResolved($attempt);
 
             return;
         }

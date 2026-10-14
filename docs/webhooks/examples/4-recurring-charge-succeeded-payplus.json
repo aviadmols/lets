@@ -1,0 +1,74 @@
+{
+    "event_id": "evt_aee4a5e767341fbce4328becfc082c37",
+    "topic": "recurring_charge.succeeded",
+    "api_version": "2026-10-14",
+    "created_at": "2026-10-14T14:15:18+00:00",
+    "test": true,
+    "shop": {
+        "id": 1,
+        "name": "קפה הבית",
+        "domain": "coffee-example.co.il",
+        "platform": "woocommerce"
+    },
+    "data": {
+        "charge": {
+            "id": 1,
+            "status": "succeeded",
+            "context": "recurring",
+            "amount": 129.9,
+            "currency": "ILS",
+            "gateway": "payplus",
+            "transaction_uid": "c41e9d02-77aa-4b3e-8f15-2d9c6e0b5a13",
+            "idempotency_key": "plan:1:cycle:2026-10-14",
+            "attempt": null,
+            "failure_code": null,
+            "failure_message": null,
+            "will_retry": false,
+            "next_retry_at": null,
+            "charged_at": "2026-10-14T14:15:18+00:00"
+        },
+        "order": {
+            "id": "9871",
+            "number": null,
+            "status": null,
+            "role": null,
+            "parent_order_id": null,
+            "currency": "ILS",
+            "total": 129.9,
+            "subtotal": null,
+            "discount_total": null,
+            "shipping_total": null,
+            "tax_total": null,
+            "payment_method": "payplus",
+            "payment_method_title": null,
+            "transaction_id": "c41e9d02-77aa-4b3e-8f15-2d9c6e0b5a13",
+            "customer_note": null,
+            "created_at": null,
+            "paid_at": null,
+            "billing": null,
+            "shipping": null,
+            "items": [],
+            "coupons": []
+        },
+        "customer": {
+            "name": "מיכל אברהם",
+            "email": "michal.a@example.com",
+            "phone": "054-1112233",
+            "external_id": "402"
+        },
+        "subscription": {
+            "id": 1,
+            "public_id": "pln_8kq2m7x4",
+            "kind": "recurring",
+            "status": "active",
+            "product_title": "מנוי פולי קפה חודשי",
+            "amount": 129.9,
+            "frequency": "monthly",
+            "interval_count": 1,
+            "next_charge_at": "2026-11-14T09:00:00+00:00",
+            "total_amount": 0.0,
+            "total_charged": 649.5,
+            "remaining_amount": null
+        }
+    }
+}
