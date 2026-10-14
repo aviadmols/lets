@@ -31,5 +31,12 @@ final readonly class ProductData
         public ?CarbonInterface $updatedAtExternal = null,
         /** @var array<int, VariantData> */
         public array $variants = [],
+        /**
+         * Upstream categories as id => name. Null = the source does not report categories
+         * (Shopify), so the upserter leaves the stored links alone; [] = in none.
+         *
+         * @var array<string, string>|null
+         */
+        public ?array $categories = null,
     ) {}
 }

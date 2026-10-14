@@ -43,6 +43,27 @@ final class UpsellCardLayoutTest extends TestCase
         );
     }
 
+    /**
+     * The shelf is the thank-you page itself: the renderer must draw its headline + offer
+     * regions, the stylesheet must style them (red headline, static, columns held), and the
+     * plugin must clear the order details when it is on.
+     */
+    public function test_the_shelf_layout_is_drawn_styled_and_clears_the_order_details(): void
+    {
+        $js = (string) file_get_contents(base_path(self::PLUGIN_JS));
+        $css = (string) file_get_contents(base_path(self::PLUGIN_CSS));
+        $thankyou = (string) file_get_contents(base_path('plugins/lets-payplus-woocommerce/assets/js/thankyou-upsell.js'));
+        $storefront = (string) file_get_contents(base_path('plugins/lets-payplus-woocommerce/assets/css/lets.css'));
+
+        $this->assertStringContainsString('function buildShelfLayout', $js);
+        $this->assertStringContainsString("['media_side', 'grid', 'shelf']", $js);
+        $this->assertMatchesRegularExpression('/data-layout="shelf"\] \.lets-ppu__headline\s*\{[^}]*color:\s*var\(--lets-ppu-alert\)/s', $css);
+        $this->assertMatchesRegularExpression('/data-layout="shelf"\] \.lets-ppu__grid\s*\{[^}]*grid-template-columns:\s*repeat\(var\(--lets-ppu-grid-cols/s', $css);
+        $this->assertMatchesRegularExpression('/data-layout="shelf"\]\s*\{[^}]*background:\s*transparent/s', $css, 'no white box');
+        $this->assertStringContainsString("layout === 'shelf'", $thankyou);
+        $this->assertStringContainsString('body.lets-pp-shelf-page .woocommerce-order > :not([data-lets-upsell])', $storefront);
+    }
+
     public function test_the_side_by_side_layout_is_actually_styled(): void
     {
         $css = (string) file_get_contents(base_path(self::PLUGIN_CSS));

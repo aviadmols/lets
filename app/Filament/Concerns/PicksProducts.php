@@ -66,12 +66,21 @@ trait PicksProducts
 
         $like = '%'.$term.'%';
 
+        // The title matches word by word, in any order and case: "מדוע ימין שמאל" finds
+        // "מדוע אתה מצביע ימין ומקבל שמאל", and a title with a double or non-breaking space,
+        // or ״ where the merchant typed " (צה״ל / צה"ל), is still found.
+        $words = $this->pickerTitleWords($term);
+
         // Tenant scope is automatic via BelongsToShop — never withoutGlobalScope.
         return Product::query()
             ->where('status', Product::STATUS_ACTIVE)
             ->with(['variants' => fn ($q) => $q->orderBy('position')->orderBy('id')])
-            ->where(function ($q) use ($like): void {
-                $q->where('title', 'like', $like)
+            ->where(function ($q) use ($like, $words): void {
+                $q->where(function ($tq) use ($words): void {
+                    foreach ($words as $word) {
+                        $tq->whereRaw('LOWER(title) LIKE ?', ['%'.$word.'%']);
+                    }
+                })
                     ->orWhere('external_id', 'like', $like)
                     ->orWhereHas('variants', function ($vq) use ($like): void {
                         $vq->where('title', 'like', $like)
@@ -83,6 +92,23 @@ trait PicksProducts
             ->orderBy('id')
             ->limit(self::PICKER_RESULT_LIMIT)
             ->get();
+    }
+
+    /**
+     * The search term as lower-case title words: split on any space (non-breaking too) and on
+     * quote marks — Hebrew ״ ׳ and their ASCII look-alikes — so neither side's choice of
+     * mark decides a match. LIKE wildcards in a word are escaped by dropping them.
+     *
+     * @return list<string>
+     */
+    protected function pickerTitleWords(string $term): array
+    {
+        $parts = preg_split('/[\s\x{00A0}"\'`\x{05F3}\x{05F4}\x{201C}\x{201D}\x{2018}\x{2019}%_]+/u', mb_strtolower($term)) ?: [];
+
+        $words = array_values(array_unique(array_filter($parts, static fn (string $w): bool => $w !== '')));
+
+        // Nothing left (a term of only marks): match the whole term, as before.
+        return $words !== [] ? $words : [mb_strtolower($term)];
     }
 
     /**

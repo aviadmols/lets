@@ -145,6 +145,20 @@ final class UpsellCardPresenterTest extends TestCase
         $this->assertSame(['נשלח יחד', 'בלי כרטיס'], $sample['facts']);
     }
 
+    /** The shelf's "thank you" headline rides in content, in the card language, on the live card and the sample. */
+    public function test_the_shelf_thanks_title_is_in_the_card_language(): void
+    {
+        $offer = $this->offer(base: 10.0);
+        $app = MerchantUpsellAppearance::current();
+        $app->forceFill(['layout' => MerchantUpsellAppearance::LAYOUT_SHELF, 'card_locale' => MerchantUpsellAppearance::LOCALE_HE]);
+
+        $vm = $this->presenter()->forOffer($offer, $app, UpsellCardPresenter::PLATFORM_WOOCOMMERCE);
+
+        $this->assertSame('shelf', $vm['appearance']['layout']);
+        $this->assertSame('תודה על הרכישה', $vm['content']['thanks_title']);
+        $this->assertSame('תודה על הרכישה', $this->presenter()->sample($app, UpsellCardPresenter::PLATFORM_WOOCOMMERCE)['content']['thanks_title']);
+    }
+
     private function presenter(): UpsellCardPresenter
     {
         return app(UpsellCardPresenter::class);

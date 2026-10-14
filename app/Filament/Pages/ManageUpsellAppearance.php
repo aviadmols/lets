@@ -169,10 +169,10 @@ class ManageUpsellAppearance extends Page implements HasForms
             ->columns(2);
     }
 
-    /** Is the form's CURRENT arrangement the grid? Drives which controls are shown. */
+    /** Is the form's CURRENT arrangement a tile layout (grid or shelf)? Drives which controls are shown. */
     private function isGrid(Get $get): bool
     {
-        return $get('layout') === MerchantUpsellAppearance::LAYOUT_GRID;
+        return in_array($get('layout'), MerchantUpsellAppearance::TILE_LAYOUTS, true);
     }
 
     /** Elements — the ordered, toggleable card parts. Locked parts can't be removed or disabled. */

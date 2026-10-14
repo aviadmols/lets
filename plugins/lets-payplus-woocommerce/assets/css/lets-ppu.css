@@ -17,13 +17,14 @@
  *   --lets-ppu-grid-cols     grid layout: tiles per row on a wide card (3..8)
  *   --lets-ppu-clock-pct     grid layout: how much of the window is left (the draining line)
  * ENUM STATE via data-attributes on the root:
- *   data-theme=light|dark  data-button=solid|outline  data-layout=stacked|media_side|grid
+ *   data-theme=light|dark  data-button=solid|outline  data-layout=stacked|media_side|grid|shelf
  *   data-ratio=natural|square  data-decline=link|button  data-shadow=none|soft|elevated
  *   data-font=heebo|system|inherit  data-display=same|serif
  * STATE via a root class: .is-loading .is-accepting .is-done .is-error
  * BUNDLE via data-bundle-cols=1..4 on the root (card width), data-cols=1..4 on
  * the slide track (products per slide), .is-picked on a tile, .is-full on the root.
- * GRID LAYOUT (the many-products module, last section): no card chrome, no
+ * SHELF LAYOUT (a thank-you page: centred, static, red headline) is the very last section.
+ * GRID LAYOUT (the many-products module): no card chrome, no
  * shadows, hairlines; sized by @container so it fits any store's page.
  * ===================================================================== */
 
@@ -57,6 +58,7 @@
   --lets-ppu-skeleton: rgba(0, 0, 0, 0.06);
   --lets-ppu-skeleton-sheen: rgba(0, 0, 0, 0.11);
   --lets-ppu-warn: #c0392b;
+  --lets-ppu-alert: #d4141c; /* the shelf's bold red headline */
   /* --- brand tokens (JS overrides accent + radius) --- */
   --lets-ppu-accent: #000000;
   --lets-ppu-accent-text: #ffffff;
@@ -1099,4 +1101,176 @@
 }
 @container (max-width: 340px) {
   .lets-ppu__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ============================ SHELF LAYOUT ============================
+   data-layout="shelf" — a thank-you page, not a card. A centred column on the
+   page's own background: no box, no shadow, no entrance animation, no hover
+   movement (static). Top to bottom:
+     .lets-ppu__thanks   ring + check, "thank you", a short accent rule
+     .lets-ppu__offer    the closing offer — hidden once it is over (.is-closed)
+        .lets-ppu__clock        the countdown, digits only
+        .lets-ppu__copy         headline (bold red) + small subcopy
+        .lets-ppu__shelf-row    price · picked-of-N · add button
+        .lets-ppu__grid         the tiles, --lets-ppu-grid-cols per row
+   Last on purpose: it outranks the grid rules above where they share a class.
+   ======================================================================= */
+.lets-ppu[data-layout="shelf"] {
+  --lets-ppu-card-shadow: none;
+  container-type: inline-size;
+  max-inline-size: 1100px;
+  margin-block: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  animation: none;
+  text-align: center;
+}
+.lets-ppu[data-layout="shelf"][data-theme="dark"] {
+  padding: 32px clamp(16px, 4cqi, 40px);
+  background: var(--lets-ppu-paper);
+}
+.lets-ppu[data-layout="shelf"] .lets-ppu__head { display: contents; }
+
+.lets-ppu__thanks {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding-block: 8px 20px;
+}
+.lets-ppu__thanks-ring { color: var(--lets-ppu-accent); line-height: 0; }
+.lets-ppu[data-layout="shelf"][data-theme="dark"] .lets-ppu__thanks-ring { color: var(--lets-ppu-ink); }
+.lets-ppu__thanks-mark { inline-size: 56px; block-size: 56px; }
+.lets-ppu__thanks-title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--lets-ppu-ink);
+}
+.lets-ppu__thanks-rule {
+  inline-size: 44px;
+  block-size: 0;
+  margin: 2px 0 0;
+  border: 0;
+  border-block-start: 2px solid var(--lets-ppu-accent);
+}
+.lets-ppu[data-layout="shelf"][data-theme="dark"] .lets-ppu__thanks-rule { border-color: var(--lets-ppu-ink); }
+
+.lets-ppu__offer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+.lets-ppu[data-layout="shelf"].is-closed .lets-ppu__offer { display: none; }
+
+.lets-ppu[data-layout="shelf"] .lets-ppu__clock {
+  min-inline-size: 0;
+  padding: 0;
+  align-items: center;
+}
+.lets-ppu[data-layout="shelf"] .lets-ppu__clock-digits {
+  font-size: 40px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.lets-ppu[data-layout="shelf"] .lets-ppu__copy {
+  align-items: center;
+  gap: 8px;
+}
+.lets-ppu[data-layout="shelf"] .lets-ppu__headline {
+  max-inline-size: 56ch;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: pre-line;
+  color: var(--lets-ppu-alert);
+}
+.lets-ppu[data-layout="shelf"] .lets-ppu__subcopy {
+  max-inline-size: 70ch;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-line;
+  opacity: 0.8;
+}
+.lets-ppu[data-layout="shelf"] .lets-ppu__media { max-inline-size: 240px; margin: 0; box-shadow: none; transition: none; }
+.lets-ppu[data-layout="shelf"] .lets-ppu__product { font-size: 15px; }
+
+.lets-ppu__shelf-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px 20px;
+}
+.lets-ppu[data-layout="shelf"] .lets-ppu__price { margin: 0; gap: 8px; }
+.lets-ppu[data-layout="shelf"] .lets-ppu__price-now { font-size: 18px; font-weight: 700; letter-spacing: 0; }
+.lets-ppu[data-layout="shelf"] .lets-ppu__price-was { font-size: 13px; font-weight: 400; }
+.lets-ppu[data-layout="shelf"] .lets-ppu__bundle-progress {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--lets-ppu-ink);
+  text-align: center;
+}
+.lets-ppu[data-layout="shelf"] .lets-ppu__actions { margin: 0; }
+.lets-ppu[data-layout="shelf"] .lets-ppu__accept {
+  inline-size: auto;
+  padding: 10px 28px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  transition: none;
+}
+.lets-ppu[data-layout="shelf"] .lets-ppu__accept:hover:not(:disabled) { transform: none; box-shadow: none; }
+.lets-ppu[data-layout="shelf"] .lets-ppu__error { text-align: center; }
+.lets-ppu[data-layout="shelf"] .lets-ppu__decline {
+  inline-size: auto;
+  margin: 0;
+  padding: 6px 4px;
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.lets-ppu[data-layout="shelf"] .lets-ppu__disclosure { margin: 0; font-size: 11px; }
+
+/* The tiles: a still shelf of covers — the title under each, nothing moves. */
+.lets-ppu[data-layout="shelf"] .lets-ppu__grid {
+  inline-size: 100%;
+  /* Held at the shop's columns however narrow — the grid's 4/3/2 steps do not apply. */
+  grid-template-columns: repeat(var(--lets-ppu-grid-cols, 5), minmax(0, 1fr));
+  gap: 28px 14px;
+  margin-block-start: 6px;
+}
+.lets-ppu[data-layout="shelf"] .lets-ppu__tile-media { border-radius: 0; transition: none; }
+.lets-ppu[data-layout="shelf"] .lets-ppu__tile-hit { gap: 6px; text-align: center; }
+.lets-ppu[data-layout="shelf"] .lets-ppu__tile-name { font-size: 12px; font-weight: 400; line-height: 1.3; }
+.lets-ppu[data-layout="shelf"] .lets-ppu__tile-price { display: none; }
+.lets-ppu[data-layout="shelf"] .lets-ppu__tile-mark {
+  inline-size: 24px;
+  block-size: 24px;
+  inset-block-end: 6px;
+  inset-inline-end: 6px;
+  transition: none;
+}
+
+/* After an add: the headline mark above already says thank you — no second check. */
+.lets-ppu[data-layout="shelf"] .lets-ppu__done .lets-ppu__check { display: none; }
+
+@container (max-width: 560px) {
+  .lets-ppu[data-layout="shelf"] .lets-ppu__grid { gap: 20px 8px; }
+  .lets-ppu[data-layout="shelf"] .lets-ppu__tile-name { font-size: 11px; }
+  .lets-ppu[data-layout="shelf"] .lets-ppu__tile-mark { inline-size: 20px; block-size: 20px; }
+  .lets-ppu[data-layout="shelf"] .lets-ppu__tile-mark svg { inline-size: 11px; block-size: 11px; }
+  .lets-ppu[data-layout="shelf"] .lets-ppu__clock-digits { font-size: 34px; }
+}
+@container (max-width: 400px) {
+  .lets-ppu[data-layout="shelf"] .lets-ppu__grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@container (max-width: 300px) {
+  .lets-ppu[data-layout="shelf"] .lets-ppu__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }

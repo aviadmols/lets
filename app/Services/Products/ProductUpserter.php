@@ -3,6 +3,7 @@
 namespace App\Services\Products;
 
 use App\Models\Product;
+use App\Models\ProductCategory;
 use App\Models\ProductVariant;
 use App\Services\Products\Data\ProductData;
 use App\Support\Tenant;
@@ -54,9 +55,35 @@ final class ProductUpserter
             );
 
             $this->syncVariants($product, $data);
+            $this->syncCategories($product, $data);
 
             return $product;
         });
+    }
+
+    /**
+     * Mirror the product's upstream categories: one row each, renamed in place, gone when
+     * the store took the product out of it. A source that reports no categories (null)
+     * leaves the stored links untouched.
+     */
+    private function syncCategories(Product $product, ProductData $data): void
+    {
+        if ($data->categories === null) {
+            return;
+        }
+
+        foreach ($data->categories as $externalId => $name) {
+            ProductCategory::query()->updateOrCreate(
+                ['product_id' => $product->id, 'external_category_id' => (string) $externalId],
+                ['name' => mb_substr($name, 0, 255)],
+            );
+        }
+
+        $stale = $product->categories();
+        if ($data->categories !== []) {
+            $stale = $stale->whereNotIn('external_category_id', array_map('strval', array_keys($data->categories)));
+        }
+        $stale->delete();
     }
 
     private function syncVariants(Product $product, ProductData $data): void

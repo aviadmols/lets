@@ -413,6 +413,73 @@
                             {{-- Bundle: search to ADD (the search stays open), the list below, then
                                  how many the customer picks, the one price, and the slide grid. --}}
                             @if($productSelectionMode === 'bundle')
+                                {{-- Where the products come from: picked one by one, or every
+                                     product in a store category (read when the card is shown). --}}
+                                <fieldset class="rc-field">
+                                    <legend class="rc-field__label">{{ __('upsell.admin.configure.bundle_source') }}</legend>
+                                    <div class="rc-pp-radio-group">
+                                        <label class="rc-pp-radio">
+                                            <input type="radio" wire:model.live="bundleSource" value="products">
+                                            <span class="rc-pp-radio__body">
+                                                <span class="rc-pp-radio__title">{{ __('upsell.admin.configure.bundle_source_products') }}</span>
+                                            </span>
+                                        </label>
+                                        <label class="rc-pp-radio">
+                                            <input type="radio" wire:model.live="bundleSource" value="category">
+                                            <span class="rc-pp-radio__body">
+                                                <span class="rc-pp-radio__title">{{ __('upsell.admin.configure.bundle_source_category') }}</span>
+                                                <span class="rc-pp-radio__hint">{{ __('upsell.admin.configure.bundle_source_category_hint', ['max' => \App\Domain\Upsell\Models\UpsellFlowOffer::BUNDLE_MAX_PRODUCTS]) }}</span>
+                                            </span>
+                                        </label>
+                                    </div>
+                                </fieldset>
+                            @endif
+
+                            @if($productSelectionMode === 'bundle' && $bundleSource === 'category')
+                                @php $categories = $this->bundleCategories(); @endphp
+                                <div class="rc-field">
+                                    <label class="rc-field__label" for="rc-bundle-category">{{ __('upsell.admin.configure.bundle_category') }}</label>
+                                    @if($categories->isEmpty())
+                                        <p class="rc-muted">
+                                            {{ __('upsell.admin.configure.bundle_categories_empty') }}
+                                            <button type="button" class="rc-link" wire:click="refreshOfferProducts">{{ __('upsell.admin.picker.refresh') }}</button>
+                                        </p>
+                                    @else
+                                        <select id="rc-bundle-category" class="rc-pp-select rc-field__control" wire:model.live="bundleCategoryId">
+                                            <option value="">{{ __('upsell.admin.configure.bundle_category_placeholder') }}</option>
+                                            @foreach($categories as $category)
+                                                <option value="{{ $category['id'] }}">{{ __('upsell.admin.configure.bundle_category_option', ['name' => $category['name'], 'count' => $category['count']]) }}</option>
+                                            @endforeach
+                                        </select>
+                                    @endif
+                                </div>
+
+                                @if($bundleCategoryId !== '')
+                                    @php $categoryRows = $this->bundleCategoryRows(); @endphp
+                                    <div class="rc-field">
+                                        <span class="rc-field__label">{{ __('upsell.admin.configure.bundle_category_products', ['count' => count($categoryRows)]) }}</span>
+                                        @forelse($categoryRows as $row)
+                                            <div class="rc-picker__selected" wire:key="bundle-cat-{{ $row['id'] }}">
+                                                <span class="rc-fb-offer__thumb">
+                                                    @if(filled($row['image']))
+                                                        <img src="{{ $row['image'] }}" alt="" class="rc-picker__thumb-img">
+                                                    @else
+                                                        <x-filament::icon icon="heroicon-o-cube" class="rc-fb-offer__thumb-icon" />
+                                                    @endif
+                                                </span>
+                                                <span class="rc-picker__selected-info">
+                                                    <span class="rc-fb-offer__name">{{ $row['title'] }}</span>
+                                                    <span class="rc-fb-offer__meta rc-iso">{{ $row['price'] }}</span>
+                                                </span>
+                                            </div>
+                                        @empty
+                                            <p class="rc-muted">{{ __('upsell.admin.configure.bundle_category_none') }}</p>
+                                        @endforelse
+                                    </div>
+                                @endif
+                            @endif
+
+                            @if($productSelectionMode === 'bundle' && $bundleSource !== 'category')
                                 @include('filament.pages.partials.product-picker', [
                                     'searchModel' => 'productSearch',
                                     'resultsMethod' => 'offerPickerResults',
@@ -445,7 +512,9 @@
                                         <p class="rc-muted">{{ __('upsell.admin.configure.bundle_products_empty') }}</p>
                                     @endforelse
                                 </div>
+                            @endif
 
+                            @if($productSelectionMode === 'bundle')
                                 <div class="rc-field">
                                     <label class="rc-field__label" for="rc-bundle-quantity">{{ __('upsell.admin.configure.bundle_quantity') }}</label>
                                     <input id="rc-bundle-quantity" type="number" min="1" step="1" class="rc-input rc-iso" wire:model="bundleQuantity">
@@ -462,12 +531,19 @@
                                 {{-- The layout (slider vs grid) is a SHOP setting shared by every
                                      offer, so it is not a field here: the drawer states which one is
                                      on and links to the one place it changes. "Products per slide"
-                                     only matters to the slider, so the grid hides it. --}}
+                                     only matters to the slider, so the grid hides it; the grid's
+                                     tiles per row may be set for this offer alone. --}}
                                 @if($this->cardLayoutIsGrid())
                                     <div class="rc-field">
-                                        <span class="rc-field__label">{{ __('upsell.admin.configure.layout') }}</span>
+                                        <label class="rc-field__label" for="rc-bundle-grid-columns">{{ __('upsell.admin.configure.bundle_grid_columns') }}</label>
+                                        <select id="rc-bundle-grid-columns" class="rc-pp-select rc-field__control" wire:model="bundleGridColumns">
+                                            <option value="">{{ __('upsell.admin.configure.bundle_grid_columns_shop', ['columns' => $this->cardGridColumns()]) }}</option>
+                                            @foreach($this->gridColumnChoices() as $columns)
+                                                <option value="{{ $columns }}">{{ $columns }}</option>
+                                            @endforeach
+                                        </select>
                                         <p class="rc-muted">
-                                            {{ __('upsell.admin.configure.layout_grid', ['columns' => $this->cardGridColumns()]) }}
+                                            {{ __('upsell.admin.configure.bundle_grid_columns_hint') }}
                                             <a class="rc-link" href="{{ $this->cardLayoutUrl() }}" wire:navigate>{{ __('upsell.admin.configure.layout_change') }}</a>
                                         </p>
                                     </div>

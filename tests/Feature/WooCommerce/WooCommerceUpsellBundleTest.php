@@ -11,6 +11,7 @@ use App\Models\CustomerConsent;
 use App\Models\InstallmentPaymentMethod;
 use App\Models\PaymentLedger;
 use App\Models\Product;
+use App\Models\ProductCategory;
 use App\Models\ProductVariant;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Contracts\PayPlusGatewayInterface;
@@ -178,6 +179,57 @@ final class WooCommerceUpsellBundleTest extends TestCase
 
         // One document for the sale, naming what was bought.
         Bus::assertDispatched(IssueDocumentJob::class, fn (IssueDocumentJob $job): bool => $job->itemTitle === 'Cosmos · Atlas · Borders');
+    }
+
+    public function test_a_category_bundle_shows_the_categorys_books_and_charges_a_pick_from_them_once(): void
+    {
+        Bus::fake([IssueDocumentJob::class]);
+        [$shop, $key, $secret, $offer, $books] = $this->bundleShop();
+
+        Tenant::run($shop, function () use ($offer, $books): void {
+            // Atlas, Borders and Cosmos are on the shelf; Dunes is in another category.
+            foreach (['A', 'B', 'C'] as $book) {
+                ProductCategory::create(['product_id' => $books[$book]->id, 'external_category_id' => '7', 'name' => 'Politics']);
+            }
+            ProductCategory::create(['product_id' => $books['D']->id, 'external_category_id' => '8', 'name' => 'Travel']);
+
+            $offer->forceFill([
+                'bundle_source' => UpsellFlowOffer::BUNDLE_SOURCE_CATEGORY,
+                'bundle_category_id' => '7',
+                'bundle_product_ids' => [],
+                'bundle_grid_columns' => 5,
+            ])->save();
+        });
+
+        $card = $this->fetchOffer($key, $secret)->assertOk()->json('offer.card');
+
+        // The category's books, by title — never the one from the other category.
+        $this->assertSame(
+            [$books['A']->id, $books['B']->id, $books['C']->id],
+            array_column($card['content']['bundle']['products'], 'id'),
+        );
+        // Five to a row for this offer, whatever the shop's grid says.
+        $this->assertSame(5, $card['appearance']['grid_columns']);
+
+        // A book outside the category is refused, and nothing is charged.
+        $this->accept($key, $secret, $offer, [$books['A']->id, $books['B']->id, $books['D']->id])
+            ->assertStatus(422)
+            ->assertJsonPath('result', 'invalid_selection');
+        $this->assertSame(0, $this->payplusCalls);
+
+        $this->accept($key, $secret, $offer, [$books['C']->id, $books['A']->id, $books['B']->id])
+            ->assertOk()->assertJsonPath('charged', true);
+        $this->accept($key, $secret, $offer, [$books['C']->id, $books['A']->id, $books['B']->id])->assertOk();
+
+        $this->assertSame([100.0], $this->charged, 'one charge, at the bundle price');
+
+        Http::assertSent(function (HttpRequest $req) use ($books): bool {
+            $lines = (array) ($req->data()['line_items'] ?? []);
+
+            return $req->method() === 'PUT'
+                && array_column($lines, 'product_id') === [(int) $books['A']->external_id, (int) $books['B']->external_id, (int) $books['C']->external_id]
+                && array_column($lines, 'total') === ['33.33', '33.33', '33.34'];
+        });
     }
 
     public function test_a_pick_that_is_not_exactly_the_bundle_is_refused_without_a_charge(): void

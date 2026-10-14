@@ -121,6 +121,17 @@ final class MerchantUpsellAppearanceTest extends TestCase
         $this->assertSame('same', $a->forceFill(['display_font' => 'comic'])->displayFont());
     }
 
+    public function test_the_shelf_layout_is_allowed_and_counts_as_a_tile_layout(): void
+    {
+        $a = new MerchantUpsellAppearance();
+
+        $this->assertSame('shelf', $a->forceFill(['layout' => 'shelf'])->layout());
+        $this->assertContains('shelf', MerchantUpsellAppearance::TILE_LAYOUTS);
+        $this->assertContains('grid', MerchantUpsellAppearance::TILE_LAYOUTS);
+        $this->assertNotContains('stacked', MerchantUpsellAppearance::TILE_LAYOUTS);
+        $this->assertSame('stacked', $a->forceFill(['layout' => 'wall'])->layout(), 'an unknown layout is the house default');
+    }
+
     public function test_the_grid_words_are_trimmed_capped_and_the_facts_line_splits_on_pipes(): void
     {
         $a = new MerchantUpsellAppearance();

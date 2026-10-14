@@ -32,6 +32,7 @@ final class WooCommerceProductSourceTest extends TestCase
                     'id' => 10, 'name' => 'Simple Sofa', 'slug' => 'simple-sofa', 'status' => 'publish',
                     'catalog_visibility' => 'visible', 'type' => 'simple', 'sku' => 'SOFA-1', 'price' => '49.90',
                     'images' => [['src' => 'https://img/sofa.jpg']], 'tags' => [['name' => 'furniture']],
+                    'categories' => [['id' => 15, 'name' => 'Living &amp; Dining', 'slug' => 'living'], ['id' => 0, 'name' => 'Broken']],
                     'date_modified_gmt' => '2026-01-02T10:00:00',
                 ],
                 [
@@ -53,6 +54,7 @@ final class WooCommerceProductSourceTest extends TestCase
         $this->assertSame(Product::ONLINE_PUBLISHED, $simple->onlineStoreStatus);
         $this->assertSame('https://img/sofa.jpg', $simple->imageUrl);
         $this->assertSame(['furniture'], $simple->tags);
+        $this->assertSame(['15' => 'Living & Dining'], $simple->categories, 'decoded, and an id-less category dropped');
         $this->assertCount(1, $simple->variants);
         $this->assertSame('SOFA-1', $simple->variants[0]->sku);
         $this->assertSame('49.90', $simple->variants[0]->price);

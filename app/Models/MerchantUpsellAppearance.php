@@ -98,7 +98,17 @@ class MerchantUpsellAppearance extends Model
 
     public const LAYOUT_GRID = 'grid';
 
-    public const LAYOUTS = [self::LAYOUT_STACKED, self::LAYOUT_MEDIA_SIDE, self::LAYOUT_GRID];
+    /**
+     * SHELF is the grid's quiet sibling for a thank-you page: a centred column — the
+     * "thank you" mark, the countdown, one bold red line of copy, the pick-and-add row,
+     * then the tiles. The same tiles as GRID; it also clears the order details off the page.
+     */
+    public const LAYOUT_SHELF = 'shelf';
+
+    public const LAYOUTS = [self::LAYOUT_STACKED, self::LAYOUT_MEDIA_SIDE, self::LAYOUT_GRID, self::LAYOUT_SHELF];
+
+    /** The layouts that draw a bundle's products as tiles in rows (no slider). */
+    public const TILE_LAYOUTS = [self::LAYOUT_GRID, self::LAYOUT_SHELF];
 
     /** grid_columns — tiles per row on a wide screen; the card narrows that by its own width. */
     public const GRID_MIN_COLUMNS = 3;

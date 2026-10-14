@@ -98,6 +98,7 @@ final class WooCommerceProductSource implements ProductSource
             tags: $this->tags($node['tags'] ?? []),
             updatedAtExternal: $this->timestamp($node['date_modified_gmt'] ?? ($node['date_modified'] ?? null)),
             variants: $variants,
+            categories: $this->categories($node['categories'] ?? []),
         );
     }
 
@@ -173,6 +174,31 @@ final class WooCommerceProductSource implements ProductSource
             static fn ($tag): string => trim((string) (((array) $tag)['name'] ?? '')),
             $tags,
         ), static fn (string $name): bool => $name !== ''));
+    }
+
+    /**
+     * WooCommerce returns categories as [{id, name, slug}]. Normalise to id => name, the
+     * name decoded (WordPress stores "&amp;" in term names).
+     *
+     * @return array<string, string>
+     */
+    private function categories(mixed $categories): array
+    {
+        if (! is_array($categories)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($categories as $category) {
+            $category = (array) $category;
+            $id = (string) ($category['id'] ?? '');
+            $name = trim(html_entity_decode((string) ($category['name'] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+            if ($id !== '' && $id !== '0' && $name !== '') {
+                $out[$id] = $name;
+            }
+        }
+
+        return $out;
     }
 
     private function price(mixed $price): string

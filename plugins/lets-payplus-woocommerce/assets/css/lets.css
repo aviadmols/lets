@@ -117,6 +117,17 @@
 }
 
 /* Thank-you post-purchase upsell. */
+/* Shelf layout: the offer is the whole thank-you page. Everything WooCommerce prints in the
+   order block around it (overview, payment, order + customer details) and the theme's own
+   page title are hidden; the card brings its own headline. Added by thankyou-upsell.js. */
+body.lets-pp-shelf-page .woocommerce-order > :not([data-lets-upsell]),
+body.lets-pp-shelf-page .woocommerce-thankyou-order-received,
+body.lets-pp-shelf-page .entry-title,
+body.lets-pp-shelf-page .page-title,
+body.lets-pp-shelf-page .woocommerce-notice--success {
+  display: none;
+}
+
 .lets-pp-upsell {
   margin: 16px 0;
 }

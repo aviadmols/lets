@@ -4,6 +4,7 @@ namespace App\Domain\Upsell\Models;
 
 use App\Domain\Upsell\Enums\OfferEventType;
 use App\Models\Concerns\BelongsToShop;
+use App\Models\MerchantUpsellAppearance;
 use App\Models\Product;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -40,12 +41,22 @@ class UpsellFlowOffer extends Model
     public const PRODUCT_MODES = [self::PRODUCT_SMART, self::PRODUCT_SPECIFIC, self::PRODUCT_BUNDLE];
 
     // === CONSTANTS — bundle + add-on window ===
-    /** The most products one bundle may list: a slider, not a catalogue. */
-    public const BUNDLE_MAX_PRODUCTS = 24;
+    /**
+     * The most products one bundle shows: a shelf, not a catalogue. Room for a 30-title
+     * shelf twice over; a category holding more shows its first 60 by title.
+     */
+    public const BUNDLE_MAX_PRODUCTS = 60;
 
     public const BUNDLE_MIN_COLUMNS = 1;
 
     public const BUNDLE_MAX_COLUMNS = 4;
+
+    /** Where a bundle's products come from: the merchant's hand-picked list, or a store category. */
+    public const BUNDLE_SOURCE_PRODUCTS = 'products';
+
+    public const BUNDLE_SOURCE_CATEGORY = 'category';
+
+    public const BUNDLE_SOURCES = [self::BUNDLE_SOURCE_PRODUCTS, self::BUNDLE_SOURCE_CATEGORY];
 
     /** How late an accept may land after the window closes: the click made at 0:01, still in flight. */
     public const WINDOW_ACCEPT_GRACE_SECONDS = 15;
@@ -89,6 +100,7 @@ class UpsellFlowOffer extends Model
             'bundle_quantity' => 'integer',
             'bundle_price' => 'decimal:2',
             'bundle_columns' => 'integer',
+            'bundle_grid_columns' => 'integer',
         ];
     }
 
@@ -151,10 +163,22 @@ class UpsellFlowOffer extends Model
     {
         $quantity = (int) $this->bundle_quantity;
 
+        // A category's size is the catalogue's to say, so it is not counted here:
+        // bundleIsSellable() asks, and an accept is checked against what it lists.
+        $listed = $this->bundleFromCategory()
+            ? (string) $this->bundle_category_id !== ''
+            : $quantity <= count($this->bundleProductIds());
+
         return $this->product_selection_mode === self::PRODUCT_BUNDLE
             && $quantity >= 1
-            && $quantity <= count($this->bundleProductIds())
+            && $listed
             && (float) $this->bundle_price > 0;
+    }
+
+    /** The bundle shows a store category's products rather than a hand-picked list. */
+    public function bundleFromCategory(): bool
+    {
+        return $this->bundle_source === self::BUNDLE_SOURCE_CATEGORY;
     }
 
     /**
@@ -178,13 +202,19 @@ class UpsellFlowOffer extends Model
     }
 
     /**
-     * The listed products still in THIS shop's catalogue, in the merchant's order, variants
-     * loaded. Tenant-scoped by the global scope: a stored id never reaches another shop.
+     * The products the shopper chooses from, variants loaded: the listed ones still in THIS
+     * shop's catalogue in the merchant's order, or — for a category bundle — the category's
+     * active products by title, at most BUNDLE_MAX_PRODUCTS. Tenant-scoped by the global
+     * scope: a stored id never reaches another shop.
      *
      * @return Collection<int, Product>
      */
     public function bundleProducts(): Collection
     {
+        if ($this->bundleFromCategory()) {
+            return $this->categoryProducts();
+        }
+
         $ids = $this->bundleProductIds();
         $found = $ids === [] ? collect() : Product::query()->with('variants')->whereKey($ids)->get()->keyBy('id');
 
@@ -218,7 +248,41 @@ class UpsellFlowOffer extends Model
     {
         $chosen = array_map('intval', $productIds);
 
+        // A category bundle's pick was checked against the category when it was accepted
+        // (acceptsSelection). Writing the order afterwards must not lose a book the store
+        // moved out of the category in between, so the lines are read by id.
+        if ($this->bundleFromCategory()) {
+            return $chosen === []
+                ? collect()
+                : Product::query()->with('variants')->whereKey($chosen)->orderBy('title')->orderBy('id')->get()->values();
+        }
+
         return $this->bundleProducts()->filter(fn (Product $p): bool => in_array((int) $p->getKey(), $chosen, true))->values();
+    }
+
+    /**
+     * The category's active products by title, at most BUNDLE_MAX_PRODUCTS. A product sits
+     * in the category when the last catalogue sync said so (ProductCategory).
+     *
+     * @return Collection<int, Product>
+     */
+    private function categoryProducts(): Collection
+    {
+        $category = (string) $this->bundle_category_id;
+
+        if ($category === '') {
+            return collect();
+        }
+
+        return Product::query()
+            ->where('status', Product::STATUS_ACTIVE)
+            ->whereHas('categories', fn ($q) => $q->where('external_category_id', $category))
+            ->with('variants')
+            ->orderBy('title')
+            ->orderBy('id')
+            ->limit(self::BUNDLE_MAX_PRODUCTS)
+            ->get()
+            ->values();
     }
 
     /**
@@ -244,6 +308,19 @@ class UpsellFlowOffer extends Model
     public function bundleColumns(): int
     {
         return max(self::BUNDLE_MIN_COLUMNS, min(self::BUNDLE_MAX_COLUMNS, (int) ($this->bundle_columns ?: 1)));
+    }
+
+    /**
+     * Tiles per row in the GRID layout for this offer only, or null to follow the shop's
+     * setting (MerchantUpsellAppearance::gridColumns). Clamped to the grid's own bounds.
+     */
+    public function bundleGridColumns(): ?int
+    {
+        $columns = (int) $this->bundle_grid_columns;
+
+        return $columns > 0
+            ? max(MerchantUpsellAppearance::GRID_MIN_COLUMNS, min(MerchantUpsellAppearance::GRID_MAX_COLUMNS, $columns))
+            : null;
     }
 
     // === Add-on window ===

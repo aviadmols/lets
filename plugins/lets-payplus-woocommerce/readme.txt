@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.55.0
+Stable tag: 0.56.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,11 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.56.0 =
+* New Shelf layout for the thank-you offer: a centred, static page — a "thank you" mark, the
+  countdown, a bold red headline, a pick-and-add row and the books in rows (five to a row).
+  It hides the order overview, order details and billing lines above it.
 
 = 0.55.0 =
 * Security: the thank-you offer (and the payment-page error report) now require the order's

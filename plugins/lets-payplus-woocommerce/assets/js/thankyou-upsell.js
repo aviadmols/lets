@@ -93,6 +93,11 @@
     // The shared renderer + the server card view-model → pixel-identical to the admin preview.
     if (window.LetsUpsell && offer.card) {
       LetsUpsell.renderCard(mount, offer.card, handlers);
+      // The shelf layout IS the thank-you page: it draws its own "thank you" headline, so the
+      // order overview / details / billing lines the theme prints around it step aside.
+      if (offer.card.appearance && offer.card.appearance.layout === 'shelf') {
+        document.body.classList.add('lets-pp-shelf-page');
+      }
       return;
     }
 

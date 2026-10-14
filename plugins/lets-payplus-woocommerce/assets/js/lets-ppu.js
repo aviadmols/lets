@@ -39,7 +39,7 @@ window.LetsUpsell = (function () {
   'use strict';
 
   // === CONSTANTS ===
-  var VERSION = '1.1.0';
+  var VERSION = '1.2.0';
   var ELEMENT_KEYS = [
     'eyebrow', 'badge', 'timer', 'image', 'headline', 'product_name',
     'subcopy', 'price', 'save', 'trust', 'cta', 'decline', 'disclosure'
@@ -62,7 +62,7 @@ window.LetsUpsell = (function () {
     'grid_columns', 'display_font'
   ];
   // Resolved copy the live preview may replace without a reload (never money).
-  var COPY_KEYS = ['eyebrow', 'badge', 'trust', 'timer_label', 'timer_note', 'facts', 'picker_title', 'picker_hint'];
+  var COPY_KEYS = ['eyebrow', 'badge', 'trust', 'timer_label', 'timer_note', 'facts', 'picker_title', 'picker_hint', 'thanks_title'];
   var GRID_MIN_COLS = 3;
   var GRID_MAX_COLS = 8;
   var GRID_DEFAULT_COLS = 6;
@@ -76,6 +76,10 @@ window.LetsUpsell = (function () {
     + '<path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>'
     + '<svg class="lets-ppu__mark-check" viewBox="0 0 24 24" fill="none" aria-hidden="true">'
     + '<path d="M5 12l5 5L20 7" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  // The shelf's headline mark: a ring with a check, drawn in the accent colour.
+  var THANKS_SVG = '<svg class="lets-ppu__thanks-mark" viewBox="0 0 64 64" fill="none" aria-hidden="true">'
+    + '<circle cx="32" cy="32" r="30" stroke="currentColor" stroke-width="2"/>'
+    + '<path d="M19 33l9 9 17-20" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   var LOCK_SVG = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">'
     + '<rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" stroke-width="1.7"/>'
     + '<path d="M8 11V8a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>';
@@ -127,7 +131,7 @@ window.LetsUpsell = (function () {
     a = a || {};
     root.setAttribute('data-theme', a.theme === 'dark' ? 'dark' : 'light');
     root.setAttribute('data-button', a.button_style === 'outline' ? 'outline' : 'solid');
-    root.setAttribute('data-layout', ['media_side', 'grid'].indexOf(a.layout) >= 0 ? a.layout : 'stacked');
+    root.setAttribute('data-layout', ['media_side', 'grid', 'shelf'].indexOf(a.layout) >= 0 ? a.layout : 'stacked');
     root.setAttribute('data-ratio', a.image_ratio === 'square' ? 'square' : 'natural');
     root.setAttribute('data-decline', a.decline_style === 'button' ? 'button' : 'link');
     root.setAttribute('data-shadow', ['none', 'soft', 'elevated'].indexOf(a.shadow) >= 0 ? a.shadow : 'soft');
@@ -600,6 +604,74 @@ window.LetsUpsell = (function () {
     if (disclosure) { root.appendChild(disclosure); }
   }
 
+  // ------------------------------------------------------------- shelf layout
+  /** The shelf's headline: the check mark, "thank you", and a short rule. It outlives the offer. */
+  function buildThanks(c) {
+    var wrap = elt('div', 'lets-ppu__thanks');
+    var mark = document.createElement('div');
+    mark.className = 'lets-ppu__thanks-ring';
+    mark.innerHTML = THANKS_SVG;
+    wrap.appendChild(mark);
+    if (nonEmpty(c.thanks_title)) { wrap.appendChild(elt('h2', 'lets-ppu__thanks-title', c.thanks_title)); }
+    wrap.appendChild(elt('hr', 'lets-ppu__thanks-rule'));
+    return wrap;
+  }
+
+  /**
+   * The shelf: a centred column, no box. Thanks, the countdown, the merchant's headline
+   * (bold red) and subcopy, then one row — what is picked, the price, the add button — and
+   * the tiles. Eyebrow, badge, trust line and facts are not drawn here: the page is a
+   * thank-you, not a pitch. The locked price / button / disclosure all still draw.
+   */
+  function buildShelfLayout(root, c, elements, state) {
+    var on = {};
+    elements.forEach(function (e) { on[e.key] = e.enabled; });
+
+    root.appendChild(buildThanks(c));
+
+    var offer = elt('div', 'lets-ppu__offer');
+    if (Number(c.timer_seconds) > 0) {
+      var clock = elt('div', 'lets-ppu__clock');
+      var digits = elt('div', 'lets-ppu__clock-digits');
+      clock.appendChild(digits);
+      registerClock(state, clock, digits, null);
+      offer.appendChild(clock);
+    }
+
+    var copy = elt('div', 'lets-ppu__copy');
+    if (!c.bundle && on.image && nonEmpty(c.product_image)) { copy.appendChild(buildElement('image', c, state)); }
+    if (on.headline) { var h = buildElement('headline', c, state); if (h) { copy.appendChild(h); } }
+    if (!c.bundle && on.product_name) { var pn = buildElement('product_name', c, state); if (pn) { copy.appendChild(pn); } }
+    if (on.subcopy) { var sc = buildElement('subcopy', c, state); if (sc) { copy.appendChild(sc); } }
+    offer.appendChild(copy);
+
+    var row = elt('div', 'lets-ppu__shelf-row');
+    row.appendChild(buildPrice(c));
+    if (c.bundle) { row.appendChild(progressNode(state)); }
+    var cta = buildElement('cta', c, state);
+    var error = cta.querySelector('.lets-ppu__error');
+    row.appendChild(cta);
+    offer.appendChild(row);
+    if (error) { offer.appendChild(error); }
+
+    if (c.bundle) { offer.appendChild(buildShelfGrid(c, state)); }
+
+    if (on.decline) { offer.appendChild(buildElement('decline', c, state)); }
+    var disclosure = buildElement('disclosure', c, state);
+    if (disclosure) { offer.appendChild(disclosure); }
+    root.appendChild(offer);
+  }
+
+  /** Just the tiles — the shelf's pick row above them already says how many are chosen. */
+  function buildShelfGrid(c, state) {
+    var b = c.bundle;
+    state.bundle = b;
+    state.selected = [];
+    var grid = elt('div', 'lets-ppu__grid');
+    (b.products || []).forEach(function (p) { grid.appendChild(buildGridTile(p, b, state)); });
+    return grid;
+  }
+
   // ------------------------------------------------------------- assembly
   function build(root, vm, handlers, state) {
     var c = vm.content || {};
@@ -613,6 +685,10 @@ window.LetsUpsell = (function () {
 
     if (a.layout === 'grid') {
       buildGridLayout(root, c, elements, state);
+      return;
+    }
+    if (a.layout === 'shelf') {
+      buildShelfLayout(root, c, elements, state);
       return;
     }
 
@@ -716,6 +792,19 @@ window.LetsUpsell = (function () {
     if (h && typeof h.onExpire === 'function') { h.onExpire(); return; }
     var root = state.root;
     if (!root) { return; }
+    closeOffer(root);
+  }
+
+  /**
+   * The offer is over (window out, or declined). The shelf keeps its thank-you headline on
+   * the page — it is the page's only content — and drops the offer; every other layout
+   * hides the whole card.
+   */
+  function closeOffer(root) {
+    if (root.getAttribute('data-layout') === 'shelf') {
+      root.classList.add('is-closed');
+      return;
+    }
     root.classList.add('is-declining');
     var mount = _last ? _last.mount : root.parentNode;
     setTimeout(function () { if (mount) { mount.hidden = true; } }, 320);
@@ -726,9 +815,7 @@ window.LetsUpsell = (function () {
     var fn = (handlers && handlers.onDecline) ? handlers.onDecline : function () { return Promise.resolve(); };
     try { Promise.resolve(fn(vm)).catch(function () {}); } catch (e) { /* analytics only */ }
     if (_timer) { clearInterval(_timer); _timer = null; }
-    root.classList.add('is-declining');
-    var mount = _last ? _last.mount : root.parentNode;
-    setTimeout(function () { if (mount) { mount.hidden = true; } }, 320);
+    closeOffer(root);
   }
 
   function showDone(root, vm) {
@@ -737,6 +824,7 @@ window.LetsUpsell = (function () {
     // Preserve the appearance tokens/attrs already on the root.
     setTokens(root, vm.appearance);
     root.innerHTML = '';
+    if (root.getAttribute('data-layout') === 'shelf') { root.appendChild(buildThanks(c)); }
     var done = elt('div', 'lets-ppu__done');
     var check = document.createElement('div');
     check.innerHTML = CHECK_SVG;

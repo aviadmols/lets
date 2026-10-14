@@ -111,8 +111,27 @@ final class UpsellCardPresenter
                 'success_title' => __('upsell.success_title'),
                 'success_sub' => __('upsell.no_card_reentry'),
             ] + $this->gridCopy($appearance),
-            'appearance' => $this->appearance($appearance),
+            'appearance' => $this->offerAppearance($offer, $appearance),
         ];
+    }
+
+    /**
+     * The shop's appearance, with this offer's own tiles-per-row when it set one — the one
+     * per-offer exception to a shop-wide look, so a 30-title shelf can sit five to a row
+     * while the shop's other offers keep theirs.
+     *
+     * @return array<string, mixed>
+     */
+    private function offerAppearance(UpsellFlowOffer $offer, MerchantUpsellAppearance $appearance): array
+    {
+        $tokens = $this->appearance($appearance);
+        $columns = $offer->isBundle() ? $offer->bundleGridColumns() : null;
+
+        if ($columns !== null) {
+            $tokens['grid_columns'] = $columns;
+        }
+
+        return $tokens;
     }
 
     /**
@@ -132,6 +151,8 @@ final class UpsellCardPresenter
             'facts' => MerchantUpsellAppearance::factsList($appearance->factsText() ?? __('upsell.grid.facts')),
             'picker_title' => $appearance->pickerTitle() ?? __('upsell.grid.picker_title'),
             'picker_hint' => $appearance->pickerHint() ?? __('upsell.grid.picker_hint'),
+            // The shelf layout's headline mark, over the countdown.
+            'thanks_title' => __('upsell.shelf.thanks_title'),
         ];
     }
 

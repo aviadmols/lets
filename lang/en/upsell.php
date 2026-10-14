@@ -120,6 +120,7 @@ return [
             'stacked' => 'Stacked',
             'media_side' => 'Image beside',
             'grid' => 'Grid',
+            'shelf' => 'Shelf (thank-you page)',
         ],
 
         'elements' => [
@@ -185,6 +186,11 @@ return [
         'facts' => 'Ships with your order | Charged to your saved card | One-time price',
         'picker_title' => 'Choose your products',
         'picker_hint' => 'Tap a product to choose it.',
+    ],
+
+    // The shelf layout's built-in word.
+    'shelf' => [
+        'thanks_title' => 'Thank you for your purchase',
     ],
 
     // Funnel event-type labels (Activity tab badges).
@@ -380,6 +386,19 @@ return [
             'layout_switch_grid' => 'Switch to the grid (every product at once) →',
             'layout_grid' => 'Shown as a grid — every product at once, :columns per row. "Products per slide" does not apply.',
             'layout_change' => 'Change the card layout →',
+            'bundle_source' => 'Where the products come from',
+            'bundle_source_products' => 'Products I pick one by one',
+            'bundle_source_category' => 'Every product in a category',
+            'bundle_source_category_hint' => 'A product you add to the category in your store joins the offer after the next product sync, and one you take out leaves it. Up to :max products are shown, by name.',
+            'bundle_category' => 'Category',
+            'bundle_category_placeholder' => 'Choose a category',
+            'bundle_category_option' => ':name (:count)',
+            'bundle_categories_empty' => 'No categories have arrived from your store yet. Refresh the products and come back in a minute.',
+            'bundle_category_products' => 'What the customer will see (:count)',
+            'bundle_category_none' => 'This category has no active products right now.',
+            'bundle_grid_columns' => 'Products per row in this offer',
+            'bundle_grid_columns_shop' => 'Same as the rest of the store (:columns)',
+            'bundle_grid_columns_hint' => 'Affects this offer only. Narrow screens show fewer per row: 4 on a tablet, 3 on a phone.',
             'bundle_incomplete' => 'Saved, but the bundle is not ready yet. Fill in "How many the customer picks" (no more than the products listed) and "Price for the whole bundle".',
             'partial_paid_info' => 'Partially paid orders are automatically removed. You can change this from the',
             'partial_paid_link' => 'store\'s settings',

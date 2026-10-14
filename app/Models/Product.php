@@ -66,6 +66,12 @@ class Product extends Model
         return $this->hasMany(ProductSubscriptionPlan::class);
     }
 
+    /** The upstream categories this product sits in (WooCommerce product_cat). */
+    public function categories(): HasMany
+    {
+        return $this->hasMany(ProductCategory::class);
+    }
+
     // === Display helpers (list/detail screens read these) ===
 
     /** The lowest-position variant — what the list row represents. */

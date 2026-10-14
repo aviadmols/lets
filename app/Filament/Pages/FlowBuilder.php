@@ -14,12 +14,14 @@ use App\Filament\Concerns\PicksProducts;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Models\MerchantUpsellAppearance;
 use App\Models\Product;
+use App\Models\ProductCategory;
 use App\Models\Shop;
 use App\Support\Tenant;
 use App\Support\Ui\Money;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
+use Illuminate\Support\Collection;
 use Livewire\Attributes\Locked;
 
 /**
@@ -143,6 +145,15 @@ class FlowBuilder extends Page
     public string $bundlePrice = '';
 
     public int $bundleColumns = 1;
+
+    /** 'products' (the list above) or 'category' (a store category's products). */
+    public string $bundleSource = UpsellFlowOffer::BUNDLE_SOURCE_PRODUCTS;
+
+    /** The upstream category id a category bundle shows ('' = none chosen). */
+    public string $bundleCategoryId = '';
+
+    /** Grid tiles per row for this offer only ('' = the shop's setting). */
+    public string $bundleGridColumns = '';
 
     // === Product picker (shared seam, used by BOTH drawers) ===
     /** Live search term bound to the picker input (debounced in the Blade). */
@@ -815,6 +826,9 @@ class FlowBuilder extends Page
         $this->bundleQuantity = $offer->bundle_quantity ? (string) $offer->bundle_quantity : '';
         $this->bundlePrice = $offer->bundle_price !== null ? $this->formatPrice((float) $offer->bundle_price) : '';
         $this->bundleColumns = $offer->bundleColumns();
+        $this->bundleSource = $offer->bundleFromCategory() ? UpsellFlowOffer::BUNDLE_SOURCE_CATEGORY : UpsellFlowOffer::BUNDLE_SOURCE_PRODUCTS;
+        $this->bundleCategoryId = (string) ($offer->bundle_category_id ?? '');
+        $this->bundleGridColumns = (string) ($offer->bundleGridColumns() ?? '');
 
         // Picker: reset the search + load the offer's stored title/price into the
         // editable fields, plus a read-only label echoing the saved product. The
@@ -940,6 +954,18 @@ class FlowBuilder extends Page
         if ($offer->product_selection_mode === UpsellFlowOffer::PRODUCT_BUNDLE) {
             // Re-confirmed against THIS shop's catalogue — never the raw ids from the page.
             $offer->bundle_product_ids = array_column($this->bundleProductRows(), 'id');
+            $offer->bundle_source = $this->sanitize($this->bundleSource, UpsellFlowOffer::BUNDLE_SOURCES, UpsellFlowOffer::BUNDLE_SOURCE_PRODUCTS);
+            // Only a category THIS shop's catalogue has; the name is kept for the builder's label.
+            $category = $this->bundleCategories()->firstWhere('id', $this->bundleCategoryId);
+            if ($category !== null) {
+                $offer->bundle_category_id = $category['id'];
+                $offer->bundle_category_name = $category['name'];
+            } elseif ($this->bundleCategoryId === '') {
+                $offer->bundle_category_id = null;
+                $offer->bundle_category_name = null;
+            }
+            $gridColumns = (int) $this->bundleGridColumns;
+            $offer->bundle_grid_columns = in_array($gridColumns, MerchantUpsellAppearance::GRID_COLUMN_CHOICES, true) ? $gridColumns : null;
             $quantity = (int) $this->bundleQuantity;
             $offer->bundle_quantity = $quantity > 0 ? min($quantity, UpsellFlowOffer::BUNDLE_MAX_PRODUCTS) : null;
             $bundlePrice = round((float) str_replace([',', ' '], '', $this->bundlePrice), 2);
@@ -1003,7 +1029,7 @@ class FlowBuilder extends Page
 
         // Saved either way — but a half-built bundle is said out loud, not left for the
         // canvas badge to hint at.
-        if ($offer->product_selection_mode === UpsellFlowOffer::PRODUCT_BUNDLE && ! $offer->isBundle()) {
+        if ($offer->product_selection_mode === UpsellFlowOffer::PRODUCT_BUNDLE && ! $offer->bundleIsSellable()) {
             Notification::make()->title(__('upsell.admin.configure.bundle_incomplete'))->warning()->send();
 
             return;
@@ -1029,7 +1055,7 @@ class FlowBuilder extends Page
      */
     public function cardLayoutIsGrid(): bool
     {
-        return MerchantUpsellAppearance::current()->layout() === MerchantUpsellAppearance::LAYOUT_GRID;
+        return in_array(MerchantUpsellAppearance::current()->layout(), MerchantUpsellAppearance::TILE_LAYOUTS, true);
     }
 
     public function cardGridColumns(): int
@@ -1040,6 +1066,59 @@ class FlowBuilder extends Page
     public function cardLayoutUrl(): string
     {
         return ManageUpsellAppearance::getUrl();
+    }
+
+    /** The tiles-per-row choices an offer may set for itself in the grid. */
+    public function gridColumnChoices(): array
+    {
+        return MerchantUpsellAppearance::GRID_COLUMN_CHOICES;
+    }
+
+    /**
+     * THIS shop's categories holding active products, for the category bundle's select —
+     * plus the offer's saved one when the catalogue no longer lists it, so a reopened
+     * drawer still names what is stored instead of silently showing another choice.
+     *
+     * @return Collection<int, array{id: string, name: string, count: int}>
+     */
+    public function bundleCategories(): Collection
+    {
+        $categories = ProductCategory::withActiveProducts();
+        $offer = $this->configuredOffer();
+        $saved = (string) ($offer?->bundle_category_id ?? '');
+
+        if ($saved !== '' && $categories->firstWhere('id', $saved) === null) {
+            $categories->push(['id' => $saved, 'name' => (string) ($offer->bundle_category_name ?: '#'.$saved), 'count' => 0]);
+        }
+
+        return $categories;
+    }
+
+    /**
+     * The chosen category's products as the shopper will see them (title order, capped),
+     * for the drawer's preview list.
+     *
+     * @return list<array{id: int, title: string, image: ?string, price: string}>
+     */
+    public function bundleCategoryRows(): array
+    {
+        if ($this->bundleCategoryId === '') {
+            return [];
+        }
+
+        $probe = new UpsellFlowOffer([
+            'bundle_source' => UpsellFlowOffer::BUNDLE_SOURCE_CATEGORY,
+            'bundle_category_id' => $this->bundleCategoryId,
+        ]);
+
+        return $probe->bundleProducts()
+            ->map(fn (Product $p): array => [
+                'id' => (int) $p->getKey(),
+                'title' => (string) $p->title,
+                'image' => $p->image_url,
+                'price' => Money::format((float) ($p->primaryVariant()?->price ?? 0)),
+            ])
+            ->all();
     }
 
     /** Add a picked product to the bundle — tenant-scoped, once, up to the maximum. */
@@ -1312,6 +1391,9 @@ class FlowBuilder extends Page
         $this->bundleQuantity = '';
         $this->bundlePrice = '';
         $this->bundleColumns = 1;
+        $this->bundleSource = UpsellFlowOffer::BUNDLE_SOURCE_PRODUCTS;
+        $this->bundleCategoryId = '';
+        $this->bundleGridColumns = '';
     }
 
     /** Plain 2dp string for the editable base_price input (no currency glyph). */
