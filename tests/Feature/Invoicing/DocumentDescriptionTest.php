@@ -129,7 +129,7 @@ final class DocumentDescriptionTest extends TestCase
     private function fakeApi(): void
     {
         Http::fake([
-            '*/account/token' => Http::response(['token' => 'jwt-token', 'expires' => time() + 3600]),
+            '*/oauth/token' => Http::response(['accessToken' => 'jwt-token', 'tokenType' => 'Bearer', 'expiresAt' => time() + 3600]),
             '*/documents*' => Http::response([
                 'id' => 'doc-1',
                 'number' => '94175',

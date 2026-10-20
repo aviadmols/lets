@@ -17,7 +17,9 @@ use Throwable;
  * document to the wrong tenant's books. Operational config (base URLs, timeout,
  * token TTL) is platform-wide and comes from config/invoicing.php.
  *
- * Auth is a short-lived JWT from POST /account/token {id, secret}. It is cached
+ * Auth is a short-lived JWT from Morning's OAuth endpoint (client_credentials,
+ * the API key id + secret as client_id/client_secret) — a separate host from the
+ * documents API (config invoicing.green_invoice.token_url). It is cached
  * per shop AND per key-id: re-keying a shop must invalidate the cached token
  * immediately, or the new keys would appear not to take effect until the TTL
  * expired. The cached TTL is clamped UNDER the token's real lifetime so a token
@@ -29,7 +31,7 @@ use Throwable;
 final class GreenInvoiceClient
 {
     // === CONSTANTS ===
-    private const PATH_TOKEN = '/account/token';
+    private const GRANT_TYPE = 'client_credentials';
 
     private const PATH_DOCUMENTS = '/documents';
 
@@ -106,7 +108,11 @@ final class GreenInvoiceClient
 
         try {
             $response = $this->http()
-                ->post($this->url(self::PATH_TOKEN), ['id' => $keyId, 'secret' => $secret]);
+                ->post($this->tokenUrl(), [
+                    'grant_type' => self::GRANT_TYPE,
+                    'client_id' => $keyId,
+                    'client_secret' => $secret,
+                ]);
         } catch (Throwable $e) {
             // TOKEN transport, not document transport: we never reached the documents
             // endpoint, so nothing was created and a retry is safe.
@@ -129,7 +135,7 @@ final class GreenInvoiceClient
             return null;
         }
 
-        $token = (string) ($body['token'] ?? '');
+        $token = (string) ($body['accessToken'] ?? '');
         if ($token === '') {
             $this->fail(self::REASON_REJECTED, 'The token response carried no token.');
 
@@ -222,14 +228,24 @@ final class GreenInvoiceClient
     /** The environment-correct base URL + path. */
     private function url(string $path): string
     {
-        $isSandbox = ($this->credentials['environment'] ?? Shop::INVOICING_ENV_PRODUCTION)
-            === Shop::INVOICING_ENV_SANDBOX;
-
         $base = (string) config(
-            $isSandbox ? 'invoicing.green_invoice.base_url_sandbox' : 'invoicing.green_invoice.base_url',
+            $this->isSandbox() ? 'invoicing.green_invoice.base_url_sandbox' : 'invoicing.green_invoice.base_url',
         );
 
         return rtrim($base, '/').$path;
+    }
+
+    /** The environment-correct OAuth token endpoint (its own host, not under the base URL). */
+    private function tokenUrl(): string
+    {
+        return (string) config(
+            $this->isSandbox() ? 'invoicing.green_invoice.token_url_sandbox' : 'invoicing.green_invoice.token_url',
+        );
+    }
+
+    private function isSandbox(): bool
+    {
+        return ($this->credentials['environment'] ?? Shop::INVOICING_ENV_PRODUCTION) === Shop::INVOICING_ENV_SANDBOX;
     }
 
     /**
@@ -244,7 +260,7 @@ final class GreenInvoiceClient
 
     /**
      * How long to cache a token: the server-reported expiry minus a safety margin,
-     * clamped to the configured TTL and a hard ceiling. `expires` is a unix
+     * clamped to the configured TTL and a hard ceiling. `expiresAt` is a unix
      * timestamp; a missing/nonsense value falls back to the configured TTL.
      *
      * @param  array<string, mixed>  $body
@@ -253,7 +269,7 @@ final class GreenInvoiceClient
     {
         $configured = (int) config('invoicing.token_ttl', 1500);
 
-        $expiresAt = (int) ($body['expires'] ?? 0);
+        $expiresAt = (int) ($body['expiresAt'] ?? 0);
         $remaining = $expiresAt > 0 ? $expiresAt - time() - self::TOKEN_TTL_MARGIN : 0;
 
         $ttl = $remaining > 0 ? min($remaining, $configured) : $configured;
@@ -262,15 +278,16 @@ final class GreenInvoiceClient
     }
 
     /**
-     * A merchant-safe error string from a provider error body. Green Invoice
-     * answers `{errorCode, errorMessage}`; we fall back to the HTTP status so a
-     * blank body never produces a blank reason.
+     * A merchant-safe error string from a provider error body. The documents API
+     * answers `{errorCode, errorMessage}`, the OAuth token endpoint
+     * `{error, error_description}`; we fall back to the HTTP status so a blank
+     * body never produces a blank reason.
      *
      * @param  array<string, mixed>  $body
      */
     private function errorTextFrom(array $body, int $status): string
     {
-        $message = trim((string) ($body['errorMessage'] ?? $body['message'] ?? ''));
+        $message = trim((string) ($body['errorMessage'] ?? $body['error_description'] ?? $body['message'] ?? ''));
         if ($message !== '') {
             return $message;
         }

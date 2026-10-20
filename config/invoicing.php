@@ -22,6 +22,11 @@ return [
     'green_invoice' => [
         'base_url' => env('GREEN_INVOICE_BASE_URL', 'https://api.greeninvoice.co.il/api/v1'),
         'base_url_sandbox' => env('GREEN_INVOICE_BASE_URL_SANDBOX', 'https://sandbox.d.greeninvoice.co.il/api/v1'),
+        // Tokens come from Morning's OAuth endpoint on its OWN host. The old
+        // {base_url}/account/token is answered 404 by their load balancer since
+        // 2026-10-18 — every document after that failed with "HTTP 404".
+        'token_url' => env('GREEN_INVOICE_TOKEN_URL', 'https://api.morning.co/idp/v1/oauth/token'),
+        'token_url_sandbox' => env('GREEN_INVOICE_TOKEN_URL_SANDBOX', 'https://api.sandbox.morning.dev/idp/v1/oauth/token'),
     ],
 
     // HTTP client timeout, seconds. Kept tight: issuing runs on a queue, so a slow

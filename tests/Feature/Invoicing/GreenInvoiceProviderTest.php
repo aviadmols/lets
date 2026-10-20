@@ -43,8 +43,43 @@ final class GreenInvoiceProviderTest extends TestCase
         $provider->issue($this->request(amount: 50.0));
 
         // Two documents, ONE token request: the JWT is cached per shop.
-        $this->assertSame(1, $this->callsTo('*/account/token'));
+        $this->assertSame(1, $this->callsTo('*/oauth/token'));
         $this->assertSame(2, $this->callsTo('*/documents'));
+    }
+
+    public function test_the_token_comes_from_mornings_oauth_endpoint_on_its_own_host(): void
+    {
+        $this->fakeApi();
+
+        $this->provider()->issue($this->request());
+
+        // The old {base}/account/token is a bare 404 at Morning's edge since 2026-10-18.
+        $token = Http::recorded(static fn (Request $r): bool => str_contains($r->url(), '/oauth/token'))->first()[0];
+        $this->assertSame('https://api.sandbox.morning.dev/idp/v1/oauth/token', $token->url());
+        $this->assertSame(
+            ['grant_type' => 'client_credentials', 'client_id' => 'key-id', 'client_secret' => 'key-secret'],
+            $token->data(),
+        );
+        $this->assertSame(0, $this->callsTo('*/account/token'));
+
+        // Documents still go to the greeninvoice API host, carrying that token.
+        $document = Http::recorded(static fn (Request $r): bool => str_contains($r->url(), '/documents'))->first()[0];
+        $this->assertStringStartsWith('https://sandbox.d.greeninvoice.co.il/api/v1/', $document->url());
+        $this->assertSame(['Bearer jwt-1'], $document->header('Authorization'));
+    }
+
+    public function test_a_refused_token_names_the_oauth_reason_not_a_bare_status(): void
+    {
+        Http::fake([
+            '*/oauth/token' => Http::response(['error' => 'invalid_client', 'error_description' => 'Invalid client credentials'], 401),
+        ]);
+
+        $result = $this->provider()->issue($this->request());
+
+        $this->assertFalse($result->success);
+        $this->assertSame(GreenInvoiceClient::REASON_UNAUTHORIZED, $result->errorCode);
+        $this->assertSame('Invalid client credentials', $result->errorMessage);
+        $this->assertSame(0, $this->callsTo('*/documents'));
     }
 
     public function test_a_paid_document_carries_a_payment_row_totalling_the_money(): void
@@ -223,7 +258,7 @@ final class GreenInvoiceProviderTest extends TestCase
     public function test_a_rejected_document_returns_a_masked_failure_and_never_throws(): void
     {
         Http::fake([
-            '*/account/token' => Http::response(['token' => 'jwt-1', 'expires' => time() + 3600]),
+            '*/oauth/token' => Http::response(['accessToken' => 'jwt-1', 'tokenType' => 'Bearer', 'expiresAt' => time() + 3600]),
             '*/documents' => Http::response(['errorCode' => 400, 'errorMessage' => 'Missing client name'], 422),
         ]);
 
@@ -262,7 +297,7 @@ final class GreenInvoiceProviderTest extends TestCase
     private function fakeApi(): void
     {
         Http::fake([
-            '*/account/token' => Http::response(['token' => 'jwt-1', 'expires' => time() + 3600]),
+            '*/oauth/token' => Http::response(['accessToken' => 'jwt-1', 'tokenType' => 'Bearer', 'expiresAt' => time() + 3600]),
             '*/documents' => Http::response([
                 'id' => 'gi-doc-1',
                 'number' => '60001',
