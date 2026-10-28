@@ -9,6 +9,7 @@ use App\Domain\Billing\StuckChargeResolver;
 use App\Domain\Installments\CardUpdateLinks;
 use App\Domain\Installments\CardUpdateLinkSender;
 use App\Domain\Installments\CardUpdateService;
+use App\Domain\Installments\CheckoutPricingCapture;
 use App\Domain\Installments\ImportedTokenRecovery;
 use App\Domain\Installments\Models\CardUpdateLink;
 use App\Domain\Installments\Models\TokenRecoveryResult;
@@ -1737,8 +1738,10 @@ class ViewSubscription extends Page
     }
 
     /**
-     * The coupon captured from the checkout order — {codes: string, amount: string}
-     * display-ready — or null when none was captured.
+     * The coupon captured from the checkout order — {codes: string, amount: string,
+     * scope: string} display-ready — or null when none was captured. `scope` is the
+     * translated "first payment only" / "every cycle" line, empty for a Shopify
+     * coupon or an older plugin that sent no scope.
      */
     public function checkoutDiscount(): ?array
     {
@@ -1748,12 +1751,16 @@ class ViewSubscription extends Page
         }
 
         $amount = (float) ($discount['amount'] ?? 0);
+        $scope = (string) ($discount['scope'] ?? '');
 
         return [
             'codes' => implode(', ', (array) $discount['codes']),
             'amount' => $amount > 0
                 ? Money::format($amount, $this->record->currency ?: Money::DEFAULT_CURRENCY)
                 : null,
+            'scope' => in_array($scope, [CheckoutPricingCapture::COUPON_SCOPE_ALL_CYCLES, CheckoutPricingCapture::COUPON_SCOPE_FIRST_CYCLE], true)
+                ? __('subscriptions.detail.coupon_scope_'.$scope)
+                : '',
         ];
     }
 

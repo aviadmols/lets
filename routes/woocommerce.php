@@ -7,6 +7,7 @@ use App\Http\Controllers\WooCommerce\Account\AccountBootstrapController;
 use App\Http\Controllers\WooCommerce\Account\AccountIdentityController;
 use App\Http\Controllers\WooCommerce\Account\AccountOtpController;
 use App\Http\Controllers\WooCommerce\Account\ImpersonateVerifyController;
+use App\Http\Controllers\WooCommerce\Account\SubscriberStatusController;
 use App\Http\Controllers\WooCommerce\Account\SubscriptionEligibilityController;
 use App\Http\Controllers\WooCommerce\CheckoutSettingsController;
 use App\Http\Controllers\WooCommerce\DiagnosticsController;
@@ -306,6 +307,12 @@ Route::middleware(VerifyWooCommerceSignature::class)
         // the plugin's server says is buying.
         Route::post('/account/subscription-eligibility', SubscriptionEligibilityController::class)
             ->name('woocommerce.account.subscription_eligibility');
+
+        // Asked by the CHECKOUT: is this email a paying subscriber right now? The
+        // plugin turns a yes into the merchant's subscriber discount. A read, so no
+        // replay guard — the answer is re-asked for the final email at order time.
+        Route::post('/account/subscriber-status', SubscriberStatusController::class)
+            ->name('woocommerce.account.subscriber_status');
 
         // The plugin reports "this customer saved their address in the store" —
         // a Timeline fact on their feed, never a warehoused copy of the address.

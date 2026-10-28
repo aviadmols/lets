@@ -109,6 +109,8 @@ return [
         'no_expiry' => 'ללא תאריך סיום — מתחדש עד ביטול',
         'checkout_order' => 'הזמנת רכישה',
         'coupon_applied' => 'קופון שהופעל',
+        'coupon_scope_all_cycles' => 'ההנחה נשמרת לכל מחזורי המנוי',
+        'coupon_scope_first_cycle' => 'הנחה על התשלום הראשון בלבד',
         'intro_window' => 'הנחת פתיחה',
         'intro_window_status' => ':used מתוך :total חיובים בהנחה נוצלו',
         'intro_window_ended' => 'הסתיימה — החיוב במחיר הרגיל',

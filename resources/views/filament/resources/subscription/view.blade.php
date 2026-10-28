@@ -106,6 +106,9 @@
                                     @if($coupon['amount'])
                                         <span class="rc-iso">(-{{ $coupon['amount'] }})</span>
                                     @endif
+                                    @if($coupon['scope'])
+                                        <span class="rc-muted">{{ $coupon['scope'] }}</span>
+                                    @endif
                                 </span>
                             @endif
                             @php $intro = $this->introWindow(); @endphp
