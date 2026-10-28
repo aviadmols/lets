@@ -64,4 +64,13 @@ final class PluginPayPalGatewayTest extends TestCase
         $this->assertStringContainsString("'payment_gateway'  => lets_payplus_invoicing_payment_gateway(\$order),", $invoicing);
         $this->assertStringContainsString("get_meta('lets_payplus_charge_method')", $invoicing);
     }
+
+    /** Shipping is its own document line, not part of "Shipping, fees and adjustments". */
+    public function test_the_invoicing_report_sends_shipping_and_fees_as_their_own_lines(): void
+    {
+        $invoicing = $this->source('class-lets-invoicing.php');
+
+        $this->assertStringContainsString("foreach (\$order->get_items(array('shipping', 'fee')) as \$item) {", $invoicing);
+        $this->assertStringContainsString('(float) $item->get_total() + (float) $item->get_total_tax()', $invoicing);
+    }
 }

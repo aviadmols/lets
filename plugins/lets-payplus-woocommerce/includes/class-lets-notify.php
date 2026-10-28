@@ -70,7 +70,10 @@ function lets_payplus_rest_notify(WP_REST_Request $request)
         /* translators: 1: order number, 2: PayPlus status, 3: reason text. */
         $msg = trim(sprintf(__('Payment failed for order %1$s (status %2$s). %3$s', 'lets-payplus'), $order, $status, $reason));
         lets_payplus_log_event($msg, 'payment', 'error');
-        lets_payplus_notify_admin(__('A PayPlus payment failed', 'lets-payplus'), $msg);
+        // The email also carries the order + the shopper, so the merchant can call them back
+        // without opening the admin. The activity log keeps the one line (no customer data there).
+        $details = lets_payplus_failed_order_details($order);
+        lets_payplus_notify_admin(__('A PayPlus payment failed', 'lets-payplus'), $details !== '' ? $msg . "\n\n" . $details : $msg);
     }
 
     return new WP_REST_Response(array('ok' => true), 200);
@@ -103,6 +106,93 @@ function lets_payplus_notify_document_issued(array $data)
     }
 
     return new WP_REST_Response(array('ok' => true), 200);
+}
+
+/**
+ * Plain-text order + customer block for the failed-payment email: what was ordered, who
+ * ordered it and how to reach them, and a link to the order. Hebrew on a Hebrew store.
+ * '' when the order cannot be found — the email still goes out with the one line. Never
+ * throws: this runs inside the signed /notify callback LETS is waiting on.
+ */
+function lets_payplus_failed_order_details($order_id)
+{
+    try {
+        if (! function_exists('wc_get_order') || ! ctype_digit((string) $order_id)) {
+            return '';
+        }
+        $order = wc_get_order((int) $order_id);
+        if (! ($order instanceof WC_Order)) {
+            return '';
+        }
+
+        $he = function_exists('lets_payplus_is_he') && lets_payplus_is_he();
+        $t  = $he
+            ? array(
+                'order' => 'פרטי ההזמנה', 'number' => 'מספר הזמנה', 'date' => 'תאריך', 'total' => 'סכום',
+                'method' => 'אמצעי תשלום', 'items' => 'מוצרים', 'customer' => 'פרטי הלקוח', 'name' => 'שם',
+                'email' => 'אימייל', 'phone' => 'טלפון', 'address' => 'כתובת', 'note' => 'הערת הלקוח',
+                'link' => 'לצפייה בהזמנה',
+            )
+            : array(
+                'order' => 'Order details', 'number' => 'Order number', 'date' => 'Date', 'total' => 'Total',
+                'method' => 'Payment method', 'items' => 'Items', 'customer' => 'Customer', 'name' => 'Name',
+                'email' => 'Email', 'phone' => 'Phone', 'address' => 'Address', 'note' => 'Customer note',
+                'link' => 'View the order',
+            );
+        $clean = function ($value) {
+            return trim(wp_specialchars_decode(wp_strip_all_tags((string) $value), ENT_QUOTES));
+        };
+
+        $lines   = array('— ' . $t['order'] . ' —');
+        $lines[] = $t['number'] . ': ' . $order->get_order_number();
+        $created = $order->get_date_created();
+        if ($created) {
+            $lines[] = $t['date'] . ': ' . $created->date_i18n('d/m/Y H:i');
+        }
+        $lines[] = $t['total'] . ': ' . wc_format_decimal($order->get_total(), wc_get_price_decimals()) . ' ' . $order->get_currency();
+        if ($order->get_payment_method_title() !== '') {
+            $lines[] = $t['method'] . ': ' . $clean($order->get_payment_method_title());
+        }
+
+        $items = array();
+        foreach ($order->get_items() as $item) {
+            $items[] = '  • ' . $clean($item->get_name()) . ' × ' . (int) $item->get_quantity()
+                . ' — ' . wc_format_decimal($item->get_total(), wc_get_price_decimals());
+        }
+        if ($items) {
+            $lines[] = $t['items'] . ':';
+            $lines   = array_merge($lines, $items);
+        }
+
+        $lines[] = '';
+        $lines[] = '— ' . $t['customer'] . ' —';
+        $name = $clean($order->get_formatted_billing_full_name());
+        if ($name !== '') {
+            $lines[] = $t['name'] . ': ' . $name;
+        }
+        if ($order->get_billing_email() !== '') {
+            $lines[] = $t['email'] . ': ' . $order->get_billing_email();
+        }
+        if ($order->get_billing_phone() !== '') {
+            $lines[] = $t['phone'] . ': ' . $clean($order->get_billing_phone());
+        }
+        $address = $clean(implode(', ', array_filter(array(
+            $order->get_billing_address_1(), $order->get_billing_address_2(), $order->get_billing_city(),
+        ))));
+        if ($address !== '') {
+            $lines[] = $t['address'] . ': ' . $address;
+        }
+        if ($order->get_customer_note() !== '') {
+            $lines[] = $t['note'] . ': ' . $clean($order->get_customer_note());
+        }
+
+        $lines[] = '';
+        $lines[] = $t['link'] . ': ' . $order->get_edit_order_url();
+
+        return implode("\n", $lines);
+    } catch (\Throwable $e) {
+        return '';
+    }
 }
 
 /** Browser report that the embedded PayPlus iframe failed to load. */

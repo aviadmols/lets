@@ -148,8 +148,12 @@ final class WooGatewayCallbackController
                     $shop,
                     $failedOrderId,
                     $statusCode,
+                    // The callback often carries no description; PayPlus's own record of the
+                    // page does, so the merchant's email says WHY and not only a code.
                     (string) (data_get($payload, 'transaction.status_description')
-                        ?? data_get($payload, 'status_description') ?? ''),
+                        ?? data_get($payload, 'status_description')
+                        ?? ($confirmation->bound() ? data_get($confirmation->body, 'data.transaction.status_description') : null)
+                        ?? ''),
                 );
             } catch (\Throwable $e) {
                 Log::warning('woocommerce.gateway.notify_failed', [

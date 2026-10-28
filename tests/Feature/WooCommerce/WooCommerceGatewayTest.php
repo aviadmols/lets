@@ -538,6 +538,33 @@ final class WooCommerceGatewayTest extends TestCase
         });
     }
 
+    /**
+     * A decline callback with no description of its own (order 6470 on a live store:
+     * the merchant's email said only "status 4") still tells the plugin WHY, from
+     * PayPlus's own record of the page.
+     */
+    public function test_a_decline_notifies_the_plugin_with_the_reason_from_payplus_record(): void
+    {
+        Http::fake([
+            '*PaymentPages/ipn*' => Http::response($this->ipnBody('gw:6610', [
+                'uid' => 'txn-fail-6610', 'amount' => '75.00', 'status_description' => 'סירוב',
+            ], [], '4')),
+            '*/wp-json/lets-payplus/v1/notify' => Http::response(['ok' => true], 200),
+        ]);
+        [$shop] = $this->connectedShop('gw-decline-reason.example.com');
+        $shop->woocommerce_credentials = array_merge($shop->woocommerce_credentials ?: [], ['wc_webhook_secret' => 'whsec']);
+        $shop->save();
+
+        $this->postJson('/woocommerce/gateway/callback/'.$shop->wc_shop_token, $this->callbackFor([
+            'more_info' => 'gw:6610', 'status_code' => '4', 'uid' => 'txn-fail-6610', 'amount' => '75.00',
+        ]))->assertOk()->assertJsonPath('paid', false);
+
+        Http::assertSent(fn (HttpRequest $request): bool => str_ends_with($request->url(), '/wp-json/lets-payplus/v1/notify')
+            && $request['event'] === 'payment_failed'
+            && $request['order_id'] === '6610'
+            && $request['reason'] === 'סירוב');
+    }
+
     public function test_a_non_gateway_callback_does_not_mark_anything_paid(): void
     {
         Http::fake();

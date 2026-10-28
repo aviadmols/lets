@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.57.0
+Stable tag: 0.59.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,20 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.59.0 =
+* Failed-payment email: besides the order number and PayPlus status, it now lists the order
+  (date, total, payment method, items), the customer (name, email, phone, address, note) and
+  a link to the order — in Hebrew on a Hebrew store. The activity log keeps the one line.
+* Invoicing: shipping and fees are reported as lines of their own, under the name the shopper
+  saw at checkout (e.g. "שליח עד הבית"), instead of one "Shipping, fees and adjustments" line.
+
+= 0.58.0 =
+* Coupons: a "Subscription scope" on every WooCommerce coupon (Marketing → Coupons → edit,
+  General tab). "First cycle only" (default) discounts the checkout and nothing else — as
+  before. "Every subscription cycle" keeps the discounted price actually paid at checkout for
+  every renewal of the subscription bought with it. The scope is stamped on the order, so a
+  coupon edited later never re-prices a subscription already sold.
 
 = 0.57.0 =
 * Webhooks: every order on the site is sent to the webhook URLs set in LETS (Settings →

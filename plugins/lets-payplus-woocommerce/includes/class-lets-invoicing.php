@@ -269,6 +269,32 @@ function lets_payplus_invoicing_order_body(WC_Order $order)
         );
     }
 
+    // Shipping and fees are lines of their own, named as the shopper saw them at checkout.
+    // Unreported, LETS sees only a gap to the total and must label it generically
+    // ("Shipping, fees and adjustments"). Free shipping and discount fees carry no
+    // positive amount, so they send no line (a negative fee still lands in that gap).
+    foreach ($order->get_items(array('shipping', 'fee')) as $item) {
+        $amount = round((float) $item->get_total() + (float) $item->get_total_tax(), 2);
+        if ($amount <= 0) {
+            continue;
+        }
+
+        $name = trim((string) $item->get_name());
+        if ($name === '' && $item->is_type('shipping')) {
+            $name = function_exists('lets_payplus_is_he') && lets_payplus_is_he() ? 'משלוח' : 'Shipping';
+        }
+        if ($name === '') {
+            continue;
+        }
+
+        $lines[] = array(
+            'description'    => $name,
+            'unit_price'     => $amount,
+            'quantity'       => 1,
+            'catalog_number' => '',
+        );
+    }
+
     return array(
         'order_id'         => (string) $order->get_id(),
         'order_number'     => (string) $order->get_order_number(),
