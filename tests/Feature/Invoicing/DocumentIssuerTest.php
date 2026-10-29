@@ -260,6 +260,41 @@ final class DocumentIssuerTest extends TestCase
     }
 
     /**
+     * Sellameir order 17772: a "5 books for ₪250" deal arrives as a negative cart fee, so
+     * the books are reported at shelf price and the total is lower. The receipt printed a
+     * −₪170 "Shipping, fees and adjustments" line. It is a discount and says so; the books
+     * keep their own prices (the order does not say which ones the deal covered), and
+     * shipping prints as "Shipping", not the method's title.
+     */
+    public function test_a_deal_discount_prints_as_a_discount_line_not_as_shipping(): void
+    {
+        $shop = $this->connectedShop('deal.example.com', platform: Shop::PLATFORM_WOOCOMMERCE);
+        $this->fakeProvider();
+
+        (new DocumentIssuer)->issueForPlatformOrder((int) $shop->getKey(), $this->orderPayload(
+            total: 285.0,
+            lines: [
+                ['description' => 'Book A', 'unit_price' => 88.0, 'quantity' => 1, 'catalog_number' => null, 'kind' => 'item'],
+                ['description' => 'Book B', 'unit_price' => 75.0, 'quantity' => 1, 'catalog_number' => null, 'kind' => 'item'],
+                ['description' => 'Book C', 'unit_price' => 99.0, 'quantity' => 1, 'catalog_number' => null, 'kind' => 'item'],
+                ['description' => 'Book D', 'unit_price' => 74.0, 'quantity' => 1, 'catalog_number' => null, 'kind' => 'item'],
+                ['description' => 'Book E', 'unit_price' => 84.0, 'quantity' => 1, 'catalog_number' => null, 'kind' => 'item'],
+                ['description' => 'Flat rate', 'unit_price' => 35.0, 'quantity' => 1, 'catalog_number' => null, 'kind' => 'shipping'],
+            ],
+        ));
+
+        /** @var IssueDocumentRequest $request */
+        $request = $this->issued[0];
+
+        $this->assertTrue($request->totalsMatch());
+        $this->assertSame(285.0, $request->lineTotal());
+        $this->assertSame(
+            [['Book A', 88.0], ['Book B', 75.0], ['Book C', 99.0], ['Book D', 74.0], ['Book E', 84.0], ['Shipping', 35.0], ['Discount', -170.0]],
+            array_map(fn ($l) => [$l->description, $l->unitPrice], $request->lines),
+        );
+    }
+
+    /**
      * "Make the receipt out to my employer."
      *
      * The document names whoever the shopper asked for at checkout; the ORDER

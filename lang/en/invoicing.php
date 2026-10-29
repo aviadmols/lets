@@ -22,6 +22,10 @@ return [
         'order_cancellation' => 'Cancellation of order :reference',
         // Balances an item breakdown to the order total (shipping, fees, rounding).
         'adjustment' => 'Shipping, fees and adjustments',
+        // The delivery line — always this name, never the shipping method's title ("Flat rate").
+        'shipping' => 'Shipping',
+        // The order total is below the lines — a discount (e.g. a deal booked as a negative fee).
+        'discount' => 'Discount',
     ],
 
     // Free-text remarks printed on the document, so it reconciles back to LETS.

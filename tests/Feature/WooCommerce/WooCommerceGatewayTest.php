@@ -470,6 +470,38 @@ final class WooCommerceGatewayTest extends TestCase
         });
     }
 
+    /**
+     * The SaaS's own report sends shipping and fees as lines of their own, tagged by kind,
+     * so they are never netted against a deal's discount fee (which sends no line).
+     */
+    public function test_the_saas_report_itemises_shipping_and_fees(): void
+    {
+        Queue::fake();
+        Http::fake([
+            ...$this->payplusIpn('gw:6705', ['amount' => '115.00']),
+            '*/wp-json/wc/v3/orders/6705' => Http::response([
+                'id' => 6705, 'number' => '6705', 'status' => 'processing',
+                'total' => '115.00', 'currency' => 'ILS',
+                'billing' => ['first_name' => 'Meir', 'last_name' => 'Sella', 'email' => 'meir@example.com'],
+                'line_items' => [['name' => 'Book', 'quantity' => 1, 'total' => '80.00', 'total_tax' => '0.00']],
+                'shipping_lines' => [['method_title' => 'Flat rate', 'total' => '35.00', 'total_tax' => '0.00']],
+                'fee_lines' => [['name' => 'Bundle deal', 'total' => '-10.00', 'total_tax' => '0.00'], ['name' => 'Gift wrap', 'total' => '10.00']],
+            ], 200),
+        ]);
+        [$shop] = $this->connectedShop('gw-invoice-ship.example.com');
+        $this->enableAllOrdersInvoicing($shop);
+
+        $this->postJson('/woocommerce/gateway/callback/'.(string) $shop->wc_shop_token, $this->callbackFor([
+            'more_info' => 'gw:6705', 'status_code' => '000', 'amount' => '115.00',
+        ]))->assertOk();
+
+        Queue::assertPushed(IssueDocumentJob::class, function (IssueDocumentJob $job): bool {
+            $kinds = array_map(fn (array $l): string => $l['kind'].':'.$l['unit_price'], $job->order['lines'] ?? []);
+
+            return $kinds === ['item:80', 'shipping:35', 'fee:10'];
+        });
+    }
+
     /** A plan order's paperwork belongs to the plan pipeline — never reported twice. */
     public function test_a_plan_order_is_not_reported_for_invoicing(): void
     {

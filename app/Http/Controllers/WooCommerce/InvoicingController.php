@@ -7,6 +7,7 @@ use App\Domain\Invoicing\DocumentContext;
 use App\Domain\Invoicing\DocumentIssuer;
 use App\Domain\Invoicing\Jobs\IssueDocumentJob;
 use App\Domain\Invoicing\OrderDocumentHold;
+use App\Domain\Invoicing\PlatformOrderLines;
 use App\Http\Controllers\WooCommerce\Storefront\WooStorefrontController;
 use App\Models\ActivityEvent;
 use App\Models\InstallmentPlan;
@@ -443,6 +444,10 @@ final class InvoicingController extends WooStorefrontController
                 'unit_price' => $unitPrice,
                 'quantity' => max(1, (int) ($line['quantity'] ?? 1)),
                 'catalog_number' => $this->cleanString($line['catalog_number'] ?? null),
+                // item / shipping / fee — shipping prints as "Shipping", not the method's title.
+                'kind' => in_array($line['kind'] ?? null, PlatformOrderLines::KINDS, true)
+                    ? $line['kind']
+                    : PlatformOrderLines::KIND_ITEM,
             ];
         }
 

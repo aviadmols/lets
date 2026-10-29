@@ -281,7 +281,7 @@ final class DocumentIssuer
             }
 
             $settings = MerchantInvoicingSettings::forShop($shopId);
-            $lines = $this->linesFromPlatformOrder($order);
+            $lines = PlatformOrderLines::from($order);
             $total = round((float) $order['total'], 2);
 
             // What the customer added after checkout, product by product — the offers'
@@ -1108,57 +1108,6 @@ final class DocumentIssuer
     private function orderIdOf(PaymentLedger $ledger): string
     {
         return trim((string) ($ledger->shopify_order_id ?: $ledger->parent_order_id ?: ''));
-    }
-
-    /**
-     * Document lines from a reported store order. Falls back to a single line at the
-     * order total when the platform sent no usable breakdown, and RECONCILES any
-     * rounding/shipping/tax gap with a balancing line — the document must total the
-     * money that actually moved (IssueDocumentRequest::totalsMatch()).
-     *
-     * @param  array<string, mixed>  $order
-     * @return list<DocumentLine>
-     */
-    private function linesFromPlatformOrder(array $order): array
-    {
-        $total = round((float) $order['total'], 2);
-        $lines = [];
-
-        foreach ((array) ($order['lines'] ?? []) as $line) {
-            $description = trim((string) ($line['description'] ?? ''));
-            $unitPrice = round((float) ($line['unit_price'] ?? 0), 2);
-
-            if ($description === '' || $unitPrice <= 0) {
-                continue;
-            }
-
-            $lines[] = new DocumentLine(
-                description: $description,
-                unitPrice: $unitPrice,
-                quantity: max(1, (int) ($line['quantity'] ?? 1)),
-                catalogNumber: $this->blankToNull((string) ($line['catalog_number'] ?? '')),
-            );
-        }
-
-        if ($lines === []) {
-            return [DocumentLine::single(
-                __('invoicing.line.platform_order', [
-                    'reference' => (string) ($order['order_number'] ?? $order['order_id']),
-                ]),
-                $total,
-            )];
-        }
-
-        // Shipping, fees and tax rounding live outside the item lines. Balance the
-        // document to the real total instead of shipping a mismatched one.
-        $sum = round(array_sum(array_map(static fn (DocumentLine $l): float => $l->total(), $lines)), 2);
-        $gap = round($total - $sum, 2);
-
-        if (abs($gap) >= 0.01) {
-            $lines[] = DocumentLine::single(__('invoicing.line.adjustment'), $gap);
-        }
-
-        return $lines;
     }
 
     /** The name of the offer an upsell charge was for, from its charge event, or null. */

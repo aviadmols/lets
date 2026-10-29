@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.59.0
+Stable tag: 0.60.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,11 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.60.0 =
+* Invoicing: every reported line says what it is (item, shipping or fee). LETS prints shipping
+  as "משלוח" rather than the shipping method's title ("תעריף קבוע"), and a deal's discount
+  as "הנחה" instead of a negative "Shipping, fees and adjustments" line.
 
 = 0.59.0 =
 * Failed-payment email: besides the order number and PayPlus status, it now lists the order

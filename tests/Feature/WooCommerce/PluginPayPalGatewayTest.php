@@ -72,5 +72,8 @@ final class PluginPayPalGatewayTest extends TestCase
 
         $this->assertStringContainsString("foreach (\$order->get_items(array('shipping', 'fee')) as \$item) {", $invoicing);
         $this->assertStringContainsString('(float) $item->get_total() + (float) $item->get_total_tax()', $invoicing);
+        // Each line says what it is, so LETS can name shipping "משלוח" and tell a discount from it.
+        $this->assertStringContainsString("'kind'           => 'item',", $invoicing);
+        $this->assertStringContainsString("'kind'           => \$item->is_type('shipping') ? 'shipping' : 'fee',", $invoicing);
     }
 }

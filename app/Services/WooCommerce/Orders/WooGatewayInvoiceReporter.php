@@ -5,6 +5,7 @@ namespace App\Services\WooCommerce\Orders;
 use App\Domain\Invoicing\DocumentContext;
 use App\Domain\Invoicing\DocumentIssuer;
 use App\Domain\Invoicing\Jobs\IssueDocumentJob;
+use App\Domain\Invoicing\PlatformOrderLines;
 use App\Models\InstallmentPlan;
 use App\Models\IssuedDocument;
 use App\Models\MerchantInvoicingSettings;
@@ -156,7 +157,9 @@ final class WooGatewayInvoiceReporter
                 continue;
             }
             $quantity = max(1, (int) ($item['quantity'] ?? 1));
-            $lineTotal = round((float) ($item['total'] ?? 0), 2);
+            // Tax-inclusive, as the plugin reports it: the order total these lines must
+            // reach includes the tax.
+            $lineTotal = round((float) ($item['total'] ?? 0) + (float) ($item['total_tax'] ?? 0), 2);
             $description = trim((string) ($item['name'] ?? ''));
             if ($description === '' || $lineTotal <= 0) {
                 continue;
@@ -166,7 +169,36 @@ final class WooGatewayInvoiceReporter
                 'unit_price' => round($lineTotal / $quantity, 2),
                 'quantity' => $quantity,
                 'catalog_number' => ((string) ($item['sku'] ?? '')) ?: null,
+                'kind' => PlatformOrderLines::KIND_ITEM,
             ];
+        }
+
+        // Shipping and fees as lines of their own. Unreported, they were only a gap to the
+        // total — and netted against a discount fee, a discount could not be told apart from
+        // them. A negative fee (a deal's discount) sends no line: the issuer prints the
+        // gap it leaves as "Discount".
+        $charges = [
+            PlatformOrderLines::KIND_SHIPPING => ['shipping_lines', 'method_title'],
+            PlatformOrderLines::KIND_FEE => ['fee_lines', 'name'],
+        ];
+        foreach ($charges as $kind => [$key, $nameKey]) {
+            foreach ((array) ($order[$key] ?? []) as $charge) {
+                if (! is_array($charge) || count($lines) >= self::MAX_LINES) {
+                    continue;
+                }
+                $amount = round((float) ($charge['total'] ?? 0) + (float) ($charge['total_tax'] ?? 0), 2);
+                $description = trim((string) ($charge[$nameKey] ?? '')) ?: $kind;
+                if ($amount <= 0) {
+                    continue;
+                }
+                $lines[] = [
+                    'description' => $description,
+                    'unit_price' => $amount,
+                    'quantity' => 1,
+                    'catalog_number' => null,
+                    'kind' => $kind,
+                ];
+            }
         }
 
         $lastFour = preg_replace('/\D/', '', (string) (

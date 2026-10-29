@@ -266,13 +266,14 @@ function lets_payplus_invoicing_order_body(WC_Order $order)
             'unit_price'     => round($line_total / $quantity, 2),
             'quantity'       => $quantity,
             'catalog_number' => lets_payplus_invoicing_sku($item),
+            'kind'           => 'item',
         );
     }
 
-    // Shipping and fees are lines of their own, named as the shopper saw them at checkout.
-    // Unreported, LETS sees only a gap to the total and must label it generically
-    // ("Shipping, fees and adjustments"). Free shipping and discount fees carry no
-    // positive amount, so they send no line (a negative fee still lands in that gap).
+    // Shipping and fees are lines of their own. Unreported, LETS sees only a gap to the
+    // total and must label it generically ("Shipping, fees and adjustments"). Free
+    // shipping and discount fees carry no positive amount, so they send no line: a
+    // negative fee (a "5 for ₪250" deal) is the gap LETS prints as "הנחה".
     foreach ($order->get_items(array('shipping', 'fee')) as $item) {
         $amount = round((float) $item->get_total() + (float) $item->get_total_tax(), 2);
         if ($amount <= 0) {
@@ -292,6 +293,8 @@ function lets_payplus_invoicing_order_body(WC_Order $order)
             'unit_price'     => $amount,
             'quantity'       => 1,
             'catalog_number' => '',
+            // LETS prints shipping as "משלוח", not under the method's title.
+            'kind'           => $item->is_type('shipping') ? 'shipping' : 'fee',
         );
     }
 
