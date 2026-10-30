@@ -2,6 +2,7 @@
 
 namespace App\Services\WooCommerce;
 
+use App\Domain\Tenancy\ShopHosts;
 use App\Models\Shop;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
@@ -141,7 +142,11 @@ final class WooCommerceShopProvisioner
         $payload = (string) json_encode([
             'k' => $apiKey,
             's' => $apiSecret,
-            'u' => url('/api/woocommerce/install'),
+            // APP_URL, never the request's host: a token minted on a shop's admin host
+            // (`<handle>.app.lets.co.il`) carried THAT host, and every plugin call followed
+            // it — sellameir's verify failed with "Could not resolve host" until DNS caught up.
+            // Machine endpoints live on the platform root (ShopHosts).
+            'u' => ShopHosts::appOrigin().'/api/woocommerce/install',
             'd' => $domain,
             'v' => self::TOKEN_VERSION,
         ], JSON_UNESCAPED_SLASHES);

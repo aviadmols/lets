@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.60.0
+Stable tag: 0.61.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,12 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.61.0 =
+* Payment page (iframe mode): a page that loaded before the load guard ran no longer reports
+  "failed to load" — the iframe marks its own load, so the admin email is sent only for a real failure.
+* Reconnect after updating if LETS calls fail with "Could not resolve host": a fresh connection
+  token always names app.lets.co.il, never a store-admin address.
 
 = 0.60.0 =
 * Invoicing: every reported line says what it is (item, shipping or fee). LETS prints shipping

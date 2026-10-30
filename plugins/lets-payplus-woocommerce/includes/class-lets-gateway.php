@@ -375,7 +375,9 @@ add_action('plugins_loaded', function () {
 
         echo '<div class="lets-payplus-iframe-wrap" style="position:relative;width:100%;min-height:720px">';
         echo '<iframe src="' . esc_url($url) . '" title="' . esc_attr__('Secure PayPlus payment', 'lets-payplus') . '"'
-            . ' style="width:100%;min-height:720px;border:0" allow="payment"></iframe>';
+            . ' style="width:100%;min-height:720px;border:0" allow="payment"'
+            // Marks the load ON the element, so the footer guard sees a load that finished before it ran.
+            . ' onload="this.setAttribute(\'data-lets-loaded\',\'1\')"></iframe>';
         echo '<p style="margin-top:10px"><a href="' . esc_url($url) . '" target="_blank" rel="noopener">'
             . esc_html__('Trouble seeing the payment form? Open it in a new tab.', 'lets-payplus') . '</a></p>';
         echo '</div>';

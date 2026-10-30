@@ -19,8 +19,10 @@
   iframe.addEventListener('load', function () { loaded = true; });
   iframe.addEventListener('error', report);
 
+  // This script runs in the footer; a fast iframe can finish loading BEFORE the listener above
+  // exists. The element's own onload stamps data-lets-loaded, so that load still counts.
   setTimeout(function () {
-    if (!loaded) {
+    if (!loaded && iframe.getAttribute('data-lets-loaded') !== '1') {
       report();
     }
   }, cfg.timeoutMs || 15000);

@@ -58,6 +58,20 @@ final class WooCommerceShopProvisionerTest extends TestCase
         $this->assertSame(WooCommerceShopProvisioner::TOKEN_VERSION, $decoded['v']);
     }
 
+    /**
+     * A token minted on a shop's admin host (`sellameir.app.lets.co.il`) must still send
+     * the plugin to the platform root: the plugin talks to whatever host the token names.
+     */
+    public function test_a_token_minted_on_a_shop_host_names_the_platform_root(): void
+    {
+        config(['app.url' => 'https://app.lets.co.il']);
+        $this->app['url']->forceRootUrl('https://sellameir.app.lets.co.il');
+
+        $result = $this->provisioner()->provision('store.example.com');
+
+        $this->assertSame('https://app.lets.co.il/api/woocommerce/install', $this->decode($result['connection_token'])['u']);
+    }
+
     public function test_secret_is_encrypted_at_rest(): void
     {
         $result = $this->provisioner()->provision('enc.example.com');
