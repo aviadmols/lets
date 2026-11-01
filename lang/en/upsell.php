@@ -149,6 +149,8 @@ return [
             'facts_help' => 'Short reassurances under the description. Separate items with | and the card draws a dot between them.',
             'picker_title' => 'Heading over the products',
             'picker_hint' => 'Instruction beside that heading',
+            'thanks_title' => 'Thank-you heading (shelf layout)',
+            'thanks_title_help' => 'The large line over the countdown. Leave blank for the default. The red text under the countdown is the offer\'s own headline: Post-purchase offers → the flow → click the offer → Headline.',
         ],
 
         // Element labels (each row in the Elements list).

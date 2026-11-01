@@ -159,6 +159,22 @@ final class UpsellCardPresenterTest extends TestCase
         $this->assertSame('תודה על הרכישה', $this->presenter()->sample($app, UpsellCardPresenter::PLATFORM_WOOCOMMERCE)['content']['thanks_title']);
     }
 
+    /** The merchant's own "thank you" line wins on the live card and the sample; blank falls back. */
+    public function test_the_shelf_thanks_title_is_the_merchants_own_when_set(): void
+    {
+        $offer = $this->offer(base: 10.0);
+        $app = MerchantUpsellAppearance::current();
+        $app->forceFill(['layout' => MerchantUpsellAppearance::LAYOUT_SHELF, 'card_locale' => MerchantUpsellAppearance::LOCALE_HE, 'thanks_title' => '  איזה כיף שבחרת בנו  ']);
+
+        $vm = $this->presenter()->forOffer($offer, $app, UpsellCardPresenter::PLATFORM_WOOCOMMERCE);
+
+        $this->assertSame('איזה כיף שבחרת בנו', $vm['content']['thanks_title']);
+        $this->assertSame('איזה כיף שבחרת בנו', $this->presenter()->sample($app, UpsellCardPresenter::PLATFORM_WOOCOMMERCE)['content']['thanks_title']);
+
+        $app->forceFill(['thanks_title' => '   ']);
+        $this->assertSame('תודה על הרכישה', $this->presenter()->forOffer($offer, $app, UpsellCardPresenter::PLATFORM_WOOCOMMERCE)['content']['thanks_title']);
+    }
+
     private function presenter(): UpsellCardPresenter
     {
         return app(UpsellCardPresenter::class);

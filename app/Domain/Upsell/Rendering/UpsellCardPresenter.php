@@ -152,7 +152,7 @@ final class UpsellCardPresenter
             'picker_title' => $appearance->pickerTitle() ?? __('upsell.grid.picker_title'),
             'picker_hint' => $appearance->pickerHint() ?? __('upsell.grid.picker_hint'),
             // The shelf layout's headline mark, over the countdown.
-            'thanks_title' => __('upsell.shelf.thanks_title'),
+            'thanks_title' => $appearance->thanksTitle() ?? __('upsell.shelf.thanks_title'),
         ];
     }
 

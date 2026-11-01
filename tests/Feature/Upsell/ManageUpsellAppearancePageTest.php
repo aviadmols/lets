@@ -151,6 +151,14 @@ final class ManageUpsellAppearancePageTest extends TestCase
         $this->assertSame('Closes in', $saved->timerLabel());
         $this->assertNull($saved->pickerTitle());
 
+        // The shelf's "thank you" line: typed → the preview + the row; capped by the guard.
+        $shelf = Livewire::test(ManageUpsellAppearance::class)
+            ->set('data.layout', MerchantUpsellAppearance::LAYOUT_SHELF)
+            ->set('data.thanks_title', 'Thanks for shopping with us');
+        $this->assertSame('Thanks for shopping with us', $shelf->instance()->draftAppearance()['thanks_title']);
+        $shelf->call('save')->assertHasNoErrors();
+        $this->assertSame('Thanks for shopping with us', MerchantUpsellAppearance::current()->fresh()->thanksTitle());
+
         // A tampered column count never reaches the row as typed: clamped by the guard.
         Livewire::test(ManageUpsellAppearance::class)->set('data.grid_columns', 99)->call('save');
         $this->assertSame(8, MerchantUpsellAppearance::current()->fresh()->gridColumns());

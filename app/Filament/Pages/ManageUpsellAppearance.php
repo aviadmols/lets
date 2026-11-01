@@ -283,6 +283,16 @@ class ManageUpsellAppearance extends Page implements HasForms
                     ->placeholder(__('upsell.grid.picker_hint'))
                     ->maxLength(120)
                     ->live(onBlur: true),
+                // The shelf's own headline — the grid draws no "thank you", so only shown there.
+                // The red line under the countdown is the OFFER's headline, edited per offer.
+                TextInput::make('thanks_title')
+                    ->label(__('upsell.appearance.copy.thanks_title'))
+                    ->placeholder(__('upsell.shelf.thanks_title'))
+                    ->helperText(__('upsell.appearance.copy.thanks_title_help'))
+                    ->maxLength(60)
+                    ->live(onBlur: true)
+                    ->visible(fn (Get $get): bool => $get('layout') === MerchantUpsellAppearance::LAYOUT_SHELF)
+                    ->columnSpanFull(),
             ]);
     }
 
@@ -441,6 +451,7 @@ class ManageUpsellAppearance extends Page implements HasForms
             'facts_text' => $s->factsText(),
             'picker_title' => $s->pickerTitle(),
             'picker_hint' => $s->pickerHint(),
+            'thanks_title' => $s->thanksTitle(),
             'card_locale' => $s->cardLocale(),
         ];
     }
@@ -471,6 +482,7 @@ class ManageUpsellAppearance extends Page implements HasForms
             'facts_text' => $input['facts_text'] ?? null,
             'picker_title' => $input['picker_title'] ?? null,
             'picker_hint' => $input['picker_hint'] ?? null,
+            'thanks_title' => $input['thanks_title'] ?? null,
             'card_locale' => $input['card_locale'] ?? null,
         ]);
 

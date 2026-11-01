@@ -403,6 +403,12 @@ class MerchantUpsellAppearance extends Model
         return $this->trimmedOrNull($this->picker_hint, 120);
     }
 
+    /** The shelf layout's headline over the countdown: "Thank you for your purchase". */
+    public function thanksTitle(): ?string
+    {
+        return $this->trimmedOrNull($this->thanks_title, 60);
+    }
+
     /**
      * A facts line as the list the card draws with a dot between items. Blank items are
      * dropped so a trailing separator never draws an empty slot.
