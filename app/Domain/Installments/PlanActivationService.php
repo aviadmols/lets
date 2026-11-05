@@ -57,6 +57,19 @@ final class PlanActivationService
      * deposit + advances the schedule (the later charges are gated by the engine's
      * own consent/payment-method checks, so nothing charges without a token).
      */
+    /**
+     * Payload flag: this order's document is issued for the whole order, so the plan issues
+     * none of its own. A WooCommerce checkout pays the plan beside other things on one
+     * transaction, and a document for the plan alone would declare only part of that money.
+     */
+    public const PAYLOAD_DOCUMENT_BY_ORDER = 'lets_document_by_order';
+
+    /** Where a confirmed PayPlus body keeps its transaction uid (both push + pull shapes). */
+    private const TRANSACTION_UID_PATHS = [
+        'data.transaction.uid', 'data.transaction.transaction_uid', 'data.transaction_uid',
+        'transaction.uid', 'transaction.transaction_uid', 'data.uid',
+    ];
+
     public function __construct(private readonly ?DepositTokenResolver $tokenResolver = null) {}
 
     /**
@@ -129,6 +142,8 @@ final class PlanActivationService
                         'plan_id' => $plan->getKey(),
                         'shopify_order_id' => $orderId,
                         'shopify_customer_id' => $plan->shopify_customer_id,
+                        // What a refund names at PayPlus. Without it the charge cannot be reversed.
+                        'payplus_transaction_uid' => $this->transactionUid($orderPayload),
                     ],
                 );
                 Ledger::transition($ledger, LedgerStatus::SUCCEEDED, [
@@ -177,7 +192,7 @@ final class PlanActivationService
             // afterCommit: we are inside the activation transaction, so no HTTP here.
             // A recurring plan's first payment IS a full sale, so it is invoiced as a
             // recurring cycle, not as a deposit against a balance.
-            if ($ledgerId !== null) {
+            if ($ledgerId !== null && empty($orderPayload[self::PAYLOAD_DOCUMENT_BY_ORDER])) {
                 IssueDocumentJob::queueAfterCommit(
                     shopId: (int) $shop->getKey(),
                     context: ($plan->isRecurring()
@@ -369,6 +384,19 @@ final class PlanActivationService
         return $plan->billing_frequency !== null
             ? CarbonImmutable::parse($plan->billing_frequency->addTo($base, (int) ($plan->interval_count ?: 1)))
             : $base->addMonthNoOverflow();
+    }
+
+    /** @param array<string, mixed> $orderPayload */
+    private function transactionUid(array $orderPayload): ?string
+    {
+        foreach (self::TRANSACTION_UID_PATHS as $path) {
+            $value = data_get($orderPayload, $path);
+            if (is_scalar($value) && (string) $value !== '') {
+                return (string) $value;
+            }
+        }
+
+        return null;
     }
 
     /** The amount the deposit charged: prefer the order total, fall back to the quote. */

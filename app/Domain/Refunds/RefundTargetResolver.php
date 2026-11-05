@@ -6,6 +6,7 @@ use App\Domain\Lifecycle\OrderRefundService;
 use App\Domain\Refunds\Models\RefundRequest;
 use App\Models\PaymentLedger;
 use App\Models\Shop;
+use App\Services\WooCommerce\Orders\WooSubscriptionCheckoutCharges;
 use App\Support\Tenant;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
@@ -40,11 +41,18 @@ final class RefundTargetResolver
         Shop::PLATFORM_WOOCOMMERCE => RefundRequest::RAIL_WOO_GATEWAY,
     ];
 
-    public function __construct(private readonly OrderRefundService $orders) {}
+    public function __construct(
+        private readonly OrderRefundService $orders,
+        private readonly WooSubscriptionCheckoutCharges $subscriptionCheckouts,
+    ) {}
 
     public function for(Shop $shop, RefundRequest $request): RefundTarget
     {
         $fallbackCurrency = (string) ($request->currency ?: config('payplus.currency', 'ILS'));
+
+        // A subscription order paid before its charges carried the transaction would
+        // otherwise read as "nothing of ours" below.
+        $this->subscriptionCheckouts->repair($shop, $this->orderIdFor($shop, $request));
 
         $charges = $this->chargesFor($shop, $request);
 
@@ -66,6 +74,20 @@ final class RefundTargetResolver
             refundable: $refundable,
             currency: (string) ($charges->first()->currency ?: $fallbackCurrency),
         );
+    }
+
+    /** The order this request is about: named on it, or read from the charge it is scoped to. */
+    private function orderIdFor(Shop $shop, RefundRequest $request): string
+    {
+        $orderId = trim((string) ($request->external_order_id ?? ''));
+
+        if ($orderId !== '' || $request->ledger_id === null) {
+            return $orderId;
+        }
+
+        return trim((string) Tenant::run($shop, static fn () => PaymentLedger::query()
+            ->whereKey((int) $request->ledger_id)
+            ->value('shopify_order_id')));
     }
 
     /**

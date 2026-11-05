@@ -35,6 +35,11 @@ use Illuminate\Support\Facades\Log;
  * reports converge on one issued_documents row. Double-issuing is prevented by
  * construction, not by hoping only one path runs.
  *
+ * A checkout that started a subscription is reported here too, and only here (the plugin
+ * leaves it alone). It is one payment, so it gets one document with everything it paid for:
+ * the subscription, any product beside it and the shipping. The merchant's scope and trigger
+ * statuses do not apply, because they choose which PLAIN orders are documented.
+ *
  * Fail-soft by contract: report() never throws — a document problem must never
  * un-pay an order.
  */
@@ -74,14 +79,22 @@ final class WooGatewayInvoiceReporter
         if (! $settings->isEnabled() || ! $shop->hasInvoicingConnection()) {
             return;
         }
-        if (! $settings->coversAllOrders()) {
+        $planIds = WooSubscriptionCheckoutCharges::planIdsOn($order);
+        // Paid before checkouts were documented whole, and confirmed again (a reloaded
+        // thank-you page): a second document would declare the same payment twice.
+        if ($planIds !== [] && app(WooSubscriptionCheckoutCharges::class)->planChargeHasOwnDocument($shop, $planIds)) {
             return;
         }
-        if ($this->belongsToPlan($shop, $order, $orderId)) {
-            return; // the plan pipeline owns this order's paperwork.
-        }
-        if (! $settings->triggersOn((string) ($order['status'] ?? ''))) {
-            return;
+        if ($planIds === []) {
+            if (! $settings->coversAllOrders()) {
+                return;
+            }
+            if ($this->belongsToPlan($shop, $order, $orderId)) {
+                return; // the plan pipeline owns this order's paperwork.
+            }
+            if (! $settings->triggersOn((string) ($order['status'] ?? ''))) {
+                return;
+            }
         }
 
         $total = round((float) ($order['total'] ?? 0), 2);
@@ -96,7 +109,7 @@ final class WooGatewayInvoiceReporter
         IssueDocumentJob::dispatch(
             shopId: $shopId,
             context: DocumentContext::PLATFORM_ORDER->value,
-            order: $this->orderPayload($order, $orderId, $total, $payplusBody),
+            order: $this->orderPayload($order, $orderId, $total, $payplusBody) + $this->planLink($shop, $planIds),
         );
 
         Log::info('woocommerce.gateway.invoice_reported', [
@@ -126,6 +139,28 @@ final class WooGatewayInvoiceReporter
                 ->where('external_order_id', $orderId)
                 ->orWhere('shopify_order_id', $orderId))
             ->exists());
+    }
+
+    /**
+     * Marks the report as a subscription checkout, naming the plan the document belongs to
+     * so it still shows on that plan. No ledger_id: a retry reads that column to choose the
+     * ledger path, and this document is rebuilt from the order. Only this class sets it: the
+     * plugin's report is built field by field and cannot carry it past the plan wall.
+     *
+     * @param  list<string>  $planIds
+     * @return array<string, array{plan_id: ?int}>
+     */
+    private function planLink(Shop $shop, array $planIds): array
+    {
+        if ($planIds === []) {
+            return [];
+        }
+
+        $first = app(WooSubscriptionCheckoutCharges::class)->firstCycles($shop, $planIds)->first();
+
+        return [DocumentIssuer::ORDER_PLAN_CHECKOUT => [
+            'plan_id' => $first?->plan_id !== null ? (int) $first->plan_id : null,
+        ]];
     }
 
     private function alreadyIssued(Shop $shop, string $orderId): bool

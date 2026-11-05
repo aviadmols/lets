@@ -324,10 +324,9 @@ final class WooGatewayFinalizer
      * never an instruction to charge. Idempotent on gateway:{shop}:{order}
      * (Ledger::open is find-then-create), so push + pull collapse to one row.
      *
-     * Skipped for cart-subscription orders: their first cycle is already ledgered
-     * by PlanActivationService at activation, and a full-order row on top would
-     * double-count the money on the Payments screen. (Documented v1 limitation: a
-     * MIXED cart records the plan cycle only.)
+     * A cart-subscription order's first cycle is already ledgered by
+     * PlanActivationService, so its row holds only what the order collected beyond that
+     * (WooSubscriptionCheckoutCharges): the two add up to the money that moved.
      *
      * Refund caveat, deliberate: a gateway sale's document (the plugin's
      * platform_order pipeline) has ledger_id = null, so a ledger-driven refund's
@@ -338,14 +337,6 @@ final class WooGatewayFinalizer
      */
     private function recordLedgerRow(Shop $shop, string $orderId, array $order, array $payplusBody): void
     {
-        if ($this->subscriptionPlanIds($order) !== []) {
-            Log::info('woocommerce.gateway.ledger_skipped_subscription', [
-                'shop_id' => $shop->getKey(), 'order_id' => $orderId,
-            ]);
-
-            return;
-        }
-
         $shopId = (int) $shop->getKey();
         $key = IdempotencyKey::gateway($shopId, $orderId);
 
@@ -360,6 +351,19 @@ final class WooGatewayFinalizer
             Log::warning('woocommerce.gateway.ledger_no_amount', [
                 'shop_id' => $shopId, 'order_id' => $orderId,
             ]);
+
+            return;
+        }
+
+        if ($this->subscriptionPlanIds($order) !== []) {
+            app(WooSubscriptionCheckoutCharges::class)->record(
+                $shop,
+                $orderId,
+                $order,
+                $amount,
+                $this->transactionUid($payplusBody),
+                ['raw_response_masked' => ResponseMasker::mask($payplusBody)],
+            );
 
             return;
         }
@@ -487,6 +491,8 @@ final class WooGatewayFinalizer
             // useless here — a cart can hold several plans plus one-time items).
             $payload['coupon_lines'] = (array) ($order['coupon_lines'] ?? []);
             $payload['line_items'] = (array) ($order['line_items'] ?? []);
+            // WooGatewayInvoiceReporter issues one document for the whole order.
+            $payload[PlanActivationService::PAYLOAD_DOCUMENT_BY_ORDER] = true;
 
             $activator->activateFromPaidOrder($shop, $payload);
         }
@@ -495,28 +501,14 @@ final class WooGatewayFinalizer
     /**
      * The subscription plan public ids the plugin stored on the order meta. Read back over the WC
      * REST API, so the key is the NON-underscore `lets_subscription_plan_ids` (WooCommerce omits
-     * protected `_`-prefixed meta from REST order responses). WC returns meta_data as [{key, value}];
-     * the value may be a real array or a comma-joined string.
+     * protected `_`-prefixed meta from REST order responses).
      *
      * @param  array<string, mixed>  $order
      * @return list<string>
      */
     private function subscriptionPlanIds(array $order): array
     {
-        foreach ((array) ($order['meta_data'] ?? []) as $meta) {
-            if (($meta['key'] ?? null) !== 'lets_subscription_plan_ids') {
-                continue;
-            }
-            $value = $meta['value'] ?? null;
-            if (is_array($value)) {
-                return array_values(array_filter(array_map(static fn ($v): string => trim((string) $v), $value), static fn (string $v): bool => $v !== ''));
-            }
-            if (is_string($value) && $value !== '') {
-                return array_values(array_filter(array_map('trim', explode(',', $value))));
-            }
-        }
-
-        return [];
+        return WooSubscriptionCheckoutCharges::planIdsOn($order);
     }
 
     /**
@@ -532,7 +524,7 @@ final class WooGatewayFinalizer
      *
      * @param  array<string, mixed>  $order
      */
-    private function customerName(array $order): ?string
+    public static function customerName(array $order): ?string
     {
         $name = trim(
             ((string) data_get($order, 'billing.first_name', '')).' '
@@ -542,7 +534,7 @@ final class WooGatewayFinalizer
         return $name !== '' ? $name : null;
     }
 
-    private function customerRef(array $order): string
+    public static function customerRef(array $order): string
     {
         $customerId = (int) ($order['customer_id'] ?? 0);
 

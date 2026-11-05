@@ -4,6 +4,7 @@ namespace Tests\Feature\WooCommerce;
 
 use App\Domain\Billing\IdempotencyKey;
 use App\Domain\Invoicing\DocumentContext;
+use App\Domain\Invoicing\DocumentIssuer;
 use App\Domain\Invoicing\Jobs\IssueDocumentJob;
 use App\Models\InstallmentPaymentMethod;
 use App\Models\MerchantInvoicingSettings;
@@ -503,7 +504,11 @@ final class WooCommerceGatewayTest extends TestCase
     }
 
     /** A plan order's paperwork belongs to the plan pipeline — never reported twice. */
-    public function test_a_plan_order_is_not_reported_for_invoicing(): void
+    /**
+     * A subscription checkout is one payment for the whole order, so the SaaS reports it
+     * once as an order, marked so the issuer lets it past the plan wall.
+     */
+    public function test_a_subscription_order_is_reported_once_as_the_whole_order(): void
     {
         Queue::fake();
         Http::fake([
@@ -520,7 +525,10 @@ final class WooCommerceGatewayTest extends TestCase
             'more_info' => 'gw:6800', 'status_code' => '000', 'amount' => '90.00',
         ]))->assertOk()->assertJsonPath('paid', true);
 
-        Queue::assertNotPushed(IssueDocumentJob::class);
+        Queue::assertPushed(IssueDocumentJob::class, 1);
+        Queue::assertPushed(IssueDocumentJob::class, static fn (IssueDocumentJob $job): bool => $job->ledgerId === null
+            && array_key_exists(DocumentIssuer::ORDER_PLAN_CHECKOUT, (array) $job->order)
+            && (float) $job->order['total'] === 90.0);
     }
 
     /**

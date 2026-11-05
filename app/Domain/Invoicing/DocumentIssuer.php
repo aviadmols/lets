@@ -51,6 +51,9 @@ use Throwable;
 final class DocumentIssuer
 {
     // === CONSTANTS ===
+    /** On a reported order: it is a subscription checkout, documented as one order. */
+    public const ORDER_PLAN_CHECKOUT = 'plan_checkout';
+
     /** Failure codes this service originates (provider codes come from the result). */
     private const ERROR_BUILD_FAILED = 'build_failed';
 
@@ -271,7 +274,11 @@ final class DocumentIssuer
             //
             // Asked again at issue time, the link is there and the second document
             // is never requested. It costs one indexed lookup per plain order.
-            if ($this->orderBelongsToPlan($shopId, $orderId)) {
+            //
+            // A subscription checkout's report is the exception: the plan issued no
+            // document of its own for it (WooGatewayInvoiceReporter).
+            $planCheckout = (array) ($order[self::ORDER_PLAN_CHECKOUT] ?? []);
+            if ($planCheckout === [] && $this->orderBelongsToPlan($shopId, $orderId)) {
                 Log::info('invoicing.platform_order.skipped_plan_order', [
                     'shop_id' => $shopId,
                     'order_id' => $orderId,
@@ -288,7 +295,11 @@ final class DocumentIssuer
             // charges that have no document of their own. The order's document is issued
             // once their windows have closed (IssueDocumentJob waits), so this is all of them.
             $hold = app(OrderDocumentHold::class);
-            $upsells = $hold->chargesToInclude($shopId, $orderId);
+            // A shop documenting plans only gives each upsell its own document, so a
+            // subscription checkout's document must not declare it as well.
+            $upsells = $planCheckout !== [] && ! $hold->combinesOrders($shopId)
+                ? collect()
+                : $hold->chargesToInclude($shopId, $orderId);
             foreach ($upsells as $charge) {
                 array_push($lines, ...$hold->linesFor(
                     $charge,
@@ -327,6 +338,7 @@ final class DocumentIssuer
             );
 
             return $this->issue($shop, $context, $key, $request, [
+                'plan_id' => $planCheckout['plan_id'] ?? null,
                 'external_order_id' => $orderId,
                 // A plain store order has no ledger row and no plan, so this report
                 // is the ONLY record of how the money arrived and who paid. Without

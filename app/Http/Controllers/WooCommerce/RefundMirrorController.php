@@ -69,6 +69,9 @@ final class RefundMirrorController extends WooStorefrontController
     /** Rounding slack, the same grain the ledger uses. */
     private const EPSILON = 0.005;
 
+    /** The answer when WooCommerce asks us to move money we have no charge for. */
+    private const REFUSED_NO_CHARGE = 'no_charge_to_refund';
+
     /**
      * POST /api/woocommerce/orders/{order}/refund — the gateway's process_refund.
      *
@@ -92,13 +95,25 @@ final class RefundMirrorController extends WooStorefrontController
             return response()->json(['error' => 'invalid_amount'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
+        // WooCommerce is asking US to move this money, so a rail that leaves it to the store
+        // moves nothing: the store is waiting on this answer. Saying yes would write a refund
+        // on the order while the shopper never got the money.
+        if (! $cancel && Tenant::run($shop, static fn (): bool => in_array(RefundPreview::for($shop, $order)->rail, RefundRequest::DELEGATED_RAILS, true))) {
+            return response()->json([
+                'ok' => false,
+                'refunded' => 0.0,
+                'reason' => self::REFUSED_NO_CHARGE,
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
         $result = Tenant::run($shop, function () use ($shop, $order, $amount, $cancel, $request): RefundRequest {
             $orchestrator = app(RefundOrchestrator::class);
 
             return $orchestrator->run($shop, $this->open($shop, $order, $amount, $request, $cancel));
         });
 
-        $refunded = $result->refundedTotal();
+        // A cancellation on a delegated rail stops the order and the plan, and moves no money.
+        $refunded = $result->isDelegated() ? 0.0 : $result->refundedTotal();
 
         // For a plain refund, `ok` is "did the gateway hand the money back?" — a
         // false leaves WooCommerce's own refund record unwritten, which is

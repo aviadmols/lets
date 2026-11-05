@@ -187,7 +187,15 @@ final class IssueDocumentJob implements ShouldBeUnique, ShouldQueue
     public function uniqueId(): string
     {
         if ($this->ledgerId === null) {
-            return sprintf('shop:%d:doc:order:%s', $this->shopId, (string) ($this->order['order_id'] ?? ''));
+            // A subscription checkout's report has a lock of its own: an older plugin's report
+            // of the same order may be waiting, and it stops at the plan wall when it runs. Both
+            // reach one document through the issuer's key.
+            return sprintf(
+                'shop:%d:doc:order:%s%s',
+                $this->shopId,
+                (string) ($this->order['order_id'] ?? ''),
+                isset($this->order[DocumentIssuer::ORDER_PLAN_CHECKOUT]) ? ':plan_checkout' : '',
+            );
         }
 
         // The context + amount are part of the key: a refund of a charge is a
