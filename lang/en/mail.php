@@ -84,6 +84,22 @@ return [
         'port_refused' => 'Use one of the standard mail ports: :ports.',
     ],
 
+    // The sign-in code through the merchant's own Resend account — that email only.
+    'login_relay' => [
+        'heading' => 'Sign-in code through Resend',
+        'intro' => 'Send only the personal area sign-in code from your own Resend account. Every other email keeps being sent as set on this page.',
+        'enabled' => 'Send the sign-in code through my Resend account',
+        'key' => 'Resend API key',
+        'key_hint' => 'Starts with re_. Create one in Resend under API Keys ("Sending access" is enough). Saved encrypted; paste a new key to replace it.',
+        'from_address' => 'From address',
+        'from_address_hint' => 'Must be on a domain you verified in Resend, e.g. noreply@your-store.co.il.',
+        'from_name' => 'From name',
+        'key_required' => 'Paste your Resend API key.',
+        'key_invalid' => 'This does not look like a Resend API key (it should start with re_).',
+        'from_required' => 'Enter a From address on the domain you verified in Resend.',
+        'send_test' => 'Send test sign-in code',
+    ],
+
     'portal' => [
         'store_page_url' => 'Customer portal page URL',
         'store_page_help' => 'The storefront page customers land on from email links.',

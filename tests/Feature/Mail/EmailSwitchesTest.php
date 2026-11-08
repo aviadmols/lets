@@ -322,8 +322,8 @@ final class EmailSwitchesTest extends TestCase
      * next to theirs — so the wall is here, not in a code review. A new send site
      * either asks MailPolicy or appears in this test's failure message.
      *
-     * The two deliberate exemptions are listed, each with its reason, so adding a
-     * third is a decision somebody has to write down.
+     * The deliberate exemptions are listed, each with its reason, so adding
+     * another is a decision somebody has to write down.
      */
     public function test_every_send_site_consults_the_policy(): void
     {
@@ -341,6 +341,10 @@ final class EmailSwitchesTest extends TestCase
             // goes to the address they just typed, and refusing it would leave
             // them unable to see their own draft. The campaign SEND is gated.
             'app/Filament/Resources/CampaignResource/Pages/EditCampaign.php' => 'merchant self-test (send is gated)',
+            // The merchant sending THEMSELVES a sample sign-in code, to prove the
+            // relay they just connected works. The real code (LoginCodeService)
+            // is gated by the master tap.
+            'app/Filament/Pages/ManageMailSettings.php' => 'merchant self-test of the sign-in relay (real send is gated)',
         ];
 
         $senders = [];
@@ -352,6 +356,7 @@ final class EmailSwitchesTest extends TestCase
             // A file that SENDS: it hands a mailable to a mailer.
             $sends = str_contains($source, '->send(new ')
                 || str_contains($source, 'CampaignMailer::for(')
+                || str_contains($source, 'LoginCodeMailer::for(')
                 || str_contains($source, 'Mail::to(');
 
             // The mailables themselves are the MESSAGE, not the decision to send.

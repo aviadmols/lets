@@ -85,6 +85,21 @@ return [
         'port_refused' => 'יש להשתמש באחד מפורטי הדואר הסטנדרטיים: :ports.',
     ],
 
+    'login_relay' => [
+        'heading' => 'קוד הכניסה דרך Resend',
+        'intro' => 'שליחת קוד הכניסה לאזור האישי בלבד מחשבון ה-Resend שלכם. כל שאר המיילים ממשיכים להישלח כפי שהוגדר בעמוד הזה.',
+        'enabled' => 'לשלוח את קוד הכניסה דרך חשבון ה-Resend שלי',
+        'key' => 'מפתח API של Resend',
+        'key_hint' => 'מתחיל ב-re_. יוצרים אותו ב-Resend תחת API Keys (הרשאת "Sending access" מספיקה). נשמר מוצפן; הדביקו מפתח חדש כדי להחליף.',
+        'from_address' => 'כתובת השולח',
+        'from_address_hint' => 'חייבת להיות על דומיין שאימתתם ב-Resend, למשל noreply@your-store.co.il.',
+        'from_name' => 'שם השולח',
+        'key_required' => 'הדביקו את מפתח ה-API של Resend.',
+        'key_invalid' => 'זה לא נראה כמו מפתח API של Resend (הוא מתחיל ב-re_).',
+        'from_required' => 'הזינו כתובת שולח על הדומיין שאימתתם ב-Resend.',
+        'send_test' => 'שליחת קוד כניסה לבדיקה',
+    ],
+
     'portal' => [
         'store_page_url' => 'כתובת עמוד פורטל הלקוחות',
         'store_page_help' => 'עמוד החנות שאליו הלקוחות מגיעים מקישורי המייל.',

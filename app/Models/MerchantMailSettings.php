@@ -150,7 +150,7 @@ class MerchantMailSettings extends Model
      */
     protected $guarded = ['shop_id'];
 
-    protected $hidden = ['smtp_password'];
+    protected $hidden = ['smtp_password', 'login_code_resend_key'];
 
     protected function casts(): array
     {
@@ -165,7 +165,24 @@ class MerchantMailSettings extends Model
             // SMTP password is a credential — encrypt at rest (APP_KEY cast; it is
             // a per-row secret, not a cross-shop one, so APP_KEY is fine here).
             'smtp_password' => 'encrypted',
+            'login_code_via_resend' => 'boolean',
+            // Same reasoning as smtp_password: the merchant's Resend API key.
+            'login_code_resend_key' => 'encrypted',
         ];
+    }
+
+    /**
+     * Does this shop's sign-in code leave through its own Resend account?
+     *
+     * All three, or none: switched on, a key to authenticate with, and a From on
+     * the domain the merchant verified in Resend — Resend refuses any other From,
+     * so a relay without one would turn every sign-in into a silent failure.
+     */
+    public function usesLoginCodeRelay(): bool
+    {
+        return $this->login_code_via_resend
+            && trim((string) $this->login_code_resend_key) !== ''
+            && trim((string) $this->login_code_from_address) !== '';
     }
 
     /**

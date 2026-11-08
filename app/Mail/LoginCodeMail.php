@@ -3,6 +3,7 @@
 namespace App\Mail;
 
 use App\Mail\Concerns\UsesCustomMailTemplate;
+use App\Mail\Support\MailTransport;
 use App\Models\MerchantMailSettings;
 use App\Models\Shop;
 use Illuminate\Bus\Queueable;
@@ -40,7 +41,17 @@ final class LoginCodeMail extends Mailable
 
     public function envelope(): Envelope
     {
-        return $this->inMailLocale($this->shop, fn (): Envelope => $this->buildEnvelope(MerchantMailSettings::TEMPLATE_LOGIN_CODE, $this->shop, $this->vars()));
+        $envelope = $this->inMailLocale($this->shop, fn (): Envelope => $this->buildEnvelope(MerchantMailSettings::TEMPLATE_LOGIN_CODE, $this->shop, $this->vars()));
+
+        // Sent through the merchant's Resend account, the code must carry the From
+        // on the domain they verified THERE — Resend refuses any other, including
+        // the From of their full SMTP override, which buildEnvelope may have set.
+        $relay = MailTransport::loginCodeRelay($this->shop);
+        if ($relay !== null) {
+            $envelope->from($relay['from']['address'], $relay['from']['name']);
+        }
+
+        return $envelope;
     }
 
     public function content(): Content

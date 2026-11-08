@@ -4,6 +4,7 @@ namespace App\Domain\Account;
 
 use App\Domain\Mail\MailPolicy;
 use App\Mail\LoginCodeMail;
+use App\Mail\Support\LoginCodeMailer;
 use App\Models\CustomerLoginCode;
 use App\Models\MerchantLoyaltySettings;
 use App\Models\MerchantMailSettings;
@@ -14,7 +15,6 @@ use App\Support\Tenant;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 
 /**
@@ -299,8 +299,9 @@ class LoginCodeService
                 return;
             }
 
-            LoginCodeMail::mergeMailSettingsIntoConfig($shop);
-            Mail::to($destination)->send(new LoginCodeMail($shop, $code, self::TTL_MINUTES));
+            // The merchant's own Resend account when they connected one for the
+            // code, else the same relay as every other email (LoginCodeMailer).
+            LoginCodeMailer::for($shop)->to($destination)->send(new LoginCodeMail($shop, $code, self::TTL_MINUTES));
         } catch (\Throwable $e) {
             Log::warning('account.login_code.delivery_failed', [
                 'shop_id' => $shop->getKey(),

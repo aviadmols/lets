@@ -47,6 +47,18 @@ final class MailTransport
     private const DEFAULT_SMTP_PORT = 587;
 
     /**
+     * Resend's SMTP relay (the sign-in code only): the literal username
+     * "resend", the API key as the password, STARTTLS on the submission port.
+     * A fixed public host, not merchant-typed, so it needs none of the
+     * merchant-relay address walls.
+     */
+    private const RESEND_HOST = 'smtp.resend.com';
+
+    private const RESEND_PORT = 587;
+
+    private const RESEND_USERNAME = 'resend';
+
+    /**
      * The mailer config array for this shop, or null for "the platform default
      * mailer, untouched".
      *
@@ -100,6 +112,52 @@ final class MailTransport
             // verified domain when it has one, the platform address otherwise.
             // Both providers refuse a From on a domain they never authenticated.
             'from' => self::sendGridFrom($shop, $settings, $platform),
+        ];
+    }
+
+    /**
+     * The sign-in code's relay: the merchant's own Resend account when they
+     * connected one for it, else exactly the ladder every other email uses.
+     *
+     * @return array{config: array<string, mixed>, from: ?array{address: string, name: string}}|null
+     */
+    public static function forLoginCode(Shop $shop): ?array
+    {
+        return self::loginCodeRelay($shop) ?? self::for($shop);
+    }
+
+    /**
+     * The merchant's Resend relay for the sign-in code ONLY, or null when they
+     * have not connected one. Nothing else reads it: a receipt or a reminder
+     * never leaves through this account, whatever is configured here.
+     *
+     * @return array{config: array<string, mixed>, from: array{address: string, name: string}}|null
+     */
+    public static function loginCodeRelay(Shop $shop): ?array
+    {
+        $settings = self::settingsFor($shop);
+
+        if ($settings === null || ! $settings->usesLoginCodeRelay()) {
+            return null;
+        }
+
+        return [
+            'config' => [
+                'transport' => self::TRANSPORT,
+                'host' => self::RESEND_HOST,
+                'port' => self::RESEND_PORT,
+                'username' => self::RESEND_USERNAME,
+                'password' => trim((string) $settings->login_code_resend_key),
+                'scheme' => 'smtp',
+                'timeout' => null,
+                'local_domain' => null,
+            ],
+            'from' => [
+                'address' => trim((string) $settings->login_code_from_address),
+                'name' => (string) ($settings->login_code_from_name
+                    ?: $settings->from_name
+                    ?: BusinessName::for($shop)),
+            ],
         ];
     }
 

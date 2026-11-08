@@ -2,12 +2,15 @@
 
 namespace App\Filament\Pages;
 
+use App\Domain\Account\LoginCodeService;
 use App\Domain\Brand\SafeSiteFetcher;
 use App\Domain\Mail\SenderDomains;
 use App\Domain\Mail\SendGrid\SendGridClient;
 use App\Filament\Clusters\Settings as SettingsCluster;
 use App\Filament\Concerns\ShopScopedScreen;
 use App\Filament\Forms\Components\HtmlCodeEditor;
+use App\Mail\LoginCodeMail;
+use App\Mail\Support\LoginCodeMailer;
 use App\Mail\Support\MailSettingsConfigurator;
 use App\Mail\Support\MailTransport;
 use App\Models\MerchantMailSettings;
@@ -76,9 +79,7 @@ class ManageMailSettings extends Page implements HasForms
 
     protected static ?string $slug = 'mail';
 
-
     /** Behind the one Settings item: in-page left index, URL /admin/settings/{slug}. */
-
     protected static ?string $cluster = SettingsCluster::class;
 
     protected static ?int $navigationSort = 40;
@@ -96,7 +97,13 @@ class ManageMailSettings extends Page implements HasForms
     public const SMTP_ENCRYPTIONS = ['tls', 'ssl'];
 
     /** Form fields whose value is a secret → overwrite only when typed. */
-    public const SECRET_FIELDS = ['smtp_password'];
+    public const SECRET_FIELDS = ['smtp_password', 'login_code_resend_key'];
+
+    /** Every Resend API key starts with this; anything else is a paste of the wrong thing. */
+    public const RESEND_KEY_PREFIX = 're_';
+
+    /** The sample code a test sign-in email carries — never a real one. */
+    public const TEST_LOGIN_CODE = '123456';
 
     /** The sending-domain panel: DNS records, status, the three buttons. */
     public const SENDER_VIEW = 'filament.pages.partials.sender-domain';
@@ -155,6 +162,10 @@ class ManageMailSettings extends Page implements HasForms
             'smtp_password' => null, // never re-shown
             'from_address' => $settings->from_address,
             'from_name' => $settings->from_name,
+            'login_code_via_resend' => (bool) $settings->login_code_via_resend,
+            'login_code_resend_key' => null, // never re-shown
+            'login_code_from_address' => $settings->login_code_from_address,
+            'login_code_from_name' => $settings->login_code_from_name,
             'portal_store_page_url' => $settings->portal_store_page_url,
             // The domain lives on its own row (a conversation with the provider,
             // not a setting); the field is pre-filled so a merchant re-opening
@@ -201,7 +212,46 @@ class ManageMailSettings extends Page implements HasForms
                     ->description(__('mail.edit.intro'))
                     ->schema(array_map(fn (string $t): Section => $this->templateSection($t), self::TEMPLATES)),
                 $this->remindersSection(),
+                $this->loginCodeRelaySection(),
                 $this->advancedSection(),
+            ]);
+    }
+
+    /**
+     * The sign-in code through the merchant's own Resend account — that one email
+     * only. Every other email keeps the relay the rest of this screen chooses.
+     */
+    private function loginCodeRelaySection(): Section
+    {
+        return Section::make(__('mail.login_relay.heading'))
+            ->description(__('mail.login_relay.intro'))
+            ->collapsed(fn (): bool => ! ($this->data['login_code_via_resend'] ?? false))
+            ->schema([
+                Toggle::make('login_code_via_resend')
+                    ->label(__('mail.login_relay.enabled'))
+                    ->live()
+                    ->columnSpanFull(),
+
+                Grid::make()
+                    ->visible(fn (Get $get): bool => (bool) $get('login_code_via_resend'))
+                    ->schema([
+                        TextInput::make('login_code_resend_key')
+                            ->label(__('mail.login_relay.key'))
+                            ->helperText(__('mail.login_relay.key_hint'))
+                            ->password()
+                            ->revealable()
+                            ->placeholder($this->loginRelayKeyHint())
+                            ->autocomplete(false)
+                            ->columnSpanFull(),
+                        TextInput::make('login_code_from_address')
+                            ->label(__('mail.login_relay.from_address'))
+                            ->helperText(__('mail.login_relay.from_address_hint'))
+                            ->email(),
+                        TextInput::make('login_code_from_name')
+                            ->label(__('mail.login_relay.from_name'))
+                            ->maxLength(120),
+                    ])
+                    ->columns(2),
             ]);
     }
 
@@ -538,6 +588,18 @@ class ManageMailSettings extends Page implements HasForms
                         ->required(),
                 ])
                 ->action(fn (array $data) => $this->sendTest($data['template'], $data['recipient'])),
+            HeaderAction::make('sendTestLoginCode')
+                ->label(__('mail.login_relay.send_test'))
+                ->icon('heroicon-o-key')
+                ->color('gray')
+                ->form([
+                    TextInput::make('recipient')
+                        ->label(__('mail.test.recipient'))
+                        ->email()
+                        ->default(fn (): ?string => auth()->user()?->email)
+                        ->required(),
+                ])
+                ->action(fn (array $data) => $this->sendTestLoginCode($data['recipient'])),
         ];
     }
 
@@ -607,6 +669,8 @@ class ManageMailSettings extends Page implements HasForms
             $settings->smtp_password = $input['smtp_password'];
         }
 
+        $this->applyLoginCodeRelay($settings, $input);
+
         // The relay's address must be one the outbound walls allow — refused at
         // save, so the merchant hears it here and not as silent platform delivery.
         if ($settings->override_env_smtp && $settings->smtp_host !== null
@@ -620,6 +684,47 @@ class ManageMailSettings extends Page implements HasForms
 
         $this->mount(); // re-mask the secret field
         Notification::make()->title(__('mail.saved'))->success()->send();
+    }
+
+    /**
+     * The sign-in code's Resend relay, from the form. The key is written only
+     * when a new one was typed (blank keeps the stored one), and switching it on
+     * without a key or a From is refused HERE — saved half-configured, the code
+     * would silently fall back to the regular relay and the merchant would never
+     * know their Resend account was not in use.
+     *
+     * @param  array<string, mixed>  $input
+     */
+    private function applyLoginCodeRelay(MerchantMailSettings $settings, array $input): void
+    {
+        $settings->login_code_via_resend = (bool) ($input['login_code_via_resend'] ?? false);
+        $settings->login_code_from_address = $this->blankToNull($input['login_code_from_address'] ?? null);
+        $settings->login_code_from_name = $this->blankToNull($input['login_code_from_name'] ?? null);
+
+        $typed = $this->blankToNull($input['login_code_resend_key'] ?? null);
+        if ($typed !== null) {
+            $settings->login_code_resend_key = $typed;
+        }
+
+        if (! $settings->login_code_via_resend) {
+            return;
+        }
+
+        $errors = [];
+
+        if (trim((string) $settings->login_code_resend_key) === '') {
+            $errors['data.login_code_resend_key'] = __('mail.login_relay.key_required');
+        } elseif ($typed !== null && ! str_starts_with($typed, self::RESEND_KEY_PREFIX)) {
+            $errors['data.login_code_resend_key'] = __('mail.login_relay.key_invalid');
+        }
+
+        if ($settings->login_code_from_address === null) {
+            $errors['data.login_code_from_address'] = __('mail.login_relay.from_required');
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
     }
 
     /** "Restore default" — clear a template's custom subject + body so the default is used. */
@@ -843,6 +948,49 @@ class ManageMailSettings extends Page implements HasForms
         }
     }
 
+    /**
+     * A sign-in email with a sample code, sent EXACTLY the way a real one goes —
+     * the same mailable, the same mailer (LoginCodeMailer), so a green toast here
+     * means the shopper's code will leave the same way. Uses the SAVED settings:
+     * the relay is chosen from the row, so unsaved edits are not what is tested.
+     */
+    public function sendTestLoginCode(string $recipient): void
+    {
+        $shop = Tenant::current();
+        if ($shop === null) {
+            return;
+        }
+
+        $relay = LoginCodeMailer::relayName($shop);
+
+        try {
+            LoginCodeMailer::for($shop)->to($recipient)->send(new LoginCodeMail($shop, self::TEST_LOGIN_CODE, LoginCodeService::TTL_MINUTES));
+
+            Log::info('mail.test_login_code.sent', ['shop_id' => (int) $shop->getKey(), 'relay' => $relay]);
+
+            Notification::make()
+                ->title(__('mail.test.sent', ['email' => $recipient]))
+                ->body(__('mail.test.sent_via', ['relay' => $relay]))
+                ->success()
+                ->send();
+        } catch (Throwable $e) {
+            // The relay's reply IS the diagnosis ("535 Invalid API key", "450
+            // domain not verified") — show it, and leave a server-side trace.
+            Log::error('mail.test_login_code.failed', [
+                'shop_id' => (int) $shop->getKey(),
+                'relay' => $relay,
+                'error' => $e->getMessage(),
+            ]);
+
+            Notification::make()
+                ->title(__('mail.test.failed', ['reason' => class_basename($e)]))
+                ->body(mb_substr($e->getMessage(), 0, 300))
+                ->danger()
+                ->persistent()
+                ->send();
+        }
+    }
+
     // === Preview ===
 
     /**
@@ -913,6 +1061,14 @@ class ManageMailSettings extends Page implements HasForms
     private function secretMaskHint(): ?string
     {
         return MerchantMailSettings::current()->smtp_password
+            ? __('mail.smtp.password_saved')
+            : null;
+    }
+
+    /** Show a "paste to replace" hint when a Resend key is already stored. */
+    private function loginRelayKeyHint(): ?string
+    {
+        return MerchantMailSettings::current()->login_code_resend_key
             ? __('mail.smtp.password_saved')
             : null;
     }
