@@ -247,8 +247,8 @@ final class SubscriptionControlsTest extends TestCase
 
     /**
      * An old subscription — an annual term that ended, one the engine gave up on,
-     * one we held because its renewal was never paid — must not keep a customer
-     * from buying a new one. Anything still held does block.
+     * one we held because its renewal was never paid, one paused by anyone — must
+     * not keep a customer from buying a new one. Anything still held does block.
      *
      * @return array<string, array{0: array<string, mixed>, 1: bool}>
      */
@@ -263,7 +263,8 @@ final class SubscriptionControlsTest extends TestCase
             'imported annual term that ended' => [['meta' => ['import' => ['auto_renew' => false, 'expires_at' => $now->subMonths(2)->toIso8601String()]]], false],
             'imported annual term still running' => [['meta' => ['import' => ['auto_renew' => false, 'expires_at' => $now->addMonths(2)->toIso8601String()]]], true],
             'imported renewing plan with a past period end' => [['meta' => ['import' => ['auto_renew' => true, 'expires_at' => $now->subMonths(2)->toIso8601String()]]], true],
-            'paused by the customer' => [['status' => PlanStatus::PAUSED->value], true],
+            'paused by the customer or the merchant' => [['status' => PlanStatus::PAUSED->value], false],
+            'paused, with a term still running' => [['status' => PlanStatus::PAUSED->value, 'meta' => ['import' => ['auto_renew' => false, 'expires_at' => $now->addMonths(6)->toIso8601String()]]], false],
             'renewal still being retried' => [['status' => PlanStatus::AWAITING_PAYMENT->value], true],
             'paid, waiting for activation' => [['status' => PlanStatus::AWAITING_ACTIVATION->value, 'next_charge_at' => null], true],
             'cancelled' => [['status' => PlanStatus::CANCELLED->value], false],

@@ -303,7 +303,10 @@ class InstallmentPlan extends Model
     /**
      * The statuses a plan may HOLD a subscription in right now — the candidates
      * holdsSubscriptionNow() then narrows. FAILED is not among them: it is "we
-     * stopped asking", a row the engine itself treats as inert.
+     * stopped asking", a row the engine itself treats as inert. PAUSED is not
+     * either: a paused subscription is not one the customer is receiving, and
+     * the merchant wants that customer able to buy again (whoever paused it —
+     * the customer, the merchant, or us over an unpaid renewal).
      *
      * @return list<string>
      */
@@ -311,7 +314,6 @@ class InstallmentPlan extends Model
     {
         return array_map(static fn (PlanStatus $s): string => $s->value, [
             PlanStatus::ACTIVE,
-            PlanStatus::PAUSED,
             PlanStatus::AWAITING_PAYMENT,
             PlanStatus::AWAITING_ACTIVATION,
         ]);
@@ -326,14 +328,10 @@ class InstallmentPlan extends Model
      *
      *   - A term that does not renew and has ENDED (expiresAt() in the past) is
      *     over, whatever status the import left it in.
-     *   - A plan WE paused because its renewal never got paid (payment_failed_at
-     *     is the stamp that says the pause is ours, not the customer's) is a
-     *     subscription the customer let lapse — typically an annual plan whose
-     *     card expired during the year. Blocking a new purchase over it keeps
-     *     the customer out of the shop for a plan they no longer have.
+     *   - A PAUSED plan, by anyone, is not held (see heldStatuses()).
      *
-     * Still held: active, waiting for activation, dunning that is still being
-     * retried (awaiting_payment), and a pause the customer or merchant chose.
+     * Still held: active, waiting for activation, and dunning that is still
+     * being retried (awaiting_payment).
      */
     public function holdsSubscriptionNow(): bool
     {
@@ -342,10 +340,6 @@ class InstallmentPlan extends Model
             : PlanStatus::tryFrom((string) $this->status);
 
         if ($status === null || ! in_array($status->value, self::heldStatuses(), true)) {
-            return false;
-        }
-
-        if ($status === PlanStatus::PAUSED && $this->payment_failed_at !== null) {
             return false;
         }
 
