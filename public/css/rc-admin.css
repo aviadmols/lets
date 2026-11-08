@@ -620,6 +620,37 @@
     .rc-ans-pair, .rc-ans-band.rc-an-kpi-row { grid-template-columns: minmax(0, 1fr); }
 }
 
+/* =========================================================================
+   analytics-summary.css — Analytics › Summary (the plain screen).
+   Layout only: every colour, type ramp, space and radius is a theme token.
+   TOKENS: --rc-space-1/2/3/4/6 --rc-type-label --rc-type-caption --rc-type-h --rc-type-kpi
+           --rc-type-body-strong --rc-ink --rc-ink-muted --rc-border-soft --rc-surface-sunk
+           --rc-radius-card --rc-red-ink --rc-red-bg
+   ========================================================================= */
+
+/* Period bar: quick buttons, specific dates, "showing …". */
+.rc-sum-period { display: flex; flex-wrap: wrap; align-items: center; gap: var(--rc-space-3) var(--rc-space-4); margin-block-end: var(--rc-space-4); }
+.rc-sum-period .rc-seg { flex-wrap: wrap; }
+.rc-sum-period__dates { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--rc-space-2); }
+.rc-sum-period__field { display: flex; flex-direction: column; gap: var(--rc-space-1); font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+.rc-sum-period__now { flex-basis: 100%; margin: 0; font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+
+/* The heading that opens the lower part (left · collection). */
+.rc-sum-heading { margin: var(--rc-space-6) 0 var(--rc-space-1); padding-block-start: var(--rc-space-4); border-block-start: 1px solid var(--rc-border-soft); font: var(--rc-type-h); color: var(--rc-ink); }
+
+/* Collection problems: two big tiles. */
+.rc-sum-problems { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rc-space-4); }
+.rc-sum-problem { display: flex; flex-direction: column; gap: var(--rc-space-1); padding: var(--rc-space-4); border-radius: var(--rc-radius-card); background: var(--rc-surface-sunk); }
+.rc-sum-problem--alert { background: var(--rc-red-bg); }
+.rc-sum-problem__value { font: var(--rc-type-kpi); color: var(--rc-ink); }
+.rc-sum-problem--alert .rc-sum-problem__value { color: var(--rc-red-ink); }
+.rc-sum-problem__label { font: var(--rc-type-body-strong); color: var(--rc-ink); }
+.rc-sum-problem__hint { font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+
+@media (max-width: 640px) {
+    .rc-sum-problems { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* analytics.css — the Analytics module: page shell, cards, the rc.chart.*
    components and their ENTRANCE MOTION.
    TOKENS: --rc-card --rc-bg --rc-border --rc-border-soft --rc-border-strong

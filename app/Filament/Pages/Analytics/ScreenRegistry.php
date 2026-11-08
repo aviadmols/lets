@@ -21,6 +21,11 @@ final class ScreenRegistry
 {
     // === CONSTANTS ===
     public const SECTIONS = [
+        // The plain-language summary a merchant opens first: how many active,
+        // how much a month, who joined, who left, who is not paying.
+        'summary' => [
+            'overview' => Screens\SummaryOverview::class,
+        ],
         'subscribers' => [
             'overview' => Screens\SubscribersOverview::class,
             'acquisition' => Screens\SubscribersAcquisition::class,
@@ -61,7 +66,7 @@ final class ScreenRegistry
         ],
     ];
 
-    public const DEFAULT_SECTION = 'subscribers';
+    public const DEFAULT_SECTION = 'summary';
 
     /** @return list<string> */
     public static function sections(): array

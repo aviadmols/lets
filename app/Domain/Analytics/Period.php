@@ -19,13 +19,19 @@ use Carbon\CarbonImmutable;
 final class Period
 {
     // === CONSTANTS ===
+    public const RANGE_TODAY = 'today';
+
     public const RANGE_7 = '7d';
 
     public const RANGE_30 = '30d';
 
     public const RANGE_90 = '90d';
 
+    public const RANGE_365 = '365d';
+
     public const RANGE_MTD = 'mtd';
+
+    public const RANGE_LAST_MONTH = 'last_month';
 
     public const RANGE_YTD = 'ytd';
 
@@ -33,10 +39,13 @@ final class Period
 
     /** Presets in menu order; the value is the day count for the rolling ones. */
     public const RANGES = [
+        self::RANGE_TODAY => 1,
         self::RANGE_7 => 7,
         self::RANGE_30 => 30,
         self::RANGE_90 => 90,
+        self::RANGE_365 => 365,
         self::RANGE_MTD => null,
+        self::RANGE_LAST_MONTH => null,
         self::RANGE_YTD => null,
         self::RANGE_CUSTOM => null,
     ];
@@ -87,6 +96,7 @@ final class Period
 
         [$start, $end] = match ($range) {
             self::RANGE_MTD => [$today->startOfMonth(), $today],
+            self::RANGE_LAST_MONTH => [$today->subMonthNoOverflow()->startOfMonth(), $today->subMonthNoOverflow()->endOfMonth()->startOfDay()],
             self::RANGE_YTD => [$today->startOfYear(), $today],
             self::RANGE_CUSTOM => self::customBounds($from, $to, $today),
             default => [$today->subDays(self::RANGES[$range] - 1), $today],

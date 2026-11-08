@@ -46,7 +46,7 @@ final class AnalyticsPageTest extends TestCase
 
     public function test_it_renders_for_a_shop_with_no_data(): void
     {
-        Livewire::test(Analytics::class)
+        Livewire::test(Analytics::class)->call('go', 'subscribers')
             ->assertOk()
             ->assertSee(__('analytics.sections.subscribers'))
             ->assertSee(__('analytics.sections.reports'))
@@ -76,7 +76,7 @@ final class AnalyticsPageTest extends TestCase
         $this->plan($this->shop, '1', 100, createdAt: CarbonImmutable::now()->subDays(60));
         $this->plan($this->shop, '2', 50, createdAt: CarbonImmutable::now()->subDays(3));
 
-        Livewire::test(Analytics::class)
+        Livewire::test(Analytics::class)->call('go', 'subscribers')
             ->assertSee(__('analytics/subscribers_overview.subscribers_trend.title'))
             ->assertSee('rc-chart__stack--pos', false)
             ->assertSee('rc-donut__slice', false)
@@ -122,7 +122,7 @@ final class AnalyticsPageTest extends TestCase
         $this->plan($this->shop, '1', 100, createdAt: CarbonImmutable::now()->subDays(20));
         $this->plan($this->shop, '2', 100, createdAt: CarbonImmutable::now()->subDays(10));
 
-        $page = Livewire::test(Analytics::class);
+        $page = Livewire::test(Analytics::class)->call('go', 'subscribers');
         $before = $this->chartKeys($page->html());
 
         $page->call('setGrain', 'subscribers_trend', 'weekly');
@@ -136,7 +136,7 @@ final class AnalyticsPageTest extends TestCase
     {
         $this->plan($this->shop, '1', 100);
 
-        $csv = $this->fetchCsv($this->downloadLink(Livewire::test(Analytics::class)->call('export')));
+        $csv = $this->fetchCsv($this->downloadLink(Livewire::test(Analytics::class)->call('go', 'subscribers')->call('export')));
         $this->assertStringContainsString(__('analytics/subscribers_overview.kpi.mrr'), $csv);
 
         $this->assertSame("'=SUM(A1)", CsvCell::neutralise('=SUM(A1)'));

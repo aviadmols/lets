@@ -31,6 +31,12 @@ final class Context
         return new self(Period::default(), Filters::none());
     }
 
+    /** The same view with no filter chips — for a screen that offers none. */
+    public function withoutFilters(): self
+    {
+        return new self($this->period, Filters::none(), $this->grains, $this->options);
+    }
+
     /** The granularity chart $chartId is drawn at (validated against the period). */
     public function grain(string $chartId, ?Granularity $preferred = null): Granularity
     {

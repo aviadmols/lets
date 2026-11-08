@@ -13,6 +13,7 @@ return [
     'other' => 'Other',
 
     'sections' => [
+        'summary' => 'Summary',
         'subscribers' => 'Subscribers',
         'cohorts' => 'Cohorts',
         'payments' => 'Payments',
@@ -24,6 +25,7 @@ return [
     ],
 
     'subtabs' => [
+        'summary' => ['overview' => 'Summary'],
         'subscribers' => [
             'overview' => 'Overview',
             'acquisition' => 'Acquisition',
@@ -66,11 +68,14 @@ return [
     ],
 
     'range' => [
+        'today' => 'Today',
         '7d' => 'Last 7 days',
         '30d' => 'Last 30 days',
         '90d' => 'Last 90 days',
-        'mtd' => 'Month to date',
-        'ytd' => 'Year to date',
+        '365d' => 'Last 12 months',
+        'mtd' => 'This month',
+        'last_month' => 'Last month',
+        'ytd' => 'This year',
         'custom' => 'Custom range',
         'from' => 'From',
         'to' => 'To',
