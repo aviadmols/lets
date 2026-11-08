@@ -12,6 +12,9 @@
  *   all_cycles              the discounted amount actually paid at checkout becomes
  *                           the amount of EVERY cycle, for as long as the
  *                           subscription lives.
+ *   first_year              the paid amount is kept for every charge that falls in
+ *                           the first year after checkout (monthly: 12 charges),
+ *                           then renewals return to the plan's price.
  *
  * The scope travels with the ORDER, not the coupon: at checkout it is stamped as
  * meta on the order's coupon line (together with the coupon's type and amount),
@@ -43,10 +46,12 @@ define('LETS_COUPON_LINE_TYPE_META', 'lets_coupon_type');
 /** Order coupon-line meta: the coupon's configured amount (percent points or money). */
 define('LETS_COUPON_LINE_AMOUNT_META', 'lets_coupon_amount');
 
-/** The two scopes. Mirrors CheckoutPricingCapture::COUPON_SCOPE_*. */
+/** The scopes. Mirrors CheckoutPricingCapture::COUPON_SCOPE_*. */
 define('LETS_COUPON_SCOPE_FIRST_CYCLE', 'first_cycle');
 
 define('LETS_COUPON_SCOPE_ALL_CYCLES', 'all_cycles');
+
+define('LETS_COUPON_SCOPE_FIRST_YEAR', 'first_year');
 
 /** The scope a coupon without a choice (or an older plugin) is read as. */
 define('LETS_COUPON_SCOPE_DEFAULT', LETS_COUPON_SCOPE_FIRST_CYCLE);
@@ -58,6 +63,7 @@ function lets_payplus_coupon_scopes()
 
     return array(
         LETS_COUPON_SCOPE_FIRST_CYCLE => $he ? 'המחזור הראשון בלבד (ברירת מחדל)' : 'First cycle only (default)',
+        LETS_COUPON_SCOPE_FIRST_YEAR  => $he ? 'השנה הראשונה בלבד' : 'First year only',
         LETS_COUPON_SCOPE_ALL_CYCLES  => $he ? 'כל מחזורי המנוי' : 'Every subscription cycle',
     );
 }
@@ -100,8 +106,8 @@ function lets_payplus_coupon_scope_field($coupon_id, $coupon)
         'value'       => $current,
         'desc_tip'    => true,
         'description' => $he
-            ? 'מה הקופון עושה למנוי שנרכש איתו: הנחה על התשלום הראשון בלבד, או שהמחיר ששולם בפועל נשמר לכל מחזור. חל רק על מוצרים עם תוכנית מנוי של LETS.'
-            : 'What the coupon does to a subscription bought with it: discount the first payment only, or keep the price actually paid for every cycle. Applies only to products with a LETS subscription plan.',
+            ? 'מה הקופון עושה למנוי שנרכש איתו: הנחה על התשלום הראשון בלבד; המחיר ששולם נשמר לכל חיוב בשנה הראשונה ואז חוזר למחיר הרגיל; או שהמחיר ששולם נשמר לכל מחזור. חל רק על מוצרים עם תוכנית מנוי של LETS.'
+            : 'What the coupon does to a subscription bought with it: discount the first payment only; keep the price paid for every charge in the first year, then return to the regular price; or keep the price paid for every cycle. Applies only to products with a LETS subscription plan.',
     ));
 }
 

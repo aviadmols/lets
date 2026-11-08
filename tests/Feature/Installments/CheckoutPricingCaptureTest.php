@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Installments;
 
+use App\Domain\Billing\CycleAmountResolver;
 use App\Domain\Installments\CheckoutPricingCapture;
 use App\Models\ActivityEvent;
 use App\Models\InstallmentPlan;
@@ -287,6 +288,112 @@ final class CheckoutPricingCaptureTest extends TestCase
         $fresh = $plan->fresh();
         $this->assertSame(72.0, (float) $fresh->installment_amount);
         $this->assertSame(100.0, (float) $fresh->regular_amount);
+    }
+
+    // === first_year scope ===
+
+    public function test_a_first_year_coupon_keeps_the_paid_amount_for_twelve_monthly_charges(): void
+    {
+        $plan = $this->makePlan(pricingMode: ProductSubscriptionPlan::PRICING_PLAN_PRICE, variantId: '444');
+        $plan->forceFill(['billing_frequency' => 'monthly', 'interval_count' => 1])->save();
+
+        app(CheckoutPricingCapture::class)->apply($plan, [
+            'coupon_lines' => [$this->wooCouponLine('mechinot', 'first_year', 'percent', '15')],
+            'line_items' => [['variation_id' => 444, 'product_id' => 7, 'total' => '68.00', 'quantity' => 1]],
+        ]);
+
+        $fresh = $plan->fresh();
+        $this->assertSame(68.0, (float) $fresh->installment_amount);
+        $this->assertSame(80.0, (float) $fresh->regular_amount, 'after the year: the price it had without the coupon');
+        $this->assertSame(12, (int) $fresh->discount_cycles);
+        $this->assertSame('first_year', $fresh->checkoutDiscount()['scope']);
+
+        $resolver = app(CycleAmountResolver::class);
+        $this->assertSame(68.0, $resolver->amountForCharge($fresh, 12));
+        $this->assertSame(80.0, $resolver->amountForCharge($fresh, 13));
+    }
+
+    public function test_a_first_year_coupon_counts_charges_by_the_plan_frequency(): void
+    {
+        foreach ([['quarterly', 1, 4], ['yearly', 1, 1], ['monthly', 2, 6], ['weekly', 1, 53]] as [$frequency, $interval, $expected]) {
+            $plan = $this->makePlan(pricingMode: ProductSubscriptionPlan::PRICING_PLAN_PRICE, variantId: '444');
+            $plan->forceFill(['billing_frequency' => $frequency, 'interval_count' => $interval])->save();
+
+            app(CheckoutPricingCapture::class)->apply($plan, [
+                'coupon_lines' => [$this->wooCouponLine('year', 'first_year', 'percent', '15')],
+                'line_items' => [['variation_id' => 444, 'product_id' => 7, 'total' => '68.00', 'quantity' => 1]],
+            ]);
+
+            $this->assertSame($expected, (int) $plan->fresh()->discount_cycles, $frequency.' x'.$interval);
+        }
+    }
+
+    public function test_a_first_year_percent_coupon_is_honored_on_an_ambiguous_order(): void
+    {
+        $plan = $this->makePlan(pricingMode: ProductSubscriptionPlan::PRICING_PLAN_PRICE, variantId: '444');
+        $plan->forceFill(['billing_frequency' => 'monthly', 'interval_count' => 1])->save();
+
+        app(CheckoutPricingCapture::class)->apply($plan, [
+            'coupon_lines' => [$this->wooCouponLine('year25', 'first_year', 'percent', '25')],
+            'line_items' => [
+                ['variation_id' => 444, 'product_id' => 7, 'total' => '60.00', 'quantity' => 1],
+                ['variation_id' => 444, 'product_id' => 7, 'total' => '60.00', 'quantity' => 1],
+            ],
+        ]);
+
+        $fresh = $plan->fresh();
+        $this->assertSame(60.0, (float) $fresh->installment_amount);
+        $this->assertSame(12, (int) $fresh->discount_cycles);
+    }
+
+    public function test_a_first_year_coupon_does_not_stack_on_an_existing_intro_window(): void
+    {
+        $plan = $this->makePlan(pricingMode: ProductSubscriptionPlan::PRICING_PLAN_PRICE, variantId: '444');
+        $plan->forceFill(['billing_frequency' => 'monthly', 'interval_count' => 1, 'discount_cycles' => 3])->save();
+
+        app(CheckoutPricingCapture::class)->apply($plan, [
+            'coupon_lines' => [$this->wooCouponLine('year', 'first_year', 'percent', '15')],
+            'line_items' => [['variation_id' => 444, 'product_id' => 7, 'total' => '68.00', 'quantity' => 1]],
+        ]);
+
+        $fresh = $plan->fresh();
+        $this->assertSame(80.0, (float) $fresh->installment_amount);
+        $this->assertSame(3, (int) $fresh->discount_cycles);
+    }
+
+    public function test_an_all_cycles_coupon_beats_a_first_year_one_on_the_same_order(): void
+    {
+        $plan = $this->makePlan(pricingMode: ProductSubscriptionPlan::PRICING_PLAN_PRICE, variantId: '444');
+        $plan->forceFill(['billing_frequency' => 'monthly', 'interval_count' => 1])->save();
+
+        app(CheckoutPricingCapture::class)->apply($plan, [
+            'coupon_lines' => [
+                $this->wooCouponLine('year', 'first_year', 'percent', '10'),
+                $this->wooCouponLine('forever', 'all_cycles', 'percent', '10'),
+            ],
+            'line_items' => [['variation_id' => 444, 'product_id' => 7, 'total' => '64.80', 'quantity' => 1]],
+        ]);
+
+        $fresh = $plan->fresh();
+        $this->assertSame(64.8, (float) $fresh->installment_amount);
+        $this->assertSame(0, (int) $fresh->discount_cycles);
+        $this->assertSame('all_cycles', $fresh->checkoutDiscount()['scope']);
+    }
+
+    public function test_keep_first_payment_with_a_first_year_coupon_steps_back_up_after_the_year(): void
+    {
+        $plan = $this->makePlan(pricingMode: ProductSubscriptionPlan::PRICING_KEEP_FIRST, variantId: '444');
+        $plan->forceFill(['billing_frequency' => 'monthly', 'interval_count' => 1])->save();
+
+        app(CheckoutPricingCapture::class)->apply($plan, [
+            'coupon_lines' => [$this->wooCouponLine('year', 'first_year', 'percent', '15')],
+            'line_items' => [['variation_id' => 444, 'product_id' => 7, 'total' => '68.00', 'quantity' => 1]],
+        ]);
+
+        $fresh = $plan->fresh();
+        $this->assertSame(68.0, (float) $fresh->installment_amount);
+        $this->assertSame(80.0, (float) $fresh->regular_amount);
+        $this->assertSame(12, (int) $fresh->discount_cycles);
     }
 
     // === Fixtures ===

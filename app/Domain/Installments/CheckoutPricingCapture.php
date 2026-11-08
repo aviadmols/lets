@@ -4,7 +4,9 @@ namespace App\Domain\Installments;
 
 use App\Models\InstallmentPlan;
 use App\Models\ProductSubscriptionPlan;
+use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -24,8 +26,13 @@ use Illuminate\Support\Facades\Log;
  *      plan, whatever the template's pricing mode. "first cycle" (the default,
  *      and every Shopify coupon) changes nothing: the coupon discounted the
  *      checkout, renewals bill the plan's regular price.
+ *   4. "first year": the discounted amount paid at checkout is charged for every
+ *      cycle that STARTS within a year of the checkout, then the plan steps back
+ *      up to the price it would have had without the coupon. Built on the intro
+ *      window the resolver already honours (discount_cycles + regular_amount):
+ *      a monthly plan gets a window of 12 charges, quarterly 4, yearly 1.
  *
- * Attribution rule for (2) and (3): the paid amount comes from the ONE order line
+ * Attribution rule for (2), (3) and (4): the paid amount comes from the ONE order line
  * that matches the plan's variant (falling back to product, falling back to a
  * single-line order's total). Ambiguity — no match, several matches, zero/missing
  * money — SKIPS the write-back and keeps the template-derived amount: charging a
@@ -46,6 +53,27 @@ final class CheckoutPricingCapture
 
     public const COUPON_SCOPE_ALL_CYCLES = 'all_cycles';
 
+    public const COUPON_SCOPE_FIRST_YEAR = 'first_year';
+
+    /**
+     * Which scope wins when one order carries coupons of several scopes: the one
+     * that keeps the discount longest. Higher rank wins.
+     */
+    private const SCOPE_RANK = [
+        self::COUPON_SCOPE_FIRST_CYCLE => 1,
+        self::COUPON_SCOPE_FIRST_YEAR => 2,
+        self::COUPON_SCOPE_ALL_CYCLES => 3,
+    ];
+
+    /** Skip-reason: the plan already has an intro window — a second one cannot stack on it. */
+    public const SKIP_HAS_WINDOW = 'plan_has_intro_window';
+
+    /** How long the first-year scope keeps the discount, in months. */
+    private const FIRST_YEAR_MONTHS = 12;
+
+    /** A fixed, non-leap anchor for counting the cycles in a year (the count must not depend on today). */
+    private const FIRST_YEAR_ANCHOR = '2025-01-01';
+
     /** The WC coupon-line meta keys the plugin stamps (REST-visible, so no underscore). */
     public const LINE_META_SCOPE = 'lets_subscription_scope';
 
@@ -64,6 +92,11 @@ final class CheckoutPricingCapture
         }
 
         $this->captureCheckoutDiscount($plan, $orderPayload);
+        // Before keep_first: the first-year window needs the plan's pre-coupon
+        // amount as its step-up target, and keep_first would overwrite it with the
+        // discounted one. Once the window is set, keep_first sees the paid amount
+        // already in place and writes nothing.
+        $this->applyFirstYearCoupon($plan, $orderPayload);
         $this->applyKeepFirstPayment($plan, $orderPayload);
         $this->applyAllCyclesCoupon($plan, $orderPayload);
     }
@@ -102,7 +135,7 @@ final class CheckoutPricingCapture
             $amount += (float) ($row['discount'] ?? 0);
 
             $lineScope = $this->couponLineScope($row);
-            if ($lineScope !== null && $scope !== self::COUPON_SCOPE_ALL_CYCLES) {
+            if ($lineScope !== null && (self::SCOPE_RANK[$lineScope] > (self::SCOPE_RANK[$scope] ?? 0))) {
                 $scope = $lineScope;
             }
         }
@@ -204,12 +237,114 @@ final class CheckoutPricingCapture
         $plan->forceFill($fill)->save();
     }
 
+    /**
+     * first_year coupon: the discounted amount paid at checkout is charged for the
+     * charges that fall within a year of the checkout (checkout = charge #1), then
+     * the plan steps up to the amount it carried before the coupon.
+     *
+     * Expressed as the intro window CycleAmountResolver already honours:
+     * installment_amount = paid, regular_amount = the pre-coupon amount,
+     * discount_cycles = the charges in a year. An all_cycles coupon on the same
+     * order wins (it keeps the discount longer). A plan whose template already
+     * gave it an intro window is skipped and logged — two windows cannot stack,
+     * and guessing which one the merchant meant would move real money.
+     */
+    public function applyFirstYearCoupon(InstallmentPlan $plan, array $orderPayload): void
+    {
+        if ($this->couponLinesWithScope($orderPayload, self::COUPON_SCOPE_ALL_CYCLES) !== []) {
+            return;
+        }
+
+        $lines = $this->couponLinesWithScope($orderPayload, self::COUPON_SCOPE_FIRST_YEAR);
+        if ($lines === []) {
+            return;
+        }
+
+        if ((int) ($plan->discount_cycles ?? 0) > 0) {
+            $this->logFirstYearSkip($plan, self::SKIP_HAS_WINDOW);
+
+            return;
+        }
+
+        $current = round((float) $plan->installment_amount, 2);
+        $paid = $this->paidAmountForPlan($plan, $orderPayload);
+        $reason = null;
+
+        if ($paid === null || $paid <= 0) {
+            $percent = $this->percentFromLines($lines);
+            if ($percent !== null) {
+                $paid = $current * (1 - $percent / 100);
+            } else {
+                $reason = $paid === null ? self::SKIP_AMBIGUOUS_LINES : self::SKIP_NO_AMOUNT;
+            }
+        }
+
+        if ($reason !== null || $paid === null) {
+            $this->logFirstYearSkip($plan, $reason ?? self::SKIP_NO_AMOUNT);
+
+            return;
+        }
+
+        $paid = round(max($paid, 0), 2);
+        if ($paid >= $current || $paid <= 0) {
+            return; // no discount to keep (or a free first cycle) — renewals bill as usual
+        }
+
+        $meta = (array) ($plan->meta ?? []);
+        $meta[RecurringPlanService::META_RECURRING_AMOUNT] = $paid;
+
+        $plan->forceFill([
+            'installment_amount' => $paid,
+            'regular_amount' => $current,
+            'discount_cycles' => $this->chargesInFirstYear($plan),
+            'meta' => $meta,
+        ])->save();
+    }
+
+    /**
+     * How many charges START within a year of the checkout, the checkout counted:
+     * monthly 12, quarterly 4, yearly 1, weekly 53. Counted on the plan's own
+     * frequency arithmetic from a fixed anchor so it never depends on today.
+     */
+    private function chargesInFirstYear(InstallmentPlan $plan): int
+    {
+        $frequency = $plan->billing_frequency instanceof BillingFrequency
+            ? $plan->billing_frequency
+            : (BillingFrequency::tryFrom((string) $plan->billing_frequency) ?? BillingFrequency::MONTHLY);
+        $interval = max(1, (int) ($plan->interval_count ?? 1));
+
+        $start = CarbonImmutable::parse(self::FIRST_YEAR_ANCHOR);
+        $end = $start->addMonthsNoOverflow(self::FIRST_YEAR_MONTHS);
+
+        $count = 0;
+        for ($at = $start; $at < $end; $at = $frequency->addTo($at, $interval)) {
+            $count++;
+        }
+
+        return max(1, $count);
+    }
+
+    private function logFirstYearSkip(InstallmentPlan $plan, string $reason): void
+    {
+        Log::info('installments.coupon_first_year.skipped', [
+            'shop_id' => $plan->shop_id,
+            'plan_id' => $plan->getKey(),
+            'reason' => $reason,
+        ]);
+    }
+
     /** The coupon lines the plugin stamped as all_cycles, or [] when none. */
     private function allCyclesCouponLines(array $orderPayload): array
     {
+        return $this->couponLinesWithScope($orderPayload, self::COUPON_SCOPE_ALL_CYCLES);
+    }
+
+    /** The coupon lines the plugin stamped with $scope, or [] when none. */
+    private function couponLinesWithScope(array $orderPayload, string $scope): array
+    {
         return array_values(array_filter(
             (array) data_get($orderPayload, 'coupon_lines', []),
-            fn ($row): bool => is_array($row) && $this->couponLineScope($row) === self::COUPON_SCOPE_ALL_CYCLES,
+            fn ($row): bool => is_array($row) && $this->couponLineScope($row) === $scope,
         ));
     }
 
@@ -240,7 +375,7 @@ final class CheckoutPricingCapture
     {
         $scope = $this->couponLineMeta($row, self::LINE_META_SCOPE);
 
-        return in_array($scope, [self::COUPON_SCOPE_FIRST_CYCLE, self::COUPON_SCOPE_ALL_CYCLES], true) ? $scope : null;
+        return array_key_exists((string) $scope, self::SCOPE_RANK) ? $scope : null;
     }
 
     /** One meta value off a WC REST coupon line (meta_data[] = [{key, value}]). */

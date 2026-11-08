@@ -111,6 +111,7 @@ return [
         'coupon_applied' => 'קופון שהופעל',
         'coupon_scope_all_cycles' => 'ההנחה נשמרת לכל מחזורי המנוי',
         'coupon_scope_first_cycle' => 'הנחה על התשלום הראשון בלבד',
+        'coupon_scope_first_year' => 'ההנחה נשמרת לשנה הראשונה',
         'intro_window' => 'הנחת פתיחה',
         'intro_window_status' => ':used מתוך :total חיובים בהנחה נוצלו',
         'intro_window_ended' => 'הסתיימה — החיוב במחיר הרגיל',

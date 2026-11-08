@@ -112,6 +112,7 @@ return [
         'coupon_applied' => 'Coupon applied',
         'coupon_scope_all_cycles' => 'Discount kept for every cycle',
         'coupon_scope_first_cycle' => 'Discount on the first payment only',
+        'coupon_scope_first_year' => 'Discount kept for the first year',
         'intro_window' => 'Intro discount',
         'intro_window_status' => ':used of :total discounted charges used',
         'intro_window_ended' => 'Ended — billing the regular price',
