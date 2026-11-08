@@ -124,7 +124,7 @@ final class AccountOfferAcceptServiceTest extends TestCase
     public function test_an_immediate_switch_charges_once_activates_the_new_plan_and_closes_the_old(): void
     {
         $this->inShop(function (Shop $shop): void {
-            [$offer, $source, $visitor] = $this->scenario();
+            [$offer, $source, $visitor] = $this->scenario([], $this->renewalDueToday());
 
             $outcome = $this->service()->accept($visitor, $source, (string) $offer->getKey(), '', 49.0);
 
@@ -182,7 +182,7 @@ final class AccountOfferAcceptServiceTest extends TestCase
     public function test_a_declined_card_leaves_the_existing_subscription_exactly_as_it_was(): void
     {
         $this->inShop(function (Shop $shop): void {
-            [$offer, $source, $visitor] = $this->scenario();
+            [$offer, $source, $visitor] = $this->scenario([], $this->renewalDueToday());
             $this->payplusDeclines = true;
 
             $outcome = $this->service()->accept($visitor, $source, (string) $offer->getKey(), '', 49.0);
@@ -214,7 +214,7 @@ final class AccountOfferAcceptServiceTest extends TestCase
     public function test_a_double_click_produces_one_subscription_and_one_charge(): void
     {
         $this->inShop(function (Shop $shop): void {
-            [$offer, $source, $visitor] = $this->scenario();
+            [$offer, $source, $visitor] = $this->scenario([], $this->renewalDueToday());
             $service = $this->service();
 
             $first = $service->accept($visitor, $source, (string) $offer->getKey(), '', 49.0);
@@ -228,6 +228,60 @@ final class AccountOfferAcceptServiceTest extends TestCase
             $this->assertSame(1, $this->payplusCalls);
             $this->assertSame(2, InstallmentPlan::count(), 'One source + one new plan, and no more.');
             $this->assertSame(1, (int) $offer->fresh()->accepted_count);
+        });
+    }
+
+    /**
+     * 11.2026, sellameir: a member paid 79 for a month at noon and at 20:11 took the
+     * offer's 59 plan, configured "immediate". She was charged 59 on the spot and lost
+     * the month she had just paid for. A downgrade never charges now: she keeps the
+     * period, and the lower price starts on the old renewal date.
+     */
+    public function test_a_downgrade_never_charges_now_and_keeps_the_paid_period(): void
+    {
+        $this->inShop(function (): void {
+            $renewal = now()->addDays(30)->startOfDay();
+            [$offer, $source, $visitor] = $this->scenario([], [
+                'installment_amount' => 79,
+                'billing_frequency' => BillingFrequency::MONTHLY->value,
+                'next_charge_at' => $renewal,
+            ]);
+
+            $outcome = $this->service()->accept($visitor, $source, (string) $offer->getKey(), '', 49.0);
+
+            $this->assertSame(AccountOfferOutcome::RESULT_OK, $outcome->result);
+            $this->assertSame(0, $this->payplusCalls, 'no money moves for a downgrade');
+            $new = $outcome->plan->fresh();
+            $this->assertSame($renewal->toDateString(), $new->next_charge_at->toDateString());
+            $this->assertSame(AccountOfferTarget::TIMING_PERIOD_END, $new->accountOfferMeta()['timing']);
+            $this->assertSame(AccountOfferTarget::TIMING_IMMEDIATE, $new->accountOfferMeta()['configured_timing']);
+            $this->assertSame(PlanStatus::CANCELLED, $source->fresh()->status);
+        });
+    }
+
+    /** Inside the commitment ("cannot cancel before three months") a downgrade is not on offer; an upgrade is. */
+    public function test_inside_the_commitment_a_downgrade_is_refused_and_an_upgrade_is_not(): void
+    {
+        $this->inShop(function (): void {
+            [$offer, $source, $visitor] = $this->scenario([], [
+                'installment_amount' => 79,
+                'billing_frequency' => BillingFrequency::MONTHLY->value,
+                'next_charge_at' => now()->addDays(30)->startOfDay(),
+                'min_cycles_before_exit' => 3,
+            ]);
+
+            $outcome = $this->service()->accept($visitor, $source, (string) $offer->getKey(), '', 49.0);
+
+            $this->assertSame(AccountOfferOutcome::RESULT_NOT_ELIGIBLE, $outcome->result);
+            $this->assertSame(0, $this->payplusCalls);
+            $this->assertSame(PlanStatus::ACTIVE, $source->fresh()->status);
+            $this->assertSame(1, InstallmentPlan::query()->count(), 'no plan was created');
+
+            // the same commitment, a cheaper subscription than the offer: switching up stays open
+            $source->forceFill(['installment_amount' => 30, 'next_charge_at' => now()->startOfDay()])->save();
+            $up = $this->service()->accept($visitor, $source->fresh(), (string) $offer->getKey(), '', 49.0);
+            $this->assertSame(AccountOfferOutcome::RESULT_OK, $up->result);
+            $this->assertSame(1, $this->payplusCalls);
         });
     }
 

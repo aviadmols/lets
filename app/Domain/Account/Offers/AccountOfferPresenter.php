@@ -122,12 +122,23 @@ final class AccountOfferPresenter
         AccountOfferTarget $target,
         ?InstallmentPlan $source,
         ?Carbon $renewalFallback = null,
+        ?string $timing = null,
     ): ?Carbon {
         if ($target->isOneTime()) {
             return null;
         }
 
         $today = now()->startOfDay();
+
+        // The timing the switch actually runs with (SwitchTiming), when the caller knows it.
+        if ($timing !== null && $target->isReplace()) {
+            if ($timing === AccountOfferTarget::TIMING_IMMEDIATE) {
+                return $today;
+            }
+            $renewal = $this->renewal($source, $renewalFallback);
+
+            return $renewal !== null && $renewal->greaterThan($today) ? $renewal : $today;
+        }
 
         // A PRORATED switch's meaningful date is when the FULL price starts —
         // the old renewal — even though the difference is charged today; the
@@ -175,20 +186,24 @@ final class AccountOfferPresenter
     ): array {
         $symbol = AccountPresenter::currencySymbol($quote->currency);
         $priceDisplay = $this->priceDisplay($quote->amount, $symbol);
-        $firstChargeAt = $this->firstChargeAt($target, $source, $renewalFallback);
+        // The timing the switch actually runs with — the SAME answer the accept
+        // service gets, so the card never promises a charge that will not happen
+        // or hides one that will.
+        $timing = SwitchTiming::effective($target, $source, $quote);
+        $firstChargeAt = $this->firstChargeAt($target, $source, $renewalFallback, $timing);
         $nextOrderAt = $this->nextOrderAt($target, $source, $renewalFallback);
 
         // The prorated one-off, computed by the SAME class the accept service
         // asks — the number on the card and the number that charges can only
         // ever drift DOWN (days shrink), never up.
-        $dueNow = ReplaceProration::dueNow($target, $source, $quote->amount);
+        $dueNow = ReplaceProration::dueNow($target, $source, $quote->amount, $timing);
 
         return [
             'key' => $target->stableKey(),
             'index' => $index,
             'kind' => $target->kind(),
             'mode' => $target->mode(),
-            'timing' => $target->timing(),
+            'timing' => $timing,
             'fulfilment' => $target->fulfilment(),
             'product' => [
                 'title' => $quote->itemTitle,
@@ -209,7 +224,7 @@ final class AccountOfferPresenter
                 ? $this->priceDisplay($dueNow, $symbol)
                 : null,
             'button_text' => $target->buttonText(),
-            'disclosure' => $this->disclosure($target, $priceDisplay, $firstChargeAt, $nextOrderAt, $dueNow, $symbol),
+            'disclosure' => $this->disclosure($target, $priceDisplay, $firstChargeAt, $nextOrderAt, $dueNow, $symbol, $timing),
         ];
     }
 
@@ -275,7 +290,10 @@ final class AccountOfferPresenter
         ?Carbon $nextOrderAt,
         ?float $dueNow = null,
         string $symbol = '',
+        ?string $timing = null,
     ): string {
+        $timing ??= $target->timing();
+
         if ($target->isOneTime()) {
             return $target->chargesNow()
                 ? (string) __(self::COPY_DISCLOSURE_BUY_NOW, ['amount' => $priceDisplay])
@@ -289,7 +307,7 @@ final class AccountOfferPresenter
         // (a downgrade, a spent period, the admin preview with no real source),
         // "nothing today, the full price from :date" is the honest sentence —
         // and it is exactly the period-end one.
-        if ($target->timing() === AccountOfferTarget::TIMING_PRORATED) {
+        if ($timing === AccountOfferTarget::TIMING_PRORATED) {
             $date = $firstChargeAt?->toDateString() ?? now()->toDateString();
 
             if ($dueNow !== null && $dueNow >= ReplaceProration::MIN_CHARGE) {
@@ -306,7 +324,7 @@ final class AccountOfferPresenter
             ]);
         }
 
-        if ($target->chargesNow()) {
+        if ($target->isReplace() ? $timing !== AccountOfferTarget::TIMING_PERIOD_END : $target->chargesNow()) {
             return (string) __(
                 $target->isReplace() ? self::COPY_DISCLOSURE_NOW_REPLACE : self::COPY_DISCLOSURE_NOW,
                 ['amount' => $priceDisplay],

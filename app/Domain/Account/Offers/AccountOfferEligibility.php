@@ -147,6 +147,12 @@ final class AccountOfferEligibility
         }
 
         if ($target->isSubscription()) {
+            // Lowering the price inside the commitment ("cannot cancel before three
+            // months") is leaving by another door: not drawn, and refused on accept.
+            if (SwitchTiming::isLockedDowngrade($target, $source, $quote)) {
+                return false;
+            }
+
             return ! $this->holdsTarget($plans, $quote);
         }
 

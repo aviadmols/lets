@@ -81,7 +81,7 @@ final class AccountPresenterOffersTest extends TestCase
             $this->makeOffer($template, ['placement' => AccountOffer::PLACEMENT_RAIL, 'name' => 'Rail']);
             $this->makeOffer($template, ['placement' => AccountOffer::PLACEMENT_PLAN, 'name' => 'Under the card']);
 
-            $source = $this->makeSourcePlan();
+            $source = $this->makeSourcePlan($this->renewalDueToday());
 
             $model = app(AccountPresenter::class)->present($this->visitor($shop));
 
@@ -403,7 +403,7 @@ final class AccountPresenterOffersTest extends TestCase
             $this->makeOffer($this->makeTemplate($product, BillingFrequency::MONTHLY), [
                 'placement' => AccountOffer::PLACEMENT_TOP,
             ]);
-            $this->makeSourcePlan();
+            $this->makeSourcePlan($this->renewalDueToday());
 
             $presenter = app(AccountPresenter::class);
             $live = $presenter->present($this->visitor($shop))['offers'][0];

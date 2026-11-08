@@ -200,6 +200,18 @@ trait MakesAccountOffers
      *
      * @param  array<string, mixed>  $attributes
      */
+    /**
+     * A source whose renewal is due TODAY: its current period is not paid yet, so
+     * an immediate switch is that period's payment — the one case where a full
+     * charge now is right (SwitchTiming).
+     *
+     * @return array<string, mixed>
+     */
+    protected function renewalDueToday(): array
+    {
+        return ['next_charge_at' => now()->startOfDay()];
+    }
+
     protected function makeSourcePlan(array $attributes = [], bool $withConsent = true, bool $withCard = true): InstallmentPlan
     {
         $method = $withCard

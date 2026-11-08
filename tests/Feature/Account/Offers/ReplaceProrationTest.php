@@ -223,11 +223,33 @@ final class ReplaceProrationTest extends TestCase
         });
     }
 
-    /** The behaviour that shipped first must not move: full price now, cycle restarts. */
-    public function test_an_immediate_switch_is_unchanged(): void
+    /** An immediate switch whose renewal is due is that period's payment: full price now, the cycle restarts. */
+    public function test_an_immediate_switch_over_an_unpaid_period_charges_the_full_price(): void
     {
         $this->travelTo('2026-09-01 08:00:00');
         $shop = $this->makeShop('proration-regress.example.com');
+
+        Tenant::run($shop, function (): void {
+            [$offer, $source, $visitor] = $this->scenarioWith(['replace_timing' => AccountOfferTarget::TIMING_IMMEDIATE]);
+            $source->forceFill(['next_charge_at' => '2026-09-01 00:00:00'])->save();
+
+            $outcome = $this->service()->accept($visitor, $source->fresh(), (string) $offer->getKey(), '', 49.0);
+
+            $this->assertSame(AccountOfferOutcome::RESULT_OK, $outcome->result);
+            $this->assertSame([49.0], $this->chargedAmounts);
+            $this->assertSame('2026-10-01', $outcome->plan->fresh()->next_charge_at->toDateString());
+        });
+    }
+
+    /**
+     * An immediate switch over a period that is already PAID never charges it twice
+     * (11.2026): only the difference for the days left, and the full price from the
+     * old renewal date — the prorated deal, whatever the offer was configured as.
+     */
+    public function test_an_immediate_switch_over_a_paid_period_charges_only_the_difference(): void
+    {
+        $this->travelTo('2026-09-01 08:00:00');
+        $shop = $this->makeShop('proration-paid.example.com');
 
         Tenant::run($shop, function (): void {
             [$offer, $source, $visitor] = $this->scenarioWith(['replace_timing' => AccountOfferTarget::TIMING_IMMEDIATE]);
@@ -235,8 +257,11 @@ final class ReplaceProrationTest extends TestCase
             $outcome = $this->service()->accept($visitor, $source, (string) $offer->getKey(), '', 49.0);
 
             $this->assertSame(AccountOfferOutcome::RESULT_OK, $outcome->result);
-            $this->assertSame([49.0], $this->chargedAmounts);
-            $this->assertSame('2026-10-01', $outcome->plan->fresh()->next_charge_at->toDateString());
+            // (49 − 30) × 10 days left / 31 days in the cycle
+            $this->assertSame([6.13], $this->chargedAmounts);
+            $this->assertSame('2026-09-11', $outcome->plan->fresh()->next_charge_at->toDateString());
+            $this->assertSame(AccountOfferTarget::TIMING_PRORATED, $outcome->plan->fresh()->accountOfferMeta()['timing']);
+            $this->assertSame(AccountOfferTarget::TIMING_IMMEDIATE, $outcome->plan->fresh()->accountOfferMeta()['configured_timing']);
         });
     }
 

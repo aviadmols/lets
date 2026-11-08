@@ -217,9 +217,12 @@ final class AccountOfferAcceptService
         // the load and the click, so the charge can only be less than shown.
         // Null = not a prorated target; 0.0 = prorated, nothing chargeable
         // (a downgrade, or a period already over) → mechanically a period-end.
-        $dueNow = ReplaceProration::dueNow($target, $source, $quote->amount);
+        // The timing the switch actually runs with (SwitchTiming): never a second
+        // full charge for a period already paid, never money now for a downgrade.
+        $timing = SwitchTiming::effective($target, $source, $quote);
+        $dueNow = ReplaceProration::dueNow($target, $source, $quote->amount, $timing);
 
-        $immediate = $target->chargesNow() && ($dueNow === null || $dueNow >= ReplaceProration::MIN_CHARGE);
+        $immediate = SwitchTiming::chargesNow($target, $source, $quote) && ($dueNow === null || $dueNow >= ReplaceProration::MIN_CHARGE);
         $firstChargeAt = $this->firstChargeAt($source, $immediate);
 
         // A prorated charge stamps TODAY (its idempotency cycle), so the
@@ -229,10 +232,10 @@ final class AccountOfferAcceptService
         $resumeAt = ($dueNow !== null && $immediate) ? $this->periodEnd($source) : null;
 
         // === Step A ===
-        $new = DB::transaction(function () use ($visitor, $offer, $target, $quote, $source, $firstChargeAt, $immediate, $dueNow, $resumeAt, $settings): InstallmentPlan {
-            $new = $this->createPlan($visitor, $offer, $target, $quote, $source, $firstChargeAt, $immediate, $dueNow, $resumeAt);
+        $new = DB::transaction(function () use ($visitor, $offer, $target, $quote, $source, $firstChargeAt, $immediate, $dueNow, $resumeAt, $settings, $timing): InstallmentPlan {
+            $new = $this->createPlan($visitor, $offer, $target, $quote, $source, $firstChargeAt, $immediate, $dueNow, $resumeAt, $timing);
             $this->writeConsent($new, $offer, $quote, $source, $settings, $dueNow);
-            $this->recordAcceptance($offer, $target, $quote, $source, $new, $dueNow);
+            $this->recordAcceptance($offer, $target, $quote, $source, $new, $dueNow, $timing);
 
             return $new;
         });
@@ -288,6 +291,7 @@ final class AccountOfferAcceptService
         bool $immediate,
         ?float $dueNow = null,
         ?Carbon $resumeAt = null,
+        ?string $timing = null,
     ): InstallmentPlan {
         return $this->plans->createForCustomer($visitor->shop, [
             'product_gid' => (string) ($quote->product->external_id ?? ''),
@@ -320,7 +324,9 @@ final class AccountOfferAcceptService
                     'target' => $target->stableKey(),
                     'source_plan_public_id' => (string) $source->public_id,
                     'mode' => $target->mode(),
-                    'timing' => $target->timing(),
+                    // what ran, and what the merchant configured when the two differ
+                    'timing' => $timing ?? $target->timing(),
+                    ...($timing !== null && $timing !== $target->timing() ? ['configured_timing' => $target->timing()] : []),
                     'accepted_at' => now()->toIso8601String(),
                     'amount' => $quote->amount,
                     // One attempt and no more: the caller cancels this plan the
@@ -411,6 +417,7 @@ final class AccountOfferAcceptService
         InstallmentPlan $source,
         InstallmentPlan $new,
         ?float $dueNow = null,
+        ?string $timing = null,
     ): void {
         $details = [
             'offer_id' => (string) $offer->getKey(),
@@ -418,7 +425,8 @@ final class AccountOfferAcceptService
             'target' => $target->stableKey(),
             'kind' => $target->kind(),
             'mode' => $target->mode(),
-            'timing' => $target->timing(),
+            'timing' => $timing ?? $target->timing(),
+            ...($timing !== null && $timing !== $target->timing() ? ['configured_timing' => $target->timing()] : []),
             'amount' => $quote->amount,
             'currency' => $quote->currency,
             'source_plan' => (string) $source->public_id,

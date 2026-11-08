@@ -276,7 +276,7 @@ final class AccountOfferEndpointTest extends TestCase
             $product = $this->makeProduct(self::PRODUCT_MONTHLY, 'Membership 2675', 49.0);
             $offer = $this->makeOffer($this->makeTemplate($product, BillingFrequency::MONTHLY), $offerAttributes);
 
-            return [$offer, $this->makeSourcePlan()];
+            return [$offer, $this->makeSourcePlan($this->renewalDueToday())];
         });
     }
 

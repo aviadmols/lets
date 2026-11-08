@@ -42,9 +42,11 @@ final class ReplaceProration
      * prorate at all (any other timing). 0.0 is a real answer: "prorated, and
      * nothing to charge".
      */
-    public static function dueNow(AccountOfferTarget $target, ?InstallmentPlan $source, float $newCyclePrice): ?float
+    public static function dueNow(AccountOfferTarget $target, ?InstallmentPlan $source, float $newCyclePrice, ?string $timing = null): ?float
     {
-        if ($target->timing() !== AccountOfferTarget::TIMING_PRORATED) {
+        // The timing the switch actually runs with (SwitchTiming::effective) — an
+        // immediate switch over a paid period prorates; a downgrade never charges.
+        if (($timing ?? $target->timing()) !== AccountOfferTarget::TIMING_PRORATED) {
             return null;
         }
 

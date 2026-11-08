@@ -108,7 +108,7 @@ final class AcceptCreatesWooOrderTest extends TestCase
                 'product_subscription_plan_id' => $this->makeTemplate($product, BillingFrequency::MONTHLY)->getKey(),
             ]);
 
-            return [$offer, $this->makeSourcePlan(), $target->stableKey()];
+            return [$offer, $this->makeSourcePlan($this->renewalDueToday()), $target->stableKey()];
         });
 
         $outcome = Tenant::run($shop, fn (): AccountOfferOutcome => app(AccountOfferAcceptService::class)->accept(
@@ -180,7 +180,7 @@ final class AcceptCreatesWooOrderTest extends TestCase
                 'product_subscription_plan_id' => $this->makeTemplate($product, BillingFrequency::MONTHLY)->getKey(),
             ]);
 
-            return [$offer, $this->makeSourcePlan(), $target->stableKey()];
+            return [$offer, $this->makeSourcePlan($this->renewalDueToday()), $target->stableKey()];
         });
 
         $outcome = Tenant::run($shop, fn (): AccountOfferOutcome => app(AccountOfferAcceptService::class)->accept(

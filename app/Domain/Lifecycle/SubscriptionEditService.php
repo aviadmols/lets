@@ -210,6 +210,22 @@ final class SubscriptionEditService
     }
 
     /**
+     * What the next cycle would cost with these rows, priced exactly as the edit
+     * would price them — or null when no valid line survives (the edit would then
+     * clear the override and the plan's own price applies). Asked BEFORE an edit by
+     * whoever must refuse one, e.g. a customer lowering the price inside the
+     * subscription's commitment.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    public function nextOrderAmount(InstallmentPlan $plan, array $rows): ?float
+    {
+        $override = $this->buildOverride($plan, $rows);
+
+        return $override === null ? null : round((float) $override['amount'], 2);
+    }
+
+    /**
      * Build the one-time override from the submitted rows. Each product is resolved tenant-scoped
      * (unknown ids dropped); the amount is the server-summed line total. Returns null when no valid
      * line survives (→ the caller clears the override).

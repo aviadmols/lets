@@ -6,6 +6,8 @@ use App\Domain\Account\AccountVisitor;
 use App\Domain\Account\CustomerSubscriptionActions;
 use App\Models\InstallmentPayment;
 use App\Models\InstallmentPlan;
+use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
@@ -96,6 +98,26 @@ final class MinimumTermTest extends TestCase
         $this->assertSame(PlanStatus::ACTIVE, $plan->fresh()->status);
     }
 
+    /** Lowering what a cycle costs is leaving by another door: refused inside the term; the same or more is not. */
+    public function test_inside_the_term_the_next_order_cannot_be_made_cheaper(): void
+    {
+        $plan = $this->plan(minCycles: 3, paid: 1);
+        $this->product('cheap', 29.0);
+        $this->product('dear', 89.0);
+
+        $cheaper = $this->actions()->perform($this->visitor(), CustomerSubscriptionActions::ACTION_ITEMS, (string) $plan->public_id, ['line_items' => [['product_id' => 'cheap', 'quantity' => 1]]]);
+        $this->assertSame(CustomerSubscriptionActions::RESULT_NOT_ALLOWED, $cheaper['result']);
+        $this->assertNull($plan->fresh()->nextOrderOverride());
+
+        $dearer = $this->actions()->perform($this->visitor(), CustomerSubscriptionActions::ACTION_ITEMS, (string) $plan->public_id, ['line_items' => [['product_id' => 'dear', 'quantity' => 1]]]);
+        $this->assertSame(CustomerSubscriptionActions::RESULT_OK, $dearer['result']);
+
+        // once the term is paid, the choice is theirs again
+        $free = $this->plan(minCycles: 3, paid: 3);
+        $after = $this->actions()->perform($this->visitor(), CustomerSubscriptionActions::ACTION_ITEMS, (string) $free->public_id, ['line_items' => [['product_id' => 'cheap', 'quantity' => 1]]]);
+        $this->assertSame(CustomerSubscriptionActions::RESULT_OK, $after['result']);
+    }
+
     public function test_the_server_refuses_a_pause_inside_the_term(): void
     {
         $plan = $this->plan(minCycles: 3, paid: 1);
@@ -179,6 +201,17 @@ final class MinimumTermTest extends TestCase
         }
 
         return $plan->fresh();
+    }
+
+    private function product(string $externalId, float $price): void
+    {
+        $product = Product::create([
+            'source' => Product::SOURCE_WOOCOMMERCE,
+            'external_id' => $externalId,
+            'title' => 'Product '.$externalId,
+            'status' => Product::STATUS_ACTIVE,
+        ]);
+        ProductVariant::create(['product_id' => $product->getKey(), 'external_variant_id' => $externalId, 'title' => '', 'price' => $price, 'position' => 0]);
     }
 
     private function payment(InstallmentPlan $plan, int $sequence, PaymentStatus $status): void

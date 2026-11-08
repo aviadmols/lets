@@ -420,6 +420,16 @@ final class CustomerSubscriptionActions
             }
         }
 
+        // Inside the commitment ("cannot cancel before three months") the customer
+        // may not lower what a cycle costs: it is leaving by another door. Adding,
+        // or swapping for something that costs the same or more, stays open.
+        if (! $plan->customerMayExit()) {
+            $amount = $this->edits->nextOrderAmount($plan, $clean);
+            if ($amount !== null && $amount < round((float) $plan->installment_amount, 2)) {
+                return $this->fail(self::RESULT_NOT_ALLOWED);
+            }
+        }
+
         // Attributed to the CUSTOMER: a next order they set themselves is theirs
         // to pay, so the consent ceiling lets exactly this amount through once.
         return $this->ok($this->edits->editNextCharge($plan, ['line_items' => $clean], ActivityEvent::ACTOR_CUSTOMER));
