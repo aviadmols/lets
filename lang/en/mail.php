@@ -42,7 +42,10 @@ return [
         'intro' => 'Choose the emails this store sends its customers — or stop all of them at once.',
 
         'master' => 'Send emails to customers',
-        'master_help' => 'Turn this off and this store emails nobody: no welcome, no reminder, no receipt, no campaign. Subscriptions keep running and cards keep being charged — only the messages stop. Your customers\' invoices are NOT affected (see below), but nobody will be able to sign in to the customer area by email while it is off.',
+        'master_help' => 'Turn this off and this store emails nobody: no welcome, no reminder, no receipt, no campaign. Subscriptions keep running and cards keep being charged — only the messages stop. Your customers\' invoices are NOT affected (see below), and nobody can sign in to the customer area by email while it is off — unless you keep the sign-in code on (it appears below once this is off).',
+
+        'login_code_while_paused' => 'Still send the customer-area sign-in code',
+        'login_code_while_paused_help' => 'The only email that goes out while the switch above is off. Customers can keep signing in by email; everything else stays stopped.',
 
         'paused_heading' => 'Email is off',
         'paused_body' => 'Nobody at this store has been emailed since :since. Turn the switch back on to resume — the messages that were skipped are not sent retroactively.',

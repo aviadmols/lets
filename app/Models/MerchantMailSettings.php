@@ -159,6 +159,7 @@ class MerchantMailSettings extends Model
             'reminder_offset_hours' => 'integer',
             'emails_enabled' => 'boolean',
             'emails_paused_at' => 'datetime',
+            'login_code_while_paused' => 'boolean',
             'disabled_templates' => 'array',
             'override_env_smtp' => 'boolean',
             'smtp_port' => 'integer',
@@ -316,7 +317,7 @@ class MerchantMailSettings extends Model
     public function sendsTemplate(string $template): bool
     {
         if (! $this->emailsEnabled()) {
-            return false;
+            return $this->sendsLoginCodeWhilePaused($template);
         }
 
         if ($template === self::TEMPLATE_RECURRING_PAYMENT_REMINDER) {
@@ -329,6 +330,18 @@ class MerchantMailSettings extends Model
         // visible rather than silently muted for every shop that saved this
         // screen months ago.
         return ! in_array($template, $this->disabledTemplates(), true);
+    }
+
+    /**
+     * The one email that may pass a CLOSED master tap: the sign-in code, and only
+     * when the merchant ticked `login_code_while_paused`. Everything else —
+     * campaigns included — stays stopped, so "no emails" still means no emails
+     * except the door the merchant explicitly kept open.
+     */
+    public function sendsLoginCodeWhilePaused(string $template): bool
+    {
+        return $template === self::TEMPLATE_LOGIN_CODE
+            && (bool) ($this->login_code_while_paused ?? false);
     }
 
     /**

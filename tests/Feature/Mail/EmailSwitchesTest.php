@@ -269,7 +269,51 @@ final class EmailSwitchesTest extends TestCase
         );
     }
 
+    /**
+     * A closed tap may keep ONE door open: the sign-in code, when the merchant
+     * ticked it. Every other email — campaigns included — stays stopped.
+     */
+    public function test_a_closed_tap_can_keep_only_the_sign_in_code(): void
+    {
+        $policy = app(MailPolicy::class);
+        $settings = MerchantMailSettings::current();
+        $settings->forceFill(['emails_enabled' => false, 'login_code_while_paused' => true])->save();
+
+        $this->assertTrue($policy->allows($this->shop, MerchantMailSettings::TEMPLATE_LOGIN_CODE));
+
+        foreach (MerchantMailSettings::TEMPLATES as $template) {
+            if ($template === MerchantMailSettings::TEMPLATE_LOGIN_CODE) {
+                continue;
+            }
+            $this->assertSame(MailPolicy::REASON_ALL_OFF, $policy->reason($this->shop, $template), $template.' should stay stopped');
+        }
+
+        $this->assertSame(MailPolicy::REASON_ALL_OFF, $policy->reason($this->shop, MerchantMailSettings::CHANNEL_CAMPAIGN));
+    }
+
     // === The screen ===
+
+    public function test_the_screen_saves_the_sign_in_code_exception_and_keeps_it_when_the_tap_opens(): void
+    {
+        $this->actingAs(User::factory()->forShop($this->shop)->create());
+
+        Livewire::test(ManageMailSettings::class)
+            ->set('data.emails_enabled', false)
+            ->set('data.login_code_while_paused', true)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertTrue((bool) MerchantMailSettings::current()->fresh()->login_code_while_paused);
+        $this->assertTrue(app(MailPolicy::class)->allows($this->shop, MerchantMailSettings::TEMPLATE_LOGIN_CODE));
+
+        // Opening the tap hides the toggle; the choice survives for the next pause.
+        Livewire::test(ManageMailSettings::class)
+            ->set('data.emails_enabled', true)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertTrue((bool) MerchantMailSettings::current()->fresh()->login_code_while_paused);
+    }
 
     public function test_the_screen_saves_the_master_tap_and_stamps_when_it_closed(): void
     {

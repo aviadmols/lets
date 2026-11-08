@@ -148,6 +148,7 @@ class ManageMailSettings extends Page implements HasForms
         $state = [
             'email_locale' => $settings->emailLocale(),
             'emails_enabled' => $settings->emailsEnabled(),
+            'login_code_while_paused' => (bool) $settings->login_code_while_paused,
             // The checkbox list states what IS sent — the question a merchant is
             // actually asking — while the column stores the inverse, so that an
             // email added next release arrives ON rather than silently muted.
@@ -434,6 +435,14 @@ class ManageMailSettings extends Page implements HasForms
                     ->visible(fn (Get $get): bool => ! (bool) $get('emails_enabled') && $pausedAt !== null)
                     ->columnSpanFull(),
 
+                // The one door a closed tap may leave open. Shown only while the
+                // tap is closed — with it open, the code goes out anyway.
+                Toggle::make('login_code_while_paused')
+                    ->label(__('mail.switches.login_code_while_paused'))
+                    ->helperText(__('mail.switches.login_code_while_paused_help'))
+                    ->visible(fn (Get $get): bool => ! (bool) $get('emails_enabled'))
+                    ->columnSpanFull(),
+
                 CheckboxList::make('enabled_templates')
                     ->label(__('mail.switches.per_email'))
                     ->helperText(__('mail.switches.per_email_help'))
@@ -475,6 +484,11 @@ class ManageMailSettings extends Page implements HasForms
         $was = $settings->emailsEnabled();
 
         $settings->emails_enabled = $wanted;
+        // The toggle is only on screen while the tap is closed, and a hidden
+        // field is not in the state — absent means "unchanged", not "off".
+        if (array_key_exists('login_code_while_paused', $input)) {
+            $settings->login_code_while_paused = (bool) $input['login_code_while_paused'];
+        }
 
         if ($was !== $wanted) {
             $settings->emails_paused_at = $wanted ? $settings->emails_paused_at : now();

@@ -85,7 +85,7 @@ final class MailPolicy
         }
 
         if (! $settings->emailsEnabled()) {
-            return self::REASON_ALL_OFF;
+            return $settings->sendsLoginCodeWhilePaused($template) ? null : self::REASON_ALL_OFF;
         }
 
         return $settings->sendsTemplate($template) ? null : self::REASON_TEMPLATE_OFF;
