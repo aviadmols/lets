@@ -13,8 +13,10 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Services\WooCommerce\WooCommerceShopProvisioner;
 use App\Support\Tenant;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -241,6 +243,71 @@ final class SubscriptionControlsTest extends TestCase
         $this->signedPost($key, $secret, self::ELIGIBILITY, ['customer_ref' => '', 'email' => ''])
             ->assertOk()
             ->assertJson(['blocked' => false]);
+    }
+
+    /**
+     * An old subscription — an annual term that ended, one the engine gave up on,
+     * one we held because its renewal was never paid — must not keep a customer
+     * from buying a new one. Anything still held does block.
+     *
+     * @return array<string, array{0: array<string, mixed>, 1: bool}>
+     */
+    public static function heldOrNot(): array
+    {
+        // Providers run before the app boots: CarbonImmutable, not now().
+        $now = CarbonImmutable::now();
+
+        return [
+            'failed: we stopped asking' => [['status' => PlanStatus::FAILED->value], false],
+            'held by us for an unpaid renewal' => [['status' => PlanStatus::PAUSED->value, 'payment_failed_at' => $now->subMonths(3)], false],
+            'imported annual term that ended' => [['meta' => ['import' => ['auto_renew' => false, 'expires_at' => $now->subMonths(2)->toIso8601String()]]], false],
+            'imported annual term still running' => [['meta' => ['import' => ['auto_renew' => false, 'expires_at' => $now->addMonths(2)->toIso8601String()]]], true],
+            'imported renewing plan with a past period end' => [['meta' => ['import' => ['auto_renew' => true, 'expires_at' => $now->subMonths(2)->toIso8601String()]]], true],
+            'paused by the customer' => [['status' => PlanStatus::PAUSED->value], true],
+            'renewal still being retried' => [['status' => PlanStatus::AWAITING_PAYMENT->value], true],
+            'paid, waiting for activation' => [['status' => PlanStatus::AWAITING_ACTIVATION->value, 'next_charge_at' => null], true],
+            'cancelled' => [['status' => PlanStatus::CANCELLED->value], false],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $state
+     */
+    #[DataProvider('heldOrNot')]
+    public function test_only_a_subscription_still_held_blocks_a_new_one(array $state, bool $blocked): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop('controls-held-'.substr(md5((string) json_encode($state)), 0, 8).'.example.com');
+
+        Tenant::run($shop, function () use ($shop, $state): void {
+            MerchantBillingSettings::current()->forceFill(['single_active_subscription' => true])->save();
+
+            $this->plan($shop, 'cust-8', 'eight@example.com')->forceFill($state)->save();
+        });
+
+        $this->signedPost($key, $secret, self::ELIGIBILITY, [
+            'customer_ref' => 'cust-8',
+            'email' => 'eight@example.com',
+        ])->assertOk()->assertJson(['blocked' => $blocked]);
+    }
+
+    /** An ended annual plan beside a live one: the live one still blocks. */
+    public function test_a_live_plan_blocks_even_beside_an_ended_one(): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop('controls-mixed.example.com');
+
+        Tenant::run($shop, function () use ($shop): void {
+            MerchantBillingSettings::current()->forceFill(['single_active_subscription' => true])->save();
+
+            $this->plan($shop, 'cust-9', 'nine@example.com')
+                ->forceFill(['meta' => ['import' => ['auto_renew' => false, 'expires_at' => now()->subYear()->toIso8601String()]]])
+                ->save();
+            $this->plan($shop, 'cust-9', 'nine@example.com');
+        });
+
+        $this->signedPost($key, $secret, self::ELIGIBILITY, [
+            'customer_ref' => 'cust-9',
+            'email' => 'nine@example.com',
+        ])->assertOk()->assertJson(['blocked' => true]);
     }
 
     public function test_eligibility_rejects_an_unsigned_call(): void

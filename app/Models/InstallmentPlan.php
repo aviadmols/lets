@@ -301,6 +301,60 @@ class InstallmentPlan extends Model
     }
 
     /**
+     * The statuses a plan may HOLD a subscription in right now — the candidates
+     * holdsSubscriptionNow() then narrows. FAILED is not among them: it is "we
+     * stopped asking", a row the engine itself treats as inert.
+     *
+     * @return list<string>
+     */
+    public static function heldStatuses(): array
+    {
+        return array_map(static fn (PlanStatus $s): string => $s->value, [
+            PlanStatus::ACTIVE,
+            PlanStatus::PAUSED,
+            PlanStatus::AWAITING_PAYMENT,
+            PlanStatus::AWAITING_ACTIVATION,
+        ]);
+    }
+
+    /**
+     * Does the customer still HOLD this subscription today — the question the
+     * "one subscription per customer" rule asks before refusing a new one?
+     *
+     * Not the same as "is the row in a live status". Nothing moves a plan on when
+     * time passes, so a status alone keeps an old subscription "live" forever:
+     *
+     *   - A term that does not renew and has ENDED (expiresAt() in the past) is
+     *     over, whatever status the import left it in.
+     *   - A plan WE paused because its renewal never got paid (payment_failed_at
+     *     is the stamp that says the pause is ours, not the customer's) is a
+     *     subscription the customer let lapse — typically an annual plan whose
+     *     card expired during the year. Blocking a new purchase over it keeps
+     *     the customer out of the shop for a plan they no longer have.
+     *
+     * Still held: active, waiting for activation, dunning that is still being
+     * retried (awaiting_payment), and a pause the customer or merchant chose.
+     */
+    public function holdsSubscriptionNow(): bool
+    {
+        $status = $this->status instanceof PlanStatus
+            ? $this->status
+            : PlanStatus::tryFrom((string) $this->status);
+
+        if ($status === null || ! in_array($status->value, self::heldStatuses(), true)) {
+            return false;
+        }
+
+        if ($status === PlanStatus::PAUSED && $this->payment_failed_at !== null) {
+            return false;
+        }
+
+        $ends = $this->expiresAt();
+
+        return $ends === null || $ends->isFuture();
+    }
+
+    /**
      * The synced catalog row for this plan's product, matched on the platform id.
      * Tenant-scoped by Product's global scope, so it can only ever resolve to this
      * shop's catalog.
