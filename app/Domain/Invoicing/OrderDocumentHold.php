@@ -7,11 +7,13 @@ use App\Domain\Upsell\Enums\UpsellFlowStatus;
 use App\Domain\Upsell\Models\UpsellFlow;
 use App\Domain\Upsell\Models\UpsellFlowOffer;
 use App\Domain\Upsell\Models\UpsellOfferEvent;
+use App\Models\InstallmentPlan;
 use App\Models\IssuedDocument;
 use App\Models\MerchantInvoicingSettings;
 use App\Models\PaymentLedger;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\LedgerStatus;
+use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use Illuminate\Contracts\Cache\Lock;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -24,8 +26,8 @@ use Illuminate\Support\Facades\Cache;
  * shopper took the thank-you offer: two tax documents for one visit, the second naming three
  * books on a single line. Now the order's document waits for the offer:
  *
- *   1. a reported order waits FIRST_LOOK_SECONDS, when the shop has an active offer at all
- *      (the thank-you page shows it seconds after payment);
+ *   1. a reported order waits FIRST_LOOK_SECONDS (five minutes), when the shop has an
+ *      active offer at all — a subscription checkout too, whatever the invoicing scope;
  *   2. if an offer WAS shown for the order, it waits until every such offer's window has
  *      closed and a last click has had time to be charged (UpsellFlowOffer caps every
  *      window at MAX_WINDOW_MINUTES, so this is bounded);
@@ -41,8 +43,14 @@ use Illuminate\Support\Facades\Cache;
 final class OrderDocumentHold
 {
     // === CONSTANTS ===
-    /** How long a reported order waits for its thank-you page to show an offer. */
-    public const FIRST_LOOK_SECONDS = 90;
+    /**
+     * How long a reported order waits before its document goes out, when the shop has an
+     * active offer: five minutes — the merchant's rule, so an offer taken on the thank-you
+     * page lands on the order's ONE document instead of a second one. At 90 seconds a
+     * shopper who read the offer for three minutes got two documents (order 18267). Step 2
+     * below still extends it while a shown offer's window is open.
+     */
+    public const FIRST_LOOK_SECONDS = 300;
 
     /** After a window closes: the accept grace, then time for the charge to land. */
     public const SETTLE_SECONDS = UpsellFlowOffer::WINDOW_ACCEPT_GRACE_SECONDS + 45;
@@ -65,6 +73,25 @@ final class OrderDocumentHold
         return $shop instanceof Shop
             && $shop->platform === Shop::PLATFORM_WOOCOMMERCE
             && MerchantInvoicingSettings::forShop($shopId)->coversAllOrders();
+    }
+
+    /**
+     * Can THIS order's document take what was added after checkout? On a combining shop,
+     * and on any scope for a WooCommerce checkout that started a subscription: that order
+     * gets its document whatever the scope says (WooGatewayInvoiceReporter).
+     */
+    public function combinesOrder(int $shopId, string $orderId): bool
+    {
+        if ($this->combinesOrders($shopId)) {
+            return true;
+        }
+
+        return Shop::query()->whereKey($shopId)->value('platform') === Shop::PLATFORM_WOOCOMMERCE
+            && InstallmentPlan::acrossAllTenants()
+                ->where('shop_id', $shopId)
+                ->where('plan_kind', PlanKind::RECURRING->value)
+                ->where('shopify_order_id', $orderId)
+                ->exists();
     }
 
     /** Could this shop show an after-purchase offer at all? Only then does an order wait for one. */
@@ -106,18 +133,24 @@ final class OrderDocumentHold
 
     /**
      * How long an upsell charge's own document should wait for its order's; 0 = decide now.
-     * Waits only where the order's document could still take it: a combining shop, and no
-     * document opened for the order yet.
+     * Waits only where the order's document could still take it: an order that combines, and
+     * no document opened for it yet.
      */
     public function secondsUpsellShouldWait(int $shopId, PaymentLedger $ledger): int
     {
         $orderId = (string) ($ledger->parent_order_id ?? '');
 
-        if ($orderId === '' || ! $this->combinesOrders($shopId) || $this->orderDocument($shopId, $orderId) !== null) {
+        if ($orderId === '' || ! $this->combinesOrder($shopId, $orderId) || $this->orderDocument($shopId, $orderId) !== null) {
             return 0;
         }
 
-        return $this->secondsUntilSettled($shopId, $orderId) + self::ORDER_DOCUMENT_SLACK_SECONDS;
+        // Past the order's own first look too: the order was paid before this charge, so its
+        // document is due by charge time + FIRST_LOOK_SECONDS. An offer taken at once, with a
+        // short window, would otherwise settle — and go out on its own — before that.
+        $chargedAt = $ledger->created_at?->getTimestamp() ?? now()->getTimestamp();
+        $firstLookEnds = max(0, $chargedAt + self::FIRST_LOOK_SECONDS - now()->getTimestamp());
+
+        return max($this->secondsUntilSettled($shopId, $orderId), $firstLookEnds) + self::ORDER_DOCUMENT_SLACK_SECONDS;
     }
 
     /** The order's document row (any status), or null when none was opened. */

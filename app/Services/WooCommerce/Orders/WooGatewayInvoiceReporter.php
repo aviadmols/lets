@@ -5,6 +5,7 @@ namespace App\Services\WooCommerce\Orders;
 use App\Domain\Invoicing\DocumentContext;
 use App\Domain\Invoicing\DocumentIssuer;
 use App\Domain\Invoicing\Jobs\IssueDocumentJob;
+use App\Domain\Invoicing\OrderDocumentHold;
 use App\Domain\Invoicing\PlatformOrderLines;
 use App\Models\InstallmentPlan;
 use App\Models\IssuedDocument;
@@ -106,11 +107,14 @@ final class WooGatewayInvoiceReporter
             return;
         }
 
+        // The thank-you page has not loaded yet, so no offer has been shown for the job to
+        // wait on. Give it its first look, as InvoicingController does (OrderDocumentHold).
+        $hold = app(OrderDocumentHold::class);
         IssueDocumentJob::dispatch(
             shopId: $shopId,
             context: DocumentContext::PLATFORM_ORDER->value,
             order: $this->orderPayload($order, $orderId, $total, $payplusBody) + $this->planLink($shop, $planIds),
-        );
+        )->delay($hold->shopHasOffers($shopId) ? now()->addSeconds(OrderDocumentHold::FIRST_LOOK_SECONDS) : null);
 
         Log::info('woocommerce.gateway.invoice_reported', [
             'shop_id' => $shopId, 'order_id' => $orderId,

@@ -112,10 +112,11 @@ final class OrderUpsellDocumentTest extends TestCase
         $this->shown($shop, $offer, Carbon::parse('2026-09-17 08:45:00'));
         $charge = $this->charge($shop, $offer, ['מרד הגנרלים' => 5.00, 'המדינה שבדרך' => 4.99]);
 
-        // First attempt: the order's document has not been opened — give it its chance.
+        // First attempt: the order's document has not been opened — give it its chance, past
+        // the order's five-minute first look (the charge was made just now).
         $waiting = $this->upsellJob($shop, $charge)->withFakeQueueInteractions();
         Tenant::run($shop, fn () => $waiting->handle(app(DocumentIssuer::class)));
-        $waiting->assertReleased(OrderDocumentHold::ORDER_DOCUMENT_SLACK_SECONDS);
+        $waiting->assertReleased(OrderDocumentHold::FIRST_LOOK_SECONDS + OrderDocumentHold::ORDER_DOCUMENT_SLACK_SECONDS);
         $this->assertSame([], $this->issued);
 
         // Next attempt, still no order document: the upsell goes out alone, a line per book.

@@ -112,7 +112,7 @@ final class DocumentIssuer
             ->whereKey($ledgerId)
             ->value('parent_order_id'));
 
-        return $orderId !== '' && app(OrderDocumentHold::class)->combinesOrders($shopId) ? $orderId : null;
+        return $orderId !== '' && app(OrderDocumentHold::class)->combinesOrder($shopId, $orderId) ? $orderId : null;
     }
 
     private function ledgerDocument(
@@ -295,11 +295,7 @@ final class DocumentIssuer
             // charges that have no document of their own. The order's document is issued
             // once their windows have closed (IssueDocumentJob waits), so this is all of them.
             $hold = app(OrderDocumentHold::class);
-            // A shop documenting plans only gives each upsell its own document, so a
-            // subscription checkout's document must not declare it as well.
-            $upsells = $planCheckout !== [] && ! $hold->combinesOrders($shopId)
-                ? collect()
-                : $hold->chargesToInclude($shopId, $orderId);
+            $upsells = $hold->chargesToInclude($shopId, $orderId);
             foreach ($upsells as $charge) {
                 array_push($lines, ...$hold->linesFor(
                     $charge,

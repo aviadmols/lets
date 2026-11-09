@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\WooCommerce;
 
+use App\Domain\Billing\Ledger;
 use App\Domain\Invoicing\Contracts\InvoiceProvider;
+use App\Domain\Invoicing\DocumentContext;
 use App\Domain\Invoicing\DocumentIssuer;
 use App\Domain\Invoicing\DocumentLine;
 use App\Domain\Invoicing\DocumentReconciliationService;
@@ -10,6 +12,12 @@ use App\Domain\Invoicing\InvoiceProviderFactory;
 use App\Domain\Invoicing\IssuedDocumentResult;
 use App\Domain\Invoicing\IssueDocumentRequest;
 use App\Domain\Invoicing\Jobs\IssueDocumentJob;
+use App\Domain\Invoicing\OrderDocumentHold;
+use App\Domain\Upsell\Enums\OfferEventType;
+use App\Domain\Upsell\Enums\UpsellFlowStatus;
+use App\Domain\Upsell\Models\UpsellFlow;
+use App\Domain\Upsell\Models\UpsellFlowOffer;
+use App\Domain\Upsell\Models\UpsellOfferEvent;
 use App\Models\InstallmentPlan;
 use App\Models\IssuedDocument;
 use App\Models\MerchantInvoicingSettings;
@@ -19,6 +27,7 @@ use App\Models\ProductSubscriptionPlan;
 use App\Models\ProductVariant;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Contracts\PayPlusGatewayInterface;
+use App\Modules\PayPlusShopifyInstallments\Enums\LedgerStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\GatewayResult;
 use App\Modules\PayPlusShopifyInstallments\Services\PayPlus\PayPlusGatewayFactory;
@@ -26,6 +35,7 @@ use App\Services\WooCommerce\WooCommerceShopProvisioner;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Tests\Concerns\FakesPayPlusIpn;
@@ -233,6 +243,83 @@ final class SubscriptionOrderWithShippingTest extends TestCase
         $this->assertEqualsWithDelta(210.0, array_sum(array_column($this->refunds, 'amount')), 0.001);
     }
 
+    public function test_the_document_gives_the_thank_you_page_its_first_look(): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop();
+        $this->activeOffer($shop);
+        Queue::fake();
+
+        $this->paidCheckout($shop, $key, $secret);
+
+        Queue::assertPushed(IssueDocumentJob::class, 1);
+        // Five minutes — the merchant's rule — so an offer taken meanwhile joins it.
+        Queue::assertPushed(IssueDocumentJob::class, static fn (IssueDocumentJob $job): bool => $job->delay !== null
+            && abs(now()->diffInSeconds($job->delay) - OrderDocumentHold::FIRST_LOOK_SECONDS) <= 5);
+        $this->assertSame(300, OrderDocumentHold::FIRST_LOOK_SECONDS);
+    }
+
+    public function test_an_offer_taken_at_once_waits_past_the_orders_five_minutes(): void
+    {
+        [$shop] = $this->connectedShop(scope: MerchantInvoicingSettings::SCOPE_PLANS_ONLY);
+        $offer = $this->activeOffer($shop);
+        $plan = new InstallmentPlan;
+        $plan->forceFill([
+            'shop_id' => $shop->getKey(), 'plan_kind' => 'recurring', 'charge_context' => 'recurring',
+            'total_amount' => 100, 'installment_amount' => 100, 'currency' => 'ILS',
+            'public_id' => (string) Str::ulid(), 'shopify_order_id' => self::ORDER,
+            'status' => PlanStatus::ACTIVE->value,
+        ])->save();
+        // Shown and closed already — a short window would settle long before five minutes.
+        $this->shownAndWindowClosed($shop, $offer);
+        $charge = $this->offerCharge($shop, $offer, 40.0);
+
+        $wait = app(OrderDocumentHold::class)->secondsUpsellShouldWait((int) $shop->getKey(), $charge);
+
+        $this->assertGreaterThanOrEqual(OrderDocumentHold::FIRST_LOOK_SECONDS, $wait);
+    }
+
+    public function test_a_shop_with_no_offers_issues_the_document_at_once(): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop();
+        Queue::fake();
+
+        $this->paidCheckout($shop, $key, $secret);
+
+        Queue::assertPushed(IssueDocumentJob::class, static fn (IssueDocumentJob $job): bool => $job->delay === null);
+    }
+
+    public function test_what_the_shopper_adds_after_checkout_joins_the_one_document_on_all_orders(): void
+    {
+        $this->assertOfferJoinsTheDocument(MerchantInvoicingSettings::SCOPE_ALL_ORDERS);
+    }
+
+    public function test_what_the_shopper_adds_after_checkout_joins_the_one_document_on_plans_only(): void
+    {
+        $this->assertOfferJoinsTheDocument(MerchantInvoicingSettings::SCOPE_PLANS_ONLY);
+    }
+
+    private function assertOfferJoinsTheDocument(string $scope): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop(scope: $scope);
+        $offer = $this->activeOffer($shop);
+        Queue::fake();
+        $this->paidCheckout($shop, $key, $secret);
+        $orderJob = Queue::pushed(IssueDocumentJob::class)->first();
+
+        $this->shownAndWindowClosed($shop, $offer);
+        $charge = $this->offerCharge($shop, $offer, 40.0);
+
+        $this->runJob($orderJob, $shop);
+        $this->runJob(new IssueDocumentJob((int) $shop->getKey(), DocumentContext::UPSELL->value, ledgerId: (int) $charge->getKey(), itemTitle: 'Offer'), $shop);
+
+        $this->assertCount(1, $this->issued, 'One visit, one document.');
+        $this->assertEqualsWithDelta(250.0, $this->issued[0]->amount, 0.001);
+        $this->assertSame(
+            ['Subscription:100', 'Book:80', 'משלוח:30', 'Second book:40'],
+            array_map(static fn (DocumentLine $l): string => $l->description.':'.(int) $l->total(), $this->issued[0]->lines),
+        );
+    }
+
     /** The coupon's money never moved, so it can never be asked of PayPlus. */
     public function test_a_coupon_order_is_held_to_what_was_actually_paid(): void
     {
@@ -300,6 +387,73 @@ final class SubscriptionOrderWithShippingTest extends TestCase
     }
 
     // === Helpers ===
+
+    private function activeOffer(Shop $shop): UpsellFlowOffer
+    {
+        return Tenant::run($shop, function () use ($shop): UpsellFlowOffer {
+            $flow = new UpsellFlow(['name' => 'Books', 'priority' => 1]);
+            $flow->shop_id = $shop->id;
+            $flow->forceFill(['status' => UpsellFlowStatus::ACTIVE->value])->save();
+
+            return UpsellFlowOffer::create([
+                'flow_id' => $flow->id,
+                'offer_product_gid' => '',
+                'offer_variant_gid' => '',
+                'offer_title' => 'Offer',
+                'base_price' => 0,
+                'discount_type' => UpsellFlowOffer::DISCOUNT_NONE,
+                'position' => 0,
+            ]);
+        });
+    }
+
+    private function shownAndWindowClosed(Shop $shop, UpsellFlowOffer $offer): void
+    {
+        Tenant::run($shop, fn () => UpsellOfferEvent::record([
+            'shop_id' => (int) $shop->getKey(),
+            'flow_id' => $offer->flow_id,
+            'offer_id' => $offer->getKey(),
+            'event_type' => OfferEventType::IMPRESSION,
+            'parent_order_id' => self::ORDER,
+            'occurred_at' => now()->subHour(),
+        ]));
+    }
+
+    private function offerCharge(Shop $shop, UpsellFlowOffer $offer, float $amount): PaymentLedger
+    {
+        return Tenant::run($shop, function () use ($shop, $offer, $amount): PaymentLedger {
+            $ledger = Ledger::transition(Ledger::open(
+                shopId: (int) $shop->getKey(),
+                chargeContext: PaymentLedger::CONTEXT_UPSELL,
+                idempotencyKey: 'upsell:'.$shop->getKey().':'.$offer->flow_id.':'.$offer->getKey().':'.self::ORDER.':1',
+                amount: $amount,
+                currency: 'ILS',
+                attributes: ['parent_order_id' => self::ORDER],
+            ), LedgerStatus::SUCCEEDED);
+
+            UpsellOfferEvent::record([
+                'shop_id' => (int) $shop->getKey(),
+                'flow_id' => $offer->flow_id,
+                'offer_id' => $offer->getKey(),
+                'payment_ledger_id' => $ledger->getKey(),
+                'event_type' => OfferEventType::CHARGE_SUCCEEDED,
+                'revenue_amount' => $amount,
+                'currency' => 'ILS',
+                'parent_order_id' => self::ORDER,
+                'context' => ['items' => [['title' => 'Second book', 'amount' => $amount]]],
+            ]);
+
+            return $ledger;
+        });
+    }
+
+    /** Run a job as the queue would, past the one attempt a document may spend waiting. */
+    private function runJob(IssueDocumentJob $job, Shop $shop): void
+    {
+        $job->withFakeQueueInteractions();
+        $job->job->attempts = 2;
+        Tenant::run($shop, fn () => $job->handle(app(DocumentIssuer::class)));
+    }
 
     /** Back to what an older order looks like: a first cycle with no transaction, and no remainder. */
     private function forgetWhatTheFixRecorded(Shop $shop): void
