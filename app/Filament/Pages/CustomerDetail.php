@@ -351,7 +351,60 @@ class CustomerDetail extends Page
             return CustomerContact::unavailable(CustomerContact::REASON_UNAVAILABLE);
         }
 
-        return $this->contactMemo ??= app(CustomerContactReader::class)->read($shop, $this->customer);
+        return $this->contactMemo ??= $this->withPlanAddress(
+            app(CustomerContactReader::class)->read($shop, $this->customer),
+        );
+    }
+
+    /**
+     * The store had no address for this person — but their subscription may.
+     *
+     * The store read answers only for a real store account. A GUEST subscriber
+     * (keyed by email) and an IMPORTED member (keyed by the old system's id) have
+     * none, so the page said "no account" while the plan held the address the
+     * shopper typed at checkout (META_CHECKOUT_ADDRESS) or the one the import
+     * carried. The same rung WooOrderAddress and the gift resolver fall to, read
+     * through the same mapping (GiftShippingAddress::fromPlanContact).
+     *
+     * A store account WITH an address always wins — it is the one the customer
+     * keeps current. A Shopify access-pending answer is left alone: that is an
+     * approval the merchant can chase, not an absence to paper over.
+     */
+    private function withPlanAddress(CustomerContact $contact): CustomerContact
+    {
+        if ($contact->address?->isShippable() === true
+            || $contact->reason === CustomerContact::REASON_ACCESS_PENDING) {
+            return $contact;
+        }
+
+        foreach ($this->plans() as $plan) {
+            $address = GiftShippingAddress::fromPlanContact($plan);
+            if ($address === null) {
+                continue;
+            }
+
+            // A real store account that simply has no address keeps its own name,
+            // phone and edit button — saving from here then gives the account this
+            // address. Otherwise the identity is the plan's, read-only: there is
+            // no store record to write it back to.
+            return $contact->reason === null
+                ? new CustomerContact(
+                    firstName: $contact->firstName,
+                    lastName: $contact->lastName,
+                    email: $contact->email,
+                    phone: $contact->phone ?? $address->phone,
+                    address: $address,
+                    editable: $contact->editable,
+                )
+                : new CustomerContact(
+                    firstName: $address->firstName,
+                    email: trim((string) $plan->customer_email) ?: null,
+                    phone: $address->phone,
+                    address: $address,
+                );
+        }
+
+        return $contact;
     }
 
     /** Open the form, seeded with what the store currently holds. */

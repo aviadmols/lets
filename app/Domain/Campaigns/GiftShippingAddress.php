@@ -56,6 +56,18 @@ final readonly class GiftShippingAddress
 
     private const NOTE_SEPARATOR = ' · ';
 
+    /**
+     * The LETS WooCommerce address fields' meta suffixes
+     * (LETS_ADDRESS_EXTRA_FIELDS in the plugin), read beside the address block.
+     */
+    private const WOO_META_BUILDING = 'building_number';
+
+    private const WOO_META_APARTMENT = 'apartment_number';
+
+    private const WOO_META_FLOOR = 'floor';
+
+    private const WOO_META_ENTRANCE = 'entrance';
+
     public function __construct(
         public ?string $firstName = null,
         public ?string $lastName = null,
@@ -101,6 +113,101 @@ final readonly class GiftShippingAddress
             entrance: self::clean($extras['entrance'] ?? null),
             note: self::clean($extras['note'] ?? null),
         );
+    }
+
+    /**
+     * A shippable address out of a whole WooCommerce customer or order payload —
+     * its `shipping` block first, then `billing` (a store that only ever collected
+     * billing still has a deliverable address there) — or null.
+     *
+     * THE one reading of a Woo payload: gift orders (GiftAddressResolver) and the
+     * address a subscription keeps from its checkout (CheckoutAddressCapture) both
+     * come through here, so the two can never disagree about the same order.
+     *
+     * @param  array<string, mixed>|null  $payload
+     */
+    public static function fromWooPayload(?array $payload): ?self
+    {
+        if ($payload === null) {
+            return null;
+        }
+
+        foreach (['shipping', 'billing'] as $type) {
+            $block = (array) ($payload[$type] ?? []);
+            if ($block === []) {
+                continue;
+            }
+
+            $address = self::fromWooBlock($block, self::wooExtras($payload, $type));
+            if ($address->isShippable()) {
+                return $address;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The address in the plan's own vocabulary (InstallmentPlan::ADDRESS_FIELDS) —
+     * the shape an import and an admin correction are stored in, and the one
+     * fromPlanContact() reads back. Built from deliveryParts(), so a composed order
+     * line ("הרצל 12" / "דירה 4 · קומה 2") is split into its parts rather than
+     * stored as one string the courier sheet would then have to guess at.
+     *
+     * Only non-empty values survive, matching InstallmentPlan::contactAddress().
+     *
+     * @return array<string, string>
+     */
+    public function toPlanContact(): array
+    {
+        $parts = $this->deliveryParts();
+
+        return array_filter([
+            'street' => $parts['street'],
+            'building_number' => $parts['building'],
+            'apartment_number' => $parts['apartment'],
+            'floor' => $parts['floor'],
+            'entrance' => $parts['entrance'],
+            'city' => (string) $this->city,
+            'zip_code' => (string) $this->zip,
+            'country' => (string) $this->countryCode,
+        ], static fn (string $value): bool => trim($value) !== '');
+    }
+
+    /**
+     * What a Woo payload carries BESIDE the address block: the LETS address
+     * fields as their own meta (house, apartment, floor, entrance), the note the
+     * customer typed at checkout, and the billing phone — a shipping block
+     * usually has none, and a courier needs one.
+     *
+     * The meta key differs by record: a customer profile saves
+     * `shipping_building_number`, an order `_shipping_building_number` (which the
+     * REST API omits — on an order the parts are folded out of address_2 instead).
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array{building: ?string, apartment: ?string, floor: ?string, entrance: ?string, note: ?string, phone: ?string}
+     */
+    private static function wooExtras(array $payload, string $type): array
+    {
+        $meta = [];
+        foreach ((array) ($payload['meta_data'] ?? []) as $entry) {
+            if (is_array($entry) && isset($entry['key']) && is_scalar($entry['value'] ?? null)) {
+                $meta[(string) $entry['key']] = (string) $entry['value'];
+            }
+        }
+
+        $read = static fn (string $suffix): ?string => $meta['_'.$type.'_'.$suffix]
+            ?? $meta[$type.'_'.$suffix]
+            ?? null;
+
+        return [
+            'building' => $read(self::WOO_META_BUILDING),
+            'apartment' => $read(self::WOO_META_APARTMENT),
+            'floor' => $read(self::WOO_META_FLOOR),
+            'entrance' => $read(self::WOO_META_ENTRANCE),
+            'note' => is_scalar($payload['customer_note'] ?? null) ? (string) $payload['customer_note'] : null,
+            'phone' => is_scalar(($payload['billing'] ?? [])['phone'] ?? null) ? (string) $payload['billing']['phone'] : null,
+        ];
     }
 
     /**

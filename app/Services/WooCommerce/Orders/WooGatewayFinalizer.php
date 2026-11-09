@@ -4,6 +4,7 @@ namespace App\Services\WooCommerce\Orders;
 
 use App\Domain\Billing\IdempotencyKey;
 use App\Domain\Billing\Ledger;
+use App\Domain\Customers\CheckoutAddressCapture;
 use App\Domain\Installments\PlanActivationService;
 use App\Domain\Loyalty\Referral\ReferralService;
 use App\Models\InstallmentPaymentMethod;
@@ -494,7 +495,23 @@ final class WooGatewayFinalizer
             // WooGatewayInvoiceReporter issues one document for the whole order.
             $payload[PlanActivationService::PAYLOAD_DOCUMENT_BY_ORDER] = true;
 
-            $activator->activateFromPaidOrder($shop, $payload);
+            $plan = $activator->activateFromPaidOrder($shop, $payload);
+
+            // The address the shopper typed into THIS checkout, kept on the plan.
+            // A guest has no store account, so without it the plan had no address
+            // anywhere — and its renewal orders shipped to nowhere. Fills only;
+            // never fails the payment it rides on.
+            if ($plan !== null) {
+                try {
+                    app(CheckoutAddressCapture::class)->fromWooOrder($plan, $order);
+                } catch (\Throwable $e) {
+                    Log::warning('customers.checkout_address.capture_failed', [
+                        'shop_id' => $shop->getKey(),
+                        'plan_id' => $plan->getKey(),
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
         }
     }
 

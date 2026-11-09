@@ -108,6 +108,19 @@ class InstallmentPlan extends Model
     public const META_CONTACT_ADDRESS = 'contact_address';
 
     /**
+     * meta key holding the address the shopper typed into the checkout this plan
+     * was bought through — the checkout member's counterpart of meta.import.address,
+     * written once by CheckoutAddressCapture and never rewritten (an admin
+     * correction goes to META_CONTACT_ADDRESS, which contactAddress() prefers).
+     *
+     * Without it a GUEST subscriber had no address anywhere LETS could reach: no
+     * store account to read, nothing on the plan — so the subscription screen, the
+     * customer page and {customer_address} were blank, and a renewal order
+     * (WooOrderAddress) went out with nowhere to ship to.
+     */
+    public const META_CHECKOUT_ADDRESS = 'checkout_address';
+
+    /**
      * The address field keys, in display/CSV order (matches SubscriptionCsvSchema).
      *
      * FLOOR and ENTRANCE are here because the store's own checkout asks for them
@@ -473,8 +486,9 @@ class InstallmentPlan extends Model
 
     /**
      * The customer's address, as known to this plan: the admin-edited copy when
-     * one exists, else what the migration file carried. Keys are ADDRESS_FIELDS;
-     * only non-empty strings survive, so `[]` means "no address on record".
+     * one exists, else what the migration file carried, else what the shopper
+     * typed at checkout. Keys are ADDRESS_FIELDS; only non-empty strings survive,
+     * so `[]` means "no address on record".
      *
      * @return array<string, string>
      */
@@ -482,7 +496,9 @@ class InstallmentPlan extends Model
     {
         $meta = (array) ($this->meta ?? []);
         $stored = (array) ($meta[self::META_CONTACT_ADDRESS]
-            ?? (($meta['import'] ?? [])['address'] ?? []));
+            ?? ($meta['import'] ?? [])['address']
+            ?? $meta[self::META_CHECKOUT_ADDRESS]
+            ?? []);
 
         $out = [];
         foreach (self::ADDRESS_FIELDS as $field) {
