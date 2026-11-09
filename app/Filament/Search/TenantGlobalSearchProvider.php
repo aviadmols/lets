@@ -2,8 +2,8 @@
 
 namespace App\Filament\Search;
 
+use App\Domain\Customers\CustomerPlans;
 use App\Filament\Pages\CustomerDetail;
-use App\Filament\Pages\Customers;
 use App\Filament\Resources\PaymentLedgerResource\Pages\ViewPayment;
 use App\Filament\Resources\SubscriptionContractResource\Pages\ViewSubscriptionContract;
 use App\Filament\Resources\SubscriptionResource\Pages\ViewSubscription;
@@ -118,8 +118,9 @@ final class TenantGlobalSearchProvider implements GlobalSearchProvider
             ->latest('id')
             ->limit(self::CUSTOMER_SCAN)
             ->get(['id', 'shopify_customer_id', 'external_customer_id', 'customer_id', 'customer_name', 'customer_email', 'customer_phone'])
-            ->groupBy(fn (InstallmentPlan $p): string => Customers::customerKey($p))
-            ->reject(fn (Collection $group, string $key): bool => $key === '')
+            // One result per PERSON, grouped exactly as the Customers list groups
+            // them — plans sharing a reference or an email are one customer.
+            ->pipe(fn (Collection $plans): Collection => CustomerPlans::group($plans))
             ->each(function (Collection $group, string $key) use (&$found): void {
                 $named = $group->first(fn (InstallmentPlan $p): bool => trim((string) $p->customer_name) !== '') ?? $group->first();
                 $phone = $group->first(fn (InstallmentPlan $p): bool => trim((string) $p->customer_phone) !== '')?->customer_phone;

@@ -4,6 +4,7 @@ namespace App\Domain\Customers;
 
 use App\Models\InstallmentPlan;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 
 /**
  * WHICH subscriptions belong to one customer — defined once, for every screen
@@ -65,6 +66,127 @@ final class CustomerPlans
         $reference = trim($reference);
 
         return $reference !== '' && ! in_array($reference, self::NON_IDENTIFYING_REFS, true);
+    }
+
+    /**
+     * Plans grouped into customers: two plans are ONE person when they share an
+     * identifying reference OR an email address — and so is anything linked to
+     * either of them, transitively.
+     *
+     * Keying each plan on one field split people in two. A member imported with
+     * a UUID reference who later re-subscribed at checkout as a guest (`0`, so
+     * keyed by email) came out as two customers with the same email, one holding
+     * the cancelled subscription and the other the active one. The customer page
+     * already merged them (query() follows the emails); the list and the search
+     * did not.
+     *
+     * A blank email and a non-identifying reference never link anyone — the same
+     * law as query(): they are not identities.
+     *
+     * @param  Collection<int, InstallmentPlan>  $plans  in display order (newest first)
+     * @return Collection<string, Collection<int, InstallmentPlan>> keyed by key()
+     */
+    public static function group(Collection $plans): Collection
+    {
+        $plans = $plans->values();
+        $parent = [];
+        $owner = [];
+
+        $root = static function (int $i) use (&$parent): int {
+            while ($parent[$i] !== $i) {
+                $parent[$i] = $parent[$parent[$i]];
+                $i = $parent[$i];
+            }
+
+            return $i;
+        };
+
+        foreach ($plans as $i => $plan) {
+            $parent[$i] = $i;
+            $tokens = array_map(static fn (string $r): string => 'ref:'.$r, self::refsOf($plan));
+            $email = self::emailOf($plan);
+            if ($email !== null) {
+                $tokens[] = 'email:'.$email;
+            }
+
+            foreach ($tokens as $token) {
+                if (! isset($owner[$token])) {
+                    $owner[$token] = $i;
+
+                    continue;
+                }
+
+                // The lower index stays the root, so a group keeps display order.
+                [$a, $b] = [$root($i), $root($owner[$token])];
+                if ($a !== $b) {
+                    $parent[max($a, $b)] = min($a, $b);
+                }
+            }
+        }
+
+        $members = [];
+        foreach ($plans as $i => $plan) {
+            $members[$root($i)][] = $plan;
+        }
+
+        $groups = [];
+        foreach ($members as $group) {
+            $group = collect($group);
+            $key = self::key($group);
+            if ($key === '') {
+                continue; // names nobody — left out, never merged into a bucket
+            }
+
+            $groups[$key] = isset($groups[$key]) ? $groups[$key]->merge($group) : $group;
+        }
+
+        return collect($groups);
+    }
+
+    /**
+     * The one key a group of plans goes by — the route parameter of its page.
+     *
+     * A store account number first (a numeric reference: the one the contact
+     * card can read and edit), then any other identifying reference, then the
+     * email. query() resolves every kind, and follows the emails to the rest.
+     *
+     * @param  Collection<int, InstallmentPlan>  $plans  newest first
+     */
+    public static function key(Collection $plans): string
+    {
+        $refs = $plans->flatMap(static fn (InstallmentPlan $p): array => self::refsOf($p));
+
+        return (string) ($refs->first(static fn (string $r): bool => ctype_digit($r))
+            ?? $refs->first()
+            ?? $plans->map(static fn (InstallmentPlan $p): ?string => self::emailOf($p))->filter()->first()
+            ?? '');
+    }
+
+    /**
+     * The identifying references a plan carries, from every column a rail may
+     * have written one into (see REF_COLUMNS / NUMERIC_REF_COLUMN).
+     *
+     * @return list<string>
+     */
+    public static function refsOf(InstallmentPlan $plan): array
+    {
+        $refs = [];
+        foreach ([...self::REF_COLUMNS, self::NUMERIC_REF_COLUMN] as $column) {
+            $ref = trim((string) ($plan->getAttributes()[$column] ?? ''));
+            if (self::identifies($ref)) {
+                $refs[] = $ref;
+            }
+        }
+
+        return array_values(array_unique($refs));
+    }
+
+    /** The plan's email, lowercased; null when blank. */
+    public static function emailOf(InstallmentPlan $plan): ?string
+    {
+        $email = mb_strtolower(trim((string) ($plan->getAttributes()['customer_email'] ?? '')));
+
+        return $email !== '' ? $email : null;
     }
 
     /** A query for every plan belonging to this customer, newest first. */

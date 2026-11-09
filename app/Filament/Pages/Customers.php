@@ -46,6 +46,15 @@ class Customers extends Page
 
     public string $search = '';
 
+    /**
+     * The plan groups behind the rows planRows() just built — kept for the spend
+     * sum, which attributes ledger rows through every plan, reference and email
+     * a customer is known by. Not Livewire state: rebuilt on every render.
+     *
+     * @var Collection<string, Collection<int, InstallmentPlan>>
+     */
+    private Collection $planGroups;
+
     public static function getNavigationGroup(): ?string
     {
         return __('nav.group.customers');
@@ -94,7 +103,7 @@ class Customers extends Page
         // per row would be a query per line, which is how a list stops loading.
         // (Shopify-rail money moves through Shopify, not our ledger — a contract-
         // only customer honestly shows the spend we recorded: none.)
-        $spend = $this->lifetimeSpend(array_map('strval', array_keys($rows)));
+        $spend = $this->lifetimeSpend($this->planGroups, array_map('strval', array_keys($rows)));
 
         return collect($rows)
             ->map(function (array $row, string|int $id) use ($spend): array {
@@ -108,23 +117,13 @@ class Customers extends Page
     }
 
     /**
-     * WHO this plan belongs to, as one key.
-     *
-     * The reference when it identifies a person; their email when it does not
-     * (a guest checkout writes WooCommerce's `0`, which every guest shares);
-     * '' when the plan names nobody at all. The same key becomes the route
-     * parameter, and CustomerPlans::query() resolves both kinds — a reference
-     * through the id columns, an email through the address clause.
+     * WHO this plan belongs to, as one key — for a plan on its own. A list groups
+     * through CustomerPlans::group(), which also joins plans that share an email
+     * or a reference; this is that same key for a group of one.
      */
     public static function customerKey(InstallmentPlan $plan): string
     {
-        $reference = trim((string) ($plan->shopify_customer_id ?? ''));
-
-        if (CustomerPlans::identifies($reference)) {
-            return $reference;
-        }
-
-        return mb_strtolower(trim((string) ($plan->customer_email ?? '')));
+        return CustomerPlans::key(collect([$plan]));
     }
 
     /**
@@ -149,17 +148,16 @@ class Customers extends Page
             // customer_phone comes from the plan, captured at checkout — NOT from a
             // per-row store read. A column that cost one API call per customer
             // would turn this list into a page that never paints.
-            ->get(['shopify_customer_id', 'customer_name', 'customer_email', 'customer_phone', 'status']);
+            ->latest('id')
+            ->get(['id', 'shopify_customer_id', 'external_customer_id', 'customer_id', 'customer_name', 'customer_email', 'customer_phone', 'status']);
 
-        return $plans
-            // Keyed by whatever IDENTIFIES the shopper — their reference when it
-            // stands for one person, otherwise their email. Guests all carry
-            // WooCommerce's `0`, so keying on the reference alone listed every
-            // guest in the shop as a single customer and opened their page onto
-            // four people's subscriptions. A plan with neither is nobody we can
-            // name, and is left out rather than merged into a bucket.
-            ->groupBy(fn (InstallmentPlan $p): string => self::customerKey($p))
-            ->reject(fn (Collection $group, string $key): bool => $key === '')
+        // One row per PERSON: plans that share a reference or an email are one
+        // customer (CustomerPlans::group). Guests all carry WooCommerce's `0`, which
+        // links nobody — keying on it once listed every guest as one customer.
+        // A plan with neither is nobody we can name, and is left out.
+        $this->planGroups = CustomerPlans::group($plans);
+
+        return $this->planGroups
             ->map(function (Collection $group, string $customerId): array {
                 $statuses = $group->map(fn ($p) => $p->status instanceof PlanStatus ? $p->status->value : (string) $p->status);
 
@@ -254,55 +252,71 @@ class Customers extends Page
 
     /**
      * Money each customer has actually brought in: the sum of their SUCCEEDED
-     * ledger rows. One query for the whole page, keyed by customer.
+     * ledger rows. One grouped query for the whole page.
+     *
+     * A ledger row belongs to the customer whose PLAN it charged; failing that
+     * (a one-time order, an offer) to the customer its reference or email names.
+     * Through every plan, reference and email the merged customer is known by —
+     * a customer joined from two plans must not show the spend of only one.
      *
      * Succeeded only — a failed or pending charge is not money the merchant
      * received, and counting it would overstate every customer on the screen.
      *
-     * @param  array<int, string>  $customerIds
+     * @param  Collection<string, Collection<int, InstallmentPlan>>  $groups
+     * @param  array<int, string>  $customerIds  every listed key (contract-only ones too)
      * @return array<string, float>
      */
-    private function lifetimeSpend(array $customerIds): array
+    private function lifetimeSpend(Collection $groups, array $customerIds): array
     {
         if ($customerIds === []) {
             return [];
         }
 
-        // The keys are of two kinds — see customerKey(). A reference sums through
-        // the id column; a guest's email sums through the address, because their
-        // reference is WooCommerce's shared `0` and summing on it would report
-        // every guest's spend as each guest's own.
-        $references = array_values(array_filter($customerIds, CustomerPlans::identifies(...)));
-        $emails = array_values(array_map(
-            static fn (string $key): string => mb_strtolower($key),
-            array_filter($customerIds, static fn (string $key): bool => ! CustomerPlans::identifies($key)),
-        ));
+        $byPlan = [];
+        $byRef = [];
+        $byEmail = [];
+
+        foreach ($groups as $key => $plans) {
+            foreach ($plans as $plan) {
+                $byPlan[(int) $plan->getKey()] = (string) $key;
+                foreach (CustomerPlans::refsOf($plan) as $ref) {
+                    $byRef[$ref] ??= (string) $key;
+                }
+                if (($email = CustomerPlans::emailOf($plan)) !== null) {
+                    $byEmail[$email] ??= (string) $key;
+                }
+            }
+        }
+
+        // A customer with no plan here (Shopify-rail contracts only) is known by
+        // its key alone — a reference, or a guest's email.
+        foreach ($customerIds as $key) {
+            if (filter_var($key, FILTER_VALIDATE_EMAIL) !== false) {
+                $byEmail[mb_strtolower($key)] ??= $key;
+            } elseif (CustomerPlans::identifies($key)) {
+                $byRef[$key] ??= $key;
+            }
+        }
 
         $totals = [];
 
-        if ($references !== []) {
-            PaymentLedger::query()
-                ->selectRaw('shopify_customer_id, SUM(amount) as total')
-                ->whereIn('shopify_customer_id', $references)
-                ->where('status', PaymentLedger::STATUS_SUCCEEDED)
-                ->groupBy('shopify_customer_id')
-                ->get()
-                ->each(function ($row) use (&$totals): void {
-                    $totals[(string) $row->shopify_customer_id] = (float) $row->total;
-                });
-        }
+        // Grouped in the database, attributed here: the shop's own rows only
+        // (tenant scope), no IN-list that grows with the shop.
+        PaymentLedger::query()
+            ->selectRaw('plan_id, shopify_customer_id, LOWER(customer_email) as email, SUM(amount) as total')
+            ->where('status', PaymentLedger::STATUS_SUCCEEDED)
+            ->groupBy('plan_id', 'shopify_customer_id', DB::raw('LOWER(customer_email)'))
+            ->get()
+            ->each(function ($row) use (&$totals, $byPlan, $byRef, $byEmail): void {
+                $ref = trim((string) $row->shopify_customer_id);
+                $owner = ($row->plan_id !== null ? ($byPlan[(int) $row->plan_id] ?? null) : null)
+                    ?? (CustomerPlans::identifies($ref) ? ($byRef[$ref] ?? null) : null)
+                    ?? ($row->email !== null && $row->email !== '' ? ($byEmail[(string) $row->email] ?? null) : null);
 
-        if ($emails !== []) {
-            PaymentLedger::query()
-                ->selectRaw('LOWER(customer_email) as email, SUM(amount) as total')
-                ->whereIn(DB::raw('LOWER(customer_email)'), $emails)
-                ->where('status', PaymentLedger::STATUS_SUCCEEDED)
-                ->groupBy(DB::raw('LOWER(customer_email)'))
-                ->get()
-                ->each(function ($row) use (&$totals): void {
-                    $totals[(string) $row->email] = (float) $row->total;
-                });
-        }
+                if ($owner !== null) {
+                    $totals[$owner] = ($totals[$owner] ?? 0.0) + (float) $row->total;
+                }
+            });
 
         return $totals;
     }
