@@ -30,6 +30,14 @@ final readonly class GiftShippingAddress
     /** Prefix for the apartment line — address_2 on a Woo block. */
     private const APARTMENT_PREFIX = 'דירה ';
 
+    /** The floor and entrance labels on address_2, as the plugin writes them. */
+    private const FLOOR_PREFIX = 'קומה ';
+
+    private const ENTRANCE_PREFIX = 'כניסה ';
+
+    /** Joins the parts of address_2: "דירה 4, קומה 2, כניסה ב". */
+    private const ADDRESS2_SEPARATOR = ', ';
+
     /**
      * A building number at the END of a street line — "הרצל 12", "הרצל 12א",
      * "הרצל 12/3". Only used when the store did not keep the number in a field
@@ -289,6 +297,79 @@ final readonly class GiftShippingAddress
      */
     public function deliveryParts(): array
     {
+        $parts = $this->splitLines();
+
+        return [
+            'street' => $parts['street'],
+            'building' => $parts['building'],
+            'entrance' => $parts['entrance'],
+            'apartment' => $parts['apartment'],
+            'floor' => $parts['floor'],
+            'note' => implode(self::NOTE_SEPARATOR, array_filter(
+                [$parts['rest'], $this->note],
+                static fn (?string $value): bool => $value !== null && $value !== '',
+            )),
+        ];
+    }
+
+    /**
+     * The two address lines an ORDER (and anyone reading the address as text)
+     * needs: "street building" and "דירה 4, קומה 2, כניסה ב".
+     *
+     * A store customer profile keeps the street ALONE in address_1 and the house,
+     * apartment, floor and entrance in fields of their own (the LETS address
+     * fields). Sent onto an order as-is, address_1 is a street with no house
+     * number and address_2 is empty — a renewal box addressed to a whole street.
+     * This puts the parts back into the lines, exactly as the plugin composes a
+     * checkout order, so an order LETS creates reads like one the store created.
+     *
+     * Lines that already carry the parts (an order's own, an import's) come back
+     * the same: they are split and re-joined, never doubled.
+     *
+     * @return array{address1: ?string, address2: ?string}
+     */
+    public function orderLines(): array
+    {
+        $parts = $this->splitLines();
+
+        $line1 = $parts['street'] === $parts['building']
+            ? $parts['street']
+            : trim($parts['street'].self::STREET_SEPARATOR.$parts['building']);
+
+        $line2 = implode(self::ADDRESS2_SEPARATOR, array_filter([
+            $parts['apartment'] !== '' ? self::APARTMENT_PREFIX.$parts['apartment'] : '',
+            $parts['floor'] !== '' ? self::FLOOR_PREFIX.$parts['floor'] : '',
+            $parts['entrance'] !== '' ? self::ENTRANCE_PREFIX.$parts['entrance'] : '',
+            $parts['rest'],
+        ], static fn (string $value): bool => $value !== ''));
+
+        return [
+            'address1' => $line1 !== '' ? $line1 : null,
+            'address2' => $line2 !== '' ? $line2 : null,
+        ];
+    }
+
+    /** The whole address on one line, for a screen: lines, city, zip, country. */
+    public function displayLine(): string
+    {
+        $lines = $this->orderLines();
+
+        return implode(', ', array_filter(
+            [$lines['address1'], $lines['address2'], $this->city, $this->zip, $this->countryCode],
+            static fn (?string $value): bool => $value !== null && $value !== '',
+        ));
+    }
+
+    /**
+     * The address lines taken apart: the granular fields win when the store kept
+     * them, otherwise the building comes off the end of the street line and the
+     * labelled parts out of address_2. `rest` is whatever address_2 says that is
+     * none of those parts.
+     *
+     * @return array{street: string, building: string, apartment: string, floor: string, entrance: string, rest: string}
+     */
+    private function splitLines(): array
+    {
         $street = (string) $this->address1;
         $building = $this->building;
 
@@ -313,18 +394,13 @@ final readonly class GiftShippingAddress
             }
         }
 
-        $rest = (string) preg_replace(self::EDGE_SEPARATORS, '', $rest);
-
         return [
             'street' => trim($street),
-            'building' => (string) $building,
-            'entrance' => (string) $parts['entrance'],
-            'apartment' => (string) $parts['apartment'],
-            'floor' => (string) $parts['floor'],
-            'note' => implode(self::NOTE_SEPARATOR, array_filter(
-                [$rest, $this->note],
-                static fn (?string $value): bool => $value !== null && $value !== '',
-            )),
+            'building' => trim((string) $building),
+            'apartment' => trim((string) $parts['apartment']),
+            'floor' => trim((string) $parts['floor']),
+            'entrance' => trim((string) $parts['entrance']),
+            'rest' => (string) preg_replace(self::EDGE_SEPARATORS, '', $rest),
         ];
     }
 
@@ -347,7 +423,29 @@ final readonly class GiftShippingAddress
     }
 
     /**
-     * The WooCommerce `shipping` block shape.
+     * The `billing` / `shipping` block for an ORDER LETS creates: the lines
+     * composed with their parts (orderLines()), so the order says where the box
+     * goes — house, apartment, floor and entrance included.
+     *
+     * @return array<string, string>
+     */
+    public function toWooOrderBlock(): array
+    {
+        $lines = $this->orderLines();
+
+        return array_filter([
+            ...$this->toWooBlock(),
+            'address_1' => $lines['address1'],
+            'address_2' => $lines['address2'],
+        ], static fn (?string $v): bool => $v !== null);
+    }
+
+    /**
+     * The WooCommerce block in the STORE'S OWN shape — address_1 / address_2
+     * exactly as held. This is what is written back to a customer profile
+     * (CustomerContactWriter): a profile keeps the street alone and the house in
+     * its own field, and composing the house into address_1 there would show it
+     * twice on the shopper's next checkout. Orders use toWooOrderBlock().
      *
      * @return array<string, string>
      */
@@ -373,12 +471,16 @@ final readonly class GiftShippingAddress
      */
     public function toShopifyBlock(): array
     {
+        // An order: Shopify has no house / apartment fields, so the parts ride
+        // in the lines (a Shopify-read address has none apart, and comes back as is).
+        $lines = $this->orderLines();
+
         return array_filter([
             'first_name' => $this->firstName,
             'last_name' => $this->lastName,
             'company' => $this->company,
-            'address1' => $this->address1,
-            'address2' => $this->address2,
+            'address1' => $lines['address1'],
+            'address2' => $lines['address2'],
             'city' => $this->city,
             'zip' => $this->zip,
             'country_code' => $this->countryCode,

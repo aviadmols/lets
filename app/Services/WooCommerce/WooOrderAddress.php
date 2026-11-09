@@ -55,7 +55,7 @@ final class WooOrderAddress
         $address = self::fromStore($plan, $shop, $customerId, $reader)
             ?? self::fromPlan($plan);
 
-        $block = $address?->toWooBlock() ?? [];
+        $block = $address?->toWooOrderBlock() ?? [];
 
         // The contact details are the plan's own: they are what the CHARGE was
         // made against, and a store profile edited afterwards must not silently

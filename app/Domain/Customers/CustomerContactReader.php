@@ -77,14 +77,15 @@ final class CustomerContactReader
         }
 
         // Shipping is where a package goes; billing is the fallback a store that
-        // only ever collected billing still has.
+        // only ever collected billing still has. Read through fromWooPayload — the
+        // one reading gifts and checkout capture share — so the LETS address fields
+        // the profile keeps BESIDE the block (house, apartment, floor, entrance)
+        // come with it. A profile holds the street alone in address_1; read the
+        // block by itself and the house number is simply gone.
         $shipping = (array) ($customer['shipping'] ?? []);
         $billing = (array) ($customer['billing'] ?? []);
-        $block = GiftShippingAddress::fromWooBlock($shipping === [] ? $billing : $shipping);
-
-        if (! $block->isShippable() && $billing !== []) {
-            $block = GiftShippingAddress::fromWooBlock($billing);
-        }
+        $block = GiftShippingAddress::fromWooPayload($customer)
+            ?? GiftShippingAddress::fromWooBlock($shipping === [] ? $billing : $shipping);
 
         return new CustomerContact(
             firstName: self::clean($customer['first_name'] ?? null) ?? $block->firstName,

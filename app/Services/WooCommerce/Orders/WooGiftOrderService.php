@@ -71,7 +71,7 @@ final class WooGiftOrderService
                 'email' => $recipient->customer_email,
                 'phone' => $address->phone,
             ], static fn (?string $v): bool => $v !== null && $v !== ''),
-            'shipping' => $address->toWooBlock(),
+            'shipping' => $address->toWooOrderBlock(),
             'line_items' => $this->lineItems($campaign),
             'shipping_lines' => [[
                 'method_id' => self::SHIPPING_METHOD_ID,

@@ -96,15 +96,9 @@
                         @endif
                         @if($contact->address?->address1)
                             <span class="rc-kv__k">{{ __('customers.contact.address') }}</span>
-                            <span class="rc-kv__v">
-                                {{ collect([
-                                    $contact->address->address1,
-                                    $contact->address->address2,
-                                    $contact->address->city,
-                                    $contact->address->zip,
-                                    $contact->address->countryCode,
-                                ])->filter()->implode(', ') }}
-                            </span>
+                            {{-- displayLine(): house, apartment, floor and entrance
+                                 included — a store profile keeps them apart from the street. --}}
+                            <span class="rc-kv__v">{{ $contact->address->displayLine() }}</span>
                         @endif
                     </div>
                 @endif
