@@ -252,13 +252,13 @@ final class SubscriptionOrderWithShippingTest extends TestCase
         $this->paidCheckout($shop, $key, $secret);
 
         Queue::assertPushed(IssueDocumentJob::class, 1);
-        // Five minutes — the merchant's rule — so an offer taken meanwhile joins it.
+        // Six minutes — the merchant's rule — so an offer taken meanwhile joins it.
         Queue::assertPushed(IssueDocumentJob::class, static fn (IssueDocumentJob $job): bool => $job->delay !== null
             && abs(now()->diffInSeconds($job->delay) - OrderDocumentHold::FIRST_LOOK_SECONDS) <= 5);
-        $this->assertSame(300, OrderDocumentHold::FIRST_LOOK_SECONDS);
+        $this->assertSame(360, OrderDocumentHold::FIRST_LOOK_SECONDS);
     }
 
-    public function test_an_offer_taken_at_once_waits_past_the_orders_five_minutes(): void
+    public function test_an_offer_taken_at_once_waits_past_the_orders_six_minutes(): void
     {
         [$shop] = $this->connectedShop(scope: MerchantInvoicingSettings::SCOPE_PLANS_ONLY);
         $offer = $this->activeOffer($shop);
@@ -269,7 +269,7 @@ final class SubscriptionOrderWithShippingTest extends TestCase
             'public_id' => (string) Str::ulid(), 'shopify_order_id' => self::ORDER,
             'status' => PlanStatus::ACTIVE->value,
         ])->save();
-        // Shown and closed already — a short window would settle long before five minutes.
+        // Shown and closed already — a short window would settle long before six minutes.
         $this->shownAndWindowClosed($shop, $offer);
         $charge = $this->offerCharge($shop, $offer, 40.0);
 

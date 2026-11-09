@@ -26,7 +26,7 @@ use Illuminate\Support\Facades\Cache;
  * shopper took the thank-you offer: two tax documents for one visit, the second naming three
  * books on a single line. Now the order's document waits for the offer:
  *
- *   1. a reported order waits FIRST_LOOK_SECONDS (five minutes), when the shop has an
+ *   1. a reported order waits FIRST_LOOK_SECONDS (six minutes), when the shop has an
  *      active offer at all — a subscription checkout too, whatever the invoicing scope;
  *   2. if an offer WAS shown for the order, it waits until every such offer's window has
  *      closed and a last click has had time to be charged (UpsellFlowOffer caps every
@@ -45,12 +45,12 @@ final class OrderDocumentHold
     // === CONSTANTS ===
     /**
      * How long a reported order waits before its document goes out, when the shop has an
-     * active offer: five minutes — the merchant's rule, so an offer taken on the thank-you
+     * active offer: six minutes — the merchant's rule, so an offer taken on the thank-you
      * page lands on the order's ONE document instead of a second one. At 90 seconds a
      * shopper who read the offer for three minutes got two documents (order 18267). Step 2
      * below still extends it while a shown offer's window is open.
      */
-    public const FIRST_LOOK_SECONDS = 300;
+    public const FIRST_LOOK_SECONDS = 360;
 
     /** After a window closes: the accept grace, then time for the charge to land. */
     public const SETTLE_SECONDS = UpsellFlowOffer::WINDOW_ACCEPT_GRACE_SECONDS + 45;
