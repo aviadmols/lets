@@ -76,6 +76,11 @@ return [
      * landing the shopper returns to. Its own sentences — "your card was
      * updated" is not "your payment went through".
      */
+    // A free first cycle (100% coupon): the page only verifies and saves the card for the next cycle.
+    'free_first_cycle' => [
+        'item' => 'Save card for your subscription — no charge today',
+    ],
+
     'card_update' => [
         'item' => 'Payment method update',
         'return_success_title' => 'Your card was updated',

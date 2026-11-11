@@ -70,7 +70,17 @@ final class WooGatewayFinalizer
                 // costs, read from WooCommerce itself. A genuine page for less than
                 // the order (a cheaper page re-used, a cart grown after the page was
                 // minted) never marks it paid.
-                if (! $this->coversOrder($shop, $orderId, $payplusBody)) {
+                $before = $this->coveredOrder($shop, $orderId, $payplusBody);
+                if ($before === null) {
+                    return false;
+                }
+
+                // A FREE first cycle (a 100% first-payment coupon): the page was a card
+                // CHECK, and the card is the whole point of it. No token, no completion —
+                // otherwise the shopper takes the product and the subscription has
+                // nothing to charge next month.
+                $freeFirstCycle = $this->isFreeFirstCycle($before);
+                if ($freeFirstCycle && ! $this->carriesToken($shop, $orderId, $payplusBody)) {
                     return false;
                 }
 
@@ -88,7 +98,7 @@ final class WooGatewayFinalizer
                 // Record the PayPlus confirmation as a merchant-visible order note (W18) — so the
                 // merchant SEES what PayPlus returned. Fail-soft: a note failure never un-pays.
                 try {
-                    $this->recordConfirmationNote($shop, $orderId, $payplusBody);
+                    $this->recordConfirmationNote($shop, $orderId, $payplusBody, $freeFirstCycle);
                 } catch (\Throwable $e) {
                     Log::warning('woocommerce.gateway.note_failed', [
                         'shop_id' => $shop->getKey(), 'order_id' => $orderId, 'error' => $e->getMessage(),
@@ -98,7 +108,7 @@ final class WooGatewayFinalizer
                 // Cart-based subscriptions (W17 B): activate each recurring plan this order created.
                 // Fail-soft — a plan-activation hiccup must never un-pay a paid order.
                 try {
-                    $this->activateSubscriptionPlans($shop, $orderId, $order, $payplusBody);
+                    $this->activateSubscriptionPlans($shop, $orderId, $order, $payplusBody, $freeFirstCycle);
                 } catch (\Throwable $e) {
                     Log::warning('woocommerce.gateway.subscription_activate_failed', [
                         'shop_id' => $shop->getKey(), 'order_id' => $orderId, 'error' => $e->getMessage(),
@@ -107,8 +117,12 @@ final class WooGatewayFinalizer
 
                 // Record the payment in the LETS ledger (the design reversal — see the class
                 // docblock). Fail-soft like its siblings: a record failure never un-pays.
+                // A free first cycle moved no money: the card check's symbolic amount is
+                // not a payment, and its plans already hold their ₪0 first cycle.
                 try {
-                    $this->recordLedgerRow($shop, $orderId, $order, $payplusBody);
+                    if (! $freeFirstCycle) {
+                        $this->recordLedgerRow($shop, $orderId, $order, $payplusBody);
+                    }
                 } catch (\Throwable $e) {
                     Log::warning('woocommerce.gateway.ledger_failed', [
                         'shop_id' => $shop->getKey(), 'order_id' => $orderId, 'error' => $e->getMessage(),
@@ -172,9 +186,12 @@ final class WooGatewayFinalizer
      * no. A shortfall leaves a merchant-visible order note, so the order does not just
      * silently stay pending.
      *
+     * Returns the order as WooCommerce reported it when covered, null when not.
+     *
      * @param  array<string, mixed>  $payplusBody  the CONFIRMED PayPlus body
+     * @return array<string, mixed>|null
      */
-    private function coversOrder(Shop $shop, string $orderId, array $payplusBody): bool
+    private function coveredOrder(Shop $shop, string $orderId, array $payplusBody): ?array
     {
         $client = WooClientFactory::for($shop);
         $order = $client->fetchOrder($orderId);
@@ -183,7 +200,7 @@ final class WooGatewayFinalizer
         if ($order === null || ! is_numeric($order['total'] ?? null)) {
             Log::warning('woocommerce.gateway.order_unreadable', $context);
 
-            return false;
+            return null;
         }
 
         $paid = $this->pick($payplusBody, [
@@ -196,11 +213,17 @@ final class WooGatewayFinalizer
         ]));
         $orderCurrency = strtoupper((string) ($order['currency'] ?? ''));
 
+        // A ₪0 order (WooCommerce's own total, never the client's) owes nothing — its
+        // page was a card check, whose symbolic amount may come back in any shape.
+        if ($total <= 0) {
+            return $order;
+        }
+
         $currencyOk = preg_match(PayPlusCallbackVerifier::ISO_CURRENCY, $paidCurrency) !== 1
             || preg_match(PayPlusCallbackVerifier::ISO_CURRENCY, $orderCurrency) !== 1
             || $paidCurrency === $orderCurrency;
         if (is_numeric($paid) && (float) $paid + self::AMOUNT_TOLERANCE >= $total && $currencyOk) {
-            return true;
+            return $order;
         }
 
         Log::warning('woocommerce.gateway.amount_mismatch', $context + [
@@ -215,6 +238,49 @@ final class WooGatewayFinalizer
             ), false);
         } catch (\Throwable) {
             // The log line above already says it; a note failure changes nothing.
+        }
+
+        return null;
+    }
+
+    /**
+     * A ₪0 order that starts a subscription: the first cycle is free (a 100% coupon),
+     * and the page only saved the card the next cycle is charged to.
+     *
+     * @param  array<string, mixed>  $order  the order as WooCommerce reported it
+     */
+    private function isFreeFirstCycle(array $order): bool
+    {
+        return round((float) ($order['total'] ?? 0), 2) <= 0
+            && $this->subscriptionPlanIds($order) !== [];
+    }
+
+    /**
+     * Did the card check hand back a reusable token? Without one a free first cycle is
+     * NOT completed: the order stays pending, with a note saying why, so the merchant
+     * sees it rather than a subscription that will fail at its first renewal.
+     *
+     * @param  array<string, mixed>  $payplusBody
+     */
+    private function carriesToken(Shop $shop, string $orderId, array $payplusBody): bool
+    {
+        $token = $this->tokenResolver->resolveFromOrder($shop, $payplusBody);
+        if ($token !== null && ($token['payplus_card_token_uid'] ?? null) !== null) {
+            return true;
+        }
+
+        Log::warning('woocommerce.gateway.free_first_cycle_no_token', [
+            'shop_id' => $shop->getKey(), 'order_id' => $orderId,
+        ]);
+
+        try {
+            WooClientFactory::for($shop)->addOrderNote(
+                $orderId,
+                'LETS did NOT complete this order: the first cycle is free, and PayPlus verified the card but returned no saved card to charge the next cycle to.',
+                false,
+            );
+        } catch (\Throwable) {
+            // The log line above already says it.
         }
 
         return false;
@@ -280,7 +346,7 @@ final class WooGatewayFinalizer
      *
      * @param  array<string, mixed>  $payplusBody
      */
-    private function recordConfirmationNote(Shop $shop, string $orderId, array $payplusBody): void
+    private function recordConfirmationNote(Shop $shop, string $orderId, array $payplusBody, bool $freeFirstCycle = false): void
     {
         $txnUid = $this->transactionUid($payplusBody);
         $statusCode = $this->pick($payplusBody, ['data.transaction.status_code', 'transaction.status_code', 'status_code', 'status']);
@@ -290,7 +356,10 @@ final class WooGatewayFinalizer
         $lastFour = $this->pick($payplusBody, ['data.transaction.four_digits', 'transaction.four_digits', 'data.four_digits', 'four_digits']);
         $brand = $this->pick($payplusBody, ['data.transaction.brand_name', 'transaction.brand_name', 'data.brand_name', 'brand_name']);
 
-        $parts = ['PayPlus payment confirmed.'];
+        // A free first cycle's page was a card CHECK: its amount is not money taken.
+        $parts = [$freeFirstCycle
+            ? 'PayPlus card verified and saved — nothing charged (first cycle free; the next cycle bills at the subscription price).'
+            : 'PayPlus payment confirmed.'];
         if (PayPlusChargeMethod::isPayPal($payplusBody)) {
             $parts[] = 'Method: PayPal';
         }
@@ -303,7 +372,7 @@ final class WooGatewayFinalizer
         if ($approval !== '') {
             $parts[] = 'Approval: '.$approval;
         }
-        if ($amount !== '') {
+        if ($amount !== '' && ! $freeFirstCycle) {
             $parts[] = 'Amount: '.$amount;
         }
         if ($lastFour !== '') {
@@ -468,7 +537,7 @@ final class WooGatewayFinalizer
      * @param  array<string, mixed>  $order  the paid WC order (with meta_data)
      * @param  array<string, mixed>  $payplusBody  the PayPlus token/transaction body
      */
-    private function activateSubscriptionPlans(Shop $shop, string $orderId, array $order, array $payplusBody): void
+    private function activateSubscriptionPlans(Shop $shop, string $orderId, array $order, array $payplusBody, bool $freeFirstCycle = false): void
     {
         $planIds = $this->subscriptionPlanIds($order);
         if ($planIds === []) {
@@ -494,6 +563,8 @@ final class WooGatewayFinalizer
             $payload['line_items'] = (array) ($order['line_items'] ?? []);
             // WooGatewayInvoiceReporter issues one document for the whole order.
             $payload[PlanActivationService::PAYLOAD_DOCUMENT_BY_ORDER] = true;
+            // ₪0 order: the first cycle is recorded at ₪0, not at the per-cycle amount.
+            $payload[PlanActivationService::PAYLOAD_FREE_FIRST_CYCLE] = $freeFirstCycle;
 
             $plan = $activator->activateFromPaidOrder($shop, $payload);
 

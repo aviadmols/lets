@@ -193,6 +193,129 @@ final class WooCommerceCartSubscriptionFlowTest extends TestCase
         });
     }
 
+    // === A free first cycle (100% first-payment coupon → a ₪0 order) ===
+
+    public function test_a_free_first_cycle_opens_a_check_only_card_page(): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop('free-first.example.com');
+        Tenant::run($shop, fn () => $this->makeSubscriptionProduct($shop, '501', 100.0, discountPercent: 10));
+        $this->fakeGateway();
+
+        $planId = (string) $this->signedPost($key, $secret, self::SESSION, [
+            'order_id' => '8700', 'amount' => 0, 'currency' => 'ILS', 'customer_id' => '55',
+            'subscription_items' => [['product_id' => '501', 'variant_id' => '501', 'quantity' => 1]],
+        ])->assertOk()->json('subscription_plan_ids.0');
+
+        $page = $this->gatewayPayloads[0];
+        // PayPlus opens no page for ₪0: the card-update page's symbolic amount, CHECK-ONLY.
+        $this->assertEqualsWithDelta(1.0, (float) $page['amount'], 0.001);
+        $this->assertSame(0, $page['charge_method']);
+        $this->assertTrue((bool) $page['create_token']);
+        $this->assertSame(__('storefront.free_first_cycle.item'), $page['product_name']);
+
+        // The plan is priced from the template as always — the coupon never reaches it.
+        Tenant::run($shop, function () use ($planId): void {
+            $plan = InstallmentPlan::query()->where('public_id', $planId)->sole();
+            $this->assertEqualsWithDelta(90.0, (float) $plan->installment_amount, 0.001);
+        });
+    }
+
+    public function test_a_free_order_without_a_subscription_is_still_refused(): void
+    {
+        [, $key, $secret] = $this->connectedShop('free-plain.example.com');
+        $this->fakeGateway();
+
+        $this->signedPost($key, $secret, self::SESSION, [
+            'order_id' => '8701', 'amount' => 0, 'currency' => 'ILS',
+        ])->assertStatus(422)->assertJsonPath('error', 'invalid_order');
+
+        $this->assertSame([], $this->gatewayPayloads);
+    }
+
+    public function test_a_free_first_cycle_activates_at_zero_and_bills_the_next_cycle_at_the_full_price(): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop('free-activate.example.com');
+        Tenant::run($shop, fn () => $this->makeSubscriptionProduct($shop, '501', 100.0, discountPercent: 10));
+        $this->fakeGateway();
+
+        $planId = (string) $this->signedPost($key, $secret, self::SESSION, [
+            'order_id' => '8710', 'amount' => 0, 'currency' => 'ILS', 'customer_id' => '55',
+            'subscription_items' => [['product_id' => '501', 'variant_id' => '501', 'quantity' => 1]],
+        ])->json('subscription_plan_ids.0');
+
+        Http::fake([
+            // The card CHECK: approved, the symbolic ₪1, and the saved card.
+            ...$this->payplusIpn('gw:8710', [
+                'amount' => '1.00', 'token_uid' => 'tok-free-1', 'customer_uid' => 'pp-c-1', 'four_digits' => '4242',
+            ]),
+            '*/wp-json/wc/v3/orders/8710' => Http::response([
+                'id' => 8710, 'status' => 'pending', 'total' => '0.00', 'currency' => 'ILS', 'customer_id' => 55,
+                'billing' => ['email' => 'dana@example.com'],
+                'coupon_lines' => [['code' => 'month1', 'discount' => '90.00']],
+                'meta_data' => [['key' => 'lets_subscription_plan_ids', 'value' => [$planId]]],
+            ], 200),
+        ]);
+
+        $this->postJson('/woocommerce/gateway/callback/'.(string) $shop->wc_shop_token, $this->callbackFor([
+            'more_info' => 'gw:8710', 'status_code' => '000',
+        ]))->assertOk()->assertJsonPath('paid', true);
+
+        Tenant::run($shop, function () use ($planId): void {
+            $plan = InstallmentPlan::query()->where('public_id', $planId)->sole();
+
+            $this->assertSame(PlanStatus::ACTIVE, $plan->status);
+            $this->assertNotNull($plan->payment_method_id, 'the card is saved for the next cycle');
+            $this->assertTrue($plan->next_charge_at->isFuture(), 'the next cycle is scheduled');
+            // The next cycle bills at the subscription price, not at the coupon's ₪0.
+            $this->assertEqualsWithDelta(90.0, (float) $plan->installment_amount, 0.001);
+
+            // The first cycle is recorded at what was collected — nothing — and has no
+            // PayPlus charge to refund: the ₪1 was a card check, not a payment.
+            $first = PaymentLedger::query()->where('plan_id', $plan->getKey())->sole();
+            $this->assertSame(LedgerStatus::SUCCEEDED->value, $first->status instanceof LedgerStatus ? $first->status->value : (string) $first->status);
+            $this->assertEqualsWithDelta(0.0, (float) $first->amount, 0.001);
+            $this->assertNull($first->payplus_transaction_uid);
+
+            // …and no row books the check's ₪1 as money received.
+            $this->assertSame(0, PaymentLedger::query()->where('charge_context', PaymentLedger::CONTEXT_GATEWAY)->count());
+            $this->assertEqualsWithDelta(0.0, (float) PaymentLedger::query()->sum('amount'), 0.001);
+        });
+    }
+
+    public function test_a_free_first_cycle_without_a_saved_card_is_not_completed(): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop('free-notoken.example.com');
+        Tenant::run($shop, fn () => $this->makeSubscriptionProduct($shop, '501', 100.0));
+        $this->fakeGateway();
+
+        $planId = (string) $this->signedPost($key, $secret, self::SESSION, [
+            'order_id' => '8720', 'amount' => 0, 'currency' => 'ILS', 'customer_id' => '55',
+            'subscription_items' => [['product_id' => '501', 'variant_id' => '501', 'quantity' => 1]],
+        ])->json('subscription_plan_ids.0');
+
+        Http::fake([
+            ...$this->payplusIpn('gw:8720', ['amount' => '1.00']),
+            '*/wp-json/wc/v3/orders/8720' => Http::response([
+                'id' => 8720, 'status' => 'pending', 'total' => '0.00', 'currency' => 'ILS', 'customer_id' => 55,
+                'billing' => ['email' => 'dana@example.com'],
+                'meta_data' => [['key' => 'lets_subscription_plan_ids', 'value' => [$planId]]],
+            ], 200),
+        ]);
+
+        $this->postJson('/woocommerce/gateway/callback/'.(string) $shop->wc_shop_token, $this->callbackFor([
+            'more_info' => 'gw:8720', 'status_code' => '000',
+        ]))->assertOk()->assertJsonPath('paid', false);
+
+        // The order was never marked paid — no write that would complete it.
+        Http::assertNotSent(fn ($r): bool => $r->method() === 'PUT' && str_ends_with($r->url(), '/orders/8720'));
+
+        Tenant::run($shop, function () use ($planId): void {
+            $plan = InstallmentPlan::query()->where('public_id', $planId)->sole();
+            $this->assertSame(PlanStatus::AWAITING_FIRST_PAYMENT, $plan->status);
+            $this->assertSame(0, PaymentLedger::query()->count());
+        });
+    }
+
     public function test_a_plain_order_without_subscription_items_creates_no_plan_and_does_not_force_token(): void
     {
         [$shop, $key, $secret] = $this->connectedShop('cart-plain.example.com');

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\WooCommerce\Storefront;
 
+use App\Domain\Installments\CardUpdateService;
 use App\Domain\Installments\ProductPriceResolver;
 use App\Domain\Installments\RecurringPlanService;
 use App\Domain\Products\ProductPlanTemplateResolver;
@@ -41,6 +42,14 @@ final class WooGatewaySessionController extends WooStorefrontController
 
     private const CHARGE_METHOD_DEFAULT = 1;
 
+    /**
+     * A FREE first cycle (a 100% first-payment coupon) still needs the card the next
+     * cycle is charged to. Its page is PayPlus's check-only mode: the card is verified
+     * and vaulted, nothing is captured. Fixed, never config: WooGatewayFinalizer records
+     * no money for a ₪0 order, so this page must never be one that takes money.
+     */
+    public const CHARGE_METHOD_VERIFY_ONLY = 0;
+
     /** more_info prefix marking a plain-gateway order (vs. a LETS plan public id). */
     public const MORE_INFO_PREFIX = 'gw:';
 
@@ -63,7 +72,11 @@ final class WooGatewaySessionController extends WooStorefrontController
 
         $orderId = (string) $request->input('order_id', '');
         $amount = round((float) $request->input('amount', 0), 2);
-        if ($orderId === '' || $amount <= 0) {
+        $subscriptionItems = (array) $request->input('subscription_items', []);
+        // ₪0 is an order only when it starts a subscription: the page then saves the
+        // card for the next cycle (verify-only). Any other ₪0 order has nothing to pay.
+        $freeFirstCycle = $amount === 0.0 && $subscriptionItems !== [];
+        if ($orderId === '' || ($amount <= 0 && ! $freeFirstCycle)) {
             return response()->json(['error' => 'invalid_order'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
@@ -93,10 +106,15 @@ final class WooGatewaySessionController extends WooStorefrontController
         // an awaiting_first_payment recurring plan per the merchant's TEMPLATE (cadence/discount
         // server-resolved, never client). The first cycle is paid on THIS gateway page (part of the
         // order total); WooGatewayFinalizer activates each plan when the order is marked paid.
-        $subscriptionItems = (array) $request->input('subscription_items', []);
         $subscriptionPlanIds = $subscriptionItems !== []
             ? $this->createSubscriptionPlans($shop, $subscriptionItems, $request, $currency)
             : [];
+
+        // A free order whose subscription lines all failed to resolve (no template, no
+        // price) starts nothing — there is no card worth asking for.
+        if ($freeFirstCycle && $subscriptionPlanIds === []) {
+            return response()->json(['error' => 'invalid_order'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
 
         try {
             $result = PayPlusGatewayFactory::for($shop)->generateLink([
@@ -109,12 +127,8 @@ final class WooGatewaySessionController extends WooStorefrontController
                  * Which page (token / PayPal-only / the merchant's own): pageOptions().
                  */
                 ...$this->pageOptions($shop, $request, $subscriptionPlanIds !== []),
-                'amount' => $amount,
+                ...$this->moneyKeys($request, $amount, $freeFirstCycle),
                 'currency_code' => $currency,
-                'product_name' => (string) ($request->input('product_name') ?: __('storefront.installments.default_item')),
-                // 1 = immediate CHARGE/capture (W17). Config-driven + env-overridable; the SAME
-                // value the deposit page uses, so the two pages can never disagree.
-                'charge_method' => (int) config(self::CONFIG_CHARGE_METHOD, self::CHARGE_METHOD_DEFAULT),
                 // more_info carries the WC order id (prefixed) — the callback marks it paid.
                 'more_info' => self::MORE_INFO_PREFIX.$orderId,
                 // Prefill the card page with the shopper's details from the WC order.
@@ -183,6 +197,34 @@ final class WooGatewaySessionController extends WooStorefrontController
             // as order meta so WooGatewayFinalizer activates them when the order is marked paid.
             'subscription_plan_ids' => $subscriptionPlanIds,
         ], Response::HTTP_OK);
+    }
+
+    /**
+     * What the page asks for.
+     *
+     *  - a normal order → its total, captured (charge_method 1, config-driven — the SAME
+     *    value the deposit page uses, so the two pages can never disagree).
+     *  - a FREE first cycle → the card-update page's symbolic amount, CHECK-ONLY. PayPlus
+     *    will not open a page for ₪0; the check verifies the card and vaults the token
+     *    without taking money, and the item name tells the shopper so.
+     *
+     * @return array{amount: float, charge_method: int, product_name: string}
+     */
+    private function moneyKeys(Request $request, float $amount, bool $freeFirstCycle): array
+    {
+        if ($freeFirstCycle) {
+            return [
+                'amount' => round(max(0.01, (float) config(CardUpdateService::CONFIG_AMOUNT, 1.0)), 2),
+                'charge_method' => self::CHARGE_METHOD_VERIFY_ONLY,
+                'product_name' => (string) __('storefront.free_first_cycle.item'),
+            ];
+        }
+
+        return [
+            'amount' => $amount,
+            'charge_method' => (int) config(self::CONFIG_CHARGE_METHOD, self::CHARGE_METHOD_DEFAULT),
+            'product_name' => (string) ($request->input('product_name') ?: __('storefront.installments.default_item')),
+        ];
     }
 
     /**

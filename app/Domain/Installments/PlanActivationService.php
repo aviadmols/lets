@@ -64,6 +64,15 @@ final class PlanActivationService
      */
     public const PAYLOAD_DOCUMENT_BY_ORDER = 'lets_document_by_order';
 
+    /**
+     * Payload flag: the first cycle was FREE (a 100% first-payment coupon; the store order
+     * totalled ₪0). Nothing was collected, so the first cycle is recorded at ₪0 with no
+     * PayPlus transaction to refund — never at the plan's per-cycle amount, which is what
+     * the fallback would otherwise book as money received. Set only by WooGatewayFinalizer,
+     * from the order total WooCommerce reports.
+     */
+    public const PAYLOAD_FREE_FIRST_CYCLE = 'lets_free_first_cycle';
+
     /** Where a confirmed PayPlus body keeps its transaction uid (both push + pull shapes). */
     private const TRANSACTION_UID_PATHS = [
         'data.transaction.uid', 'data.transaction.transaction_uid', 'data.transaction_uid',
@@ -107,7 +116,8 @@ final class PlanActivationService
             // amount is derived so a kept first-payment amount is what gets recorded.
             app(CheckoutPricingCapture::class)->apply($plan, $orderPayload);
 
-            $depositAmount = $this->depositAmountFor($plan, $orderPayload);
+            $freeFirstCycle = ! empty($orderPayload[self::PAYLOAD_FREE_FIRST_CYCLE]);
+            $depositAmount = $freeFirstCycle ? 0.0 : $this->depositAmountFor($plan, $orderPayload);
 
             // 1) Capture + vault the reusable token (when a resolver is bound).
             $method = $this->capturePaymentMethod($shop, $plan, $orderPayload);
@@ -143,7 +153,8 @@ final class PlanActivationService
                         'shopify_order_id' => $orderId,
                         'shopify_customer_id' => $plan->shopify_customer_id,
                         // What a refund names at PayPlus. Without it the charge cannot be reversed.
-                        'payplus_transaction_uid' => $this->transactionUid($orderPayload),
+                        // A free cycle's transaction is a card CHECK — nothing to reverse.
+                        'payplus_transaction_uid' => $freeFirstCycle ? null : $this->transactionUid($orderPayload),
                     ],
                 );
                 Ledger::transition($ledger, LedgerStatus::SUCCEEDED, [
@@ -179,6 +190,7 @@ final class PlanActivationService
                     'plan_public_id' => $plan->public_id,
                     'shopify_order_id' => $orderId,
                     'deposit_amount' => $depositAmount,
+                    'free_first_cycle' => $freeFirstCycle,
                     'next_charge_at' => $plan->next_charge_at?->toIso8601String(),
                     'token_captured' => $method !== null,
                 ],
