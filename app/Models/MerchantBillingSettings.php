@@ -164,6 +164,12 @@ class MerchantBillingSettings extends Model
      */
     public const DEFAULT_UPSELL_CHARGING_ENABLED = true;
 
+    /**
+     * Subscribers' discount on chosen store categories (WooCommerce). OFF by
+     * default; the percent is clamped so a typo can never give goods away.
+     */
+    public const MAX_SUBSCRIBER_DISCOUNT_PERCENT = 90;
+
     /** Policy / terms. */
     public const DEFAULT_TERMS_VERSION = 'v1';
 
@@ -211,6 +217,9 @@ class MerchantBillingSettings extends Model
             'live_charging_enabled' => 'boolean',
             'upsell_charging_enabled' => 'boolean',
             'charging_paused_at' => 'datetime',
+            'subscriber_discount_enabled' => 'boolean',
+            'subscriber_discount_percent' => 'decimal:2',
+            'subscriber_discount_category_ids' => 'array',
         ];
     }
 
@@ -456,6 +465,45 @@ class MerchantBillingSettings extends Model
     public function allowsOneSubscriptionOnly(): bool
     {
         return (bool) ($this->single_active_subscription ?? self::DEFAULT_SINGLE_ACTIVE_SUBSCRIPTION);
+    }
+
+    /** The subscribers' discount, clamped to (0, MAX]; 0 when unset. */
+    public function subscriberDiscountPercent(): float
+    {
+        $value = round((float) ($this->subscriber_discount_percent ?? 0), 2);
+
+        return max(0.0, min((float) self::MAX_SUBSCRIBER_DISCOUNT_PERCENT, $value));
+    }
+
+    /** @return list<string> the WooCommerce category ids the discount covers */
+    public function subscriberDiscountCategoryIds(): array
+    {
+        $raw = $this->subscriber_discount_category_ids;
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        $ids = array_filter(array_map(static fn ($id): string => trim((string) $id), $raw), static fn (string $id): bool => ctype_digit($id));
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
+     * The rule the plugin applies in the cart, or null when nothing would be
+     * discounted (switched off, no percent, or no category chosen).
+     *
+     * @return array{percent: float, category_ids: list<string>}|null
+     */
+    public function subscriberDiscountRule(): ?array
+    {
+        $percent = $this->subscriberDiscountPercent();
+        $categories = $this->subscriberDiscountCategoryIds();
+
+        if (! $this->subscriber_discount_enabled || $percent <= 0 || $categories === []) {
+            return null;
+        }
+
+        return ['percent' => $percent, 'category_ids' => $categories];
     }
 
     /** The store page activation links open on, or null for the LETS page. */

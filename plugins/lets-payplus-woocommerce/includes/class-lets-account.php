@@ -898,6 +898,10 @@ function lets_payplus_account_shell_config()
             $purchase = (array) $account['purchase'];
             $config['purchase'] = array(
                 'single_subscription' => ! empty($purchase['single_subscription']),
+                // {percent, category_ids} or null — see class-lets-subscriber-discount.php.
+                'subscriber_discount' => isset($purchase['subscriber_discount']) && is_array($purchase['subscriber_discount'])
+                    ? $purchase['subscriber_discount']
+                    : null,
             );
         }
     }

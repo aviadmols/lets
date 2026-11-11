@@ -249,6 +249,16 @@ return [
             ],
         ],
 
+        'subscriber_discount' => [
+            'heading' => 'Subscribers\' discount',
+            'intro' => 'Customers with a paid, running subscription get a discount on the categories you choose. At checkout, the email the customer types is checked against your subscribers and the price drops on the spot. Paused, failed and installment plans do not count; subscription products are never discounted.',
+            'enabled' => 'Give subscribers a discount',
+            'percent' => 'Discount',
+            'categories' => 'Categories',
+            'categories_help' => 'The discount applies to products in any of the categories you tick.',
+            'no_categories' => 'No categories yet. Open Products and click "Refresh products" to pull your store\'s categories.',
+        ],
+
         'policy' => [
             'heading' => 'Policy & terms',
             'intro' => 'Shown to customers and snapshotted into the consent record they accept.',

@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.63.0
+Stable tag: 0.64.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,11 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.64.0 =
+* Subscribers' discount: customers with a paid, running subscription get the percent set in
+  LETS → Settings → Billing off products in the chosen categories. Checked against the email
+  typed at checkout (guests too); subscription products are never discounted.
 
 = 0.63.0 =
 * Subscriptions: a 100% first-payment coupon no longer skips the card. A ₪0 cart with a

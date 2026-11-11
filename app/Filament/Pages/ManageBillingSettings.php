@@ -11,6 +11,7 @@ use App\Jobs\Shopify\RegisterShopifyWebhooksJob;
 use App\Models\InstallmentPlan;
 use App\Models\MerchantBillingSettings;
 use App\Models\MerchantCheckoutSettings;
+use App\Models\ProductCategory;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
@@ -103,6 +104,10 @@ class ManageBillingSettings extends Page implements HasForms
 
             'payment_page_language' => MerchantCheckoutSettings::current()->languageCode(),
 
+            'subscriber_discount_enabled' => (bool) $settings->subscriber_discount_enabled,
+            'subscriber_discount_percent' => $settings->subscriberDiscountPercent() > 0 ? $settings->subscriberDiscountPercent() : null,
+            'subscriber_discount_category_ids' => $settings->subscriberDiscountCategoryIds(),
+
             'retry_interval_hours' => $settings->retryIntervalHours(),
             'max_charge_attempts' => $settings->maxChargeAttempts(),
             'failed_payment_grace_days' => $settings->failedPaymentGraceDays(),
@@ -155,6 +160,7 @@ class ManageBillingSettings extends Page implements HasForms
                 $this->railSection(),
                 $this->liveChargingSection(),
                 $this->paymentPageSection(),
+                $this->subscriberDiscountSection(),
                 $this->recurringSection(),
                 $this->retriesSection(),
                 $this->installmentsSection(),
@@ -218,6 +224,65 @@ class ManageBillingSettings extends Page implements HasForms
                     ->inline()
                     ->required(),
             ]);
+    }
+
+    /**
+     * Subscribers' discount — N% off the chosen store categories for a shopper
+     * whose subscription is paid and running. WooCommerce only: the plugin
+     * applies it in the cart once the checkout email is known; Shopify has no
+     * plugin cart to apply it in.
+     */
+    private function subscriberDiscountSection(): Section
+    {
+        $shop = Tenant::current();
+
+        return Section::make(__('billing.settings.subscriber_discount.heading'))
+            ->description(__('billing.settings.subscriber_discount.intro'))
+            ->schema([
+                Toggle::make('subscriber_discount_enabled')
+                    ->label(__('billing.settings.subscriber_discount.enabled'))
+                    ->live(),
+                TextInput::make('subscriber_discount_percent')
+                    ->label(__('billing.settings.subscriber_discount.percent'))
+                    ->numeric()
+                    ->minValue(1)
+                    ->maxValue(MerchantBillingSettings::MAX_SUBSCRIBER_DISCOUNT_PERCENT)
+                    ->suffix('%')
+                    ->required(fn (Get $get): bool => (bool) $get('subscriber_discount_enabled')),
+                CheckboxList::make('subscriber_discount_category_ids')
+                    ->label(__('billing.settings.subscriber_discount.categories'))
+                    ->helperText(fn (): string => $this->subscriberDiscountCategoryOptions() === []
+                        ? __('billing.settings.subscriber_discount.no_categories')
+                        : __('billing.settings.subscriber_discount.categories_help'))
+                    ->options(fn (): array => $this->subscriberDiscountCategoryOptions())
+                    ->columns(2)
+                    ->searchable()
+                    ->bulkToggleable()
+                    ->required(fn (Get $get): bool => (bool) $get('subscriber_discount_enabled'))
+                    ->columnSpanFull(),
+            ])
+            ->columns(2)
+            ->visible($shop instanceof Shop && $shop->platform === Shop::PLATFORM_WOOCOMMERCE);
+    }
+
+    /**
+     * THIS shop's synced categories (id => "name (count)"), plus any saved id the
+     * catalogue no longer lists, so a stored choice is never silently dropped.
+     *
+     * @return array<string, string>
+     */
+    private function subscriberDiscountCategoryOptions(): array
+    {
+        $options = [];
+        foreach (ProductCategory::withActiveProducts() as $category) {
+            $options[$category['id']] = $category['name'].' ('.$category['count'].')';
+        }
+
+        foreach (MerchantBillingSettings::current()->subscriberDiscountCategoryIds() as $saved) {
+            $options[$saved] ??= '#'.$saved;
+        }
+
+        return $options;
     }
 
     /** Payments & retries — backoff schedule, attempt ceiling, grace window. */
@@ -626,6 +691,11 @@ class ManageBillingSettings extends Page implements HasForms
         $settings->allow_customer_edit_items = (bool) ($input['allow_customer_edit_items'] ?? true);
         $settings->single_active_subscription = (bool) ($input['single_active_subscription'] ?? false);
 
+        // Only a WooCommerce shop sees the section; anyone else keeps the row untouched.
+        if (array_key_exists('subscriber_discount_enabled', $input)) {
+            $this->applySubscriberDiscount($settings, $input);
+        }
+
         // A store page only when chosen AND the path is a real path; anything else keeps the
         // LETS page. A WooCommerce shop never sees the section, so it never sets one.
         $settings->activation_page_path = ($input['activation_link_opens'] ?? null) === self::ACTIVATION_OPENS_STORE
@@ -700,6 +770,25 @@ class ManageBillingSettings extends Page implements HasForms
             ->success()
             ->persistent()
             ->send();
+    }
+
+    /**
+     * Store the subscribers' discount: the percent clamped, the categories only
+     * ones this screen offered (never raw ids from the page).
+     *
+     * @param  array<string, mixed>  $input
+     */
+    private function applySubscriberDiscount(MerchantBillingSettings $settings, array $input): void
+    {
+        $offered = array_map('strval', array_keys($this->subscriberDiscountCategoryOptions()));
+        $chosen = array_values(array_intersect(array_map('strval', (array) ($input['subscriber_discount_category_ids'] ?? [])), $offered));
+        $percent = $this->nullableAmount($input['subscriber_discount_percent'] ?? null);
+
+        $settings->subscriber_discount_enabled = (bool) $input['subscriber_discount_enabled'];
+        $settings->subscriber_discount_percent = $percent === null
+            ? null
+            : max(0.0, min((float) MerchantBillingSettings::MAX_SUBSCRIBER_DISCOUNT_PERCENT, $percent));
+        $settings->subscriber_discount_category_ids = $chosen;
     }
 
     /** Only a language PayPlus knows is ever stored; anything else keeps the current one. */

@@ -659,6 +659,9 @@ final class AccountPresenter
             // that never turned the rule on would be a round trip for nothing.
             'purchase' => [
                 'single_subscription' => MerchantBillingSettings::current()->allowsOneSubscriptionOnly(),
+                // {percent, category_ids} or null. Shop-wide, so the cart knows
+                // whether to ask "is this email a subscriber?" at all.
+                'subscriber_discount' => MerchantBillingSettings::current()->subscriberDiscountRule(),
             ],
             'copy' => $this->copy($settings),
         ];
