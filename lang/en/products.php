@@ -12,7 +12,9 @@ return [
     'singular' => 'Product',
     'markets_banner' => 'Plans and pricing here apply to your primary market. Per-market overrides are coming soon.',
     'refresh' => 'Refresh products',
-    'refreshed' => 'Refreshing products from Shopify — this runs in the background.',
+    'refreshed' => 'Refreshing products from :store — this runs in the background.',
+    // The store the catalog comes from, named in the two lines above and below.
+    'store' => ['shopify' => 'Shopify', 'woocommerce' => 'WooCommerce'],
     'refresh_needs_connection' => 'Connect the store first — there are no credentials to pull products with yet.',
     'refreshed_one' => 'Product refreshed.',
 
@@ -61,7 +63,7 @@ return [
 
     // --- Empty states ---
     'empty' => [
-        'first_run' => 'No products yet. Refresh from Shopify to import your catalog.',
+        'first_run' => 'No products yet. Refresh from :store to import your catalog.',
         'no_results' => 'No products match your search or filters.',
     ],
 

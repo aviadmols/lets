@@ -2,7 +2,7 @@
 
 namespace App\Domain\Analytics\Support;
 
-use App\Domain\Analytics\Support\Frequency;
+use App\Domain\Customers\CustomerPlans;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -91,11 +91,29 @@ final class Sql
      * One human, one key, on the PayPlus rail. Platform customer id first, then
      * the WooCommerce id, then the (lower-cased) email, then the plan itself —
      * a plan with no identity at all is its own subscriber, never merged.
+     *
+     * A reference that names nobody (CustomerPlans::NON_IDENTIFYING_REFS — every
+     * WooCommerce guest is stored as customer id `0`) counts as no reference, so a
+     * guest is known by their email. Without that, every guest checkout in a shop
+     * was ONE subscriber: shop 2 read "696 subscriptions of 640 customers" when 57
+     * guest subscriptions were 57 different people.
      */
     public static function planCustomerKey(string $table = 'installment_plans'): string
     {
-        return "COALESCE(NULLIF({$table}.shopify_customer_id, ''), NULLIF({$table}.external_customer_id, ''), "
+        return 'COALESCE('.self::identifyingRef("{$table}.shopify_customer_id").', '
+            .self::identifyingRef("{$table}.external_customer_id").', '
             ."LOWER(NULLIF({$table}.customer_email, '')), 'plan:' || {$table}.id)";
+    }
+
+    /** The column as SQL, or NULL when it is blank or a reference that names nobody. */
+    private static function identifyingRef(string $column): string
+    {
+        $sql = "NULLIF({$column}, '')";
+        foreach (CustomerPlans::NON_IDENTIFYING_REFS as $ref) {
+            $sql = "NULLIF({$sql}, '".str_replace("'", "''", $ref)."')";
+        }
+
+        return $sql;
     }
 
     /**

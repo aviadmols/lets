@@ -67,6 +67,22 @@ final class SubscribersOverviewQueryTest extends TestCase
         $this->assertEqualsWithDelta(203.0, $k['mrr']['value'], 0.01);
     }
 
+    public function test_woocommerce_guests_are_different_people_not_one_customer_zero(): void
+    {
+        // Every WooCommerce guest is stored with customer id "0". Three guests with
+        // their own emails are three people; the same guest twice is one.
+        $guest = fn (string $email) => ['shopify_customer_id' => null, 'external_customer_id' => '0', 'customer_email' => $email];
+        $this->plan($this->shop, '', 59, attributes: $guest('dana@example.com'));
+        $this->plan($this->shop, '', 59, attributes: $guest('noa@example.com'));
+        $this->plan($this->shop, '', 59, attributes: $guest('DANA@example.com'));
+        $this->plan($this->shop, '', 59, attributes: ['shopify_customer_id' => '0', 'external_customer_id' => '0', 'customer_email' => 'yael@example.com']);
+
+        $k = $this->overview()['kpis'];
+
+        $this->assertSame(4, $k['subscriptions']['value']);
+        $this->assertSame(3, $k['subscribers']['value'], 'dana (twice), noa, yael — not one customer named "0".');
+    }
+
     public function test_mrr_normalises_every_cadence_to_a_month(): void
     {
         $this->plan($this->shop, '1', 120, 'yearly');               // 10 / month

@@ -7,6 +7,7 @@ use App\Filament\Pages\ProductDetail;
 use App\Filament\Resources\ProductResource\Pages;
 use App\Models\Product;
 use App\Models\ProductSubscriptionPlan;
+use App\Models\Shop;
 use App\Services\Products\ProductRefreshService;
 use App\Support\Tenant;
 use App\Support\Ui\StatusBadge;
@@ -34,8 +35,11 @@ class ProductResource extends Resource
 
     // === CONSTANTS ===
     protected static ?string $model = Product::class;
+
     protected static ?string $slug = 'products';
+
     protected static ?string $navigationIcon = 'heroicon-o-cube';
+
     protected static ?int $navigationSort = 10;
 
     /** Search needs >= this many chars before it touches the query (perf + intent). */
@@ -99,13 +103,13 @@ class ProductResource extends Resource
                 Tables\Columns\TextColumn::make('status')
                     ->label(__('products.col.shopify_status'))
                     ->badge()
-                    ->formatStateUsing(fn (string $state): string => __('products.status.' . $state))
+                    ->formatStateUsing(fn (string $state): string => __('products.status.'.$state))
                     ->color(fn (string $state): string => self::filamentColor(self::PRODUCT_STATUS_TONE[$state] ?? 'draft')),
 
                 Tables\Columns\TextColumn::make('online_store_status')
                     ->label(__('products.col.online_store'))
                     ->badge()
-                    ->formatStateUsing(fn (string $state): string => __('products.online.' . $state))
+                    ->formatStateUsing(fn (string $state): string => __('products.online.'.$state))
                     ->color(fn (string $state): string => $state === Product::ONLINE_PUBLISHED ? 'success' : 'gray'),
 
                 // Purchase types = ONE-TIME / SUBSCRIPTION badges derived from plans.
@@ -196,7 +200,7 @@ class ProductResource extends Resource
             ->defaultSort('updated_at_external', 'desc')
             ->paginated([self::ROWS_PER_PAGE, 50, 100])
             ->defaultPaginationPageOption(self::ROWS_PER_PAGE)
-            ->emptyStateHeading(__('products.empty.first_run'))
+            ->emptyStateHeading(fn (): string => __('products.empty.first_run', ['store' => self::storeName()]))
             ->emptyStateIcon('heroicon-o-cube');
     }
 
@@ -240,7 +244,7 @@ class ProductResource extends Resource
             return $query;
         }
 
-        $like = '%' . $term . '%';
+        $like = '%'.$term.'%';
 
         return $query->where(function (Builder $q) use ($like): void {
             $q->where('title', 'like', $like)
@@ -271,7 +275,18 @@ class ProductResource extends Resource
 
         app(ProductRefreshService::class)->refreshAll($shop);
 
-        Notification::make()->title(__('products.refreshed'))->success()->send();
+        Notification::make()->title(__('products.refreshed', ['store' => self::storeName()]))->success()->send();
+    }
+
+    /**
+     * The store the catalog is refreshed from, by name. A WooCommerce merchant was
+     * told to "refresh from Shopify" — a store they do not have.
+     */
+    public static function storeName(): string
+    {
+        $woo = Tenant::current()?->platform === Shop::PLATFORM_WOOCOMMERCE;
+
+        return (string) __('products.store.'.($woo ? 'woocommerce' : 'shopify'));
     }
 
     /** Maps a status tone to the Filament color name used by ->color(). */

@@ -4,6 +4,7 @@ namespace Tests\Feature\Products;
 
 use App\Filament\Resources\ProductResource;
 use App\Filament\Resources\ProductResource\Pages\ListProducts;
+use App\Jobs\Products\ImportShopProductsJob;
 use App\Models\Product;
 use App\Models\ProductSubscriptionPlan;
 use App\Models\ProductVariant;
@@ -11,6 +12,7 @@ use App\Models\Shop;
 use App\Models\User;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Bus;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -51,6 +53,27 @@ final class ProductResourceTest extends TestCase
     {
         Tenant::clear();
         parent::tearDown();
+    }
+
+    public function test_an_empty_catalog_names_the_store_it_is_refreshed_from(): void
+    {
+        Livewire::test(ListProducts::class)
+            ->assertOk()
+            ->assertSee(__('products.empty.first_run', ['store' => 'Shopify']));
+
+        $woo = Shop::create([
+            'woocommerce_domain' => 'prod-list-woo.example.com',
+            'name' => 'Woo List',
+            'status' => Shop::STATUS_INSTALLED,
+            'platform' => Shop::PLATFORM_WOOCOMMERCE,
+        ]);
+        Tenant::set($woo);
+
+        // A WooCommerce merchant was told to "refresh from Shopify".
+        Livewire::test(ListProducts::class)
+            ->assertOk()
+            ->assertSee(__('products.empty.first_run', ['store' => 'WooCommerce']))
+            ->assertDontSee('Shopify to import');
     }
 
     public function test_list_shows_only_the_bound_shops_products(): void
@@ -117,21 +140,21 @@ final class ProductResourceTest extends TestCase
 
     public function test_refresh_dispatches_the_import_job_for_the_bound_shop(): void
     {
-        \Illuminate\Support\Facades\Bus::fake();
+        Bus::fake();
         $this->makeProduct($this->shop, '7007', 'Refreshable');
 
         // The header action's seam: triggers the tenant's full re-sync.
         ProductResource::refreshProducts();
 
-        \Illuminate\Support\Facades\Bus::assertDispatched(
-            \App\Jobs\Products\ImportShopProductsJob::class,
+        Bus::assertDispatched(
+            ImportShopProductsJob::class,
         );
     }
 
     public function test_refresh_table_header_action_exists_and_is_callable(): void
     {
         $this->makeProduct($this->shop, '7008', 'Refreshable B');
-        \Illuminate\Support\Facades\Bus::fake();
+        Bus::fake();
 
         Livewire::test(ListProducts::class)
             ->callTableAction('refresh')
@@ -143,7 +166,7 @@ final class ProductResourceTest extends TestCase
     private function makeProduct(Shop $shop, string $externalId, string $title): Product
     {
         return Tenant::run($shop, function () use ($shop, $externalId, $title): Product {
-            $product = new Product();
+            $product = new Product;
             $product->forceFill([
                 'shop_id' => $shop->id,
                 'source' => Product::SOURCE_SHOPIFY,
@@ -161,7 +184,7 @@ final class ProductResourceTest extends TestCase
     private function makeVariant(Shop $shop, Product $product, string $externalVariantId, string $sku = 'SKU-1'): ProductVariant
     {
         return Tenant::run($shop, function () use ($shop, $product, $externalVariantId, $sku): ProductVariant {
-            $variant = new ProductVariant();
+            $variant = new ProductVariant;
             $variant->forceFill([
                 'shop_id' => $shop->id,
                 'product_id' => $product->id,
@@ -179,7 +202,7 @@ final class ProductResourceTest extends TestCase
     private function makePlan(Shop $shop, Product $product, ProductVariant $variant, string $type): ProductSubscriptionPlan
     {
         return Tenant::run($shop, function () use ($shop, $product, $variant, $type): ProductSubscriptionPlan {
-            $plan = new ProductSubscriptionPlan();
+            $plan = new ProductSubscriptionPlan;
             $plan->forceFill([
                 'shop_id' => $shop->id,
                 'product_id' => $product->id,
