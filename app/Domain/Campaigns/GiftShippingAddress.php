@@ -179,6 +179,9 @@ final readonly class GiftShippingAddress
             'city' => (string) $this->city,
             'zip_code' => (string) $this->zip,
             'country' => (string) $this->countryCode,
+            // The checkout note (plus anything address_2 said that is not a part):
+            // what the courier needs is kept with the address, every time.
+            InstallmentPlan::ADDRESS_DELIVERY_NOTE => mb_substr($parts['note'], 0, InstallmentPlan::MAX_DELIVERY_NOTE),
         ], static fn (string $value): bool => trim($value) !== '');
     }
 
@@ -278,6 +281,7 @@ final readonly class GiftShippingAddress
             // one that ends in a phone call from the doorway.
             floor: self::clean($stored['floor'] ?? null),
             entrance: self::clean($stored['entrance'] ?? null),
+            note: self::clean($stored[InstallmentPlan::ADDRESS_DELIVERY_NOTE] ?? null),
         );
 
         return $address->isShippable() ? $address : null;

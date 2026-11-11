@@ -155,6 +155,8 @@ return [
             'city' => 'City',
             'zip' => 'Zip code',
             'country' => 'Country',
+            'delivery_note' => 'Notes for the courier',
+            'delivery_note_placeholder' => 'e.g. opposite the hall, leave with the guard',
         ],
         'note' => [
             'paid' => 'Paid',

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Customers;
 
+use App\Domain\Campaigns\GiftShippingAddress;
 use App\Domain\Customers\CheckoutAddressCapture;
 use App\Domain\Customers\CustomerContact;
 use App\Filament\Pages\CustomerDetail;
@@ -156,7 +157,7 @@ final class CheckoutAddressCaptureTest extends TestCase
         $plan = $this->plan($shop, customerId: 'guest@example.com');
         app(CheckoutAddressCapture::class)->fromWooOrder($plan, $this->order());
 
-        $page = new CustomerDetail();
+        $page = new CustomerDetail;
         $page->mount('guest@example.com');
         $contact = $page->contact();
 
@@ -183,7 +184,7 @@ final class CheckoutAddressCaptureTest extends TestCase
         $plan = $this->plan($shop, customerId: '55');
         app(CheckoutAddressCapture::class)->fromWooOrder($plan, $this->order());
 
-        $page = new CustomerDetail();
+        $page = new CustomerDetail;
         $page->mount('55');
 
         $this->assertSame('נתניה', $page->contact()->address?->city);
@@ -271,6 +272,51 @@ final class CheckoutAddressCaptureTest extends TestCase
 
         Tenant::set($shop);
         $this->assertSame([], $guest->fresh()->contactAddress());
+    }
+
+    public function test_the_checkout_note_is_kept_with_the_address_as_the_courier_note(): void
+    {
+        $shop = $this->wooShop();
+        Tenant::set($shop);
+        $plan = $this->plan($shop);
+
+        app(CheckoutAddressCapture::class)->fromWooOrder($plan, [...$this->order(), 'customer_note' => 'מול אולם סמולרש, להשאיר בשמירה']);
+
+        $fresh = $plan->fresh();
+        $this->assertSame('מול אולם סמולרש, להשאיר בשמירה', $fresh->deliveryNote());
+        // An address line is an address — the note is not part of it.
+        $this->assertStringNotContainsString('סמולרש', (string) $fresh->contactAddressLine());
+        // The courier sheet (gifts) reads it back off the plan.
+        $this->assertSame('מול אולם סמולרש, להשאיר בשמירה', GiftShippingAddress::fromPlanContact($fresh)?->deliveryParts()['note']);
+    }
+
+    public function test_the_backfill_adds_the_courier_note_to_an_address_without_one(): void
+    {
+        $shop = $this->wooShop();
+
+        Tenant::set($shop);
+        $address = ['street' => 'אליהו הנביא', 'building_number' => '18', 'city' => 'חיפה'];
+        $noNote = $this->plan($shop, orderId: '900', meta: [InstallmentPlan::META_CHECKOUT_ADDRESS => $address]);
+        $merchantNote = $this->plan($shop, orderId: '900', meta: [
+            InstallmentPlan::META_CONTACT_ADDRESS => [...$address, InstallmentPlan::ADDRESS_DELIVERY_NOTE => 'לצלצל פעמיים'],
+        ]);
+        $importOnly = $this->plan($shop, orderId: '900', meta: ['import' => ['address' => $address]]);
+        Tenant::clear();
+
+        Http::fake([
+            '*/wp-json/wc/v3/orders*' => Http::response([[...$this->order(), 'customer_note' => 'מול האולם']], 200),
+            '*' => Http::response([], 200),
+        ]);
+
+        $this->artisan('lets:subscriptions:backfill-checkout-addresses', ['--shop' => $shop->getKey()])
+            ->assertSuccessful();
+
+        Tenant::set($shop);
+        $this->assertSame('מול האולם', $noNote->fresh()->deliveryNote());
+        $this->assertSame('חיפה', $noNote->fresh()->contactAddress()['city']);
+        // The merchant's own note is never replaced; the import's record stays as the file wrote it.
+        $this->assertSame('לצלצל פעמיים', $merchantNote->fresh()->deliveryNote());
+        $this->assertNull($importOnly->fresh()->deliveryNote());
     }
 
     /** @return array<string, mixed> a paid WC order, as the REST API returns it */

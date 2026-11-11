@@ -313,6 +313,11 @@
 
                         <span class="rc-kv__k">{{ __('subscriptions.detail.contact.address') }}</span>
                         <span class="rc-kv__v">{{ $contact['address'] ?? '—' }}</span>
+
+                        @if($contact['delivery_note'])
+                            <span class="rc-kv__k">{{ __('subscriptions.detail.contact.delivery_note') }}</span>
+                            <span class="rc-kv__v">{{ $contact['delivery_note'] }}</span>
+                        @endif
                     </div>
                 </div>
             </aside>

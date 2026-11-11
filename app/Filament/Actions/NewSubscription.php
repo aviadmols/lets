@@ -89,6 +89,7 @@ final class NewSubscription
         'city' => 'city',
         'zip_code' => 'zip',
         'country' => 'country',
+        InstallmentPlan::ADDRESS_DELIVERY_NOTE => 'delivery_note',
     ];
 
     /** The new-subscription modal: two columns of fields need the room. */
@@ -334,6 +335,13 @@ final class NewSubscription
                     ->helperText(static fn (Get $get): ?string => trim((string) $get('address.city')) === ''
                         ? __('subscriptions.action.create.field.street_needs_city')
                         : null)
+                    ->columnSpan(2),
+
+                $field === InstallmentPlan::ADDRESS_DELIVERY_NOTE => Textarea::make('address.'.$field)
+                    ->label(__(self::ADDRESS_LABEL_PREFIX.self::ADDRESS_LABEL_KEYS[$field]))
+                    ->placeholder(__('subscriptions.detail.contact.delivery_note_placeholder'))
+                    ->rows(2)
+                    ->maxLength(InstallmentPlan::MAX_DELIVERY_NOTE)
                     ->columnSpan(2),
 
                 default => TextInput::make('address.'.$field)

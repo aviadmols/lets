@@ -33,6 +33,7 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Modules\PayPlusShopifyInstallments\Services\ChargeOrchestrator;
 use App\Modules\PayPlusShopifyInstallments\Services\ChargeOutcome;
 use App\Modules\PayPlusShopifyInstallments\Support\Timeline;
+use App\Services\WooCommerce\WooStoreUrl;
 use App\Support\EmailPreviewRenderer;
 use App\Support\PhoneNumber;
 use App\Support\Tenant;
@@ -55,7 +56,6 @@ use Filament\Resources\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
-use App\Services\WooCommerce\WooStoreUrl;
 use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Locked;
 
@@ -584,6 +584,11 @@ class ViewSubscription extends Page
                     TextInput::make('country')
                         ->label(__('subscriptions.detail.contact.country'))
                         ->maxLength(120),
+                    Textarea::make(InstallmentPlan::ADDRESS_DELIVERY_NOTE)
+                        ->label(__('subscriptions.detail.contact.delivery_note'))
+                        ->placeholder(__('subscriptions.detail.contact.delivery_note_placeholder'))
+                        ->rows(2)
+                        ->maxLength(InstallmentPlan::MAX_DELIVERY_NOTE),
                 ])
                 ->action(fn (array $data) => $this->saveContact($data)),
         ];
@@ -944,7 +949,7 @@ class ViewSubscription extends Page
     /**
      * The contact card's display rows — plan columns + the merged address.
      *
-     * @return array{name: ?string, email: ?string, phone: ?string, national_id: ?string, address: ?string}
+     * @return array{name: ?string, email: ?string, phone: ?string, national_id: ?string, address: ?string, delivery_note: ?string}
      */
     public function contactDetails(): array
     {
@@ -958,6 +963,7 @@ class ViewSubscription extends Page
             // The model owns the one-line rendering, so this card and the
             // {customer_address} a campaign substitutes cannot disagree.
             'address' => $this->record->contactAddressLine(),
+            'delivery_note' => $this->record->deliveryNote(),
         ];
     }
 

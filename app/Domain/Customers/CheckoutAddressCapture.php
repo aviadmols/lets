@@ -75,4 +75,47 @@ final class CheckoutAddressCapture
 
         return $written;
     }
+
+    /**
+     * The courier note from the plan's origin order, added to an address the plan
+     * ALREADY holds but that has no note yet. True when written.
+     *
+     * The note joins the address bag the plan actually reads from (the admin's
+     * copy when there is one, else the checkout copy) — never the import's own
+     * record, which stays the audit trail of what the file said. A note the
+     * merchant already wrote is never replaced.
+     *
+     * @param  array<string, mixed>  $order
+     */
+    public function addDeliveryNote(InstallmentPlan $plan, array $order): bool
+    {
+        $note = (GiftShippingAddress::fromWooPayload($order)?->toPlanContact() ?? [])[InstallmentPlan::ADDRESS_DELIVERY_NOTE] ?? null;
+        if ($note === null || $plan->contactAddress() === [] || $plan->deliveryNote() !== null) {
+            return false;
+        }
+
+        return DB::transaction(function () use ($plan, $note): bool {
+            /** @var InstallmentPlan|null $fresh */
+            $fresh = InstallmentPlan::query()->lockForUpdate()->find($plan->getKey());
+            if ($fresh === null || $fresh->contactAddress() === [] || $fresh->deliveryNote() !== null) {
+                return false;
+            }
+
+            $meta = (array) ($fresh->meta ?? []);
+            $key = match (true) {
+                isset($meta[InstallmentPlan::META_CONTACT_ADDRESS]) => InstallmentPlan::META_CONTACT_ADDRESS,
+                isset($meta[InstallmentPlan::META_CHECKOUT_ADDRESS]) => InstallmentPlan::META_CHECKOUT_ADDRESS,
+                default => null, // only the import's copy — left as the file wrote it
+            };
+            if ($key === null) {
+                return false;
+            }
+
+            $meta[$key] = [...(array) $meta[$key], InstallmentPlan::ADDRESS_DELIVERY_NOTE => $note];
+            $fresh->forceFill(['meta' => $meta])->save();
+            $plan->forceFill(['meta' => $meta])->syncOriginalAttribute('meta');
+
+            return true;
+        });
+    }
 }

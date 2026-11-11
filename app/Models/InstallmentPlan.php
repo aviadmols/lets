@@ -132,7 +132,20 @@ class InstallmentPlan extends Model
      */
     public const ADDRESS_FIELDS = [
         'street', 'building_number', 'apartment_number', 'floor', 'entrance', 'city', 'zip_code', 'country',
+        self::ADDRESS_DELIVERY_NOTE,
     ];
+
+    /**
+     * What to tell the courier ("מול אולם סמולרש, להשאיר בשמירה") — kept WITH the
+     * address, because it belongs to the door, not to one order. Filled from the
+     * note the shopper typed at checkout, editable by the merchant, and carried
+     * onto every renewal order and courier sheet. Never part of the one-line
+     * address (contactAddressLine) — a campaign's {customer_address} is an address.
+     */
+    public const ADDRESS_DELIVERY_NOTE = 'delivery_note';
+
+    /** Longest courier note kept — a note, not a letter. */
+    public const MAX_DELIVERY_NOTE = 500;
 
     /** What joins those fields into one readable line. @see contactAddressLine() */
     public const ADDRESS_LINE_SEPARATOR = ', ';
@@ -538,6 +551,12 @@ class InstallmentPlan extends Model
         }
 
         return $out;
+    }
+
+    /** The note for the courier, or null. */
+    public function deliveryNote(): ?string
+    {
+        return $this->contactAddress()[self::ADDRESS_DELIVERY_NOTE] ?? null;
     }
 
     /**

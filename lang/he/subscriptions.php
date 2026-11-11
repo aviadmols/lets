@@ -154,6 +154,8 @@ return [
             'city' => 'עיר',
             'zip' => 'מיקוד',
             'country' => 'מדינה',
+            'delivery_note' => 'הערות לשליח',
+            'delivery_note_placeholder' => 'למשל: מול האולם, להשאיר בשמירה',
         ],
         'note' => [
             'paid' => 'שולם',

@@ -114,6 +114,7 @@ final class WooCommerceOrderStrategy implements PlatformOrderStrategy
             'customer_id' => $customerId,
             'billing' => $address['billing'],
             'shipping' => $address['shipping'],
+            ...$this->courierNote($plan),
             'line_items' => [$this->mainLineItem($plan)],
             'meta_data' => $this->meta([
                 self::META_PLAN_PUBLIC_ID => (string) $plan->public_id,
@@ -201,6 +202,7 @@ final class WooCommerceOrderStrategy implements PlatformOrderStrategy
             'customer_id' => $customerId,
             'billing' => $address['billing'],
             'shipping' => $address['shipping'],
+            ...$this->courierNote($plan),
             'line_items' => $lineItems,
             'meta_data' => $this->meta([
                 self::META_PLAN_PUBLIC_ID => (string) $plan->public_id,
@@ -376,6 +378,20 @@ final class WooCommerceOrderStrategy implements PlatformOrderStrategy
         $id = (int) $value;
 
         return $id > 0 ? $id : null;
+    }
+
+    /**
+     * The plan's courier note as the order's customer note — where WooCommerce,
+     * its emails and every shipping plugin already show it. Nothing when the
+     * plan holds none.
+     *
+     * @return array{customer_note?: string}
+     */
+    private function courierNote(InstallmentPlan $plan): array
+    {
+        $note = $plan->deliveryNote();
+
+        return $note !== null ? ['customer_note' => $note] : [];
     }
 
     /** WHICH customer this order belongs to — see WooCustomerResolver. */

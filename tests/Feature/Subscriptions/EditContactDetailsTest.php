@@ -178,6 +178,31 @@ final class EditContactDetailsTest extends TestCase
         $this->assertSame('רמת גן', $plan->contactAddress()['city'] ?? null);
     }
 
+    public function test_the_courier_note_is_edited_with_the_address_and_shown_on_the_card(): void
+    {
+        $plan = $this->importedPlan();
+
+        Livewire::test(ViewSubscription::class, ['plan' => $plan->getKey()])
+            ->callAction('editContact', [
+                'customer_name' => 'דנה כהן',
+                'street' => 'אליהו הנביא',
+                'building_number' => '18',
+                'city' => 'קרית אתא',
+                InstallmentPlan::ADDRESS_DELIVERY_NOTE => 'מול האולם, להשאיר בשמירה',
+            ])
+            ->assertHasNoActionErrors();
+
+        $plan->refresh();
+        $this->assertSame('מול האולם, להשאיר בשמירה', $plan->deliveryNote());
+
+        Livewire::test(ViewSubscription::class, ['plan' => $plan->getKey()])
+            ->assertSee(__('subscriptions.detail.contact.delivery_note'))
+            ->assertSee('מול האולם, להשאיר בשמירה')
+            // The edit form opens on the saved note.
+            ->mountAction('editContact')
+            ->assertActionDataSet([InstallmentPlan::ADDRESS_DELIVERY_NOTE => 'מול האולם, להשאיר בשמירה']);
+    }
+
     private function importedPlan(bool $withImportMeta = true): InstallmentPlan
     {
         $meta = $withImportMeta

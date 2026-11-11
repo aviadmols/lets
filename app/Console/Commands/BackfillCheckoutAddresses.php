@@ -70,32 +70,33 @@ final class BackfillCheckoutAddresses extends Command
             ];
         }
 
-        $this->table(['shop', 'name', 'missing', 'filled', 'order has no address', 'order not found', 'filled from switch'], $rows);
+        $this->table(['shop', 'name', 'missing', 'filled', 'order has no address', 'order not found', 'courier note added', 'filled from switch'], $rows);
         $this->info($dryRun ? 'Dry run — nothing was written.' : 'Done.');
 
         return self::SUCCESS;
     }
 
-    /** @return array{0: int, 1: int, 2: int, 3: int} missing, filled, no address on the order, order not found */
+    /** @return array{0: int, 1: int, 2: int, 3: int, 4: int} missing, filled, no address on the order, order not found, courier note added */
     private function backfillShop(Shop $shop, CheckoutAddressCapture $capture, bool $dryRun): array
     {
         return Tenant::run($shop, function () use ($shop, $capture, $dryRun): array {
-            $missing = $filled = $noAddress = $notFound = 0;
+            $missing = $filled = $noAddress = $notFound = $noted = 0;
             $client = WooClientFactory::for($shop);
 
             InstallmentPlan::query()
                 ->where(fn ($q) => $q->whereNotNull('external_order_id')->orWhereNotNull('shopify_order_id'))
-                ->chunkById(self::CHUNK, function (Collection $plans) use ($shop, $client, $capture, $dryRun, &$missing, &$filled, &$noAddress, &$notFound): void {
-                    // Only a plan with no address AND a real (numeric) Woo order id —
-                    // a payment-page deposit's id is a PayPlus uid, not an order.
-                    $todo = $plans->filter(fn (InstallmentPlan $p): bool => $p->contactAddress() === []
-                        && (int) $p->externalOrderId() > 0);
+                ->chunkById(self::CHUNK, function (Collection $plans) use ($shop, $client, $capture, $dryRun, &$missing, &$filled, &$noAddress, &$notFound, &$noted): void {
+                    // Only a plan with a real (numeric) Woo order id — a payment-page
+                    // deposit's id is a PayPlus uid, not an order — that lacks an
+                    // address, or holds one without the courier note.
+                    $todo = $plans->filter(fn (InstallmentPlan $p): bool => (int) $p->externalOrderId() > 0
+                        && ($p->contactAddress() === [] || $p->deliveryNote() === null));
 
                     if ($todo->isEmpty()) {
                         return;
                     }
 
-                    $missing += $todo->count();
+                    $missing += $todo->filter(fn (InstallmentPlan $p): bool => $p->contactAddress() === [])->count();
 
                     try {
                         $orders = $client->fetchOrdersByIds($todo->map(fn (InstallmentPlan $p): int => (int) $p->externalOrderId())->all());
@@ -112,6 +113,17 @@ final class BackfillCheckoutAddresses extends Command
 
                     foreach ($todo as $plan) {
                         $order = $orders[(int) $plan->externalOrderId()] ?? null;
+
+                        // Has an address already: only the courier note can be added.
+                        if ($plan->contactAddress() !== []) {
+                            $hasNote = $order !== null && isset((GiftShippingAddress::fromWooPayload($order)?->toPlanContact() ?? [])[InstallmentPlan::ADDRESS_DELIVERY_NOTE]);
+                            if ($hasNote && ($dryRun || $capture->addDeliveryNote($plan, $order))) {
+                                $noted++;
+                            }
+
+                            continue;
+                        }
+
                         if ($order === null) {
                             $notFound++;
 
@@ -137,7 +149,7 @@ final class BackfillCheckoutAddresses extends Command
                 ]);
             }
 
-            return [$missing, $filled, $noAddress, $notFound];
+            return [$missing, $filled, $noAddress, $notFound, $noted];
         });
     }
 

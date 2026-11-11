@@ -310,7 +310,9 @@ final class ManualSubscriptionService
             $value = $this->trimmed(is_scalar($input[$field] ?? null) ? (string) $input[$field] : null);
 
             if ($value !== null) {
-                $address[$field] = mb_substr($value, 0, self::MAX_ADDRESS_LENGTH);
+                $address[$field] = mb_substr($value, 0, $field === InstallmentPlan::ADDRESS_DELIVERY_NOTE
+                    ? InstallmentPlan::MAX_DELIVERY_NOTE
+                    : self::MAX_ADDRESS_LENGTH);
             }
         }
 

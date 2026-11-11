@@ -54,10 +54,11 @@ final class WooCommerceOrderStrategyTest extends TestCase
             'external_variant_id' => '200', 'external_product_id' => '100',
         ]);
 
-        Tenant::run($shop, fn () => (new WooCommerceOrderStrategy())->materialize($plan, ChargeContext::DEPOSIT));
+        Tenant::run($shop, fn () => (new WooCommerceOrderStrategy)->materialize($plan, ChargeContext::DEPOSIT));
 
         Http::assertSent(function (Request $req) {
             $b = $req->data();
+
             return str_contains($req->url(), '/wp-json/wc/v3/orders')
                 && $req->method() === 'POST'
                 && $b['status'] === 'processing'           // LOCKED, not completed
@@ -78,7 +79,7 @@ final class WooCommerceOrderStrategyTest extends TestCase
 
         $plan = $this->plan($shop, PlanKind::INSTALLMENTS, ['public_id' => 'PUB-IDEM', 'external_order_id' => '999']);
 
-        Tenant::run($shop, fn () => (new WooCommerceOrderStrategy())->materialize($plan, ChargeContext::DEPOSIT));
+        Tenant::run($shop, fn () => (new WooCommerceOrderStrategy)->materialize($plan, ChargeContext::DEPOSIT));
 
         // Already has an order id → no WC call.
         Http::assertNothingSent();
@@ -94,10 +95,11 @@ final class WooCommerceOrderStrategyTest extends TestCase
             'total_amount' => 400, 'total_charged' => 200,
         ]);
 
-        Tenant::run($shop, fn () => (new WooCommerceOrderStrategy())->materialize($plan, ChargeContext::INSTALLMENT, isFinal: false));
+        Tenant::run($shop, fn () => (new WooCommerceOrderStrategy)->materialize($plan, ChargeContext::INSTALLMENT, isFinal: false));
 
         Http::assertSent(function (Request $req) {
             $b = $req->data();
+
             return str_contains($req->url(), '/wp-json/wc/v3/orders/55')
                 && $req->method() === 'PUT'
                 && ! isset($b['status'])                       // NOT completed mid-plan
@@ -117,10 +119,11 @@ final class WooCommerceOrderStrategyTest extends TestCase
             'total_amount' => 400, 'total_charged' => 400,
         ]);
 
-        Tenant::run($shop, fn () => (new WooCommerceOrderStrategy())->materialize($plan, ChargeContext::INSTALLMENT, isFinal: true));
+        Tenant::run($shop, fn () => (new WooCommerceOrderStrategy)->materialize($plan, ChargeContext::INSTALLMENT, isFinal: true));
 
         Http::assertSent(function (Request $req) {
             $b = $req->data();
+
             return str_contains($req->url(), '/wp-json/wc/v3/orders/77')
                 && $req->method() === 'PUT'
                 && ($b['status'] ?? null) === 'completed'       // fulfillment released
@@ -137,10 +140,11 @@ final class WooCommerceOrderStrategyTest extends TestCase
             'public_id' => 'PUB-REC', 'installment_amount' => 49.90, 'external_order_id' => '500',
         ]);
 
-        Tenant::run($shop, fn () => (new WooCommerceOrderStrategy())->materialize($plan, ChargeContext::RECURRING));
+        Tenant::run($shop, fn () => (new WooCommerceOrderStrategy)->materialize($plan, ChargeContext::RECURRING));
 
         Http::assertSent(function (Request $req) {
             $b = $req->data();
+
             return str_contains($req->url(), '/wp-json/wc/v3/orders')
                 && $req->method() === 'POST'
                 && ($b['status'] ?? null) === 'completed'
@@ -155,6 +159,31 @@ final class WooCommerceOrderStrategyTest extends TestCase
         $this->assertContains('8001', (array) data_get($plan->meta, 'wc_recurring_order_ids'));
     }
 
+    public function test_a_renewal_order_carries_the_plans_courier_note(): void
+    {
+        $shop = $this->connectedShop('note-strat.example.com');
+        Http::fake(['*/wp-json/wc/v3/orders' => Http::response(['id' => 8002], 201)]);
+
+        $withNote = $this->plan($shop, PlanKind::RECURRING, [
+            'public_id' => 'PUB-NOTE', 'external_order_id' => '501',
+            'meta' => [InstallmentPlan::META_CONTACT_ADDRESS => [
+                'street' => 'הרצל', 'building_number' => '1', 'city' => 'חיפה',
+                InstallmentPlan::ADDRESS_DELIVERY_NOTE => 'להשאיר בשמירה',
+            ]],
+        ]);
+        $without = $this->plan($shop, PlanKind::RECURRING, ['public_id' => 'PUB-NO-NOTE', 'external_order_id' => '502']);
+
+        Tenant::run($shop, fn () => (new WooCommerceOrderStrategy)->materialize($withNote, ChargeContext::RECURRING));
+        Tenant::run($shop, fn () => (new WooCommerceOrderStrategy)->materialize($without, ChargeContext::RECURRING));
+
+        Http::assertSent(fn (Request $req): bool => $req->method() === 'POST'
+            && $this->metaValue($req->data(), 'lets_plan_public_id') === 'PUB-NOTE'
+            && ($req->data()['customer_note'] ?? null) === 'להשאיר בשמירה');
+        Http::assertSent(fn (Request $req): bool => $req->method() === 'POST'
+            && $this->metaValue($req->data(), 'lets_plan_public_id') === 'PUB-NO-NOTE'
+            && ! array_key_exists('customer_note', $req->data()));
+    }
+
     public function test_upsell_context_is_a_noop(): void
     {
         $shop = $this->connectedShop('upsell-strat.example.com');
@@ -162,7 +191,7 @@ final class WooCommerceOrderStrategyTest extends TestCase
 
         $plan = $this->plan($shop, PlanKind::RECURRING, ['public_id' => 'PUB-UP', 'installment_amount' => 10]);
 
-        Tenant::run($shop, fn () => (new WooCommerceOrderStrategy())->materialize($plan, ChargeContext::UPSELL));
+        Tenant::run($shop, fn () => (new WooCommerceOrderStrategy)->materialize($plan, ChargeContext::UPSELL));
 
         Http::assertNothingSent();
     }
@@ -178,7 +207,7 @@ final class WooCommerceOrderStrategyTest extends TestCase
 
         $plan = $this->plan($shop, PlanKind::INSTALLMENTS, ['public_id' => 'PUB-NC', 'total_amount' => 100]);
 
-        Tenant::run($shop, fn () => (new WooCommerceOrderStrategy())->materialize($plan, ChargeContext::DEPOSIT));
+        Tenant::run($shop, fn () => (new WooCommerceOrderStrategy)->materialize($plan, ChargeContext::DEPOSIT));
 
         Http::assertNothingSent();
     }
