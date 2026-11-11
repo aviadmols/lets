@@ -10,6 +10,7 @@ use App\Filament\Concerns\ShopScopedScreen;
 use App\Jobs\Shopify\RegisterShopifyWebhooksJob;
 use App\Models\InstallmentPlan;
 use App\Models\MerchantBillingSettings;
+use App\Models\MerchantCheckoutSettings;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
@@ -60,9 +61,7 @@ class ManageBillingSettings extends Page implements HasForms
 
     protected static ?string $slug = 'billing';
 
-
     /** Behind the one Settings item: in-page left index, URL /admin/settings/{slug}. */
-
     protected static ?string $cluster = SettingsCluster::class;
 
     protected static ?int $navigationSort = 30;
@@ -101,6 +100,8 @@ class ManageBillingSettings extends Page implements HasForms
 
         $this->form->fill([
             'subscription_rail' => $shop instanceof Shop ? $shop->subscriptionRail() : Shop::RAIL_PAYPLUS,
+
+            'payment_page_language' => MerchantCheckoutSettings::current()->languageCode(),
 
             'retry_interval_hours' => $settings->retryIntervalHours(),
             'max_charge_attempts' => $settings->maxChargeAttempts(),
@@ -153,6 +154,7 @@ class ManageBillingSettings extends Page implements HasForms
             ->schema([
                 $this->railSection(),
                 $this->liveChargingSection(),
+                $this->paymentPageSection(),
                 $this->recurringSection(),
                 $this->retriesSection(),
                 $this->installmentsSection(),
@@ -191,6 +193,31 @@ class ManageBillingSettings extends Page implements HasForms
                     ->columnSpanFull(),
             ])
             ->visible($shop instanceof Shop && $shop->platform === Shop::PLATFORM_SHOPIFY);
+    }
+
+    /**
+     * The PayPlus payment page's language — the same column the WooCommerce
+     * plugin's own "Page language" field writes (merchant_checkout_settings),
+     * so the two screens can never disagree. PayPlusPageOptions reads it for
+     * EVERY page the shop produces: checkout, deposit, subscription, card update.
+     */
+    private function paymentPageSection(): Section
+    {
+        return Section::make(__('billing.settings.payment_page.heading'))
+            ->description(__('billing.settings.payment_page.intro'))
+            ->schema([
+                ToggleButtons::make('payment_page_language')
+                    ->label(__('billing.settings.payment_page.language'))
+                    ->options(array_combine(
+                        MerchantCheckoutSettings::LANGUAGES,
+                        array_map(
+                            static fn (string $lang): string => __('billing.settings.payment_page.languages.'.$lang),
+                            MerchantCheckoutSettings::LANGUAGES,
+                        ),
+                    ))
+                    ->inline()
+                    ->required(),
+            ]);
     }
 
     /** Payments & retries — backoff schedule, attempt ceiling, grace window. */
@@ -564,6 +591,7 @@ class ManageBillingSettings extends Page implements HasForms
         $settings = MerchantBillingSettings::current();
 
         $this->saveSubscriptionRail($input['subscription_rail'] ?? null);
+        $this->savePaymentPageLanguage($input['payment_page_language'] ?? null);
 
         $settings->retry_interval_hours = max(1, (int) ($input['retry_interval_hours'] ?? MerchantBillingSettings::DEFAULT_RETRY_INTERVAL_HOURS));
         $settings->max_charge_attempts = max(1, (int) ($input['max_charge_attempts'] ?? MerchantBillingSettings::DEFAULT_MAX_CHARGE_ATTEMPTS));
@@ -672,6 +700,18 @@ class ManageBillingSettings extends Page implements HasForms
             ->success()
             ->persistent()
             ->send();
+    }
+
+    /** Only a language PayPlus knows is ever stored; anything else keeps the current one. */
+    private function savePaymentPageLanguage(mixed $value): void
+    {
+        if (! in_array($value, MerchantCheckoutSettings::LANGUAGES, true)) {
+            return;
+        }
+
+        $checkout = MerchantCheckoutSettings::current();
+        $checkout->language_code = $value;
+        $checkout->save();
     }
 
     /**

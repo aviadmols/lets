@@ -237,6 +237,18 @@ return [
             'single_subscription_help' => 'Refuses a second subscription at checkout when the customer already has a live one, and points them to their account area. It never touches subscriptions they already hold.',
         ],
 
+        'payment_page' => [
+            'heading' => 'Payment page',
+            'intro' => 'The PayPlus page your customers pay on: checkout, deposits, subscriptions and card updates.',
+            'language' => 'Page language',
+            'languages' => [
+                'he' => 'Hebrew',
+                'en' => 'English',
+                'ar' => 'Arabic',
+                'ru' => 'Russian',
+            ],
+        ],
+
         'policy' => [
             'heading' => 'Policy & terms',
             'intro' => 'Shown to customers and snapshotted into the consent record they accept.',
