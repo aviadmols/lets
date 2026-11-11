@@ -485,6 +485,35 @@ class InstallmentPlan extends Model
     }
 
     /**
+     * The address meta a plan that REPLACES this one should start with (an
+     * account-area switch births a new plan for the same person).
+     *
+     * Without it the switch dropped the address: the new plan has no order of its
+     * own to read one from, so a guest subscriber who switched ended up with no
+     * address anywhere — and their renewal orders had nowhere to ship.
+     *
+     * An admin's correction stays an admin's correction (META_CONTACT_ADDRESS);
+     * anything else — the import's copy or the checkout's — travels as the
+     * checkout address, the plan's own "where they asked us to ship" slot.
+     * `[]` when this plan knows no address.
+     *
+     * @return array<string, array<string, string>>
+     */
+    public function addressMetaForSuccessor(): array
+    {
+        $address = $this->contactAddress();
+        if ($address === []) {
+            return [];
+        }
+
+        $key = isset(((array) ($this->meta ?? []))[self::META_CONTACT_ADDRESS])
+            ? self::META_CONTACT_ADDRESS
+            : self::META_CHECKOUT_ADDRESS;
+
+        return [$key => $address];
+    }
+
+    /**
      * The customer's address, as known to this plan: the admin-edited copy when
      * one exists, else what the migration file carried, else what the shopper
      * typed at checkout. Keys are ADDRESS_FIELDS; only non-empty strings survive,

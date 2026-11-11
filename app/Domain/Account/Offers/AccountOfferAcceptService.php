@@ -319,6 +319,9 @@ final class AccountOfferAcceptService
             // An IMMEDIATE switch charges now and the charge path promotes it.
             'born_active' => ! $immediate,
             'meta' => [
+                // The address travels with the person, like the name and card
+                // above — the new plan has no order of its own to read one from.
+                ...$source->addressMetaForSuccessor(),
                 InstallmentPlan::META_ACCOUNT_OFFER => [
                     'offer_id' => (string) $offer->getKey(),
                     'target' => $target->stableKey(),

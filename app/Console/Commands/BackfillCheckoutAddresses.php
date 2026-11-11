@@ -10,6 +10,7 @@ use App\Services\WooCommerce\WooClientFactory;
 use App\Support\Tenant;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -22,9 +23,14 @@ use Illuminate\Support\Facades\Log;
  * plan's origin order (in bulk, a hundred to a request) and keeps its address on
  * the plan, exactly as a new checkout now does.
  *
+ * A plan born from an account-area SWITCH has no order of its own. Until the switch
+ * carried the address over (InstallmentPlan::addressMetaForSuccessor), such a plan
+ * lost it — so this also copies it from the plan the switch replaced, walking back
+ * through earlier switches.
+ *
  * FILL-ONLY and safe to re-run: a plan that already holds an address (an import's,
- * an admin's correction, or a previous run's) is skipped. Plans with no WooCommerce
- * order behind them (imported members, payment-page deposits) are not touched.
+ * an admin's correction, or a previous run's) is skipped. Plans with neither an
+ * order nor a predecessor (imported members, payment-page deposits) are not touched.
  */
 final class BackfillCheckoutAddresses extends Command
 {
@@ -37,6 +43,9 @@ final class BackfillCheckoutAddresses extends Command
 
     /** Plans read per chunk; orders are then fetched a hundred to a request. */
     private const CHUNK = 200;
+
+    /** How far back through switch-after-switch a plan's address is looked for. */
+    private const MAX_SWITCH_HOPS = 10;
 
     public function handle(CheckoutAddressCapture $capture): int
     {
@@ -53,10 +62,15 @@ final class BackfillCheckoutAddresses extends Command
                 continue;
             }
 
-            $rows[] = [$shop->getKey(), $shop->name, ...$this->backfillShop($shop, $capture, $dryRun)];
+            $rows[] = [
+                $shop->getKey(),
+                $shop->name,
+                ...$this->backfillShop($shop, $capture, $dryRun),
+                $this->inheritFromSwitches($shop, $dryRun),
+            ];
         }
 
-        $this->table(['shop', 'name', 'missing', 'filled', 'order has no address', 'order not found'], $rows);
+        $this->table(['shop', 'name', 'missing', 'filled', 'order has no address', 'order not found', 'filled from switch'], $rows);
         $this->info($dryRun ? 'Dry run — nothing was written.' : 'Done.');
 
         return self::SUCCESS;
@@ -124,6 +138,98 @@ final class BackfillCheckoutAddresses extends Command
             }
 
             return [$missing, $filled, $noAddress, $notFound];
+        });
+    }
+
+    /**
+     * Plans an account-area switch created with no address: copy it from the plan
+     * the switch replaced (or the one before that). Returns how many were filled
+     * (or would be, on a dry run).
+     */
+    private function inheritFromSwitches(Shop $shop, bool $dryRun): int
+    {
+        return Tenant::run($shop, function () use ($shop, $dryRun): int {
+            $filled = 0;
+
+            InstallmentPlan::query()
+                ->whereNull('external_order_id')
+                ->whereNull('shopify_order_id')
+                ->chunkById(self::CHUNK, function (Collection $plans) use ($dryRun, &$filled): void {
+                    foreach ($plans as $plan) {
+                        if ($plan->contactAddress() !== []) {
+                            continue;
+                        }
+
+                        $inherited = $this->predecessorAddress($plan);
+                        if ($inherited === []) {
+                            continue;
+                        }
+
+                        if ($dryRun || $this->fillFromPredecessor($plan, $inherited)) {
+                            $filled++;
+                        }
+                    }
+                });
+
+            if ($filled > 0 && ! $dryRun) {
+                Log::info('customers.checkout_address.inherited_from_switch', [
+                    'shop_id' => $shop->getKey(),
+                    'plans' => $filled,
+                ]);
+            }
+
+            return $filled;
+        });
+    }
+
+    /**
+     * The address meta of the nearest plan up the switch chain that has one.
+     *
+     * @return array<string, array<string, string>>
+     */
+    private function predecessorAddress(InstallmentPlan $plan): array
+    {
+        $current = $plan;
+        for ($hop = 0; $hop < self::MAX_SWITCH_HOPS; $hop++) {
+            $sourceId = trim((string) data_get($current->meta, InstallmentPlan::META_ACCOUNT_OFFER.'.source_plan_public_id', ''));
+            if ($sourceId === '') {
+                return [];
+            }
+
+            $source = InstallmentPlan::query()->where('public_id', $sourceId)->first();
+            if ($source === null) {
+                return [];
+            }
+
+            $meta = $source->addressMetaForSuccessor();
+            if ($meta !== []) {
+                return $meta;
+            }
+
+            $current = $source;
+        }
+
+        return [];
+    }
+
+    /**
+     * Write it under a row lock, re-checking that the plan is still empty — the
+     * same fill-only rule as CheckoutAddressCapture.
+     *
+     * @param  array<string, array<string, string>>  $inherited
+     */
+    private function fillFromPredecessor(InstallmentPlan $plan, array $inherited): bool
+    {
+        return DB::transaction(function () use ($plan, $inherited): bool {
+            /** @var InstallmentPlan|null $fresh */
+            $fresh = InstallmentPlan::query()->lockForUpdate()->find($plan->getKey());
+            if ($fresh === null || $fresh->contactAddress() !== []) {
+                return false;
+            }
+
+            $fresh->forceFill(['meta' => array_merge((array) ($fresh->meta ?? []), $inherited)])->save();
+
+            return true;
         });
     }
 }

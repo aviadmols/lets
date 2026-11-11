@@ -18,7 +18,7 @@ return [
 
     'by_type' => [
         'title' => 'Active subscriptions by type',
-        'subtitle' => 'As of today · :customers customers',
+        'subtitle' => ':active subscriptions held by :customers customers · as of today',
         'type' => 'Subscription type',
         'active' => 'Active',
         'mrr' => 'Monthly revenue',

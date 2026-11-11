@@ -337,6 +337,43 @@ final class AccountOfferAcceptServiceTest extends TestCase
         });
     }
 
+    public function test_a_switch_carries_the_address_to_the_new_plan(): void
+    {
+        $this->inShop(function (): void {
+            $address = ['street' => 'אליהו הנביא', 'building_number' => '18', 'city' => 'חיפה'];
+            [$offer, $source, $visitor] = $this->scenario(
+                ['replace_timing' => AccountOfferTarget::TIMING_PERIOD_END],
+                ['meta' => [InstallmentPlan::META_CHECKOUT_ADDRESS => $address]],
+            );
+
+            $outcome = $this->service()->accept($visitor, $source, (string) $offer->getKey(), '', 49.0);
+
+            // The new plan has no order of its own to read an address from — a
+            // guest who switched lost theirs, and renewals had nowhere to ship.
+            $this->assertSame($address, $outcome->plan->fresh()->contactAddress());
+        });
+    }
+
+    public function test_an_admin_corrected_address_stays_an_admin_correction_after_a_switch(): void
+    {
+        $this->inShop(function (): void {
+            $corrected = ['street' => 'הרצל', 'building_number' => '5', 'city' => 'תל אביב'];
+            [$offer, $source, $visitor] = $this->scenario(
+                ['replace_timing' => AccountOfferTarget::TIMING_PERIOD_END],
+                ['meta' => [
+                    InstallmentPlan::META_CHECKOUT_ADDRESS => ['street' => 'ישן', 'city' => 'חיפה'],
+                    InstallmentPlan::META_CONTACT_ADDRESS => $corrected,
+                ]],
+            );
+
+            $outcome = $this->service()->accept($visitor, $source, (string) $offer->getKey(), '', 49.0);
+
+            $meta = (array) $outcome->plan->fresh()->meta;
+            $this->assertSame($corrected, $meta[InstallmentPlan::META_CONTACT_ADDRESS] ?? null);
+            $this->assertSame($corrected, $outcome->plan->fresh()->contactAddress());
+        });
+    }
+
     public function test_a_scheduled_switch_still_counts_as_having_a_subscription_before_it_bills(): void
     {
         $this->inShop(function (): void {

@@ -18,7 +18,7 @@ return [
 
     'by_type' => [
         'title' => 'מנויים פעילים לפי סוג',
-        'subtitle' => 'נכון להיום · :customers לקוחות',
+        'subtitle' => ':active מנויים של :customers לקוחות · נכון להיום',
         'type' => 'סוג מנוי',
         'active' => 'פעילים',
         'mrr' => 'הכנסה חודשית',

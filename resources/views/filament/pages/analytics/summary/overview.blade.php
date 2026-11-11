@@ -46,7 +46,7 @@
     {{-- Active now: by type + trend --}}
     <div class="rc-an-grid rc-an-grid--2">
         <x-rc.chart.card flush :title="__('analytics/summary_overview.by_type.title')"
-                         :subtitle="__('analytics/summary_overview.by_type.subtitle', ['customers' => $customers])">
+                         :subtitle="__('analytics/summary_overview.by_type.subtitle', ['active' => $active, 'customers' => $customers])">
             <x-rc.chart.table :columns="[
                     ['key' => 'type', 'label' => __('analytics/summary_overview.by_type.type'), 'strong' => true],
                     ['key' => 'active', 'label' => __('analytics/summary_overview.by_type.active'), 'numeric' => true],

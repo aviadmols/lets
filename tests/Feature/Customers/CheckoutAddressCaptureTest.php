@@ -221,6 +221,36 @@ final class CheckoutAddressCaptureTest extends TestCase
         $this->assertSame([], $imported->fresh()->contactAddress());
     }
 
+    public function test_the_backfill_gives_a_switched_plan_the_address_of_the_plan_it_replaced(): void
+    {
+        $shop = $this->wooShop();
+        $address = ['street' => 'אליהו הנביא', 'building_number' => '18', 'city' => 'חיפה'];
+
+        Tenant::set($shop);
+        // checkout plan → switched once (no address) → switched again (no address)
+        $original = $this->plan($shop, orderId: '900', meta: [InstallmentPlan::META_CHECKOUT_ADDRESS => $address]);
+        $middle = $this->plan($shop, orderId: null, meta: [
+            InstallmentPlan::META_ACCOUNT_OFFER => ['source_plan_public_id' => $original->public_id],
+        ]);
+        $latest = $this->plan($shop, orderId: null, meta: [
+            InstallmentPlan::META_ACCOUNT_OFFER => ['source_plan_public_id' => $middle->public_id],
+        ]);
+        $handMade = $this->plan($shop, orderId: null);
+        Tenant::clear();
+
+        Http::fake(['*' => Http::response([], 200)]);
+
+        $this->artisan('lets:subscriptions:backfill-checkout-addresses', ['--shop' => $shop->getKey()])
+            ->assertSuccessful();
+
+        Tenant::set($shop);
+        $this->assertSame($address, $middle->fresh()->contactAddress());
+        $this->assertSame($address, $latest->fresh()->contactAddress());
+        // the switch record itself is untouched
+        $this->assertSame($middle->public_id, data_get($latest->fresh()->meta, 'account_offer.source_plan_public_id'));
+        $this->assertSame([], $handMade->fresh()->contactAddress());
+    }
+
     public function test_a_backfill_dry_run_writes_nothing(): void
     {
         $shop = $this->wooShop();
