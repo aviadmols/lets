@@ -86,6 +86,18 @@ final class WooConnectionTester
     }
 
     /**
+     * The plugin version the store reports, or null when the store cannot be
+     * reached or runs a build without the status route. For the merchant's own
+     * Settings → WordPress plugin page.
+     */
+    public function installedPluginVersion(Shop $shop): ?string
+    {
+        $version = $this->probePlugin($shop)['version'];
+
+        return $version !== '' ? $version : null;
+    }
+
+    /**
      * GET the LETS plugin's status route and classify it against this shop's stored key
      * hash. Returns ['state' => match|mismatch|not_connected|not_found|unreachable, 'version' => string].
      *
