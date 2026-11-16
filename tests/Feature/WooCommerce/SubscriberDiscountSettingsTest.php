@@ -52,7 +52,7 @@ final class SubscriberDiscountSettingsTest extends TestCase
                 ->assertHasNoFormErrors();
 
             $this->assertSame(
-                ['percent' => 20.0, 'category_ids' => ['7']],
+                ['percent' => 20.0, 'category_ids' => ['7'], 'excluded_category_ids' => []],
                 MerchantBillingSettings::current()->fresh()->subscriberDiscountRule(),
             );
         });
@@ -61,6 +61,37 @@ final class SubscriberDiscountSettingsTest extends TestCase
             ->assertOk()
             ->assertJsonPath('account.purchase.subscriber_discount.percent', 20)
             ->assertJsonPath('account.purchase.subscriber_discount.category_ids', ['7']);
+    }
+
+    public function test_excluded_categories_are_saved_and_ride_the_shell(): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop('sd-exclude.example.com');
+
+        Tenant::run($shop, function () use ($shop): void {
+            $this->category('Books', '7');
+            $this->category('Bestsellers', '8');
+            $this->actingAs(User::factory()->forShop($shop)->create());
+
+            Livewire::test(ManageBillingSettings::class)
+                ->assertSee(__('billing.settings.subscriber_discount.excluded_categories'))
+                ->set('data.subscriber_discount_enabled', true)
+                ->set('data.subscriber_discount_percent', '15')
+                ->set('data.subscriber_discount_category_ids', ['7'])
+                // Excluding is optional and never needs a covered category; '999' is not this shop's.
+                ->set('data.subscriber_discount_excluded_category_ids', ['8', '999'])
+                ->call('save')
+                ->assertHasNoFormErrors();
+
+            $this->assertSame(['8'], MerchantBillingSettings::current()->fresh()->subscriberDiscountExcludedCategoryIds());
+
+            Livewire::test(ManageBillingSettings::class)
+                ->assertSet('data.subscriber_discount_excluded_category_ids', ['8']);
+        });
+
+        $this->signedPost($key, $secret, self::BOOTSTRAP, ['customer_ref' => ''])
+            ->assertOk()
+            ->assertJsonPath('account.purchase.subscriber_discount.category_ids', ['7'])
+            ->assertJsonPath('account.purchase.subscriber_discount.excluded_category_ids', ['8']);
     }
 
     public function test_an_unconfigured_shop_discounts_nothing(): void
@@ -92,7 +123,7 @@ final class SubscriberDiscountSettingsTest extends TestCase
             $settings->forceFill(['subscriber_discount_enabled' => true, 'subscriber_discount_percent' => 150, 'subscriber_discount_category_ids' => ['7', 'abc']])->save();
 
             $this->assertSame(
-                ['percent' => (float) MerchantBillingSettings::MAX_SUBSCRIBER_DISCOUNT_PERCENT, 'category_ids' => ['7']],
+                ['percent' => (float) MerchantBillingSettings::MAX_SUBSCRIBER_DISCOUNT_PERCENT, 'category_ids' => ['7'], 'excluded_category_ids' => []],
                 $settings->fresh()->subscriberDiscountRule(),
             );
         });

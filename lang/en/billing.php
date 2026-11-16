@@ -256,6 +256,8 @@ return [
             'percent' => 'Discount',
             'categories' => 'Categories',
             'categories_help' => 'The discount applies to products in any of the categories you tick.',
+            'excluded_categories' => 'Categories with no discount',
+            'excluded_categories_help' => 'A product in any of these categories (or under one) never gets the discount, even if it is also in a category ticked above.',
             'no_categories' => 'No categories yet. Open Products and click "Refresh products" to pull your store\'s categories.',
         ],
 

@@ -220,6 +220,7 @@ class MerchantBillingSettings extends Model
             'subscriber_discount_enabled' => 'boolean',
             'subscriber_discount_percent' => 'decimal:2',
             'subscriber_discount_category_ids' => 'array',
+            'subscriber_discount_excluded_category_ids' => 'array',
         ];
     }
 
@@ -478,21 +479,24 @@ class MerchantBillingSettings extends Model
     /** @return list<string> the WooCommerce category ids the discount covers */
     public function subscriberDiscountCategoryIds(): array
     {
-        $raw = $this->subscriber_discount_category_ids;
-        if (! is_array($raw)) {
-            return [];
-        }
+        return self::categoryIdList($this->subscriber_discount_category_ids);
+    }
 
-        $ids = array_filter(array_map(static fn ($id): string => trim((string) $id), $raw), static fn (string $id): bool => ctype_digit($id));
-
-        return array_values(array_unique($ids));
+    /**
+     * @return list<string> the WooCommerce category ids the discount never
+     *                      touches — a product in (or under) one stays at full
+     *                      price even when it also sits in a covered category
+     */
+    public function subscriberDiscountExcludedCategoryIds(): array
+    {
+        return self::categoryIdList($this->subscriber_discount_excluded_category_ids);
     }
 
     /**
      * The rule the plugin applies in the cart, or null when nothing would be
      * discounted (switched off, no percent, or no category chosen).
      *
-     * @return array{percent: float, category_ids: list<string>}|null
+     * @return array{percent: float, category_ids: list<string>, excluded_category_ids: list<string>}|null
      */
     public function subscriberDiscountRule(): ?array
     {
@@ -503,7 +507,23 @@ class MerchantBillingSettings extends Model
             return null;
         }
 
-        return ['percent' => $percent, 'category_ids' => $categories];
+        return [
+            'percent' => $percent,
+            'category_ids' => $categories,
+            'excluded_category_ids' => $this->subscriberDiscountExcludedCategoryIds(),
+        ];
+    }
+
+    /** @return list<string> digit-only, de-duplicated ids from a stored JSON list */
+    private static function categoryIdList(mixed $raw): array
+    {
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        $ids = array_filter(array_map(static fn ($id): string => trim((string) $id), $raw), static fn (string $id): bool => ctype_digit($id));
+
+        return array_values(array_unique($ids));
     }
 
     /** The store page activation links open on, or null for the LETS page. */

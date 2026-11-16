@@ -42,7 +42,7 @@ define('LETS_SD_ITEM_KEY', 'lets_subscriber_discount');
 /**
  * The shop's rule from the cached shell, validated, or null when off.
  *
- * @return array{percent: float, category_ids: int[]}|null
+ * @return array{percent: float, category_ids: int[], excluded_category_ids: int[]}|null
  */
 function lets_payplus_subscriber_discount_rule()
 {
@@ -58,12 +58,13 @@ function lets_payplus_subscriber_discount_rule()
 
     $percent = isset($rule['percent']) ? (float) $rule['percent'] : 0.0;
     $ids     = array_values(array_filter(array_map('absint', isset($rule['category_ids']) ? (array) $rule['category_ids'] : array())));
+    $skip    = array_values(array_filter(array_map('absint', isset($rule['excluded_category_ids']) ? (array) $rule['excluded_category_ids'] : array())));
 
     if ($percent <= 0 || $percent > LETS_SD_MAX_PERCENT || array() === $ids) {
         return null;
     }
 
-    return array('percent' => $percent, 'category_ids' => $ids);
+    return array('percent' => $percent, 'category_ids' => $ids, 'excluded_category_ids' => $skip);
 }
 
 /**
@@ -148,13 +149,15 @@ function lets_payplus_subscriber_discount_is_subscriber($email)
 
 /**
  * Does this cart line fall under the rule? Its product (or, for a variation,
- * the parent) sits in a chosen category or under one.
+ * the parent) sits in a chosen category or under one — and in no excluded
+ * category, nor under one. An exclusion always wins.
  *
  * @param  array  $item
  * @param  int[]  $category_ids
+ * @param  int[]  $excluded_ids
  * @return bool
  */
-function lets_payplus_subscriber_discount_covers($item, $category_ids)
+function lets_payplus_subscriber_discount_covers($item, $category_ids, $excluded_ids = array())
 {
     if (! empty($item['_lets_subscription']) || empty($item['data']) || ! $item['data'] instanceof WC_Product) {
         return false;
@@ -164,18 +167,20 @@ function lets_payplus_subscriber_discount_covers($item, $category_ids)
     $id      = $product->get_parent_id() ? $product->get_parent_id() : $product->get_id();
     $terms   = array_map('intval', (array) wc_get_product_term_ids($id, 'product_cat'));
 
+    // Every category the product sits in, with each one's parents above it.
+    $lineage = array();
     foreach ($terms as $term) {
-        if (in_array($term, $category_ids, true)) {
-            return true;
-        }
+        $lineage[] = $term;
         foreach ((array) get_ancestors($term, 'product_cat', 'taxonomy') as $ancestor) {
-            if (in_array((int) $ancestor, $category_ids, true)) {
-                return true;
-            }
+            $lineage[] = (int) $ancestor;
         }
     }
 
-    return false;
+    if (array() !== array_intersect($lineage, $excluded_ids)) {
+        return false;
+    }
+
+    return array() !== array_intersect($lineage, $category_ids);
 }
 
 /* -------------------------------------------------------------------------
@@ -196,7 +201,7 @@ add_action('woocommerce_before_calculate_totals', function ($cart) {
     $covered = array();
     foreach ($cart->get_cart() as $key => $item) {
         unset($cart->cart_contents[$key][LETS_SD_ITEM_KEY]); // re-earned every time, or not at all
-        if (null !== $rule && lets_payplus_subscriber_discount_covers($item, $rule['category_ids'])) {
+        if (null !== $rule && lets_payplus_subscriber_discount_covers($item, $rule['category_ids'], $rule['excluded_category_ids'])) {
             $covered[] = $key;
         }
     }

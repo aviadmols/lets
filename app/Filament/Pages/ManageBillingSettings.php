@@ -107,6 +107,7 @@ class ManageBillingSettings extends Page implements HasForms
             'subscriber_discount_enabled' => (bool) $settings->subscriber_discount_enabled,
             'subscriber_discount_percent' => $settings->subscriberDiscountPercent() > 0 ? $settings->subscriberDiscountPercent() : null,
             'subscriber_discount_category_ids' => $settings->subscriberDiscountCategoryIds(),
+            'subscriber_discount_excluded_category_ids' => $settings->subscriberDiscountExcludedCategoryIds(),
 
             'retry_interval_hours' => $settings->retryIntervalHours(),
             'max_charge_attempts' => $settings->maxChargeAttempts(),
@@ -260,6 +261,15 @@ class ManageBillingSettings extends Page implements HasForms
                     ->bulkToggleable()
                     ->required(fn (Get $get): bool => (bool) $get('subscriber_discount_enabled'))
                     ->columnSpanFull(),
+                CheckboxList::make('subscriber_discount_excluded_category_ids')
+                    ->label(__('billing.settings.subscriber_discount.excluded_categories'))
+                    ->helperText(__('billing.settings.subscriber_discount.excluded_categories_help'))
+                    ->options(fn (): array => $this->subscriberDiscountCategoryOptions())
+                    ->columns(2)
+                    ->searchable()
+                    ->bulkToggleable()
+                    ->visible(fn (): bool => $this->subscriberDiscountCategoryOptions() !== [])
+                    ->columnSpanFull(),
             ])
             ->columns(2)
             ->visible($shop instanceof Shop && $shop->platform === Shop::PLATFORM_WOOCOMMERCE);
@@ -278,7 +288,8 @@ class ManageBillingSettings extends Page implements HasForms
             $options[$category['id']] = $category['name'].' ('.$category['count'].')';
         }
 
-        foreach (MerchantBillingSettings::current()->subscriberDiscountCategoryIds() as $saved) {
+        $settings = MerchantBillingSettings::current();
+        foreach ([...$settings->subscriberDiscountCategoryIds(), ...$settings->subscriberDiscountExcludedCategoryIds()] as $saved) {
             $options[$saved] ??= '#'.$saved;
         }
 
@@ -782,6 +793,7 @@ class ManageBillingSettings extends Page implements HasForms
     {
         $offered = array_map('strval', array_keys($this->subscriberDiscountCategoryOptions()));
         $chosen = array_values(array_intersect(array_map('strval', (array) ($input['subscriber_discount_category_ids'] ?? [])), $offered));
+        $excluded = array_values(array_intersect(array_map('strval', (array) ($input['subscriber_discount_excluded_category_ids'] ?? [])), $offered));
         $percent = $this->nullableAmount($input['subscriber_discount_percent'] ?? null);
 
         $settings->subscriber_discount_enabled = (bool) $input['subscriber_discount_enabled'];
@@ -789,6 +801,7 @@ class ManageBillingSettings extends Page implements HasForms
             ? null
             : max(0.0, min((float) MerchantBillingSettings::MAX_SUBSCRIBER_DISCOUNT_PERCENT, $percent));
         $settings->subscriber_discount_category_ids = $chosen;
+        $settings->subscriber_discount_excluded_category_ids = $excluded;
     }
 
     /** Only a language PayPlus knows is ever stored; anything else keeps the current one. */

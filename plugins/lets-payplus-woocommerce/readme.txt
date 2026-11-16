@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.64.0
+Stable tag: 0.65.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,10 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.65.0 =
+* Subscribers' discount: categories can be excluded. A product in (or under) an excluded
+  category keeps its full price, even when it also sits in a covered category.
 
 = 0.64.0 =
 * Subscribers' discount: customers with a paid, running subscription get the percent set in
