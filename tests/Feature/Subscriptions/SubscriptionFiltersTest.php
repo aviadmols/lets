@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Subscriptions;
 
+use App\Filament\Pages\PaymentRecovery;
 use App\Filament\Resources\SubscriptionResource\Pages\ListSubscriptions;
 use App\Models\InstallmentPayment;
 use App\Models\InstallmentPlan;
@@ -139,15 +140,22 @@ final class SubscriptionFiltersTest extends TestCase
 
         $failing = $this->plan('failing');
         $this->payment($failing, 1, PaymentStatus::SUCCEEDED);
-        $this->payment($failing, 2, PaymentStatus::FAILED);
+        $this->payment($failing, 2, PaymentStatus::RETRY_SCHEDULED);
 
         $terminal = $this->plan('terminal');
         $terminal->forceFill(['status' => PlanStatus::FAILED->value])->save();
 
-        Livewire::test(ListSubscriptions::class)
+        // Cancelled after its last charge failed: nobody is asking it for money any more.
+        $gone = $this->plan('gone');
+        $this->payment($gone, 1, PaymentStatus::FAILED);
+        $gone->forceFill(['status' => PlanStatus::CANCELLED->value])->save();
+
+        $page = Livewire::test(ListSubscriptions::class)
             ->set('activeTab', 'failing')
             ->assertCanSeeTableRecords([$failing, $terminal])
-            ->assertCanNotSeeTableRecords([$recovered]);
+            ->assertCanNotSeeTableRecords([$recovered, $gone]);
+
+        $this->assertSame(PaymentRecovery::getNavigationBadge(), (string) $page->instance()->getTabs()['failing']->getBadge(), 'the tab and the sidebar badge count the same plans');
     }
 
     /** The file is what the screen shows — not the whole book. */

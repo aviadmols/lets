@@ -5,12 +5,10 @@ namespace App\Filament\Resources\SubscriptionResource\Pages;
 use App\Domain\Import\SubscriptionExporter;
 use App\Filament\Actions\NewSubscription;
 use App\Filament\Pages\BulkEditSubscriptions;
+use App\Filament\Pages\PaymentRecovery;
 use App\Filament\Resources\SubscriptionResource;
-use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
-use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Support\Tenant;
-use App\Support\Ui\Money;
 use Filament\Actions\Action;
 use Filament\Resources\Components\Tab;
 use Filament\Resources\Pages\ListRecords;
@@ -46,8 +44,6 @@ class ListSubscriptions extends ListRecords
      * needed counted. Counts above this show as "99+".
      */
     public const BADGE_CEILING = 99;
-
-    public const SUBHEADING_GLUE = ' · ';
 
     /**
      * Export WHAT THE SCREEN IS SHOWING.
@@ -118,33 +114,6 @@ class ListSubscriptions extends ListRecords
     public function getBreadcrumbs(): array
     {
         return [];
-    }
-
-    /**
-     * "1,284 subscriptions · 1,102 recurring · 182 installment plans" — the size
-     * of the book at a glance, from ONE grouped count (tenant-scoped through the
-     * resource query).
-     */
-    public function getSubheading(): ?string
-    {
-        $byKind = static::getResource()::getEloquentQuery()
-            ->toBase()
-            ->selectRaw('plan_kind, COUNT(*) as aggregate')
-            ->groupBy('plan_kind')
-            ->pluck('aggregate', 'plan_kind')
-            ->map(fn ($n): int => (int) $n);
-
-        $total = $byKind->sum();
-
-        if ($total === 0) {
-            return null;
-        }
-
-        return implode(self::SUBHEADING_GLUE, [
-            trans_choice('subscriptions.list.summary.total', $total, ['count' => Money::number($total)]),
-            trans_choice('subscriptions.list.summary.recurring', $byKind[PlanKind::RECURRING->value] ?? 0, ['count' => Money::number($byKind[PlanKind::RECURRING->value] ?? 0)]),
-            trans_choice('subscriptions.list.summary.installments', $byKind[PlanKind::INSTALLMENTS->value] ?? 0, ['count' => Money::number($byKind[PlanKind::INSTALLMENTS->value] ?? 0)]),
-        ]);
     }
 
     /**
@@ -235,20 +204,20 @@ class ListSubscriptions extends ListRecords
     }
 
     /**
-     * Plans whose money did not go through: the terminally failed, and the ones
-     * whose LATEST attempt failed or is waiting on a retry.
+     * Plans whose money did not go through — EXACTLY what the "Failed charges"
+     * screen counts on its sidebar badge: still being retried (a live plan whose
+     * LATEST slot waits on a retry) or stopped (failed, or paused by the engine
+     * when the attempts ran out). One definition, so the tab and the badge always
+     * show the same number.
      *
      * The latest attempt only — a plan that failed once a year ago and has billed
-     * cleanly every month since is not a failing plan, and a naive whereHas would
-     * have called it one and buried the real ones.
+     * cleanly every month since is not a failing plan.
      */
     private static function failingQuery(Builder $query): Builder
     {
         return $query->where(fn (Builder $q): Builder => $q
-            ->where('status', PlanStatus::FAILED->value)
-            ->orWhereHas('payments', fn (Builder $p): Builder => $p
-                ->whereIn('status', [PaymentStatus::FAILED->value, PaymentStatus::RETRY_SCHEDULED->value])
-                ->whereRaw('sequence = (select max(sequence) from installment_payments p2 where p2.plan_id = installment_payments.plan_id)')));
+            ->where(fn (Builder $r): Builder => PaymentRecovery::scopeFor(PaymentRecovery::TAB_RETRYING, $r))
+            ->orWhere(fn (Builder $r): Builder => PaymentRecovery::scopeFor(PaymentRecovery::TAB_STOPPED, $r)));
     }
 
     /**
