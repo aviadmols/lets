@@ -1,0 +1,38 @@
+/* analytics-upsells.css — Analytics › Upsells › Added: the offer's path
+   (shown → accepted → charged → not charged) and the KPI formula line.
+   TOKENS: --rc-surface-sunk --rc-blue --rc-blue-bg --rc-ink --rc-ink-muted
+           --rc-ink-on-primary --rc-amber-bg --rc-amber-ink --rc-amber-border
+           --rc-border-soft --rc-radius-card --rc-radius-pill --rc-space-*
+           --rc-type-label --rc-type-caption --rc-type-h
+   RULES: logical properties only; the boxes flow in the page direction. */
+
+/* The path — four boxes, one row on desktop, two by two on a tablet, stacked on a phone. */
+.rc-an-steps {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--rc-space-3);
+    margin: 0; padding: 0; list-style: none;
+}
+@media (max-width: 1100px) { .rc-an-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px)  { .rc-an-steps { grid-template-columns: minmax(0, 1fr); } }
+
+.rc-an-step {
+    --rc-step-bg: var(--rc-surface-sunk);
+    --rc-step-rate-bg: var(--rc-border-soft);
+    --rc-step-rate-ink: var(--rc-ink-muted);
+    display: flex; flex-direction: column; gap: var(--rc-space-1); min-inline-size: 0;
+    padding: 18px; border-radius: var(--rc-radius-card); background: var(--rc-step-bg);
+}
+.rc-an-step--accepted { --rc-step-bg: var(--rc-blue-bg); --rc-step-rate-bg: rgba(59, 91, 219, .18); --rc-step-rate-ink: var(--rc-blue); }
+.rc-an-step--charged  { --rc-step-bg: rgba(59, 91, 219, .14); --rc-step-rate-bg: var(--rc-blue); --rc-step-rate-ink: var(--rc-ink-on-primary); }
+.rc-an-step--pending  { --rc-step-bg: var(--rc-amber-bg); --rc-step-rate-bg: var(--rc-amber-border); --rc-step-rate-ink: var(--rc-amber-ink); }
+
+.rc-an-step__name  { font: var(--rc-type-label); color: var(--rc-ink-muted); }
+.rc-an-step__value { font: var(--rc-type-h); font-size: 28px; line-height: 1.15; color: var(--rc-ink); font-variant-numeric: tabular-nums; }
+.rc-an-step__unit  { font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+.rc-an-step__rate {
+    align-self: flex-start; margin-block-start: 6px; padding: 3px 10px;
+    border-radius: var(--rc-radius-pill); background: var(--rc-step-rate-bg); color: var(--rc-step-rate-ink);
+    font: var(--rc-type-label);
+}
+
+/* How a KPI is computed — one quiet line under its value. */
+.rc-kpi__formula { font: var(--rc-type-caption); color: var(--rc-ink-muted); }

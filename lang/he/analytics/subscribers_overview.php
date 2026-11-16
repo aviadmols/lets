@@ -6,14 +6,14 @@ return [
     'as_of_today' => 'פעילים היום',
 
     'kpi' => [
-        'subscribers' => 'מנויים פעילים',
+        'subscribers' => 'לקוחות פעילים',
         'subscriptions' => 'מינויים פעילים',
         'quantity' => 'כמות מוצרים במינויים',
         'mrr' => 'MRR פעיל',
     ],
 
     'line' => [
-        'subscriber' => 'מנויים פעילים',
+        'subscriber' => 'לקוחות פעילים',
         'subscription' => 'מינויים פעילים',
     ],
 
@@ -31,7 +31,7 @@ return [
     'subscriptions_activity' => ['title' => 'פעילות מינויים'],
 
     'activity' => [
-        'active' => 'מנויים פעילים',
+        'active' => 'לקוחות פעילים',
         'active_subscriptions' => 'מינויים פעילים',
         'net' => 'שינוי נטו בפעילים',
         'additions' => 'הצטרפויות',

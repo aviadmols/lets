@@ -131,6 +131,34 @@ final class SummaryOverview extends AnalyticsScreen
         ];
     }
 
+    /**
+     * The screen's timeline as a CSV: one row per bucket of the trend chart (day /
+     * week / month, as the chart's toggle is set) — active at that point, joined
+     * and left inside it. Plain integers, so a spreadsheet can sum them.
+     */
+    public function export(Context $context): ?array
+    {
+        $context = $context->withoutFilters();
+        $series = (new SubscribersOverviewQuery($context))->get()['series'][self::CHART];
+        $joined = $this->bars($series, self::JOINED, 'joined', 's1')['bars'][0]['values'];
+        $left = $this->bars($series, self::LEFT, 'left', 's4')['bars'][0]['values'];
+
+        $rows = [];
+        foreach ($series['labels'] as $i => $label) {
+            $rows[] = [$label, (int) ($series['active'][$i] ?? 0), $joined[$i], $left[$i]];
+        }
+
+        return [
+            'headers' => [
+                __('analytics/summary_overview.export.bucket'),
+                __('analytics/summary_overview.trend.active'),
+                __('analytics/summary_overview.trend.joined'),
+                __('analytics/summary_overview.trend.left'),
+            ],
+            'rows' => $rows,
+        ];
+    }
+
     // === Shaping ===
 
     /** @param array<string, int> $counts  @param list<string> $types */

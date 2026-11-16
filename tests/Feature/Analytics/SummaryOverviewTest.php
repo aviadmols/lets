@@ -92,6 +92,25 @@ final class SummaryOverviewTest extends TestCase
         $this->assertSame('2', $d['by_type'][0]['active'], 'Biggest type first.');
     }
 
+    public function test_export_is_the_timeline_and_its_totals_match_the_screen(): void
+    {
+        $this->plan($this->shop, '1', 100, createdAt: CarbonImmutable::now()->subDays(90));
+        $this->plan($this->shop, '2', 100, createdAt: CarbonImmutable::now()->subDays(5));
+        $this->plan($this->shop, '3', 100, createdAt: CarbonImmutable::now()->subHours(2));
+
+        $screen = app(SummaryOverview::class);
+        $this->assertTrue($screen->exportable(), 'The summary screen offers a CSV — its Export button is enabled.');
+
+        $export = Tenant::run($this->shop, fn (): ?array => $screen->export(
+            new Context(Period::fromInput(Period::RANGE_30), Filters::none()),
+        ));
+
+        $this->assertCount(4, $export['headers']);
+        $this->assertNotEmpty($export['rows']);
+        $this->assertSame(2, array_sum(array_column($export['rows'], 2)), 'Joined per bucket sums to the screen\'s joined.');
+        $this->assertSame(3, end($export['rows'])[1], 'The last bucket is the active book today.');
+    }
+
     public function test_another_shop_is_never_counted(): void
     {
         $other = $this->makeShop('elsewhere');

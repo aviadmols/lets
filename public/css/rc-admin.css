@@ -357,6 +357,64 @@
 .rc-accordion__panel > div { overflow: hidden; }
 .rc-accordion__body { padding: 0 var(--rc-space-5) var(--rc-space-5); border-block-start: 1px solid var(--rc-border); padding-block-start: var(--rc-space-4); }
 
+/* analytics-cohorts.css — Analytics › Cohorts, retention read as churn: the
+   insight line, the cohort table whose cells say who stayed AND how many left,
+   and its legend.
+   TOKENS: --rc-blue --rc-blue-bg --rc-heat-2 --rc-heat-4 --rc-ink --rc-ink-muted
+           --rc-ink-on-primary --rc-surface-sunk --rc-border --rc-border-soft
+           --rc-border-strong --rc-amber-bg --rc-amber-ink --rc-amber-border
+           --rc-gray-bg --rc-gray-ink --rc-radius-card --rc-radius-control
+           --rc-radius-pill --rc-space-* --rc-type-*
+   RULES: logical properties only; the table mirrors in RTL. */
+
+/* The sentence the screen opens with. */
+.rc-an-insight {
+    display: flex; align-items: flex-start; gap: var(--rc-space-3);
+    padding: 14px 18px; border: 1px solid var(--rc-amber-border); border-radius: var(--rc-radius-card);
+    background: var(--rc-amber-bg); color: var(--rc-amber-ink);
+}
+.rc-an-insight__icon { inline-size: 20px; block-size: 20px; flex-shrink: 0; margin-block-start: 2px; }
+.rc-an-insight__text { display: flex; flex-direction: column; gap: 2px; min-inline-size: 0; }
+.rc-an-insight__title { font: var(--rc-type-body-strong); font-size: 15px; }
+.rc-an-insight__body { font: var(--rc-type-body); font-size: 13px; }
+
+/* The cohort table. */
+.rc-churn { inline-size: 100%; border-collapse: collapse; }
+.rc-churn th {
+    padding: var(--rc-space-2) 6px; background: var(--rc-surface-sunk); border-block-end: 1px solid var(--rc-border);
+    font: var(--rc-type-label); font-size: 11px; color: var(--rc-ink-muted); text-align: center; white-space: nowrap;
+}
+.rc-churn td { padding: 4px; border-block-end: 1px solid var(--rc-border-soft); font: var(--rc-type-body); font-size: 13px; color: var(--rc-ink); }
+.rc-churn th:first-child, .rc-churn tbody th { text-align: start; padding-inline: 20px var(--rc-space-3); }
+.rc-churn tr > :last-child { padding-inline-end: 20px; white-space: nowrap; }
+.rc-churn tbody tr:last-child > * { border-block-end: 0; }
+.rc-churn tbody th { background: transparent; border-block-end: 1px solid var(--rc-border-soft); font: var(--rc-type-body-strong); font-size: 13px; color: var(--rc-ink); }
+.rc-churn .rc-num { text-align: end; }
+
+.rc-churn__flag {
+    display: inline-block; margin-inline-start: 6px; padding: 1px 8px; border-radius: var(--rc-radius-pill);
+    background: var(--rc-gray-bg); color: var(--rc-gray-ink); font: var(--rc-type-label); font-size: 11px;
+}
+.rc-churn__pct { margin-inline-start: 4px; color: var(--rc-ink-muted); }
+
+.rc-churn__cell {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    min-inline-size: 84px; block-size: 52px; border-radius: var(--rc-radius-control);
+    font-variant-numeric: tabular-nums;
+}
+.rc-churn__main { font: var(--rc-type-body-strong); font-size: 14px; }
+.rc-churn__left { font: var(--rc-type-caption); font-size: 11px; opacity: .85; }
+.rc-churn__cell--high  { background: var(--rc-blue); color: var(--rc-ink-on-primary); }
+.rc-churn__cell--mid   { background: var(--rc-heat-4); color: var(--rc-ink); }
+.rc-churn__cell--low   { background: var(--rc-heat-2); color: var(--rc-ink); }
+.rc-churn__cell--small { background: var(--rc-surface-sunk); color: var(--rc-ink-muted); border: 1px dashed var(--rc-border-strong); }
+.rc-churn__cell--empty { background: transparent; }
+
+/* Legend under the table. */
+.rc-churn-legend { display: flex; flex-wrap: wrap; gap: var(--rc-space-1) 14px; margin-block-end: var(--rc-space-2); }
+.rc-churn-legend__item { display: inline-flex; align-items: center; gap: 6px; }
+.rc-churn-legend__swatch { display: inline-block; inline-size: 14px; min-inline-size: 14px; block-size: 14px; border-radius: 3px; }
+
 /* analytics-payments.css — Analytics › Payments (Overview · Recovery · Failures · Upcoming) and Cohorts.
    Screen-level layout only; every chart is a shared rc.chart.* component (analytics.css).
    TOKENS: --rc-card --rc-border --rc-border-soft --rc-border-strong --rc-surface-sunk --rc-ink --rc-ink-muted
@@ -650,6 +708,45 @@
 @media (max-width: 640px) {
     .rc-sum-problems { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* analytics-upsells.css — Analytics › Upsells › Added: the offer's path
+   (shown → accepted → charged → not charged) and the KPI formula line.
+   TOKENS: --rc-surface-sunk --rc-blue --rc-blue-bg --rc-ink --rc-ink-muted
+           --rc-ink-on-primary --rc-amber-bg --rc-amber-ink --rc-amber-border
+           --rc-border-soft --rc-radius-card --rc-radius-pill --rc-space-*
+           --rc-type-label --rc-type-caption --rc-type-h
+   RULES: logical properties only; the boxes flow in the page direction. */
+
+/* The path — four boxes, one row on desktop, two by two on a tablet, stacked on a phone. */
+.rc-an-steps {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--rc-space-3);
+    margin: 0; padding: 0; list-style: none;
+}
+@media (max-width: 1100px) { .rc-an-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px)  { .rc-an-steps { grid-template-columns: minmax(0, 1fr); } }
+
+.rc-an-step {
+    --rc-step-bg: var(--rc-surface-sunk);
+    --rc-step-rate-bg: var(--rc-border-soft);
+    --rc-step-rate-ink: var(--rc-ink-muted);
+    display: flex; flex-direction: column; gap: var(--rc-space-1); min-inline-size: 0;
+    padding: 18px; border-radius: var(--rc-radius-card); background: var(--rc-step-bg);
+}
+.rc-an-step--accepted { --rc-step-bg: var(--rc-blue-bg); --rc-step-rate-bg: rgba(59, 91, 219, .18); --rc-step-rate-ink: var(--rc-blue); }
+.rc-an-step--charged  { --rc-step-bg: rgba(59, 91, 219, .14); --rc-step-rate-bg: var(--rc-blue); --rc-step-rate-ink: var(--rc-ink-on-primary); }
+.rc-an-step--pending  { --rc-step-bg: var(--rc-amber-bg); --rc-step-rate-bg: var(--rc-amber-border); --rc-step-rate-ink: var(--rc-amber-ink); }
+
+.rc-an-step__name  { font: var(--rc-type-label); color: var(--rc-ink-muted); }
+.rc-an-step__value { font: var(--rc-type-h); font-size: 28px; line-height: 1.15; color: var(--rc-ink); font-variant-numeric: tabular-nums; }
+.rc-an-step__unit  { font: var(--rc-type-caption); color: var(--rc-ink-muted); }
+.rc-an-step__rate {
+    align-self: flex-start; margin-block-start: 6px; padding: 3px 10px;
+    border-radius: var(--rc-radius-pill); background: var(--rc-step-rate-bg); color: var(--rc-step-rate-ink);
+    font: var(--rc-type-label);
+}
+
+/* How a KPI is computed — one quiet line under its value. */
+.rc-kpi__formula { font: var(--rc-type-caption); color: var(--rc-ink-muted); }
 
 /* analytics.css — the Analytics module: page shell, cards, the rc.chart.*
    components and their ENTRANCE MOTION.

@@ -90,15 +90,19 @@ final class UpsellsQuery
     /**
      * @return array{
      *   items: int, revenue: float, orders: int, sold_to_date: float,
+     *   shown_orders: ?int, shown_accepted: int,
      *   by_day: array<string, array<string, float>>,
-     *   items_table: list<array{channel: string, key: string, title: ?string, price: float, count: int, revenue: float}>,
+     *   items_table: list<array{channel: string, key: string, title: ?string, price: float, count: int, revenue: float, shown: ?int, charged: float}>,
      *   profiles: list<array{channel: string, id: int, name: ?string, shown: ?int, accepted: int, revenue: float}>
      * }
      */
     public function added(Period $window): array
     {
         return AnalyticsCache::remember(self::CACHE_ADDED, $this->context->period, $this->context->filters, function () use ($window): array {
-            $out = ['items' => 0, 'revenue' => 0.0, 'orders' => 0, 'sold_to_date' => 0.0, 'by_day' => [], 'items_table' => [], 'profiles' => []];
+            // shown_orders: orders that SAW an after-purchase offer (null when that
+            // channel is not in view — the account area records no impressions);
+            // shown_accepted: of those channels, the orders that said yes.
+            $out = ['items' => 0, 'revenue' => 0.0, 'orders' => 0, 'sold_to_date' => 0.0, 'shown_orders' => null, 'shown_accepted' => 0, 'by_day' => [], 'items_table' => [], 'profiles' => []];
             if ($this->wants(self::CHANNEL_CHECKOUT)) {
                 $this->mergeAdded($out, $this->checkoutAdded($window));
             }
@@ -118,6 +122,10 @@ final class UpsellsQuery
         $out['revenue'] += $part['revenue'];
         $out['orders'] += $part['orders'];
         $out['sold_to_date'] += $part['sold_to_date'];
+        if ($part['shown_orders'] !== null) {
+            $out['shown_orders'] = ($out['shown_orders'] ?? 0) + $part['shown_orders'];
+            $out['shown_accepted'] += $part['orders'];
+        }
         $out['by_day'] = array_merge($out['by_day'], $part['by_day']);
         array_push($out['items_table'], ...$part['items_table']);
         array_push($out['profiles'], ...$part['profiles']);
@@ -148,15 +156,13 @@ final class UpsellsQuery
         $accepted = OfferEventType::ACCEPTED->value;
         $impression = OfferEventType::IMPRESSION->value;
         $price = self::offerPrice();
-        $day = Sql::day('upsell_offer_events.occurred_at');
+        $day = Sql::day('e.occurred_at');
         $window = [$w->start(), $w->end()];
 
-        $byOffer = $this->events()
-            ->where('upsell_offer_events.event_type', $accepted)
-            ->whereBetween('upsell_offer_events.occurred_at', $window)
-            ->selectRaw("{$day} as d, upsell_offer_events.offer_id as offer_id, MAX(o.offer_title) as title, MAX({$price}) as price, COUNT(*) as n, COALESCE(SUM({$price}), 0) as revenue")
-            ->groupByRaw("{$day}, upsell_offer_events.offer_id")
-            ->toBase()->get();
+        $byOffer = $this->onceEach($accepted, $window)
+            ->selectRaw("{$day} as d, e.offer_id as offer_id, MAX(o.offer_title) as title, MAX({$price}) as price, COUNT(*) as n, COALESCE(SUM({$price}), 0) as revenue")
+            ->groupByRaw("{$day}, e.offer_id")
+            ->get();
 
         $orders = (int) UpsellOfferEvent::query()
             ->where('event_type', $accepted)
@@ -164,18 +170,26 @@ final class UpsellsQuery
             ->selectRaw("COUNT(DISTINCT COALESCE(parent_order_id, customer_ref, 'event:' || id)) as n")
             ->toBase()->value('n');
 
-        $profiles = $this->events()
-            ->whereIn('upsell_offer_events.event_type', [$accepted, $impression])
-            ->whereBetween('upsell_offer_events.occurred_at', $window)
-            ->selectRaw(implode(', ', [
-                'upsell_offer_events.flow_id as flow_id',
-                "SUM(CASE WHEN upsell_offer_events.event_type = '{$impression}' THEN 1 ELSE 0 END) as shown",
-                "SUM(CASE WHEN upsell_offer_events.event_type = '{$accepted}' THEN 1 ELSE 0 END) as accepted",
-                "COALESCE(SUM(CASE WHEN upsell_offer_events.event_type = '{$accepted}' THEN {$price} ELSE 0 END), 0) as revenue",
-            ]))
-            ->groupBy('upsell_offer_events.flow_id')
-            ->toBase()->get();
-        $names = UpsellFlow::query()->whereIn('id', $profiles->pluck('flow_id')->all())->pluck('name', 'id');
+        $shownOrders = (int) UpsellOfferEvent::query()
+            ->where('event_type', $impression)
+            ->whereBetween('occurred_at', $window)
+            ->selectRaw("COUNT(DISTINCT COALESCE(parent_order_id, customer_ref, 'event:' || id)) as n")
+            ->toBase()->value('n');
+        $shownByOffer = $this->onceEach($impression, $window)
+            ->selectRaw('e.offer_id as offer_id, COUNT(*) as n')
+            ->groupBy('e.offer_id')
+            ->pluck('n', 'offer_id');
+
+        $shown = $this->onceEach($impression, $window)
+            ->selectRaw('e.flow_id as flow_id, COUNT(*) as n')
+            ->groupBy('e.flow_id')
+            ->pluck('n', 'flow_id');
+        $takes = $this->onceEach($accepted, $window)
+            ->selectRaw("e.flow_id as flow_id, COUNT(*) as n, COALESCE(SUM({$price}), 0) as revenue")
+            ->groupBy('e.flow_id')
+            ->get()->keyBy('flow_id');
+        $flowIds = array_values(array_unique(array_merge($shown->keys()->all(), $takes->keys()->all())));
+        $names = UpsellFlow::query()->whereIn('id', $flowIds)->pluck('name', 'id');
 
         // Sold to date: charges that landed (at any time so far) for an offer
         // accepted inside the window — same offer, same parent order.
@@ -193,33 +207,65 @@ final class UpsellsQuery
                     ->where('a.event_type', $accepted)
                     ->whereBetween('a.occurred_at', $window);
             })
-            ->selectRaw('COALESCE(SUM(COALESCE(upsell_offer_events.revenue_amount, 0) - COALESCE(pl.refunded_amount, 0)), 0) as v')
-            ->toBase()->value('v');
+            ->selectRaw('upsell_offer_events.offer_id as offer_id, COALESCE(SUM(COALESCE(upsell_offer_events.revenue_amount, 0) - COALESCE(pl.refunded_amount, 0)), 0) as v')
+            ->groupBy('upsell_offer_events.offer_id')
+            ->toBase()->pluck('v', 'offer_id');
 
-        $out = ['items' => 0, 'revenue' => 0.0, 'orders' => $orders, 'sold_to_date' => (float) $sold, 'by_day' => [], 'items_table' => [], 'profiles' => []];
+        $out = ['items' => 0, 'revenue' => 0.0, 'orders' => $orders, 'sold_to_date' => (float) $sold->sum(), 'shown_orders' => $shownOrders, 'shown_accepted' => 0, 'by_day' => [], 'items_table' => [], 'profiles' => []];
         $items = [];
         foreach ($byOffer as $r) {
             $out['items'] += (int) $r->n;
             $out['revenue'] += (float) $r->revenue;
             $out['by_day'][self::CHANNEL_CHECKOUT][(string) $r->d] = ($out['by_day'][self::CHANNEL_CHECKOUT][(string) $r->d] ?? 0.0) + (float) $r->revenue;
             $key = 'offer:'.$r->offer_id;
-            $items[$key] ??= ['channel' => self::CHANNEL_CHECKOUT, 'key' => $key, 'title' => $r->title !== null ? (string) $r->title : null, 'price' => round((float) $r->price, 2), 'count' => 0, 'revenue' => 0.0];
+            $items[$key] ??= ['channel' => self::CHANNEL_CHECKOUT, 'key' => $key, 'title' => $r->title !== null ? (string) $r->title : null, 'price' => round((float) $r->price, 2), 'count' => 0, 'revenue' => 0.0,
+                'shown' => (int) ($shownByOffer[$r->offer_id] ?? 0), 'charged' => round((float) ($sold[$r->offer_id] ?? 0), 2)];
             $items[$key]['count'] += (int) $r->n;
             $items[$key]['revenue'] = round($items[$key]['revenue'] + (float) $r->revenue, 2);
         }
         $out['items_table'] = array_values($items);
-        foreach ($profiles as $p) {
+        foreach ($flowIds as $flowId) {
+            $take = $takes->get($flowId);
             $out['profiles'][] = [
                 'channel' => self::CHANNEL_CHECKOUT,
-                'id' => (int) $p->flow_id,
-                'name' => isset($names[$p->flow_id]) ? (string) $names[$p->flow_id] : null,
-                'shown' => (int) $p->shown,
-                'accepted' => (int) $p->accepted,
-                'revenue' => round((float) $p->revenue, 2),
+                'id' => (int) $flowId,
+                'name' => isset($names[$flowId]) ? (string) $names[$flowId] : null,
+                'shown' => (int) ($shown[$flowId] ?? 0),
+                'accepted' => (int) ($take->n ?? 0),
+                'revenue' => round((float) ($take->revenue ?? 0), 2),
             ];
         }
 
         return $out;
+    }
+
+    /**
+     * Each offer's event of one type, ONCE per order (and customer) — the first
+     * one — joined to its offer as `o`, the event aliased `e`.
+     *
+     * The raw events repeat by design: an impression is written on every load of
+     * the thank-you page (a refresh is another row), and an `accepted` on every
+     * tap of the button, before the charge decides the tap was a repeat (a
+     * double-click, a retry after a slow answer, "already charged"). Counting
+     * rows called one sale two and one view five. The identity here is the
+     * charge's own — UpsellChargeService keys a sale by flow, offer, parent order
+     * and customer — so "added" counts what could at most be charged once.
+     *
+     * @param  array{0: mixed, 1: mixed}  $window
+     */
+    private function onceEach(string $type, array $window): \Illuminate\Database\Query\Builder
+    {
+        $first = UpsellOfferEvent::query()
+            ->where('event_type', $type)
+            ->whereBetween('occurred_at', $window)
+            ->selectRaw('shop_id, flow_id, offer_id, MIN(occurred_at) as occurred_at')
+            ->groupByRaw("shop_id, flow_id, offer_id, COALESCE(parent_order_id, 'event:' || CAST(id AS TEXT)), COALESCE(customer_ref, '')")
+            ->toBase();
+
+        return DB::query()->fromSub($first, 'e')->join('upsell_flow_offers as o', function ($join): void {
+            $join->on('o.id', '=', 'e.offer_id')
+                ->on('o.shop_id', '=', 'e.shop_id');
+        });
     }
 
     /** One row per account-area acceptance that ADDS: d, oid, item, qty, value, plan, ledger. */
@@ -259,17 +305,22 @@ final class UpsellsQuery
 
         $orders = (int) DB::query()->fromSub($this->acceptances($w), 'a')->selectRaw('COUNT(DISTINCT plan) as n')->value('n');
 
-        $sold = (float) DB::query()->fromSub($this->acceptances($w), 'a')
+        $sold = DB::query()->fromSub($this->acceptances($w), 'a')
             // The acceptance rows are tenant-scoped; the ledger is pinned to their shop.
             ->join('payment_ledger as pl', function ($join): void {
                 $join->on(DB::raw('CAST(pl.id AS TEXT)'), '=', 'a.ledger')->on('pl.shop_id', '=', 'a.shop');
             })
             ->whereIn('pl.status', self::SETTLED)
             ->where('pl.charge_context', PaymentLedger::CONTEXT_ACCOUNT_OFFER)
-            ->selectRaw('COALESCE(SUM(COALESCE(pl.amount, 0) - COALESCE(pl.refunded_amount, 0)), 0) as v')
-            ->value('v');
+            ->selectRaw("a.oid as oid, a.item as item, COALESCE(SUM(COALESCE(pl.amount, 0) - COALESCE(pl.refunded_amount, 0)), 0) as v")
+            ->groupBy('a.oid', 'a.item')
+            ->get();
+        $charged = [];
+        foreach ($sold as $r) {
+            $charged['account:'.$r->oid.':'.$r->item] = (float) $r->v;
+        }
 
-        $out = ['items' => 0, 'revenue' => 0.0, 'orders' => $orders, 'sold_to_date' => $sold, 'by_day' => [], 'items_table' => [], 'profiles' => []];
+        $out = ['items' => 0, 'revenue' => 0.0, 'orders' => $orders, 'sold_to_date' => (float) array_sum($charged), 'shown_orders' => null, 'shown_accepted' => 0, 'by_day' => [], 'items_table' => [], 'profiles' => []];
         $items = [];
         $profiles = [];
         foreach ($rows as $r) {
@@ -277,7 +328,8 @@ final class UpsellsQuery
             $out['revenue'] += (float) $r->revenue;
             $out['by_day'][self::CHANNEL_ACCOUNT][(string) $r->d] = ($out['by_day'][self::CHANNEL_ACCOUNT][(string) $r->d] ?? 0.0) + (float) $r->revenue;
             $key = 'account:'.$r->oid.':'.$r->item;
-            $items[$key] ??= ['channel' => self::CHANNEL_ACCOUNT, 'key' => $key, 'title' => $r->item !== null ? (string) $r->item : null, 'price' => 0.0, 'count' => 0, 'revenue' => 0.0];
+            $items[$key] ??= ['channel' => self::CHANNEL_ACCOUNT, 'key' => $key, 'title' => $r->item !== null ? (string) $r->item : null, 'price' => 0.0, 'count' => 0, 'revenue' => 0.0,
+                'shown' => null, 'charged' => round($charged[$key] ?? 0.0, 2)];
             $items[$key]['count'] += (int) $r->qty;
             $items[$key]['revenue'] = round($items[$key]['revenue'] + (float) $r->revenue, 2);
             $profiles[(string) $r->oid] = [

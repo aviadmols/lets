@@ -34,6 +34,10 @@ return [
         'left' => 'Left',
     ],
 
+    'export' => [
+        'bucket' => 'Date',
+    ],
+
     'joined' => [
         'title' => 'New subscriptions',
         'subtitle' => 'How many joined each day / week / month',

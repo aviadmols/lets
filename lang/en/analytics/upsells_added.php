@@ -1,69 +1,75 @@
 <?php
 
 // Analytics › Upsells › Added. Read as __('analytics/upsells_added.key').
-// Mirror in lang/he/analytics/upsells_added.php.
+// Mirror in lang/he/analytics/upsells_added.php. Every step counts once per
+// order: a page reload or a double tap adds nothing.
 return [
     'channel' => [
         'label' => 'Channel',
-        'all' => 'All',
-        'checkout' => 'Thank-you / post-purchase',
+        'all' => 'All channels',
+        'checkout' => 'Thank-you page',
         'account_area' => 'Account area',
     ],
 
+    'steps' => [
+        'title' => 'The offer\'s path',
+        'subtitle' => 'Each step counts once per order. A page reload or a double tap adds nothing.',
+        'shown' => [
+            'step' => '1 · Offer shown',
+            'unit' => 'orders saw an offer',
+            'rate' => 'Starting point',
+            'untracked' => 'The account area records no views',
+        ],
+        'accepted' => [
+            'step' => '2 · Accepted',
+            'unit' => 'orders said "yes"',
+            'rate' => ':accepted of :shown who saw it (:rate)',
+        ],
+        'charged' => [
+            'step' => '3 · Actually charged',
+            'unit' => 'came in',
+            'rate' => ':rate of the amount accepted',
+        ],
+        'pending' => [
+            'step' => 'Not charged (yet)',
+            'unit' => 'accepted, not charged',
+            'rate' => 'Worth a look',
+            'none' => 'All charged',
+        ],
+    ],
+
     'kpi' => [
-        'items' => 'Items added',
-        'revenue' => 'Net revenue added',
-        'avg' => 'Avg upsell value per order',
-        'sold' => 'Actual sold (to date)',
-        'sold_share' => ':share of revenue added',
+        'charged' => 'Actual revenue from offers',
+        'charged_formula' => 'Successful charges, net of refunds',
+        'avg' => 'Average per accepting order',
+        'avg_formula' => 'Amount accepted ÷ orders that accepted',
+        'avg_note' => 'One order can take more than one offer',
+        'rate' => 'Conversion rate',
+        'rate_formula' => 'Orders that accepted ÷ orders that saw an offer',
+        'rate_untracked' => 'The account area records no views, so there is no rate',
     ],
 
-    'performance' => [
-        'title' => 'Performance over time',
-        'subtitle' => 'Revenue added · :total in total',
-        'partial' => 'The last bar is a period still in progress.',
+    'trend' => [
+        'title' => 'Over time',
+        'subtitle' => 'Accepted vs actually charged',
+        'agreed' => 'Accepted',
+        'charged' => 'Actually charged',
+        'partial' => 'The last column is a period still in progress.',
     ],
 
-    'by_channel' => [
-        'title' => 'Channel-wise revenue',
-        'subtitle' => 'Where the upsells were added',
-        'caption' => 'revenue added',
-        'untracked' => 'Admin-added extras and campaign upsells are not tracked yet.',
-    ],
-
-    'items' => [
-        'title' => 'Item-wise performance',
-        'subtitle' => 'Top items by count · :count items added',
-        'item' => 'Item',
+    'offers' => [
+        'title' => 'Performance by offer',
+        'subtitle' => 'Every offer, from view to money',
+        'offer' => 'Offer',
         'channel' => 'Channel',
         'price' => 'Price',
-        'added' => 'Added',
-        'revenue' => 'Revenue added',
-        'share' => 'Share',
-        'unnamed' => 'Unnamed offer',
-        'others' => '{1} All other items (:count)|[2,*] All other items (:count)',
-        'note' => 'Thank-you and post-purchase items are valued at the offer\'s current price — offer prices are not versioned.',
-    ],
-
-    'profiles' => [
-        'title' => 'Upsell profiles performance',
-        'subtitle' => 'Offers shown vs accepted, per upsell flow and account offer',
-        'profile' => 'Profile',
-        'shown' => 'Shown',
+        'shown' => 'Shown to',
         'accepted' => 'Accepted',
-        'rate' => 'Rate',
-        'revenue' => 'Revenue added',
-        'unnamed' => 'Profile #:id',
-        'note' => 'The account area records acceptances, not impressions — its Shown is not tracked.',
-    ],
-
-    'sold' => [
-        'title' => 'Sold (to date)',
-        'subtitle' => 'Upsells actually billed in this period',
-        'items' => 'Upsells sold',
-        'revenue' => 'Net revenue',
-        'avg' => 'Avg per order',
-        'contribution' => 'Revenue contribution',
-        'link' => 'Open the Sold tab →',
+        'rate' => 'Conversion',
+        'charged' => 'Actually charged',
+        'pending' => 'Not charged',
+        'unnamed' => 'Untitled offer',
+        'orders' => '{1} 1 order|[2,*] :count orders',
+        'note' => '"Accepted" is valued at the offer\'s current price. "Actually charged" is money that came in, net of refunds. Admin-added extras and campaign upsells are not tracked yet.',
     ],
 ];

@@ -8,6 +8,7 @@
       unit     — 'percent' | 'points'
       goodUp   — false when up is bad (churn)
       compare  — already-translated caption ("vs previous 30 days")
+      formula  — optional already-translated line saying how the value is computed
       empty    — null | 'not_tracked' | 'no_data'
 --}}
 @props([
@@ -18,6 +19,7 @@
     'goodUp' => true,
     'compare' => null,
     'empty' => null,
+    'formula' => null,
 ])
 @php
     $isEmpty = $empty !== null || $value === null || $value === '';
@@ -25,6 +27,7 @@
 <div {{ $attributes->class(['rc-kpi']) }} wire:key="kpi-{{ md5($label.'|'.$value.'|'.$delta.'|'.$empty) }}">
     <span class="rc-kpi__label">{{ $label }}</span>
     <span @class(['rc-kpi__value', 'rc-iso', 'rc-kpi__value--empty' => $isEmpty])>{{ $isEmpty ? '—' : $value }}</span>
+    @if($formula)<span class="rc-kpi__formula">{{ $formula }}</span>@endif
     @if($isEmpty && $empty)
         <span class="rc-kpi__empty">{{ __('analytics.empty.'.$empty.'_title') }}</span>
     @elseif($delta !== null || $compare)
