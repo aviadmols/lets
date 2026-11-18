@@ -222,6 +222,30 @@ final readonly class GiftShippingAddress
     }
 
     /**
+     * The same address with another courier note — the one the subscription keeps
+     * (InstallmentPlan::deliveryNote), which a store profile has no field for.
+     */
+    public function withNote(?string $note): self
+    {
+        return new self(
+            firstName: $this->firstName,
+            lastName: $this->lastName,
+            address1: $this->address1,
+            address2: $this->address2,
+            city: $this->city,
+            zip: $this->zip,
+            countryCode: $this->countryCode,
+            phone: $this->phone,
+            company: $this->company,
+            building: $this->building,
+            apartment: $this->apartment,
+            floor: $this->floor,
+            entrance: $this->entrance,
+            note: self::clean($note),
+        );
+    }
+
+    /**
      * Build from a Shopify MailingAddress node (customer defaultAddress or an
      * order's shippingAddress — the field names are the same on both).
      *
@@ -303,6 +327,13 @@ final readonly class GiftShippingAddress
     {
         $parts = $this->splitLines();
 
+        // The plan's note already holds address_2's leftover when it was captured from
+        // the same checkout ("ליד המכולת · להשאיר אצל השכנים") — say it once, not twice.
+        $rest = $parts['rest'];
+        if ($rest !== '' && $this->note !== null && mb_stripos($this->note, $rest) !== false) {
+            $rest = '';
+        }
+
         return [
             'street' => $parts['street'],
             'building' => $parts['building'],
@@ -310,7 +341,7 @@ final readonly class GiftShippingAddress
             'apartment' => $parts['apartment'],
             'floor' => $parts['floor'],
             'note' => implode(self::NOTE_SEPARATOR, array_filter(
-                [$parts['rest'], $this->note],
+                [$rest, $this->note],
                 static fn (?string $value): bool => $value !== null && $value !== '',
             )),
         ];

@@ -186,6 +186,16 @@ final class GiftAddressResolver
             }
         }
 
+        // The store had the address — but a store profile has no place for the
+        // courier note. The subscription keeps it (from checkout, or as the merchant
+        // corrected it), the same note every renewal order carries, so the courier
+        // sheet carries it too. It wins over an order's original customer_note: that
+        // is where it came from, and the plan's copy is the one the merchant can fix.
+        $note = trim((string) $plan->deliveryNote());
+        if ($resolved['address'] !== null && $note !== '' && $resolved['source'] !== GiftRecipient::ADDRESS_FROM_PLAN) {
+            return $this->found($resolved['address']->withNote($note), (string) $resolved['source']);
+        }
+
         return $resolved;
     }
 

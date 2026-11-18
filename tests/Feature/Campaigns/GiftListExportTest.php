@@ -131,6 +131,65 @@ final class GiftListExportTest extends TestCase
         );
     }
 
+    public function test_the_subscriptions_courier_note_reaches_the_sheet_when_the_address_comes_from_the_store(): void
+    {
+        Http::fake([
+            // A store profile: a full address, and no field for a courier note at all.
+            '*/wp-json/wc/v3/customers?*include=55*' => Http::response([[
+                'id' => 55,
+                'shipping' => [
+                    'first_name' => 'דנה', 'last_name' => 'קונה',
+                    'address_1' => 'הרצל', 'city' => 'תל אביב', 'country' => 'IL',
+                ],
+                'billing' => ['phone' => '0501234567'],
+                'meta_data' => [['id' => 1, 'key' => 'shipping_building_number', 'value' => '12']],
+            ]], 200),
+            '*' => Http::response([], 200),
+        ]);
+
+        // The note lives on the subscription (kept from checkout, editable by the merchant).
+        $this->subscriber('דנה קונה', succeeded: 3, customerId: '55', meta: [
+            InstallmentPlan::META_CHECKOUT_ADDRESS => [
+                'street' => 'הרצל', 'building_number' => '12', 'city' => 'תל אביב',
+                InstallmentPlan::ADDRESS_DELIVERY_NOTE => 'להשאיר אצל השומר',
+            ],
+        ]);
+
+        $rows = $this->rows($this->export(1));
+
+        $this->assertSame('להשאיר אצל השומר', $rows[1][9]);
+    }
+
+    public function test_the_merchants_corrected_note_wins_and_nothing_is_said_twice(): void
+    {
+        Http::fake([
+            '*/wp-json/wc/v3/orders?*include=900*' => Http::response([[
+                'id' => 900,
+                'shipping' => [
+                    'first_name' => 'Dana', 'last_name' => 'K',
+                    'address_1' => 'הרצל 12א', 'address_2' => 'דירה 4, ליד המכולת',
+                    'city' => 'חיפה', 'phone' => '0520000000',
+                ],
+                'customer_note' => 'להשאיר אצל השכנים',
+            ]], 200),
+            '*' => Http::response([], 200),
+        ]);
+
+        // Captured from that checkout (address_2's leftover + the order note), then
+        // corrected by the merchant on the subscription screen.
+        $this->subscriber('Dana', succeeded: 3, customerId: '0', orderId: '900', meta: [
+            InstallmentPlan::META_CONTACT_ADDRESS => [
+                'street' => 'הרצל', 'building_number' => '12א', 'apartment_number' => '4', 'city' => 'חיפה',
+                InstallmentPlan::ADDRESS_DELIVERY_NOTE => 'ליד המכולת · להשאיר אצל השומר, לא אצל השכנים',
+            ],
+        ]);
+
+        $rows = $this->rows($this->export(1));
+
+        // The merchant's note, once — "ליד המכולת" from address_2 is not repeated in front of it.
+        $this->assertSame('ליד המכולת · להשאיר אצל השומר, לא אצל השכנים', $rows[1][9]);
+    }
+
     public function test_a_recipient_with_nowhere_to_ship_is_still_listed(): void
     {
         Http::fake([
@@ -367,8 +426,9 @@ final class GiftListExportTest extends TestCase
         string $customerId,
         string $email = 'dana@example.com',
         ?string $orderId = null,
+        array $meta = [],
     ): void {
-        Tenant::run($this->shop, function () use ($name, $succeeded, $customerId, $email, $orderId): void {
+        Tenant::run($this->shop, function () use ($name, $succeeded, $customerId, $email, $orderId, $meta): void {
             $plan = new InstallmentPlan;
             $plan->fill([
                 'plan_kind' => PlanKind::RECURRING->value,
@@ -385,6 +445,7 @@ final class GiftListExportTest extends TestCase
                 'shop_id' => (int) $this->shop->getKey(),
                 'status' => PlanStatus::ACTIVE->value,
                 'external_order_id' => $orderId,
+                'meta' => $meta,
             ])->save();
 
             for ($i = 1; $i <= $succeeded; $i++) {
