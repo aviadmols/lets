@@ -3,6 +3,7 @@
 namespace Tests\Feature\WooCommerce;
 
 use App\Domain\OutboundWebhooks\WebhookPayload;
+use App\Events\ChargeSucceeded;
 use App\Models\CustomerConsent;
 use App\Models\InstallmentPlan;
 use App\Models\MerchantCheckoutSettings;
@@ -21,6 +22,7 @@ use App\Services\PayPlus\PayPlusPageOptions;
 use App\Services\WooCommerce\WooCommerceShopProvisioner;
 use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
@@ -223,6 +225,42 @@ final class WooCommerceCartSubscriptionFlowTest extends TestCase
             $this->assertSame(1, PaymentLedger::query()->where('plan_id', $plan->getKey())
                 ->where('status', LedgerStatus::SUCCEEDED->value)->count());
         });
+    }
+
+    /**
+     * The first payment is taken on the checkout page, not by the charge engine,
+     * so the welcome email used to never go out (170 subscriptions, 4 welcomes).
+     * The activation now announces it, once, even when the callback is replayed.
+     */
+    public function test_a_checkout_started_subscription_gets_its_welcome_once(): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop('cart-welcome.example.com');
+        Tenant::run($shop, fn () => $this->makeSubscriptionProduct($shop, '501', 100.0));
+        $this->fakeGateway();
+        Event::fake([ChargeSucceeded::class]);
+
+        $planId = (string) $this->signedPost($key, $secret, self::SESSION, [
+            'order_id' => '8650', 'amount' => 100.0, 'currency' => 'ILS', 'customer_id' => '9', 'email' => 'g@example.com',
+            'subscription_items' => [['product_id' => '501', 'variant_id' => '501', 'quantity' => 1]],
+        ])->json('subscription_plan_ids.0');
+
+        Http::fake([
+            ...$this->payplusIpn('gw:8650', ['amount' => '100.00', 'token_uid' => 'tok-w']),
+            '*/wp-json/wc/v3/orders/8650' => Http::response([
+                'id' => 8650, 'status' => 'processing', 'total' => '100.00', 'customer_id' => 9, 'billing' => ['email' => 'g@example.com'],
+                'meta_data' => [['key' => 'lets_subscription_plan_ids', 'value' => [$planId]]],
+            ], 200),
+        ]);
+
+        $body = $this->callbackFor(['more_info' => 'gw:8650', 'status_code' => '000']);
+        $url = '/woocommerce/gateway/callback/'.(string) $shop->wc_shop_token;
+        $this->postJson($url, $body)->assertOk();
+        $this->postJson($url, $body)->assertOk(); // replay
+
+        Event::assertDispatchedTimes(ChargeSucceeded::class, 1);
+        Event::assertDispatched(ChargeSucceeded::class, fn (ChargeSucceeded $e): bool => $e->isFirstPayment
+            && $e->plan->public_id === $planId
+            && (int) $e->payment->sequence === 0);
     }
 
     // === A free first cycle (100% first-payment coupon → a ₪0 order) ===

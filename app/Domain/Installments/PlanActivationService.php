@@ -8,6 +8,7 @@ use App\Domain\Billing\Ledger;
 use App\Domain\Installments\Contracts\DepositTokenResolver;
 use App\Domain\Invoicing\DocumentContext;
 use App\Domain\Invoicing\Jobs\IssueDocumentJob;
+use App\Events\ChargeSucceeded;
 use App\Models\CustomerConsent;
 use App\Models\InstallmentPayment;
 use App\Models\InstallmentPaymentMethod;
@@ -63,6 +64,9 @@ final class PlanActivationService
      * transaction, and a document for the plan alone would declare only part of that money.
      */
     public const PAYLOAD_DOCUMENT_BY_ORDER = 'lets_document_by_order';
+
+    /** The first payment's slot (recordDepositPaymentSlot) is always sequence 0. */
+    private const DEPOSIT_SEQUENCE = 0;
 
     /**
      * Payload flag: the first cycle was FREE (a 100% first-payment coupon; the store order
@@ -222,7 +226,47 @@ final class PlanActivationService
         // the fact. OUTSIDE the transaction (external HTTP) + fail-soft.
         $this->tagDiscountedCheckoutOrder($shop, $activated, $orderId);
 
+        $this->announceFirstPayment($shop, $activated);
+
         return $activated;
+    }
+
+    /**
+     * The first payment was taken on the checkout page, so the charge engine never
+     * saw it, and ChargeSucceeded (the ONE trigger of the "first payment welcome"
+     * email) never fired: 170 checkout-started subscriptions, 4 welcome emails.
+     * Fired here, for a plan this activation made ACTIVE, with its first-payment
+     * slot. A plan held for its activation link is left alone (it is not active
+     * yet), and a replayed delivery cannot double-send: the listener guards the
+     * welcome once per plan. After commit, and never allowed to fail activation.
+     */
+    private function announceFirstPayment(Shop $shop, InstallmentPlan $plan): void
+    {
+        DB::afterCommit(function () use ($shop, $plan): void {
+            try {
+                $plan = $plan->fresh();
+                if ($plan === null || $plan->status !== PlanStatus::ACTIVE) {
+                    return;
+                }
+
+                $payment = InstallmentPayment::query()
+                    ->where('plan_id', $plan->getKey())
+                    ->where('sequence', self::DEPOSIT_SEQUENCE)
+                    ->first();
+
+                if ($payment === null) {
+                    return;
+                }
+
+                ChargeSucceeded::dispatch((int) $shop->getKey(), $plan, $payment, true, false);
+            } catch (\Throwable $e) {
+                Log::warning('installments.activation.welcome_dispatch_failed', [
+                    'shop_id' => $shop->getKey(),
+                    'plan_id' => $plan->getKey(),
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        });
     }
 
     /**
@@ -320,7 +364,7 @@ final class PlanActivationService
             [
                 'shop_id' => $plan->shop_id,
                 'plan_id' => $plan->getKey(),
-                'sequence' => 0,
+                'sequence' => self::DEPOSIT_SEQUENCE,
             ],
             [
                 'payment_type' => PaymentType::DEPOSIT->value,
