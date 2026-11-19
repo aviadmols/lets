@@ -216,6 +216,58 @@ final class SubscriptionImportTest extends TestCase
     }
 
     /**
+     * The export carries what a courier sheet needs beside the address: the note for the
+     * courier, the day the member joined and what they subscribe to — and the note
+     * survives the file going back in.
+     */
+    public function test_the_export_carries_the_courier_note_join_date_and_subscription(): void
+    {
+        $path = $this->file($this->csv([
+            ['8002', '7788', 'monthly', '50.00', 'active', '1', '2026-12-01 00:00:00', 'tok'],
+        ]));
+        (new SubscriptionImporter)->import($this->shop, $path, new ImportOptions);
+
+        Tenant::run($this->shop, function (): void {
+            $plan = InstallmentPlan::query()->firstOrFail();
+            $meta = (array) $plan->meta;
+            // A member who joined years before the move: the file's start date, not the import's.
+            $meta['import']['starts_at'] = '2015-03-08 00:00:00';
+            $plan->forceFill(['meta' => array_merge($meta, [
+                InstallmentPlan::META_CONTACT_ADDRESS => ['street' => 'הרצל', 'city' => 'חיפה', 'delivery_note' => 'להשאיר בשמירה'],
+                'product_title' => 'מנוי ספרים',
+            ])])->save();
+        });
+
+        $exported = tempnam(sys_get_temp_dir(), 'lets-export-').'.csv';
+        $this->files[] = $exported;
+        (new SubscriptionExporter)->toFile($this->shop, $exported);
+
+        $lines = array_map(
+            static fn (string $line): array => str_getcsv($line, ',', '"', ''),
+            preg_split('/\r?\n/', trim(substr((string) file_get_contents($exported), 3))) ?: [],
+        );
+        $row = array_combine($lines[0], $lines[1]);
+
+        $this->assertSame('להשאיר בשמירה', $row['delivery_note']);
+        $this->assertSame('2015-03-08 00:00:00', $row['starts_at']);
+        $this->assertSame('מנוי ספרים', $row['product_desc']);
+
+        // Back in through the importer: the note is read, not dropped.
+        Tenant::run($this->shop, function (): void {
+            $plan = InstallmentPlan::query()->firstOrFail();
+            $meta = (array) $plan->meta;
+            unset($meta[InstallmentPlan::META_CONTACT_ADDRESS]);
+            $plan->forceFill(['meta' => $meta])->save();
+        });
+        (new SubscriptionImporter)->import($this->shop, $exported, new ImportOptions);
+
+        Tenant::run($this->shop, fn () => $this->assertSame(
+            'להשאיר בשמירה',
+            InstallmentPlan::query()->firstOrFail()->deliveryNote(),
+        ));
+    }
+
+    /**
      * The merchant's actual export, column for column. It carries no product id —
      * which is exactly the thing the dry run must SAY rather than guess, and which
      * one default fixes for the whole file.

@@ -50,6 +50,8 @@ final class SubscriptionCsvSchema
         'city',
         'zip_code',
         'country',
+        // What to tell the courier — kept with the address (InstallmentPlan::ADDRESS_DELIVERY_NOTE).
+        'delivery_note',
 
         // What they subscribed to.
         'product_id',
@@ -136,6 +138,7 @@ final class SubscriptionCsvSchema
         'postcode' => 'zip_code',
         'postal_code' => 'zip_code',
         'house_number' => 'building_number',
+        'courier_note' => 'delivery_note',
         'apt' => 'apartment_number',
         'frequency' => 'cycle',
         'billing_frequency' => 'cycle',

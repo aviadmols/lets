@@ -2,6 +2,7 @@
 
 namespace App\Domain\Import;
 
+use App\Models\InstallmentPlan;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
@@ -90,6 +91,8 @@ final class SubscriptionRowNormalizer
             'city' => $this->text($values, 'city'),
             'zip_code' => $this->text($values, 'zip_code'),
             'country' => $this->text($values, 'country'),
+            // The courier note rides with the address, so export → edit → import keeps it.
+            InstallmentPlan::ADDRESS_DELIVERY_NOTE => $this->deliveryNote($values),
         ], fn ($v): bool => $v !== null);
 
         // --- What they bought -----------------------------------------------
@@ -256,6 +259,18 @@ final class SubscriptionRowNormalizer
         $value = trim((string) ($values[$column] ?? ''));
 
         return $value !== '' ? $value : null;
+    }
+
+    /**
+     * The courier note, held to the length every other entry point keeps.
+     *
+     * @param  array<string, string>  $values
+     */
+    private function deliveryNote(array $values): ?string
+    {
+        $note = $this->text($values, 'delivery_note');
+
+        return $note !== null ? mb_substr($note, 0, InstallmentPlan::MAX_DELIVERY_NOTE) : null;
     }
 
     /** @param array<string, string> $values */

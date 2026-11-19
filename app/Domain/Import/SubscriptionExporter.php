@@ -158,6 +158,7 @@ final class SubscriptionExporter
             'city' => (string) ($address['city'] ?? ''),
             'zip_code' => (string) ($address['zip_code'] ?? ''),
             'country' => (string) ($address['country'] ?? ''),
+            'delivery_note' => (string) ($address[InstallmentPlan::ADDRESS_DELIVERY_NOTE] ?? ''),
 
             'product_id' => (string) ($plan->externalProductId() ?? ''),
             'variant_id' => (string) ($plan->external_variant_id ?? $plan->shopify_variant_id ?? ''),
