@@ -81,6 +81,8 @@ return [
             'apartment' => 'Apartment',
             'floor' => 'Floor',
             'note' => 'Notes to write on the delivery',
+            'joined_at' => 'Joined on',
+            'subscription' => 'Subscription',
             // Labels of the address form on the customer screen.
             'address1' => 'Street address',
             'address2' => 'Address line 2',

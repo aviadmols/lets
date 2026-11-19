@@ -2,9 +2,11 @@
 
 namespace Tests\Feature\Campaigns;
 
+use App\Domain\Campaigns\GiftEligibility;
 use App\Domain\Campaigns\GiftExportRunner;
 use App\Domain\Campaigns\GiftListExporter;
 use App\Domain\Campaigns\Models\GiftCampaign;
+use App\Domain\Campaigns\Models\GiftExportRow;
 use App\Domain\Campaigns\Models\GiftExportRun;
 use App\Domain\Campaigns\Models\GiftRecipient;
 use App\Models\InstallmentPayment;
@@ -85,7 +87,7 @@ final class GiftListExportTest extends TestCase
             '*' => Http::response([], 200),
         ]);
 
-        $this->subscriber('דנה קונה', succeeded: 3, customerId: '55');
+        $this->subscriber('דנה קונה', succeeded: 3, customerId: '55', meta: ['product_title' => 'מנוי ספרים חודשי']);
 
         $rows = $this->rows($this->export(1));
 
@@ -93,13 +95,54 @@ final class GiftListExportTest extends TestCase
             __('gifts.export.col.first_name'), __('gifts.export.col.last_name'), __('gifts.export.col.phone'),
             __('gifts.export.col.city'), __('gifts.export.col.street'), __('gifts.export.col.building'),
             __('gifts.export.col.entrance'), __('gifts.export.col.apartment'), __('gifts.export.col.floor'),
-            __('gifts.export.col.note'),
+            __('gifts.export.col.note'), __('gifts.export.col.joined_at'), __('gifts.export.col.subscription'),
         ], $rows[0]);
 
         // First and last name in their own columns. The shipping block has no phone of its
         // own — the billing one is used, because a courier cannot deliver to a number that is
-        // not there.
-        $this->assertSame(['דנה', 'קונה', '0501234567', 'תל אביב', 'הרצל', '12', 'ב', '4', '2', ''], $rows[1]);
+        // not there. Then when they joined and what they subscribe to.
+        $this->assertSame(
+            ['דנה', 'קונה', '0501234567', 'תל אביב', 'הרצל', '12', 'ב', '4', '2', '', $this->today(), 'מנוי ספרים חודשי'],
+            $rows[1],
+        );
+    }
+
+    /**
+     * A migrated member joined in the system they came from: the sheet says the date their
+     * file recorded, not the day of the import. With no product title, the plan name stands in.
+     */
+    public function test_a_migrated_member_shows_the_day_they_joined_before_the_import(): void
+    {
+        Http::fake(['*' => Http::response([], 200)]);
+
+        $this->subscriber('Old Member', succeeded: 3, customerId: '0', meta: [
+            'import' => ['starts_at' => '2015-03-08 10:00:00', 'plan_name' => 'מנוי שנתי'],
+        ]);
+
+        $row = $this->rows($this->export(1))[1];
+
+        $this->assertSame(['08/03/2015', 'מנוי שנתי'], array_slice($row, -2));
+    }
+
+    /** A line finished before the membership columns existed is padded, never shifted. */
+    public function test_a_line_finished_before_the_membership_columns_keeps_the_layout(): void
+    {
+        Http::fake(['*' => Http::response([], 200)]);
+        $this->subscriber('Dana Old', succeeded: 3, customerId: '0', meta: ['product_title' => 'Box']);
+
+        $csv = Tenant::run($this->shop, function (): string {
+            $run = app(GiftExportRunner::class)->start($this->shop, 1, [], []);
+            $row = GiftExportRow::query()->where('run_id', $run->getKey())->firstOrFail();
+            // The previous build's ten fields, and a recipient frozen without the new keys.
+            $row->forceFill([
+                'fields' => ['Dana', 'Old', '050', 'חיפה', 'הרצל', '1', '', '', '', ''],
+                'recipient' => array_diff_key((array) $row->recipient, ['joined_at' => 1, 'subscription' => 1]),
+            ])->save();
+
+            return app(GiftListExporter::class)->file($run);
+        });
+
+        $this->assertSame(['Dana', 'Old', '050', 'חיפה', 'הרצל', '1', '', '', '', '', '', ''], $this->rows($csv)[1]);
     }
 
     public function test_an_order_address_is_split_back_into_its_parts(): void
@@ -126,7 +169,7 @@ final class GiftListExportTest extends TestCase
         // Anything address_2 says that is not one of the parts reaches the note,
         // where the courier will still read it.
         $this->assertSame(
-            ['Dana', 'K', '0520000000', 'חיפה', 'הרצל', '12א', 'ב', '4', '2', 'ליד המכולת · להשאיר אצל השכנים'],
+            ['Dana', 'K', '0520000000', 'חיפה', 'הרצל', '12א', 'ב', '4', '2', 'ליד המכולת · להשאיר אצל השכנים', $this->today(), ''],
             $rows[1],
         );
     }
@@ -290,7 +333,7 @@ final class GiftListExportTest extends TestCase
         $this->assertCount(2, $profileReads, '150 profiles in two bulk reads (100 + 50)');
         $this->assertCount(1, collect(Http::recorded())->filter(fn (array $pair): bool => str_contains($pair[0]->url(), 'email=')));
         // An imported member whose store holds only one name field still gets two columns.
-        $this->assertContains(['Imported', 'Member', '', '', '', '', '', '', '', __('gifts.reason.no_address')], $this->rows($csv));
+        $this->assertContains(['Imported', 'Member', '', '', '', '', '', '', '', __('gifts.reason.no_address'), $this->today(), ''], $this->rows($csv));
     }
 
     /** A re-delivered slice must not write — or count — a row twice. */
@@ -367,6 +410,12 @@ final class GiftListExportTest extends TestCase
 
             return app(GiftListExporter::class)->file($run);
         });
+    }
+
+    /** A plan created in the test joined today, written the way the sheet writes it. */
+    private function today(): string
+    {
+        return now()->format(GiftEligibility::JOINED_FORMAT);
     }
 
     /** @return list<list<string>> */

@@ -11,8 +11,10 @@ use App\Models\SubscriptionContract;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use Throwable;
 
 /**
  * Who has earned a gift: every ACTIVE subscriber with at least N successfully
@@ -32,6 +34,12 @@ final class GiftEligibility
     /** Below this the campaign would gift a first-time buyer; the UI enforces it too. */
     public const MIN_THRESHOLD = 1;
 
+    /** How a join date is written on the rows (and so on the courier sheet). */
+    public const JOINED_FORMAT = 'd/m/Y';
+
+    /** A Shopify contract renewing several products names them all, joined by this. */
+    private const TITLE_SEPARATOR = ', ';
+
     /**
      * Everyone who qualifies, as display rows.
      *
@@ -47,7 +55,8 @@ final class GiftEligibility
      * @param  array<int, string>  $emails
      * @return Collection<int, array{
      *     source_type: string, source_id: int, label: string, email: ?string,
-     *     rail: string, cycles: int, already_gifted: bool
+     *     rail: string, cycles: int, already_gifted: bool,
+     *     joined_at: ?string, subscription: ?string
      * }>
      */
     public function qualifying(int $minCycles, ?GiftCampaign $campaign = null, array $productIds = [], array $emails = []): Collection
@@ -141,6 +150,8 @@ final class GiftEligibility
             // the threshold once, but they are not who this campaign is thanking.
             ->where('status', PlanStatus::ACTIVE->value)
             ->withCount(['payments as succeeded_cycles' => fn ($q) => $q->where('status', PaymentStatus::SUCCEEDED->value)])
+            // productTitle() falls back to the catalog: loaded once, not per row.
+            ->with('product')
             ->orderBy('id')
             ->get()
             // The threshold is applied HERE, not as a whereHas, because a migrated
@@ -157,6 +168,8 @@ final class GiftEligibility
                 'rail' => 'payplus',
                 'cycles' => (int) $plan->succeeded_cycles + $plan->importedCycles(),
                 'already_gifted' => false,
+                'joined_at' => $this->planJoinedAt($plan),
+                'subscription' => $this->clean($plan->productTitle() ?? data_get($plan->meta, 'import.plan_name')),
             ])
             ->filter(static fn (array $row): bool => $row['cycles'] >= $minCycles)
             ->values();
@@ -199,6 +212,8 @@ final class GiftEligibility
                 'rail' => 'shopify',
                 'cycles' => (int) $contract->succeeded_cycles,
                 'already_gifted' => false,
+                'joined_at' => $this->formatDate($contract->activated_at ?? $contract->created_at),
+                'subscription' => $this->contractTitle($contract),
             ]);
     }
 
@@ -286,6 +301,45 @@ final class GiftEligibility
 
             return $row;
         });
+    }
+
+    /**
+     * The day this member joined. A migrated member joined in the system they came
+     * FROM, and their file says when (`import.starts_at`); our row's created_at is
+     * only the day of the import, and would tell the merchant that a member of
+     * eleven years signed up last month. Same reading as the subscription export.
+     */
+    private function planJoinedAt(InstallmentPlan $plan): ?string
+    {
+        return $this->formatDate(data_get($plan->meta, 'import.starts_at') ?: $plan->created_at);
+    }
+
+    /** What the contract renews: its lines' titles. */
+    private function contractTitle(SubscriptionContract $contract): ?string
+    {
+        $titles = [];
+        foreach ((array) ($contract->lines ?? []) as $line) {
+            $title = trim((string) (is_array($line) ? ($line['title'] ?? '') : ''));
+            if ($title !== '') {
+                $titles[$title] = true;
+            }
+        }
+
+        return $titles !== [] ? implode(self::TITLE_SEPARATOR, array_keys($titles)) : null;
+    }
+
+    /** A stored date as the rows write it; an unreadable value is no date, not a crash. */
+    private function formatDate(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        try {
+            return CarbonImmutable::parse($value)->format(self::JOINED_FORMAT);
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     private function clean(mixed $value): ?string

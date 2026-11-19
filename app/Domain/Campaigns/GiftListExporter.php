@@ -10,7 +10,8 @@ use App\Support\CsvCell;
 
 /**
  * The gift list as a courier's sheet: name, phone, city, street, house,
- * entrance, apartment, floor, and the note to write on the delivery.
+ * entrance, apartment, floor, and the note to write on the delivery — then when
+ * the member joined and which subscription they hold.
  *
  * Two halves, because the work is slow and the file is not:
  *   - fields() resolves ONE recipient's address from the store — a live read per
@@ -35,10 +36,17 @@ final class GiftListExporter
     private const BOM = "\xEF\xBB\xBF";
 
     /** The columns, in the order the courier's sheet asks for them. */
-    public const COLUMNS = ['first_name', 'last_name', 'phone', 'city', 'street', 'building', 'entrance', 'apartment', 'floor', 'note'];
+    public const COLUMNS = [
+        'first_name', 'last_name', 'phone', 'city', 'street', 'building', 'entrance', 'apartment', 'floor', 'note',
+        // Who the gift is for, after where it goes: the courier reads the first ten.
+        'joined_at', 'subscription',
+    ];
 
     /** A row finished before the name was split carried one name column and this many fields. */
     private const LEGACY_FIELD_COUNT = 9;
+
+    /** The membership columns, read from the recipient row rather than the store. */
+    private const MEMBERSHIP_KEYS = ['joined_at', 'subscription'];
 
     /** Rows read per query while stitching the file. */
     private const FILE_CHUNK = 500;
@@ -116,6 +124,7 @@ final class GiftListExporter
             return [
                 ...self::splitName((string) $row['label']), '', '', '', '', '', '', '',
                 (string) __('gifts.reason.'.$resolved['reason']),
+                ...self::membership($row),
             ];
         }
 
@@ -136,7 +145,20 @@ final class GiftListExporter
             $parts['apartment'],
             $parts['floor'],
             $parts['note'],
+            ...self::membership($row),
         ];
+    }
+
+    /**
+     * When they joined and what they subscribe to (GiftEligibility rows). A row frozen
+     * before these existed has neither, and gets blanks rather than a shifted line.
+     *
+     * @param  array<string, mixed>  $row
+     * @return list<string>
+     */
+    private static function membership(array $row): array
+    {
+        return array_map(static fn (string $key): string => (string) ($row[$key] ?? ''), self::MEMBERSHIP_KEYS);
     }
 
     /** The finished file for a completed run. Tenant-scoped reads. */
@@ -161,6 +183,15 @@ final class GiftListExporter
                     // Finished before the name was split: split it here, so the file never
                     // mixes one layout with the other under the same header.
                     $fields = [...self::splitName((string) array_shift($fields)), ...$fields];
+                }
+
+                // Finished before the membership columns: add them from the recipient row,
+                // so an older line never sits one column short under the new header.
+                if (is_array($fields) && count($fields) < count(self::COLUMNS)) {
+                    $fields = [
+                        ...array_pad(array_values($fields), count(self::COLUMNS) - count(self::MEMBERSHIP_KEYS), ''),
+                        ...self::membership((array) ($row->recipient ?? [])),
+                    ];
                 }
 
                 $this->put($handle, array_map('strval', $fields));
