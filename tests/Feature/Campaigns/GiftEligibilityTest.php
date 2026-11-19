@@ -3,7 +3,6 @@
 namespace Tests\Feature\Campaigns;
 
 use App\Domain\Campaigns\GiftEligibility;
-use App\Domain\Campaigns\Models\GiftRecipient;
 use App\Models\InstallmentPayment;
 use App\Models\InstallmentPlan;
 use App\Models\Shop;
@@ -104,6 +103,37 @@ final class GiftEligibilityTest extends TestCase
         $plan->forceFill(['status' => PlanStatus::CANCELLED->value])->save();
 
         // They met the bar once, but the campaign thanks CURRENT subscribers.
+        $this->assertCount(0, app(GiftEligibility::class)->qualifying(1));
+    }
+
+    /**
+     * A subscription the merchant added by hand, free, has no paid cycles and never will.
+     * It was missing from every gift list; the merchant made them a member on purpose.
+     */
+    public function test_an_active_free_subscription_qualifies_without_paid_cycles(): void
+    {
+        $shop = $this->shop();
+        Tenant::set($shop);
+
+        $free = $this->plan($shop, 'Comped', succeeded: 0, email: 'comped@example.com');
+        $free->forceFill(['no_charge' => true])->save();
+        $this->plan($shop, 'Newcomer', succeeded: 0, email: 'new@example.com');
+
+        $rows = app(GiftEligibility::class)->qualifying(3);
+
+        // The free member is in, flagged; a paying newcomer below the bar is still out.
+        $this->assertSame(['Comped'], $rows->pluck('label')->all());
+        $this->assertTrue($rows->first()['free']);
+    }
+
+    public function test_a_cancelled_free_subscription_is_not_thanked(): void
+    {
+        $shop = $this->shop();
+        Tenant::set($shop);
+
+        $free = $this->plan($shop, 'Comped Gone', succeeded: 0);
+        $free->forceFill(['no_charge' => true, 'status' => PlanStatus::CANCELLED->value])->save();
+
         $this->assertCount(0, app(GiftEligibility::class)->qualifying(1));
     }
 

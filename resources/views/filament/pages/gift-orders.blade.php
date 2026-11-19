@@ -236,7 +236,8 @@
                                             <span class="rc-muted">· {{ __('gifts.already_gifted') }}</span>
                                         @endif
                                     </td>
-                                    <td class="rc-iso">{{ $row['cycles'] }}</td>
+                                    {{-- A free subscription has paid nothing and still qualifies (GiftEligibility). --}}
+                                    <td class="rc-iso">{{ ($row['free'] ?? false) ? __('gifts.free_subscription') : $row['cycles'] }}</td>
                                     <td>{{ __('gifts.rail.'.$row['rail']) }}</td>
                                 </tr>
                             @endforeach

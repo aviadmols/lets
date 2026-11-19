@@ -18,7 +18,7 @@ return [
         'title' => 'Campaign name',
         'title_placeholder' => 'e.g. Thank-you gift, March',
         'min_cycles' => 'Minimum paid cycles',
-        'min_cycles_hint' => 'Counts charges that actually succeeded — a failed attempt is not a cycle the customer paid for.',
+        'min_cycles_hint' => 'Counts charges that actually succeeded — a failed attempt is not a cycle the customer paid for. Free subscriptions you added by hand are always included.',
         'source_products' => 'Subscribers of which products',
         'source_products_placeholder' => 'Search a product to narrow the campaign…',
         'source_products_all' => 'Left empty, every subscription counts. Add products to gift only the people who subscribe to them.',
@@ -42,6 +42,8 @@ return [
     'preview_more' => 'Showing the first :shown of :total. The counts above cover everyone.',
     'attention_more' => 'Showing :shown of :total that need attention.',
     'already_gifted' => 'already gifted',
+    // A subscription added by hand with no payment: it qualifies without paid cycles.
+    'free_subscription' => 'Free subscription',
 
     'col' => [
         'cycles' => 'Paid cycles',

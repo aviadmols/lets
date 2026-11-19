@@ -25,6 +25,10 @@ use Throwable;
  * the customer paid for, and a plan that has been retried three times has not
  * earned three gifts' worth of loyalty.
  *
+ * One exception: a FREE subscription (added by hand, `no_charge`) qualifies with no
+ * paid cycles at all — it cannot ever have any, and the merchant made that person a
+ * member deliberately.
+ *
  * Tenant-bound by the models' BelongsToShop scope — this class never names a
  * shop_id, and the caller (the admin page) is what binds the tenant.
  */
@@ -56,7 +60,7 @@ final class GiftEligibility
      * @return Collection<int, array{
      *     source_type: string, source_id: int, label: string, email: ?string,
      *     rail: string, cycles: int, already_gifted: bool,
-     *     joined_at: ?string, subscription: ?string
+     *     joined_at: ?string, subscription: ?string, free: bool
      * }>
      */
     public function qualifying(int $minCycles, ?GiftCampaign $campaign = null, array $productIds = [], array $emails = []): Collection
@@ -170,8 +174,13 @@ final class GiftEligibility
                 'already_gifted' => false,
                 'joined_at' => $this->planJoinedAt($plan),
                 'subscription' => $this->clean($plan->productTitle() ?? data_get($plan->meta, 'import.plan_name')),
+                'free' => (bool) $plan->no_charge,
             ])
-            ->filter(static fn (array $row): bool => $row['cycles'] >= $minCycles)
+            // A FREE subscription (added by hand, `no_charge`) has no paid cycles and never
+            // will — the threshold measures how often someone paid, which is not a question
+            // a comped member can answer. The merchant made them a member on purpose; the
+            // gift goes to them like to anyone else who is subscribed today.
+            ->filter(static fn (array $row): bool => $row['free'] || $row['cycles'] >= $minCycles)
             ->values();
     }
 
@@ -214,6 +223,7 @@ final class GiftEligibility
                 'already_gifted' => false,
                 'joined_at' => $this->formatDate($contract->activated_at ?? $contract->created_at),
                 'subscription' => $this->contractTitle($contract),
+                'free' => false,
             ]);
     }
 
