@@ -132,12 +132,12 @@ final class GiftAddressResolver
             $plans = InstallmentPlan::query()->whereKey($planIds)->get()->keyBy('id')->all();
             $client = WooClientFactory::for($shop);
 
-            $withId = array_filter($plans, static fn (InstallmentPlan $p): bool => (int) $p->externalCustomerId() > 0);
-            $withoutId = array_filter($plans, static fn (InstallmentPlan $p): bool => (int) $p->externalCustomerId() <= 0);
+            $withId = array_filter($plans, static fn (InstallmentPlan $p): bool => self::wooCustomerId($p) > 0);
+            $withoutId = array_filter($plans, static fn (InstallmentPlan $p): bool => self::wooCustomerId($p) <= 0);
 
             return [
                 'plans' => $plans,
-                'customers' => $client->fetchCustomersByIds(array_map(static fn (InstallmentPlan $p): int => (int) $p->externalCustomerId(), $withId)),
+                'customers' => $client->fetchCustomersByIds(array_map(static fn (InstallmentPlan $p): int => self::wooCustomerId($p), $withId)),
                 'byEmail' => $client->findCustomersByEmails(array_map(static fn (InstallmentPlan $p): string => (string) ($p->customer_email ?? ''), $withoutId)),
                 'orders' => $client->fetchOrdersByIds(array_map(static fn (InstallmentPlan $p): string => (string) $p->externalOrderId(), $plans)),
             ];
@@ -258,7 +258,7 @@ final class GiftAddressResolver
      */
     private function fromWooReads(InstallmentPlan $plan, callable $customer, callable $byEmail, callable $order): array
     {
-        $customerId = (int) $plan->externalCustomerId();
+        $customerId = self::wooCustomerId($plan);
         if ($customerId > 0) {
             $address = $this->pickWooBlock($customer($customerId));
             if ($address !== null) {
@@ -348,6 +348,25 @@ final class GiftAddressResolver
         return $this->nothing($refused
             ? GiftRecipient::REASON_ADDRESS_ACCESS_PENDING
             : GiftRecipient::REASON_NO_ADDRESS);
+    }
+
+    /**
+     * The plan's WooCommerce customer id — or 0 when the reference is not one.
+     *
+     * Only an all-digits reference is a WordPress user id. An imported member
+     * carries their OLD system's UUID here, and `(int)` reads a UUID's leading
+     * digits as a number: "1e8c…" became customer 1, "6d74…" customer 6. 366
+     * members of one store were each handed a stranger's profile — the store's
+     * first accounts, the merchant's own test buyers among them — and the
+     * courier sheet printed that stranger's name, phone and street on their row.
+     * Not an id means no profile: the chain moves on to the email lookup and the
+     * address the import carried, exactly as for any other member with no id.
+     */
+    private static function wooCustomerId(InstallmentPlan $plan): int
+    {
+        $ref = trim((string) $plan->externalCustomerId());
+
+        return ctype_digit($ref) ? (int) $ref : 0;
     }
 
     /**

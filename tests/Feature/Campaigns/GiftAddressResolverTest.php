@@ -143,6 +143,38 @@ final class GiftAddressResolverTest extends TestCase
         $this->assertSame(GiftRecipient::ADDRESS_FROM_PROFILE, $result['source']);
     }
 
+    public function test_an_imported_uuid_is_never_read_as_a_store_customer_id(): void
+    {
+        Http::fake([
+            // Customer 1 is somebody else entirely — the store's first account.
+            '*/wp-json/wc/v3/customers/1*' => Http::response([
+                'id' => 1,
+                'shipping' => ['address_1' => 'כתובת של זר 1', 'city' => 'אחר', 'country' => 'IL'],
+            ], 200),
+            '*/wp-json/wc/v3/customers?*include=1*' => Http::response([[
+                'id' => 1,
+                'shipping' => ['address_1' => 'כתובת של זר 1', 'city' => 'אחר', 'country' => 'IL'],
+            ]], 200),
+            '*' => Http::response([], 200),
+        ]);
+
+        // "1e8c…" is what (int) used to read as customer 1.
+        [$shop, $recipient] = $this->wooRecipient(customerId: '1e8c5f2a-36ef-414b-a4cb-8337ff906e40', orderId: '', meta: [
+            'import' => ['address' => ['street' => 'ביאליק', 'building_number' => '7', 'city' => 'רמת גן']],
+        ]);
+
+        $single = Tenant::run($shop, fn () => app(GiftAddressResolver::class)->resolve($shop, $recipient));
+        $bulk = Tenant::run($shop, fn () => app(GiftAddressResolver::class)->resolveMany($shop, ['r' => $recipient])['r']);
+
+        foreach ([$single, $bulk] as $result) {
+            $this->assertSame('ביאליק 7', $result['address']->address1);
+            $this->assertSame(GiftRecipient::ADDRESS_FROM_PLAN, $result['source']);
+        }
+
+        Http::assertNotSent(fn ($request): bool => str_contains($request->url(), 'customers/1')
+            || str_contains(urldecode($request->url()), 'include=1'));
+    }
+
     public function test_a_half_filled_import_address_still_skips(): void
     {
         Http::fake(['*' => Http::response([], 200)]);
