@@ -2,7 +2,9 @@
 
 namespace App\Domain\ShopifySubscriptions\Jobs;
 
+use App\Domain\Billing\ShabbatHold;
 use App\Domain\OutboundWebhooks\WebhookPublisher;
+use App\Models\MerchantBillingSettings;
 use App\Models\Shop;
 use App\Models\SubscriptionBillingAttempt;
 use App\Models\SubscriptionContract;
@@ -47,11 +49,26 @@ final class BillingAttemptJob implements ShouldQueue, ShouldBeUnique
 
     public int $tries = 1; // retries are cycle-scheduled by the scanner, not queue-level
 
+    /**
+     * Queued by the scheduler (true) rather than by a person's "bill now"
+     * (false). Only an automatic attempt waits out Shabbat (ShabbatHold).
+     *
+     * A PLAIN property with its own default, not a promoted constructor
+     * parameter: a job serialized before this flag existed carries no
+     * `automatic` key, and unserializing skips it. A promoted readonly property
+     * would then be uninitialized and throw on read, failing a job that has
+     * tries = 1. A property default survives, so an old job reads false and
+     * runs exactly as it was queued to.
+     */
+    public bool $automatic = false;
+
     public function __construct(
         public readonly int $shopId,
         public readonly int $contractId,
         public readonly string $billingCycleKey,
+        bool $automatic = false,
     ) {
+        $this->automatic = $automatic;
         $this->onQueue(self::QUEUE);
     }
 
@@ -79,6 +96,21 @@ final class BillingAttemptJob implements ShouldQueue, ShouldBeUnique
         $contract = SubscriptionContract::query()->whereKey($this->contractId)->first();
         if ($contract === null || ! $contract->isBillable()) {
             return; // paused/cancelled since the scan — nothing to bill
+        }
+
+        // The shop keeps Shabbat and the scan queued this just before midnight on
+        // Friday. Stop BEFORE the attempt row: with no row and no attempt, the
+        // contract is still due and Sunday's first scan asks for it.
+        if ($this->automatic
+            && MerchantBillingSettings::current()->observesShabbat()
+            && ShabbatHold::holds($contract->next_billing_date, now())) {
+            Log::info('shopify_subscriptions.billing_attempt.shabbat_held', [
+                'shop_id' => $this->shopId,
+                'contract_id' => $this->contractId,
+                'cycle' => $this->billingCycleKey,
+            ]);
+
+            return;
         }
 
         $key = sprintf('subattempt:%d:%d:%s', $this->shopId, $this->contractId, $this->billingCycleKey);

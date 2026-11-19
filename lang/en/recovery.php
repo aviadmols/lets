@@ -15,12 +15,14 @@ return [
     'tab' => [
         'retrying' => 'Trying again',
         'stopped' => 'Stopped — card',
+        'no_consent' => 'Stopped — no consent',
         'cancelled' => 'Cancelled',
     ],
 
     'intro' => [
         'retrying' => 'The card was declined and we are still asking. Each one shows when the next attempt runs.',
         'stopped' => 'The attempts ran out, so we stopped asking. These subscriptions are ON HOLD, not cancelled: each still owes its cycle on the original date, and the moment the customer updates their card it is charged and carries on.',
+        'no_consent' => 'A charge came due, but no consent to charge the saved card is stored for this subscription, so it was not charged and will not be asked again on its own. Send the customer a card-update link: when there is no consent, the page shows them the subscription’s terms and records their agreement, and the next run charges them.',
         'cancelled' => 'Subscriptions that ended while they still owed money after the card failed. These are the ones the card actually cost you.',
     ],
 
@@ -52,10 +54,12 @@ return [
         */
         'imported_unpaid' => 'Imported already in arrears — never charged here',
         'never_attempted' => 'No charge has ever been attempted',
+        'no_consent' => 'No consent to charge the saved card',
     ],
 
     'next' => [
         'on_card_update' => 'When the card is updated',
+        'on_consent' => 'When the customer agrees to the terms',
         'never' => '—',
     ],
 
@@ -168,6 +172,7 @@ return [
     'empty' => [
         'retrying' => 'No charge is waiting on a retry. Nothing to chase.',
         'stopped' => 'No subscription is on hold for a card.',
+        'no_consent' => 'Every subscription that came due has a stored consent.',
         'cancelled' => 'No subscription has been lost to a failed card.',
     ],
 ];

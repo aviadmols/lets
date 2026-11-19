@@ -22,6 +22,23 @@ return [
         'expires' => 'This link works until :date.',
     ],
 
+    // Shown only when no consent to charge the card is stored for the subscription.
+    'terms' => [
+        'heading' => 'Your subscription',
+        'product' => 'Subscription: :product',
+        'next_amount' => 'Next charge: :amount',
+        'recurring_amount' => ':amount, charged :frequency',
+        'interval' => '(every :n cycles)',
+        'until_cancelled' => 'Renews automatically until you cancel.',
+        'commitment' => 'Minimum commitment: :n charges.',
+        'installments' => 'The remaining :count payments of up to :amount each, :total in total, on their scheduled dates.',
+        'when_date' => 'The next charge is on :date.',
+        'when_now' => 'The amount due is charged as soon as the card is saved.',
+        'accept' => 'I agree that :shop will charge this card on these terms.',
+        'required' => 'Tick the box to agree to the terms before continuing.',
+        'changed' => 'The subscription’s terms have just changed. Please read them again and tick the box.',
+    ],
+
     'gone' => [
         'title' => 'This link is no longer active',
         'heading' => 'This link is no longer active',

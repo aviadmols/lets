@@ -7,6 +7,7 @@ use App\Filament\Concerns\ShopScopedScreen;
 use App\Filament\Resources\IssuedDocumentResource\Pages;
 use App\Models\IssuedDocument;
 use App\Support\Ui\Money;
+use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
@@ -149,6 +150,7 @@ class IssuedDocumentResource extends Resource
                         IssuedDocument::STATUS_PENDING,
                         IssuedDocument::STATUS_FAILED,
                         IssuedDocument::STATUS_UNRESOLVED,
+                        IssuedDocument::STATUS_DISMISSED,
                     ])->mapWithKeys(fn (string $s): array => [$s => __('invoices.status.'.$s)])->all()),
 
                 Tables\Filters\Filter::make('needs_attention')
@@ -216,6 +218,33 @@ class IssuedDocumentResource extends Resource
                     ->action(fn (IssuedDocument $record) => self::report(
                         app(DocumentReconciliationService::class)->issueAfterVerifying($record),
                         __('invoices.action.retry_queued'),
+                    )),
+
+                // Not needed at all (a test order's invoice). Shown exactly where
+                // Retry is: a failure that PROVES nothing exists at the provider,
+                // so closing the row can never hide a real document.
+                Tables\Actions\Action::make('dismiss')
+                    ->label(__('invoices.action.dismiss'))
+                    ->icon('heroicon-m-archive-box-x-mark')
+                    ->color('gray')
+                    ->visible(fn (IssuedDocument $record): bool => $record->status === IssuedDocument::STATUS_FAILED
+                        && $record->isRetryable())
+                    ->modalHeading(__('invoices.action.dismiss_heading'))
+                    ->modalDescription(__('invoices.action.dismiss_body'))
+                    ->modalSubmitActionLabel(__('invoices.action.dismiss_confirm'))
+                    ->form([
+                        Textarea::make('reason')
+                            ->label(__('invoices.action.field.dismiss_reason'))
+                            ->required()
+                            ->maxLength(IssuedDocument::MAX_DISMISS_REASON),
+                    ])
+                    ->action(fn (IssuedDocument $record, array $data) => self::report(
+                        app(DocumentReconciliationService::class)->dismiss(
+                            $record,
+                            (string) ($data['reason'] ?? ''),
+                            auth()->id() !== null ? (int) auth()->id() : null,
+                        ),
+                        __('invoices.action.dismissed'),
                     )),
 
                 // The merchant looked and FOUND one — adopt it instead of issuing.

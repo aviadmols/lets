@@ -13,6 +13,8 @@ use App\Models\PaymentLedger;
  *   recurring_charge.succeeded  a subscription cycle or an installment was charged.
  *   recurring_charge.failed     a subscription cycle or an installment was declined
  *                               (with whether we will try again, and when).
+ *   subscription.activated      a subscription became active for the first time.
+ *   subscription.status_changed a subscription moved between statuses.
  *
  * Which ledger context is which topic is decided HERE and nowhere else, so the
  * live events and the screen's samples cannot disagree about it.
@@ -26,7 +28,27 @@ final class WebhookTopic
 
     public const RECURRING_FAILED = 'recurring_charge.failed';
 
-    public const ALL = [self::ORDER_PAID, self::RECURRING_SUCCEEDED, self::RECURRING_FAILED];
+    /**
+     * A subscription became active for the FIRST time: its first payment landed
+     * (or it was activated). Sent once per subscription, ever. The moment an
+     * outside system should open access.
+     */
+    public const SUBSCRIPTION_ACTIVATED = 'subscription.activated';
+
+    /**
+     * A subscription moved between statuses (active, paused, failed, cancelled,
+     * completed…), with the status it left. Every move, including the first
+     * activation, so a receiver can follow one topic to mirror the status.
+     */
+    public const SUBSCRIPTION_STATUS_CHANGED = 'subscription.status_changed';
+
+    public const ALL = [
+        self::ORDER_PAID, self::RECURRING_SUCCEEDED, self::RECURRING_FAILED,
+        self::SUBSCRIPTION_ACTIVATED, self::SUBSCRIPTION_STATUS_CHANGED,
+    ];
+
+    /** The topics about a subscription's status rather than a charge. */
+    public const SUBSCRIPTION_TOPICS = [self::SUBSCRIPTION_ACTIVATED, self::SUBSCRIPTION_STATUS_CHANGED];
 
     /** Ledger contexts that are a NEW purchase (the money that makes an order). */
     public const ORDER_CONTEXTS = [

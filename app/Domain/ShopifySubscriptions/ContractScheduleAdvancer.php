@@ -2,6 +2,7 @@
 
 namespace App\Domain\ShopifySubscriptions;
 
+use App\Domain\Billing\ShabbatHold;
 use App\Models\MerchantBillingSettings;
 use App\Models\Shop;
 use App\Models\SubscriptionBillingAttempt;
@@ -93,7 +94,12 @@ final class ContractScheduleAdvancer
 
         $base = $scheduled;
 
-        if ($settings->renewsFromChargeDate() && now()->startOfDay()->greaterThan($scheduled)) {
+        // A Saturday cycle a Shabbat-keeping shop billed on the Sunday was on
+        // time (ShabbatHold), the same excuse the PayPlus rail applies.
+        $heldForShabbat = $settings->observesShabbat()
+            && ShabbatHold::excusesLateness($scheduled, now());
+
+        if ($settings->renewsFromChargeDate() && now()->startOfDay()->greaterThan($scheduled) && ! $heldForShabbat) {
             $base = now()->startOfDay();
         }
 

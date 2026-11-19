@@ -197,6 +197,12 @@ add_action('plugins_loaded', function () {
                 // The WC customer id (0 for a guest) — links the recurring plan to the shopper.
                 'customer_id' => (string) $order->get_customer_id(),
                 'subscription_items' => $subscription_items,
+                // An outside app's own reference for the buyer (?lets_ref=… on its
+                // link), kept on the subscriptions this order starts and handed back
+                // in every webhook about them. Opaque; '' when the shopper had none.
+                'client_reference' => function_exists('lets_payplus_order_client_reference')
+                    ? (string) lets_payplus_order_client_reference($order)
+                    : '',
                 // Which method the PayPlus page opens on: the PayPal option asks for
                 // PayPal only; the card option sends '' (the merchant's own defaults).
                 'charge_method' => static::CHARGE_METHOD,

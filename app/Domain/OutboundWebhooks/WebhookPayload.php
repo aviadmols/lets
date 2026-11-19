@@ -13,9 +13,9 @@ use Carbon\CarbonInterface;
 /**
  * The JSON a merchant's endpoint receives — ONE shape for every topic:
  *
- *   { event_id, topic, created_at, test, shop: {...}, data: { charge, order, customer, subscription } }
+ *   { event_id, topic, created_at, test, shop: {...}, data: { charge, order, customer, subscription, change } }
  *
- * `data` always carries the same four keys (null where a part does not apply, e.g.
+ * `data` always carries the same five keys (null where a part does not apply, e.g.
  * no `subscription` on a plain store checkout), so a receiving scenario can map the
  * fields once and use them for every topic.
  *
@@ -38,6 +38,15 @@ final class WebhookPayload
 
     public const SOURCE_WOO_ORDER = 'woo_order';
 
+    /** The keys `data` always carries, in this order. */
+    public const DATA_KEYS = ['charge', 'order', 'customer', 'subscription', 'change'];
+
+    /** A subscription's status moved (the subscription.* topics). */
+    public const SOURCE_PLAN_STATUS = 'plan_status';
+
+    /** Where the outside system's own reference for the buyer is kept on a plan. */
+    public const META_CLIENT_REFERENCE = 'client_reference';
+
     /** Every key the `order` block carries, whatever the source (plus `items` and `coupons`). */
     public const ORDER_KEYS = [
         'id', 'number', 'status', 'role', 'parent_order_id', 'currency', 'total', 'subtotal',
@@ -53,6 +62,10 @@ final class WebhookPayload
      */
     public static function envelope(Shop $shop, string $topic, string $eventKey, array $data, bool $test = false): array
     {
+        // ONE shape for every topic: the same five keys, null where a part does not
+        // apply (no `charge` on a status move, no `change` on a charge).
+        $data = array_merge(array_fill_keys(self::DATA_KEYS, null), $data);
+
         return [
             'event_id' => self::eventId($shop, $eventKey),
             'topic' => $topic,
@@ -88,8 +101,49 @@ final class WebhookPayload
             self::SOURCE_PAYMENT_FAILED => $this->fromFailedPayment($source),
             self::SOURCE_BILLING_ATTEMPT => $this->fromBillingAttempt((int) ($source['attempt_id'] ?? 0)),
             self::SOURCE_WOO_ORDER => is_array($source['order'] ?? null) ? $this->fromWooOrder($source['order']) : null,
+            self::SOURCE_PLAN_STATUS => $this->fromPlanStatus($source),
             default => null,
         };
+    }
+
+    /**
+     * A subscription's status moved. `charge` is null (nothing was charged by the
+     * move itself); `change` says from what, to what, and why. Built ONCE, at the
+     * delivery's first attempt, and frozen on the row (WebhookDeliverer): every
+     * retry and a manual resend repeat that same body, so `subscription` is the
+     * plan as it stood at that first attempt. A receiver must order events by the
+     * envelope's created_at, never assume a late retry is current.
+     *
+     * @param  array<string, mixed>  $source
+     * @return array<string, mixed>|null
+     */
+    public function fromPlanStatus(array $source): ?array
+    {
+        $plan = InstallmentPlan::query()->find((int) ($source['plan_id'] ?? 0));
+        if ($plan === null) {
+            return null;
+        }
+
+        return [
+            'charge' => null,
+            'order' => self::order([
+                'id' => $plan->externalOrderId(),
+                'currency' => (string) $plan->currency,
+            ]),
+            'customer' => $this->customer(
+                $plan->customer_name,
+                $plan->customer_email,
+                $plan->customer_phone,
+                $plan->externalCustomerId(),
+            ),
+            'subscription' => $this->plan($plan),
+            'change' => [
+                'previous_status' => isset($source['from']) ? (string) $source['from'] : null,
+                'status' => isset($source['to']) ? (string) $source['to'] : null,
+                'action' => isset($source['action']) ? (string) $source['action'] : null,
+                'changed_at' => isset($source['at']) ? (string) $source['at'] : null,
+            ],
+        ];
     }
 
     /**
@@ -294,6 +348,12 @@ final class WebhookPayload
             'total_amount' => (float) $plan->total_amount,
             'total_charged' => (float) $plan->total_charged,
             'remaining_amount' => $plan->isRecurring() ? null : $plan->remainingAmount(),
+            // The outside system's OWN reference for this buyer, passed through the
+            // checkout (?lets_ref=…) untouched. Opaque to us: the system that minted
+            // it is the one that can verify it.
+            'client_reference' => self::clientReference($plan),
+            'product_id' => $plan->externalProductId(),
+            'started_at' => self::date($plan->created_at),
         ];
     }
 
@@ -306,6 +366,13 @@ final class WebhookPayload
             'phone' => self::nullable($phone),
             'external_id' => self::nullable($externalId),
         ];
+    }
+
+    private static function clientReference(InstallmentPlan $plan): ?string
+    {
+        $value = data_get($plan->meta, self::META_CLIENT_REFERENCE);
+
+        return is_scalar($value) ? self::nullable((string) $value) : null;
     }
 
     private static function nullable(?string $value): ?string

@@ -62,7 +62,7 @@ final class PersonalDataRegistry
         'loyalty_point_events' => ['meta'],
         'loyalty_referrals' => ['buyer_ref', 'buyer_email'],
         'refund_requests' => ['reason', 'lines', 'money_result', 'store_result', 'doc_result'],
-        'card_update_links' => ['sent_to'],
+        'card_update_links' => ['sent_to', 'terms_accepted_ip', 'terms_accepted_user_agent'],
         'token_recovery_results' => ['candidates'],
         'upsell_offer_events' => ['customer_ref', 'context'],
         'data_request_exports' => ['shopify_customer_id', 'customer_email', 'export'],       // row deleted

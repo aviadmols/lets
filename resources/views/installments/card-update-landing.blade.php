@@ -21,7 +21,11 @@
       .rc-campaign-card__actions .rc-campaign-btn
     Zero inline CSS, as everywhere outside the email templates.
 
-    Props: $shopName, $cardLastFour, $continueUrl, $expiresAt, $dir.
+    With NO stored consent the page also shows the subscription's terms and a
+    required checkbox (.rc-campaign-terms*); otherwise it is exactly as above.
+
+    Props: $shopName, $cardLastFour, $continueUrl, $expiresAt, $dir,
+           $terms (?array, CardUpdateTerms::for), $termsField, $termsError.
 --}}
 <!doctype html>
 <html lang="{{ app()->getLocale() }}" dir="{{ $dir }}">
@@ -51,6 +55,57 @@
 
         <form class="rc-campaign-card__actions" method="POST" action="{{ $continueUrl }}">
             @csrf
+
+            {{-- No stored consent: what the customer is agreeing to, and the tick
+                 the POST requires (CardUpdateTerms). --}}
+            @if($terms)
+                <section class="rc-campaign-terms">
+                    <h2 class="rc-campaign-terms__title">{{ __('card_update.terms.heading') }}</h2>
+                    <ul class="rc-campaign-terms__list">
+                        @if($terms['product'])
+                            <li>{{ __('card_update.terms.product', ['product' => $terms['product']]) }}</li>
+                        @endif
+                        @if($terms['recurring'])
+                            @if(abs($terms['next_amount'] - $terms['amount']) >= 0.01 && $terms['next_amount'] > 0)
+                                <li>{{ __('card_update.terms.next_amount', ['amount' => \App\Support\Ui\Money::format($terms['next_amount'], $terms['currency'])]) }}</li>
+                            @endif
+                            <li>{{ __('card_update.terms.recurring_amount', [
+                                'amount' => \App\Support\Ui\Money::format($terms['amount'], $terms['currency']),
+                                'frequency' => $terms['frequency'] ? __('billing.settings.frequency.'.$terms['frequency']) : '',
+                            ]) }}@if($terms['interval'] > 1) {{ __('card_update.terms.interval', ['n' => $terms['interval']]) }}@endif</li>
+                            <li>{{ __('card_update.terms.until_cancelled') }}</li>
+                            @if($terms['commitment_cycles'] > 0)
+                                <li>{{ __('card_update.terms.commitment', ['n' => $terms['commitment_cycles']]) }}</li>
+                            @endif
+                        @else
+                            <li>{{ __('card_update.terms.installments', [
+                                'count' => $terms['remaining_count'],
+                                'amount' => \App\Support\Ui\Money::format($terms['next_amount'], $terms['currency']),
+                                'total' => \App\Support\Ui\Money::format($terms['remaining_total'], $terms['currency']),
+                            ]) }}</li>
+                        @endif
+                        <li>
+                            @if($terms['next_date'])
+                                {{ __('card_update.terms.when_date', ['date' => $terms['next_date']]) }}
+                            @else
+                                {{ __('card_update.terms.when_now') }}
+                            @endif
+                        </li>
+                    </ul>
+                    @if($terms['cancellation'])
+                        <p class="rc-campaign-terms__policy">{{ $terms['cancellation'] }}</p>
+                    @endif
+                    <input type="hidden" name="{{ $fingerprintField }}" value="{{ $fingerprint }}">
+                    <label class="rc-campaign-terms__accept">
+                        <input type="checkbox" name="{{ $termsField }}" value="1" required>
+                        <span>{{ __('card_update.terms.accept', ['shop' => $shopName]) }}</span>
+                    </label>
+                    @if($termsError)
+                        <p class="rc-campaign-terms__error" role="alert">{{ __('card_update.terms.'.$termsError) }}</p>
+                    @endif
+                </section>
+            @endif
+
             <button type="submit" class="rc-campaign-btn">{{ __('card_update.landing.continue') }}</button>
         </form>
 

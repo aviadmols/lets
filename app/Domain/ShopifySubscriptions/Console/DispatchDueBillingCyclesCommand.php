@@ -2,6 +2,7 @@
 
 namespace App\Domain\ShopifySubscriptions\Console;
 
+use App\Domain\Billing\ShabbatHold;
 use App\Domain\ShopifySubscriptions\Jobs\AdvanceContractScheduleJob;
 use App\Domain\ShopifySubscriptions\Jobs\BillingAttemptJob;
 use App\Models\Shop;
@@ -40,6 +41,12 @@ final class DispatchDueBillingCyclesCommand extends Command
         $chunk = max(1, (int) $this->option('chunk'));
         $dispatched = 0;
         $advanced = 0;
+        $shabbatHeld = 0;
+
+        // Shops that keep Shabbat (ShabbatHold). A held contract keeps its
+        // next_billing_date and gets no attempt row, so it is still due on Sunday.
+        $shabbat = ShabbatHold::observingShops();
+        $now = now();
 
         SubscriptionContract::acrossAllTenants()
             ->whereIn('status', SubscriptionContract::BILLABLE_STATUSES)
@@ -52,7 +59,7 @@ final class DispatchDueBillingCyclesCommand extends Command
             // (Settings → Billing). A shop back on PayPlus keeps its mirror but
             // gets no app-driven billing attempts.
             ->whereHas('shop', fn ($q) => $q->where('subscription_rail', Shop::RAIL_SHOPIFY_PAYMENTS))
-            ->chunkById($chunk, function ($contracts) use (&$dispatched, &$advanced): void {
+            ->chunkById($chunk, function ($contracts) use (&$dispatched, &$advanced, &$shabbatHeld, $shabbat, $now): void {
                 foreach ($contracts as $contract) {
                     $cycle = $contract->next_billing_date->toDateString();
                     $attempts = SubscriptionBillingAttempt::acrossAllTenants()
@@ -80,13 +87,23 @@ final class DispatchDueBillingCyclesCommand extends Command
                         continue;
                     }
 
-                    BillingAttemptJob::dispatch((int) $contract->shop_id, (int) $contract->getKey(), $cycle);
+                    // Held for Shabbat. Placed AFTER the "already paid" branch on
+                    // purpose: moving a paid cycle on is bookkeeping, not a charge.
+                    if (isset($shabbat[(int) $contract->shop_id]) && ShabbatHold::holds($contract->next_billing_date, $now)) {
+                        $shabbatHeld++;
+
+                        continue;
+                    }
+
+                    BillingAttemptJob::dispatch((int) $contract->shop_id, (int) $contract->getKey(), $cycle, automatic: true);
                     $dispatched++;
                 }
             });
 
         Cache::put(self::HEARTBEAT_KEY, now()->toIso8601String());
-        $this->info("Dispatched {$dispatched} due billing attempt(s); moved {$advanced} paid cycle(s) on.");
+        $this->info("Dispatched {$dispatched} due billing attempt(s); moved {$advanced} paid cycle(s) on"
+            .($shabbatHeld > 0 ? "; held {$shabbatHeld} for Shabbat" : '')
+            .'.');
 
         return self::SUCCESS;
     }

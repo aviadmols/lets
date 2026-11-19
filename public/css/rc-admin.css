@@ -1526,6 +1526,51 @@
     box-shadow: var(--rc-ring);
 }
 
+/* --- The subscription's terms on the card-update page ----------------- */
+/* Shown only when no consent is stored: the customer reads what they agree to
+   and ticks it before the card page opens. */
+
+.rc-campaign-terms {
+    margin: 0 0 var(--rc-space-5);
+    padding: var(--rc-space-4);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-control);
+    background: var(--rc-surface);
+    text-align: start;
+}
+
+.rc-campaign-terms__title {
+    margin: 0 0 var(--rc-space-3);
+    font: var(--rc-type-body-strong);
+}
+
+.rc-campaign-terms__list {
+    margin: 0 0 var(--rc-space-3);
+    padding-inline-start: var(--rc-space-5);
+    font: var(--rc-type-body);
+}
+
+.rc-campaign-terms__policy {
+    margin: 0 0 var(--rc-space-3);
+    font: var(--rc-type-caption);
+    color: var(--rc-ink-muted);
+    white-space: pre-line;
+}
+
+.rc-campaign-terms__accept {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--rc-space-2);
+    font: var(--rc-type-body);
+    cursor: pointer;
+}
+
+.rc-campaign-terms__error {
+    margin: var(--rc-space-2) 0 0;
+    font: var(--rc-type-caption);
+    color: var(--rc-red-ink);
+}
+
 /* --- The hosted personal area's chrome -------------------------------- */
 
 .rc-hosted {

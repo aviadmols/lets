@@ -145,6 +145,8 @@ return [
             'heading' => 'Renewals',
             'intro' => 'What happens in your store each time a subscription renews.',
 
+            'observes_shabbat' => 'The store keeps Shabbat',
+            'observes_shabbat_help' => 'On, no automatic charge runs on a Saturday (Israel time) — renewals, instalments and payment retries alike. A charge that falls on a Saturday is taken on Sunday, and the subscription keeps its date: next month is still counted from the Saturday. Reminder emails name the Sunday. A charge you start yourself with “Charge now” is not held.',
             'creates_order' => 'Create an order for each renewal',
             'creates_order_help' => 'On, every renewal opens a paid order in your store — the picking slip for a shop that ships a box. Off, the renewal still charges the card, still records the payment and still issues the customer\'s invoice, but no order is created: right for a membership or a service nobody packs. Invoices for those renewals appear in the customer\'s own account area instead of hanging off an order.',
 

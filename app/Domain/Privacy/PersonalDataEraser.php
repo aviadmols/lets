@@ -429,6 +429,10 @@ final class PersonalDataEraser
         $query->each(function (CardUpdateLink $link) use (&$count): void {
             $link->forceFill([
                 'sent_to' => null,
+                // Where the customer ticked the terms from. The consent row the
+                // tick became is erased on its own (customer_consents).
+                'terms_accepted_ip' => null,
+                'terms_accepted_user_agent' => null,
                 'revoked_at' => $link->revoked_at ?? now(),
             ])->save();
             $count++;

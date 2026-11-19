@@ -6,6 +6,7 @@ use App\Domain\Account\AccountVisitor;
 use App\Domain\Billing\ConsentCeiling;
 use App\Domain\Installments\RecurringPlanService;
 use App\Domain\Lifecycle\ChargeNowService;
+use App\Domain\OutboundWebhooks\WebhookPayload;
 use App\Domain\Lifecycle\SubscriptionLifecycleService;
 use App\Models\AccountOffer;
 use App\Models\AccountOfferTarget;
@@ -322,6 +323,11 @@ final class AccountOfferAcceptService
                 // The address travels with the person, like the name and card
                 // above — the new plan has no order of its own to read one from.
                 ...$source->addressMetaForSuccessor(),
+                // So does an outside app's reference for them (?lets_ref): the
+                // webhooks about the new plan must name the same account.
+                ...array_filter([
+                    WebhookPayload::META_CLIENT_REFERENCE => data_get($source->meta, WebhookPayload::META_CLIENT_REFERENCE),
+                ], static fn ($value): bool => is_scalar($value) && (string) $value !== ''),
                 InstallmentPlan::META_ACCOUNT_OFFER => [
                     'offer_id' => (string) $offer->getKey(),
                     'target' => $target->stableKey(),

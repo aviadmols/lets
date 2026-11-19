@@ -2,6 +2,7 @@
 
 namespace App\Mail\Support;
 
+use App\Domain\Billing\ShabbatHold;
 use App\Models\InstallmentPayment;
 use App\Models\InstallmentPlan;
 use App\Models\SubscriptionContract;
@@ -146,7 +147,7 @@ final class TemplateRenderer
             'installment_sequence' => $sequence,
             'installment_progress' => self::progress($sequence, $count),
             'installment_total_note' => $count !== '' ? sprintf((string) __(self::TOTAL_NOTE_KEY), $count) : '',
-            'next_charge_date' => self::date($plan->next_charge_at),
+            'next_charge_date' => self::chargeDate($plan->next_charge_at, (int) $plan->shop_id),
             'portal_url' => (string) ($portalUrl ?? ''),
             'invoice_url' => (string) ($invoiceUrl ?? ''),
         ];
@@ -175,7 +176,7 @@ final class TemplateRenderer
             'installment_sequence' => '',
             'installment_progress' => '',
             'installment_total_note' => '',
-            'next_charge_date' => self::date($contract->next_billing_date),
+            'next_charge_date' => self::chargeDate($contract->next_billing_date, (int) $contract->shop_id),
             'portal_url' => '',
             'invoice_url' => '',
         ];
@@ -203,6 +204,24 @@ final class TemplateRenderer
     private static function money(float $amount): string
     {
         return number_format(round($amount, 2), 2);
+    }
+
+    /**
+     * The day the customer's card is actually charged. For a shop that keeps
+     * Shabbat a Saturday date is taken on the Sunday (ShabbatHold), and a
+     * reminder that named the Saturday would tell the customer the wrong day.
+     */
+    private static function chargeDate(mixed $when, int $shopId): string
+    {
+        if ($when === null || $when === '') {
+            return '';
+        }
+
+        $when = $when instanceof Carbon ? $when : Carbon::parse($when);
+
+        return ShabbatHold::observedBy($shopId)
+            ? ShabbatHold::chargeDay($when)->format('d/m/Y')
+            : self::date($when);
     }
 
     private static function date(mixed $when): string

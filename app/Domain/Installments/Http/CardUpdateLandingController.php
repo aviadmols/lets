@@ -4,6 +4,7 @@ namespace App\Domain\Installments\Http;
 
 use App\Domain\Installments\CardUpdateLinks;
 use App\Domain\Installments\CardUpdateService;
+use App\Domain\Installments\CardUpdateTerms;
 use App\Domain\Installments\Models\CardUpdateLink;
 use App\Models\ActivityEvent;
 use App\Models\InstallmentPlan;
@@ -32,6 +33,9 @@ use Illuminate\Http\Response;
  * WHAT IT REVEALS: the shop's name and the last four digits of the card being
  * replaced. Not the customer's name, not their email, not the amount — a link
  * that reaches the wrong inbox must not be a profile of the right person.
+ * ONE EXCEPTION: a plan with no stored consent also shows its terms (product,
+ * amount, frequency, cancellation policy), because a customer cannot agree to
+ * terms they were not shown (CardUpdateTerms). Still no name, no email.
  *
  * The shop comes from the LINK ROW (the audited cross-tenant lookup in
  * CardUpdateLinks::find) and is bound with Tenant::run; everything after that is
@@ -58,13 +62,7 @@ final class CardUpdateLandingController
         return Tenant::run($shop, function () use ($link, $shop, $plan, $token): Response {
             $link->markClicked();
 
-            return $this->inShopLocale(fn (): Response => response()->view(self::VIEW_LANDING, [
-                'shopName' => BusinessName::for($shop),
-                'cardLastFour' => $this->cardLastFour($plan),
-                'continueUrl' => route(CardUpdateLinks::ROUTE_START, ['token' => $token]),
-                'expiresAt' => $link->expires_at?->format('d/m/Y'),
-                'dir' => $this->direction(),
-            ]));
+            return $this->landing($link, $shop, $plan, $token);
         });
     }
 
@@ -77,7 +75,25 @@ final class CardUpdateLandingController
             return $this->gone();
         }
 
-        return Tenant::run($shop, function () use ($link, $shop, $plan): Response|RedirectResponse {
+        return Tenant::run($shop, function () use ($request, $link, $shop, $plan, $token): Response|RedirectResponse {
+            // No stored consent: the customer must have ticked the terms the page
+            // showed them. Without the tick no card page is minted; the page comes
+            // back with the box still unticked and a line saying why.
+            if (CardUpdateTerms::required($plan)) {
+                if (! $request->boolean(CardUpdateTerms::FIELD)) {
+                    return $this->landing($link, $shop, $plan, $token, termsError: 'required');
+                }
+
+                // The terms changed since the page was drawn: show the new ones,
+                // never record agreement to terms the customer did not see.
+                $shown = (string) $request->input(CardUpdateTerms::FINGERPRINT_FIELD, '');
+                if (! hash_equals(CardUpdateTerms::fingerprint(CardUpdateTerms::for($plan)), $shown)) {
+                    return $this->landing($link, $shop, $plan, $token, termsError: 'changed');
+                }
+
+                CardUpdateTerms::stampAcceptance($link, $plan, $request);
+            }
+
             $url = app(CardUpdateService::class)->mintPage($shop, $plan, $link);
 
             if ($url === null) {
@@ -102,6 +118,29 @@ final class CardUpdateLandingController
     }
 
     // === Internals ===
+
+    /**
+     * The interstitial. With no stored consent it also shows the subscription's
+     * terms and a checkbox the POST requires (CardUpdateTerms).
+     */
+    /** @param  string|null  $termsError  null, 'required' (no tick) or 'changed' (terms moved under them) */
+    private function landing(CardUpdateLink $link, Shop $shop, InstallmentPlan $plan, string $token, ?string $termsError = null): Response
+    {
+        $terms = CardUpdateTerms::required($plan) ? CardUpdateTerms::for($plan) : null;
+
+        return $this->inShopLocale(fn (): Response => response()->view(self::VIEW_LANDING, [
+            'shopName' => BusinessName::for($shop),
+            'cardLastFour' => $this->cardLastFour($plan),
+            'continueUrl' => route(CardUpdateLinks::ROUTE_START, ['token' => $token]),
+            'expiresAt' => $link->expires_at?->format('d/m/Y'),
+            'dir' => $this->direction(),
+            'terms' => $terms,
+            'termsField' => CardUpdateTerms::FIELD,
+            'fingerprintField' => CardUpdateTerms::FINGERPRINT_FIELD,
+            'fingerprint' => $terms !== null ? CardUpdateTerms::fingerprint($terms) : null,
+            'termsError' => $termsError,
+        ], $termsError !== null ? Response::HTTP_UNPROCESSABLE_ENTITY : Response::HTTP_OK));
+    }
 
     /**
      * The link, its shop and its plan — or nulls, which the caller turns into

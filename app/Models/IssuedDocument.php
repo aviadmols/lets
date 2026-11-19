@@ -49,6 +49,18 @@ class IssuedDocument extends Model
      */
     public const STATUS_UNRESOLVED = 'unresolved';
 
+    /**
+     * A FAILED document a person decided is not needed (a test order's invoice).
+     * Reachable only from a `failed` row whose failure code proves nothing exists
+     * at the provider (isRetryable), never from `unresolved` or from an ambiguous
+     * failure (transport, no_response). Not retryable, so DocumentIssuer finds
+     * the row by its key and stops; the money is never re-invoiced on its own.
+     */
+    public const STATUS_DISMISSED = 'dismissed';
+
+    /** Longest reason a person may write when dismissing. */
+    public const MAX_DISMISS_REASON = 500;
+
     /** The idempotency-key prefix every invoicing key carries. */
     public const KEY_PREFIX = 'doc:';
 
@@ -85,6 +97,7 @@ class IssuedDocument extends Model
             'source_payload' => 'array',
             'issued_at' => 'datetime',
             'attempted_at' => 'datetime',
+            'dismissed_at' => 'datetime',
         ];
     }
 

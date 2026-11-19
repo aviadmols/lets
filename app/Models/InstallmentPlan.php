@@ -195,6 +195,9 @@ class InstallmentPlan extends Model
             // When collection gave up on this plan's owed cycle. Set means the
             // pause is ours, not the customer's — see the migration.
             'payment_failed_at' => 'datetime',
+            // When a due charge was refused for want of a stored consent. The
+            // scheduler skips a stamped plan; any consent for it clears the stamp.
+            'consent_blocked_at' => 'datetime',
             'meta' => 'array',
         ];
     }
@@ -743,5 +746,18 @@ class InstallmentPlan extends Model
     protected function timelinePaymentId(): ?int
     {
         return null;
+    }
+
+    /**
+     * Every legal status move is announced to the shop's outbound webhooks
+     * (subscription.status_changed, and subscription.activated the first time).
+     * The publisher waits for the surrounding transaction to commit and never
+     * throws, so a move that rolls back announces nothing.
+     *
+     * @param  array<string, mixed>  $context
+     */
+    protected function afterStatusTransition(string $from, string $to, array $context): void
+    {
+        app(\App\Domain\OutboundWebhooks\WebhookPublisher::class)->planStatusChanged($this, $from, $to, $context);
     }
 }

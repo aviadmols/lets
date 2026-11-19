@@ -5,7 +5,10 @@ namespace App\Domain\OutboundWebhooks;
 use App\Domain\OutboundWebhooks\Jobs\DeliverWebhookJob;
 use App\Domain\OutboundWebhooks\Models\WebhookDelivery;
 use App\Domain\OutboundWebhooks\Models\WebhookEndpoint;
+use App\Models\InstallmentPlan;
 use App\Models\Shop;
+use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
+use Illuminate\Support\Str;
 use App\Models\SubscriptionBillingAttempt;
 use App\Support\Tenant;
 use Illuminate\Support\Facades\DB;
@@ -27,6 +30,10 @@ use Illuminate\Support\Facades\Log;
  */
 final class WebhookPublisher
 {
+    // === CONSTANTS ===
+    /** The statuses a plan is in before it has ever been active. */
+    private const BEFORE_FIRST_ACTIVATION = ['draft', 'awaiting_first_payment', 'awaiting_activation'];
+
     /** @param array<string, mixed> $source what the event is about (see WebhookPayload::SOURCE_*) */
     public function publish(int $shopId, string $topic, string $eventKey, array $source): void
     {
@@ -62,6 +69,45 @@ final class WebhookPublisher
                 $topic,
                 sprintf('sba:%d:%s', $attempt->getKey(), $attempt->status),
                 ['kind' => WebhookPayload::SOURCE_BILLING_ATTEMPT, 'attempt_id' => (int) $attempt->getKey()],
+            );
+        }
+    }
+
+    /**
+     * A subscription's status moved (HasGuardedStatus::transitionTo, the one legal
+     * path). Announces subscription.status_changed for EVERY move, and
+     * subscription.activated the first time the plan becomes active.
+     *
+     * Each move is its own event (a plan can go active → paused → active), so the
+     * key carries a fresh id; "activated" is keyed by the plan alone, so it can
+     * only ever be sent once per endpoint.
+     *
+     * @param  array<string, mixed>  $context  the transition's own context (e.g. action)
+     */
+    public function planStatusChanged(InstallmentPlan $plan, string $from, string $to, array $context = []): void
+    {
+        $source = [
+            'kind' => WebhookPayload::SOURCE_PLAN_STATUS,
+            'plan_id' => (int) $plan->getKey(),
+            'from' => $from,
+            'to' => $to,
+            'action' => isset($context['action']) && is_scalar($context['action']) ? (string) $context['action'] : null,
+            'at' => now()->toIso8601String(),
+        ];
+
+        $this->publish(
+            (int) $plan->shop_id,
+            WebhookTopic::SUBSCRIPTION_STATUS_CHANGED,
+            sprintf('ps:%d:%s>%s:%s', $plan->getKey(), $from, $to, Str::uuid()->toString()),
+            $source,
+        );
+
+        if ($to === PlanStatus::ACTIVE->value && in_array($from, self::BEFORE_FIRST_ACTIVATION, true)) {
+            $this->publish(
+                (int) $plan->shop_id,
+                WebhookTopic::SUBSCRIPTION_ACTIVATED,
+                sprintf('pa:%d', $plan->getKey()),
+                $source,
             );
         }
     }

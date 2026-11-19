@@ -69,6 +69,20 @@ trait HasGuardedStatus
             shopId: $this->shop_id ?? null,
         );
 
+        // A model may announce its own moves (InstallmentPlan → outbound webhooks).
+        // After the save and the audit row, and never allowed to undo either.
+        if (method_exists($this, 'afterStatusTransition')) {
+            try {
+                $this->afterStatusTransition($from->value, $to->value, $context);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('status_transition.after_hook_failed', [
+                    'model' => class_basename($this),
+                    'id' => $this->getKey(),
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         return $this;
     }
 }

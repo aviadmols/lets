@@ -56,14 +56,16 @@ final class ManageWebhooksPageTest extends TestCase
             ->callTableAction('create', data: [
                 'name' => 'Make',
                 'url' => self::URL,
-                'topics' => [WebhookTopic::ORDER_PAID, WebhookTopic::RECURRING_FAILED],
+                // Every topic but one: Filament merges a test's list into the default
+                // selection by position, so a shorter list would leave defaults ticked.
+                'topics' => array_values(array_diff(WebhookTopic::ALL, [WebhookTopic::RECURRING_SUCCEEDED])),
                 'is_active' => true,
             ])
             ->assertHasNoTableActionErrors();
 
         $endpoint = WebhookEndpoint::query()->sole();
         $this->assertSame($this->shop->id, $endpoint->shop_id);
-        $this->assertSame([WebhookTopic::ORDER_PAID, WebhookTopic::RECURRING_FAILED], $endpoint->subscribedTopics());
+        $this->assertSame(array_values(array_diff(WebhookTopic::ALL, [WebhookTopic::RECURRING_SUCCEEDED])), $endpoint->subscribedTopics());
         $this->assertStringStartsWith(WebhookEndpoint::SECRET_PREFIX, $endpoint->secret);
     }
 
@@ -89,7 +91,7 @@ final class ManageWebhooksPageTest extends TestCase
 
             $this->assertSame($topic, $json['topic']);
             $this->assertTrue($json['test']);
-            $this->assertSame(['charge', 'order', 'customer', 'subscription'], array_keys($json['data']));
+            $this->assertSame(['charge', 'order', 'customer', 'subscription', 'change'], array_keys($json['data']));
             // A fresh shop has no history: the example stands in.
             $this->assertSame(SamplePayloads::ORIGIN_EXAMPLE, $component->get('sampleBuiltFrom'));
         }

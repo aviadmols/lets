@@ -165,6 +165,13 @@ class MerchantBillingSettings extends Model
     public const DEFAULT_UPSELL_CHARGING_ENABLED = true;
 
     /**
+     * The shop keeps Shabbat: no automatic charge on a Saturday (Israel time); it
+     * is collected on the Sunday and the plan keeps its date. OFF by default.
+     * The rule itself lives in App\Domain\Billing\ShabbatHold.
+     */
+    public const DEFAULT_OBSERVES_SHABBAT = false;
+
+    /**
      * Subscribers' discount on chosen store categories (WooCommerce). OFF by
      * default; the percent is clamped so a typo can never give goods away.
      */
@@ -215,6 +222,7 @@ class MerchantBillingSettings extends Model
             'allow_customer_edit_items' => 'boolean',
             'single_active_subscription' => 'boolean',
             'live_charging_enabled' => 'boolean',
+            'observes_shabbat' => 'boolean',
             'upsell_charging_enabled' => 'boolean',
             'charging_paused_at' => 'datetime',
             'subscriber_discount_enabled' => 'boolean',
@@ -455,6 +463,12 @@ class MerchantBillingSettings extends Model
     public function chargingIsLive(): bool
     {
         return (bool) ($this->live_charging_enabled ?? self::DEFAULT_LIVE_CHARGING_ENABLED);
+    }
+
+    /** Does this shop keep Shabbat (no automatic charge on a Saturday)? */
+    public function observesShabbat(): bool
+    {
+        return (bool) ($this->observes_shabbat ?? self::DEFAULT_OBSERVES_SHABBAT);
     }
 
     /** May an after-purchase offer be shown and charged in this shop? */

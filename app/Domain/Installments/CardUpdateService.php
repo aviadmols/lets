@@ -252,6 +252,12 @@ final class CardUpdateService
             shopId: (int) $shop->getKey(),
         );
 
+        // The customer agreed to the subscription's terms on this link's page (it
+        // showed them because no consent was stored). Now that the card is
+        // really saved, that agreement becomes the consent, BEFORE any owed cycle
+        // is queued below, so the charge finds it.
+        CardUpdateTerms::recordConsent($plan, $link?->fresh());
+
         // A plan that OWES a cycle was waiting for exactly this. Ask for the owed
         // cycle now, with the new card, instead of leaving it until somebody
         // notices. Queued rather than inline: this runs inside a gateway

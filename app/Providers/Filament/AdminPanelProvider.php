@@ -83,6 +83,11 @@ class AdminPanelProvider extends PanelProvider
 
     public const CAMPAIGN_PREVIEW_ASSET_PATH = 'js/rc-campaign-preview.js';
 
+    /** Expands any sidebar group a browser remembers as collapsed (public/js/rc-sidebar-groups.js). */
+    public const SIDEBAR_GROUPS_ASSET_ID = 'rc-sidebar-groups';
+
+    public const SIDEBAR_GROUPS_ASSET_PATH = 'js/rc-sidebar-groups.js';
+
     /** Standalone brand files for slots that cannot render Blade (favicon, docs). */
     public const LOGO_PATH = 'images/lets-logo.svg';
 
@@ -193,6 +198,9 @@ class AdminPanelProvider extends PanelProvider
         FilamentAsset::register([
             Css::make(self::THEME_ASSET_ID, self::themeAssetUrl()),
             Js::make(self::CAMPAIGN_PREVIEW_ASSET_ID, self::versionedAssetUrl(self::CAMPAIGN_PREVIEW_ASSET_PATH)),
+            // Clears a stale remembered "collapsed" sidebar group (groups are not
+            // collapsible here, yet Filament honours the remembered state).
+            Js::make(self::SIDEBAR_GROUPS_ASSET_ID, self::versionedAssetUrl(self::SIDEBAR_GROUPS_ASSET_PATH)),
         ]);
 
         // RTL is automatic: Filament reads <html dir> from the translation key

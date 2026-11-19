@@ -60,6 +60,14 @@ final class ConsentCeiling
 
     public const SOURCE_MERCHANT_OVERRIDE = 'merchant_override';
 
+    /**
+     * The customer never agreed on screen; the merchant ATTESTED that they agreed
+     * (by phone, in person, on paper) and took responsibility for it. Recorded as
+     * exactly that, with who attested and why, never dressed up as a customer
+     * click. Written by `consents:attest-missing`.
+     */
+    public const SOURCE_MERCHANT_ATTESTED = 'merchant_attested';
+
     public const REASON_AMOUNT = 'amount_above_consent';
 
     public const REASON_CADENCE = 'cadence_tighter_than_consent';
@@ -370,10 +378,31 @@ final class ConsentCeiling
         return self::CYCLE_DAYS[$frequency] * max(1, $interval);
     }
 
+    /**
+     * Does $plan have a consent the charge gate would accept? READ-ONLY, unlike
+     * consentFor(), which binds a customer-wide row to the plan as it finds it.
+     * For screens and the card-update page, which must not write by looking.
+     */
+    public function hasConsent(InstallmentPlan $plan): bool
+    {
+        $context = self::contextFor($plan);
+
+        $bound = CustomerConsent::query()
+            ->where('shop_id', (int) $plan->shop_id)
+            ->where('consent_context', $context)
+            ->where('plan_id', $plan->getKey())
+            ->exists();
+
+        return $bound || $this->legacyConsent($plan, $context) !== null;
+    }
+
     private function legacyConsent(InstallmentPlan $plan, string $context): ?CustomerConsent
     {
         $hasCustomerId = $plan->customer_id !== null;
-        $hasShopifyId = $plan->shopify_customer_id !== null && $plan->shopify_customer_id !== '';
+        // "0" is every guest: it identifies nobody, so it can never match a
+        // customer-wide consent (one guest's consent is not another's).
+        $hasShopifyId = $plan->shopify_customer_id !== null && $plan->shopify_customer_id !== ''
+            && ! in_array((string) $plan->shopify_customer_id, CustomerConsent::NON_IDENTIFYING_REFS, true);
 
         // Fail closed: no customer identity can never match a consent row.
         if (! $hasCustomerId && ! $hasShopifyId) {

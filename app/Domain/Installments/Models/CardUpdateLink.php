@@ -60,7 +60,8 @@ class CardUpdateLink extends Model
     public const PRUNE_AFTER_DAYS = 90;
 
     /** The hash is not mass-assignable, and neither is any lifecycle stamp. */
-    protected $guarded = ['id', 'shop_id', 'token_hash', 'clicked_at', 'completed_at', 'revoked_at'];
+    protected $guarded = ['id', 'shop_id', 'token_hash', 'clicked_at', 'completed_at', 'revoked_at',
+        'terms_accepted_at', 'terms_snapshot', 'terms_accepted_ip', 'terms_accepted_user_agent'];
 
     protected function casts(): array
     {
@@ -69,6 +70,8 @@ class CardUpdateLink extends Model
             'clicked_at' => 'datetime',
             'completed_at' => 'datetime',
             'revoked_at' => 'datetime',
+            'terms_accepted_at' => 'datetime',
+            'terms_snapshot' => 'array',
         ];
     }
 

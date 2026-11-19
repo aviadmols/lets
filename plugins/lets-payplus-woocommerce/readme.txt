@@ -6,7 +6,7 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.65.0
+Stable tag: 0.66.0
 License: Proprietary
 
 Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
@@ -64,6 +64,11 @@ from the LETS dashboard locale for server-rendered copy and from the plugin text
 WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 == Changelog ==
+
+= 0.66.0 =
+* An outside app can send its users to the checkout with its own reference for them
+  (?lets_ref=…). The reference is written on the order and kept on the subscription
+  the order starts, and every LETS webhook about that subscription hands it back.
 
 = 0.65.0 =
 * Subscribers' discount: categories can be excluded. A product in (or under) an excluded

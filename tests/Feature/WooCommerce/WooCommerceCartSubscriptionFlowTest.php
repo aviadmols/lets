@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\WooCommerce;
 
+use App\Domain\OutboundWebhooks\WebhookPayload;
 use App\Models\CustomerConsent;
 use App\Models\InstallmentPlan;
 use App\Models\MerchantCheckoutSettings;
@@ -103,6 +104,37 @@ final class WooCommerceCartSubscriptionFlowTest extends TestCase
             // 100 − 10% = 90 per cycle, from the TEMPLATE (not the request amount).
             $this->assertEqualsWithDelta(90.0, (float) $plan->installment_amount, 0.001);
         });
+    }
+
+    /**
+     * An outside app's reference for the buyer (?lets_ref=… on its upgrade link)
+     * is kept on the subscription, so every webhook about it can hand it back. A
+     * reference outside the safe alphabet is dropped, never stored.
+     */
+    public function test_the_client_reference_is_kept_on_the_subscription_and_a_malformed_one_is_dropped(): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop('cart-ref.example.com');
+        Tenant::run($shop, fn () => $this->makeSubscriptionProduct($shop, '601', 99.0));
+        $this->fakeGateway();
+
+        $references = [];
+        foreach (['8501' => 'acc_42.Zm9vYmFy-sig', '8502' => '<script>x</script>'] as $orderId => $reference) {
+            $response = $this->signedPost($key, $secret, self::SESSION, [
+                'order_id' => (string) $orderId, 'amount' => 99.0, 'currency' => 'USD',
+                'return_url' => 'https://cart-ref.example.com/thanks',
+                'customer_id' => '0', 'first_name' => 'Dana', 'email' => 'dana@example.com',
+                'client_reference' => $reference,
+                'subscription_items' => [['product_id' => '601', 'variant_id' => '601', 'quantity' => 1]],
+            ])->assertOk();
+
+            $planId = (string) $response->json('subscription_plan_ids.0');
+            $references[] = Tenant::run($shop, static fn () => data_get(
+                InstallmentPlan::query()->where('public_id', $planId)->sole()->meta,
+                WebhookPayload::META_CLIENT_REFERENCE,
+            ));
+        }
+
+        $this->assertSame(['acc_42.Zm9vYmFy-sig', null], $references);
     }
 
     public function test_the_callback_activates_the_subscription_plan_at_the_per_cycle_amount(): void

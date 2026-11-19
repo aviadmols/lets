@@ -65,6 +65,7 @@ final class EventPresenter
         'document_issue_requested' => ['info', 'timeline.kind.document_requested'],
         'document_retried' => ['info', 'timeline.kind.document_retried'],
         'document_restamped' => ['info', 'timeline.kind.document_restamped'],
+        'document_dismissed' => ['gray', 'timeline.kind.document_dismissed'],
         // WARNING, not info: this is the one act in the module that can duplicate a
         // real tax document. Rendering it like routine traffic would hide it in the
         // exact scan someone runs when they suspect a duplicate.
@@ -127,6 +128,7 @@ final class EventPresenter
         // WARNING: the merchant chose to charge above the consent — it must stand
         // out in the scan someone runs after a dispute.
         'consent_override_approved' => ['warning', 'timeline.kind.consent_override_approved'],
+        'consent_recorded' => ['success', 'timeline.kind.consent_recorded'],
         // FAILURE: a store asked for a tax document and none was issued — the
         // merchant must see it (a copy of the site, or a total LETS never collected).
         'invoicing_report_refused' => ['failure', 'timeline.kind.invoicing_report_refused'],
@@ -161,6 +163,7 @@ final class EventPresenter
         'charge_needs_reconcile' => ['warning', 'timeline.kind.charge_needs_reconcile'],
         'charge_reconciled' => ['info', 'timeline.kind.charge_reconciled'],
         'charging_paused' => ['gray', 'timeline.kind.charging_paused'],
+        'charge_held_for_shabbat' => ['gray', 'timeline.kind.charge_held_for_shabbat'],
         'charging_resumed_rolled_forward' => ['info', 'timeline.kind.charging_resumed_rolled_forward'],
         'consent_missing' => ['warning', 'timeline.kind.consent_missing'],
         'manual_payment_pending' => ['gray', 'timeline.kind.manual_payment_pending'],

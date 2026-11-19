@@ -73,11 +73,20 @@ final class Timeline
      */
     public const KIND_CHARGE_ABOVE_CONSENT = 'charge_above_consent';
 
+    /**
+     * A consent to charge the saved card was recorded for a plan that had none.
+     * details: {source: card_update_link|merchant_attested, amount, ...}.
+     */
+    public const KIND_CONSENT_RECORDED = 'consent_recorded';
+
     /** A merchant approved charging above the customer's consent. details: {from, to, reason}. */
     public const KIND_CONSENT_OVERRIDE_APPROVED = 'consent_override_approved';
 
     /** The shop's live-charging switch is off — the due charge was skipped, not failed. */
     public const KIND_CHARGING_PAUSED = 'charging_paused';
+
+    /** The shop keeps Shabbat — the charge waits for Sunday. details: {type, resume_at}. */
+    public const KIND_CHARGE_HELD_FOR_SHABBAT = 'charge_held_for_shabbat';
 
     /**
      * Another attempt at this exact debt was already at the gateway, so this one
@@ -136,6 +145,9 @@ final class Timeline
      * one act here is a notification, which is why it is safe to offer freely.
      */
     public const KIND_DOCUMENT_RESTAMPED = 'document_restamped';
+
+    /** A merchant marked a FAILED document as not needed. details: {context, reason, ...}. */
+    public const KIND_DOCUMENT_DISMISSED = 'document_dismissed';
 
     /** The intro-discount window ended — the cycle price stepped up to regular_amount. */
     public const KIND_PRICE_STEPPED_UP = 'price_stepped_up';

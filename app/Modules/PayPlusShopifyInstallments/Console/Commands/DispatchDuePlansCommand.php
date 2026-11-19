@@ -3,6 +3,7 @@
 namespace App\Modules\PayPlusShopifyInstallments\Console\Commands;
 
 use App\Domain\Billing\RepeatChargeGuard;
+use App\Domain\Billing\ShabbatHold;
 use App\Models\Concerns\TenantScope;
 use App\Models\InstallmentPlan;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentStatus;
@@ -35,6 +36,9 @@ final class DispatchDuePlansCommand extends Command
     /** Heartbeat key (kept from the reference engine) for liveness monitoring. */
     private const HEARTBEAT_KEY = 'pps_installments:dispatch_due:last_run_at';
 
+    /** How often a plan stopped for want of a consent is asked again anyway. */
+    public const CONSENT_RECHECK_HOURS = 24;
+
     public function handle(): int
     {
         $window = (int) config('payplus.charge_window_hours', 1);
@@ -51,6 +55,13 @@ final class DispatchDuePlansCommand extends Command
         // of rows, and asking per plan would be a query per subscriber.
         $paused = $this->shopsWithChargingPaused();
 
+        // Shops that keep Shabbat (ShabbatHold). A plan held here keeps its date,
+        // so it is still due on Sunday and the first run after 00:00 queues it,
+        // with nothing written in between.
+        $shabbat = ShabbatHold::observingShops();
+        $now = now();
+        $shabbatHeld = 0;
+
         // AUDITED cross-tenant scan; each dispatched job re-binds its own tenant.
         InstallmentPlan::acrossAllTenants()
             ->whereIn('status', PlanStatus::chargeable())
@@ -59,6 +70,16 @@ final class DispatchDuePlansCommand extends Command
             // acquired a clock (Resume mints one; the date verbs hand one over)
             // does not queue a job every five minutes to be told no.
             ->where('no_charge', false)
+            // Refused for want of a consent: not asked again every five minutes.
+            // It waits on the Payment recovery screen; recording a consent clears
+            // the stamp and the next run collects it. And once a DAY it is asked
+            // anyway (the orchestrator re-stamps a repeat refusal, silently), so a
+            // consent that arrived by a path that cleared nothing is still
+            // collected: a stop that only one trigger can undo strands money.
+            ->where(function ($q): void {
+                $q->whereNull('consent_blocked_at')
+                    ->orWhere('consent_blocked_at', '<=', now()->subHours(self::CONSENT_RECHECK_HOURS));
+            })
             ->whereNotNull('next_charge_at')
             ->where('next_charge_at', '<=', $dueBefore)
             // A slot waiting out its daily retry is NOT due yet. Without this the
@@ -101,10 +122,16 @@ final class DispatchDuePlansCommand extends Command
                 RepeatChargeGuard::chargedWithinWindow($q->withoutGlobalScope(TenantScope::class));
             })
             ->orderBy('id')
-            ->chunkById($chunk, function ($plans) use (&$dispatched, &$held, $paused): void {
+            ->chunkById($chunk, function ($plans) use (&$dispatched, &$held, &$shabbatHeld, $paused, $shabbat, $now): void {
                 foreach ($plans as $plan) {
                     if (isset($paused[(int) $plan->shop_id])) {
                         $held++;
+
+                        continue;
+                    }
+
+                    if (isset($shabbat[(int) $plan->shop_id]) && ShabbatHold::holds($plan->next_charge_at, $now)) {
+                        $shabbatHeld++;
 
                         continue;
                     }
@@ -129,7 +156,14 @@ final class DispatchDuePlansCommand extends Command
             ]);
         }
 
-        $this->info("Dispatched {$dispatched} due charge job(s)".($held > 0 ? "; skipped {$held} on shops with live charging off." : '.'));
+        if ($shabbatHeld > 0) {
+            Log::info('charging.shabbat_held_due_plans', ['plans' => $shabbatHeld]);
+        }
+
+        $this->info("Dispatched {$dispatched} due charge job(s)"
+            .($held > 0 ? "; skipped {$held} on shops with live charging off" : '')
+            .($shabbatHeld > 0 ? "; held {$shabbatHeld} for Shabbat" : '')
+            .'.');
 
         return self::SUCCESS;
     }

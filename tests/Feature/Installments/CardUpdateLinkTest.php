@@ -9,6 +9,7 @@ use App\Domain\Installments\Models\CardUpdateLink;
 use App\Filament\Resources\SubscriptionResource\Pages\ViewSubscription;
 use App\Mail\CardUpdateLinkMail;
 use App\Models\ActivityEvent;
+use App\Models\CustomerConsent;
 use App\Models\InstallmentPayment;
 use App\Models\InstallmentPaymentMethod;
 use App\Models\InstallmentPlan;
@@ -1051,6 +1052,17 @@ final class CardUpdateLinkTest extends TestCase
             'billing_frequency' => BillingFrequency::MONTHLY->value,
             'interval_count' => 1,
         ])->save();
+
+        // A real subscription carries the consent its checkout recorded. The
+        // page for a plan WITHOUT one (terms + a required tick) is pinned in
+        // CardUpdateConsentTest.
+        CustomerConsent::query()->create([
+            'shop_id' => (int) $shop->getKey(),
+            'plan_id' => $plan->getKey(),
+            'consent_context' => CustomerConsent::CONTEXT_RECURRING,
+            'customer_email' => $email,
+            'accepted_at' => now(),
+        ]);
 
         return $plan->fresh();
     }

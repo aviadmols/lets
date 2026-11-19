@@ -124,6 +124,7 @@ class ManageBillingSettings extends Page implements HasForms
 
             'recurring_creates_order' => $settings->recurringCreatesOrder(),
             'renewal_anchor' => $settings->renewalAnchor(),
+            'observes_shabbat' => $settings->observesShabbat(),
             // The RAW column, not the accessor: an untouched setting must show an
             // empty box with the default as its placeholder, so the merchant can
             // see they have not overridden anything. Filling the box with the
@@ -428,6 +429,13 @@ class ManageBillingSettings extends Page implements HasForms
                     ->helperText(__('billing.settings.recurring.creates_order_help'))
                     ->columnSpanFull(),
 
+                // No automatic charge on a Saturday (ShabbatHold). Beside the
+                // renewal rules because it decides WHEN a renewal is taken.
+                Toggle::make('observes_shabbat')
+                    ->label(__('billing.settings.recurring.observes_shabbat'))
+                    ->helperText(__('billing.settings.recurring.observes_shabbat_help'))
+                    ->columnSpanFull(),
+
                 // What a renewal counts from when a charge lands late — the
                 // difference between collecting every month a dead card missed
                 // and resuming from the day it worked.
@@ -684,6 +692,7 @@ class ManageBillingSettings extends Page implements HasForms
         $settings->renewal_anchor = in_array($input['renewal_anchor'] ?? null, MerchantBillingSettings::RENEWAL_ANCHORS, true)
             ? $input['renewal_anchor']
             : MerchantBillingSettings::DEFAULT_RENEWAL_ANCHOR;
+        $settings->observes_shabbat = (bool) ($input['observes_shabbat'] ?? MerchantBillingSettings::DEFAULT_OBSERVES_SHABBAT);
         // Blank means "use the default", stored as NULL — never as the rendered
         // default text, which would freeze today's wording into the row and stop
         // a future improvement to it from ever reaching this shop.

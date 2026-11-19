@@ -4,10 +4,12 @@ namespace App\Domain\OutboundWebhooks;
 
 use App\Domain\OutboundWebhooks\Models\WebhookDelivery;
 use App\Models\InstallmentPayment;
+use App\Models\InstallmentPlan;
 use App\Models\PaymentLedger;
 use App\Models\Shop;
 use App\Models\SubscriptionBillingAttempt;
 use App\Modules\PayPlusShopifyInstallments\Enums\PaymentType;
+use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Str;
 
@@ -59,8 +61,27 @@ final class SamplePayloads
                 ?? $this->latestAttempt(SubscriptionBillingAttempt::STATUS_SUCCEEDED),
             WebhookTopic::RECURRING_FAILED => $this->latestFailedPayment()
                 ?? $this->latestAttempt(SubscriptionBillingAttempt::STATUS_FAILED),
+            WebhookTopic::SUBSCRIPTION_ACTIVATED, WebhookTopic::SUBSCRIPTION_STATUS_CHANGED => $this->latestActivePlan(),
             default => null,
         };
+    }
+
+    /**
+     * The shop's newest active subscription, as if it had just been activated.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function latestActivePlan(): ?array
+    {
+        $id = InstallmentPlan::query()->where('status', PlanStatus::ACTIVE->value)->latest('id')->value('id');
+
+        return $id === null ? null : $this->payload->fromPlanStatus([
+            'plan_id' => (int) $id,
+            'from' => PlanStatus::AWAITING_FIRST_PAYMENT->value,
+            'to' => PlanStatus::ACTIVE->value,
+            'action' => null,
+            'at' => now()->toIso8601String(),
+        ]);
     }
 
     /**
@@ -133,6 +154,10 @@ final class SamplePayloads
         $isOrder = $topic === WebhookTopic::ORDER_PAID;
         $now = now();
 
+        if (in_array($topic, WebhookTopic::SUBSCRIPTION_TOPICS, true)) {
+            return $this->exampleStatusChange($now);
+        }
+
         return [
             'charge' => [
                 'id' => $failed ? null : 1001,
@@ -170,6 +195,48 @@ final class SamplePayloads
                 'total_amount' => 0.0,
                 'total_charged' => $failed ? 389.70 : 519.60,
                 'remaining_amount' => null,
+            ],
+        ];
+    }
+
+    /**
+     * An example subscription.* event: no charge, the subscription, and the move.
+     *
+     * @return array<string, mixed>
+     */
+    private function exampleStatusChange(CarbonInterface $now): array
+    {
+        return [
+            'charge' => null,
+            'order' => WebhookPayload::order(['id' => '10001', 'currency' => 'ILS']),
+            'customer' => [
+                'name' => __('webhooks.sample.customer_name'),
+                'email' => 'customer@example.com',
+                'phone' => '050-0000000',
+                'external_id' => '501',
+            ],
+            'subscription' => [
+                'id' => 501,
+                'public_id' => 'example-plan-501',
+                'kind' => 'recurring',
+                'status' => 'active',
+                'product_title' => __('webhooks.sample.product_title'),
+                'amount' => 129.90,
+                'frequency' => 'monthly',
+                'interval_count' => 1,
+                'next_charge_at' => $now->copy()->addMonth()->toIso8601String(),
+                'total_amount' => 0.0,
+                'total_charged' => 129.90,
+                'remaining_amount' => null,
+                'client_reference' => 'example-account-42',
+                'product_id' => '2675',
+                'started_at' => $now->toIso8601String(),
+            ],
+            'change' => [
+                'previous_status' => 'awaiting_first_payment',
+                'status' => 'active',
+                'action' => null,
+                'changed_at' => $now->toIso8601String(),
             ],
         ];
     }

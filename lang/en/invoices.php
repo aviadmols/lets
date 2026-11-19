@@ -32,6 +32,7 @@ return [
         // would push a merchant to re-issue, which is the one action that can
         // create a duplicate tax document.
         'unresolved' => 'Needs checking',
+        'dismissed' => 'Not needed',
     ],
 
     'action' => [
@@ -58,9 +59,16 @@ return [
         'record_existing_body' => 'The earlier attempt did go through and we simply never heard back. Paste the document details from Green Invoice and we will link them here instead of issuing another.',
         'recorded' => 'Linked. This payment is now marked as invoiced.',
 
+        'dismiss' => 'Not needed',
+        'dismiss_heading' => 'Mark this invoice as not needed?',
+        'dismiss_body' => 'Green Invoice rejected this one, so no document exists. Use this for an invoice that should never be issued — a test order, for example. Nothing is issued or deleted: the row stays here marked “Not needed”, with your reason, and is never issued automatically. If the income is real, use “Try again” instead.',
+        'dismiss_confirm' => 'Mark as not needed',
+        'dismissed' => 'Marked as not needed.',
+
         'field' => [
             'document_id' => 'Document ID in Green Invoice',
             'document_url' => 'Link to the document',
+            'dismiss_reason' => 'Why is it not needed?',
         ],
     ],
 
@@ -73,6 +81,8 @@ return [
         'missing_document_id' => 'Enter the document ID from Green Invoice.',
         'not_issued' => 'Only an issued invoice can be re-sent to its order.',
         'no_order' => 'This invoice names no store order, so there is nothing to send it to.',
+        'not_failed' => 'Only an invoice Green Invoice clearly rejected can be marked as not needed. If a document may exist there, check Green Invoice first.',
+        'missing_reason' => 'Write why this invoice is not needed.',
         'not_rebuildable' => 'The original order details are no longer stored, so this invoice cannot be re-issued accurately. Create it directly in Green Invoice, then use “I found it in Green Invoice”.',
     ],
 ];

@@ -91,8 +91,15 @@ class PaymentRecovery extends Page implements HasTable
     /** Ended while owing money after card failures. */
     public const TAB_CANCELLED = 'cancelled';
 
+    /**
+     * A due charge was refused because no consent is stored for the plan. Not a
+     * card problem: the customer has to agree to the terms (the card-update link
+     * shows them and records it) or the merchant has to record one.
+     */
+    public const TAB_NO_CONSENT = 'no_consent';
+
     /** @var list<string> */
-    public const TABS = [self::TAB_RETRYING, self::TAB_STOPPED, self::TAB_CANCELLED];
+    public const TABS = [self::TAB_RETRYING, self::TAB_STOPPED, self::TAB_NO_CONSENT, self::TAB_CANCELLED];
 
     /**
      * A badge reading "0" is noise and one reading "2,000" is a number nobody
@@ -138,7 +145,8 @@ class PaymentRecovery extends Page implements HasTable
         }
 
         $count = self::scopeFor(self::TAB_RETRYING, InstallmentPlan::query())->count()
-            + self::scopeFor(self::TAB_STOPPED, InstallmentPlan::query())->count();
+            + self::scopeFor(self::TAB_STOPPED, InstallmentPlan::query())->count()
+            + self::scopeFor(self::TAB_NO_CONSENT, InstallmentPlan::query())->count();
 
         if ($count === 0) {
             return null;
@@ -450,6 +458,12 @@ class PaymentRecovery extends Page implements HasTable
                     ->whereNotNull('payment_failed_at')
                     ->where('status', PlanStatus::PAUSED->value))),
 
+            // Refused for want of a consent (ChargeOrchestrator stamps it once).
+            // Live plans only: a cancelled one owes nothing to unblock.
+            self::TAB_NO_CONSENT => $query
+                ->whereNotNull('consent_blocked_at')
+                ->whereNotIn('status', [PlanStatus::CANCELLED->value, PlanStatus::COMPLETED->value]),
+
             // Ended while still owing. The hold stamp survives a cancellation —
             // nothing clears it but a successful charge — which is what lets this
             // separate "cancelled because the card never worked" from "cancelled
@@ -535,6 +549,10 @@ class PaymentRecovery extends Page implements HasTable
         // the importer maps onto `failed`. Saying "the gateway gave no reason"
         // about a charge that never happened would send the merchant hunting for a
         // decline that does not exist.
+        if ($plan->consent_blocked_at !== null) {
+            return __('recovery.reason.no_consent');
+        }
+
         if ($payment === null) {
             return $plan->import_key !== null
                 ? __('recovery.reason.imported_unpaid')
@@ -574,6 +592,7 @@ class PaymentRecovery extends Page implements HasTable
 
         return match ($this->activeTab) {
             self::TAB_STOPPED => __('recovery.next.on_card_update'),
+            self::TAB_NO_CONSENT => __('recovery.next.on_consent'),
             self::TAB_CANCELLED => __('recovery.next.never'),
             default => '—',
         };

@@ -51,6 +51,12 @@ final class DocumentReconciliationService
     /** The original store-order report is gone, so nothing faithful can be sent. */
     public const NOT_REBUILDABLE = 'not_rebuildable';
 
+    /** Only a FAILED document can be dismissed (see dismiss()). */
+    public const NOT_FAILED = 'not_failed';
+
+    /** A dismissal must say why. */
+    public const MISSING_REASON = 'missing_reason';
+
     /**
      * Re-queue a document whose failure PROVES nothing was created at the
      * provider. Refuses anything else — including `unresolved`, which must go
@@ -319,6 +325,77 @@ final class DocumentReconciliationService
     private function ok(): array
     {
         return ['ok' => true, 'reason' => self::OK];
+    }
+
+    /**
+     * Mark a FAILED document as not needed: the invoice for a test order, a sale
+     * the merchant voided another way. Nothing is issued and nothing is deleted.
+     * The row keeps its failure fields and records who closed it, when and why.
+     *
+     * Only a `failed` row whose failure code PROVES nothing exists at the
+     * provider: the same test the Retry button uses (isRetryable). Not every
+     * failed row passes it. A `transport` failure on the document call or an
+     * id-less 2xx (`no_response`) may have created a real document, and hiding
+     * that row would hide a tax document someone might then issue again by
+     * hand. Those, like `unresolved`, keep the check-Green-Invoice-first path.
+     * A `dismissed` row is not retryable, so if the same money is ever
+     * reported again the issuer finds the row by its key and stops.
+     *
+     * The write is conditional on the row STILL being failed, decided by the
+     * database: a retry or a waiting credit note reopening it in the same moment
+     * wins, and this refuses instead of closing a row with an attempt in flight.
+     *
+     * @return array{ok: bool, reason: string}
+     */
+    public function dismiss(IssuedDocument $document, string $reason, ?int $userId = null): array
+    {
+        if ($document->status !== IssuedDocument::STATUS_FAILED || ! $document->isRetryable()) {
+            return $this->fail(self::NOT_FAILED);
+        }
+
+        $reason = trim($reason);
+        if ($reason === '') {
+            return $this->fail(self::MISSING_REASON);
+        }
+
+        $reason = mb_substr($reason, 0, IssuedDocument::MAX_DISMISS_REASON);
+        $now = now();
+
+        $closed = IssuedDocument::query()
+            ->whereKey($document->getKey())
+            ->where('status', IssuedDocument::STATUS_FAILED)
+            // Re-asserted in the same statement: a row reopened and failed AGAIN
+            // in the meantime, ambiguously this time, is not closed.
+            ->whereIn('failure_code', IssuedDocument::RETRYABLE_FAILURES)
+            ->update([
+                'status' => IssuedDocument::STATUS_DISMISSED,
+                'dismissed_at' => $now,
+                'dismissed_by' => $userId,
+                'dismiss_reason' => $reason,
+                'updated_at' => $now,
+            ]);
+
+        if ($closed !== 1) {
+            return $this->fail(self::NOT_FAILED);
+        }
+
+        $document->refresh();
+
+        Timeline::record(
+            kind: Timeline::KIND_DOCUMENT_DISMISSED,
+            details: [
+                'context' => (string) $document->context,
+                'failure_code' => (string) $document->failure_code,
+                'reason' => $reason,
+                'document_type' => $document->document_type ?: null,
+                'amount' => $document->amount !== null ? round((float) $document->amount, 2) : null,
+                'currency' => $document->currency ?: null,
+            ],
+            planId: $document->plan_id !== null ? (int) $document->plan_id : null,
+            shopId: (int) $document->shop_id,
+        );
+
+        return $this->ok();
     }
 
     /** @return array{ok: bool, reason: string} */

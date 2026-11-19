@@ -10,6 +10,7 @@ use App\Domain\Billing\CycleAmountResolver;
 use App\Domain\Billing\IdempotencyKey;
 use App\Domain\Billing\Ledger;
 use App\Domain\Billing\RepeatChargeGuard;
+use App\Domain\Billing\ShabbatHold;
 use App\Domain\Invoicing\DocumentContext;
 use App\Domain\Invoicing\Jobs\IssueDocumentJob;
 use App\Domain\Mail\MailPolicy;
@@ -401,18 +402,38 @@ final class ChargeOrchestrator
         // ledger row, no gateway call — and leave the plan for admin attention.
         $consent = app(ConsentCeiling::class)->consentFor($plan, $this->consentContextFor($plan));
         if ($consent === null) {
-            Timeline::record(
-                kind: Timeline::KIND_CONSENT_MISSING,
-                details: [
-                    'type' => $type->value,
-                    'key' => $key,
-                    'consent_context' => $this->consentContextFor($plan),
-                ],
-                planId: $plan->getKey(),
-                shopId: $shopId,
-            );
+            // STAMPED, AND SAID ONCE. The stamp takes the plan off the scheduler (which
+            // otherwise asked again every five minutes, 1,599 times for one
+            // plan) and puts it on the Payment recovery screen, where a person
+            // can fix it. Said on the Timeline once, not on every refusal. Any
+            // consent recorded for the plan clears the stamp (CustomerConsent).
+            $firstRefusal = $plan->consent_blocked_at === null;
+
+            // Re-stamped on every refusal: the scheduler's daily re-check counts
+            // from the LAST refusal, so a still-unconsented plan is asked about
+            // once a day, never every five minutes.
+            $plan->forceFill(['consent_blocked_at' => now()])->save();
+
+            if ($firstRefusal) {
+                Timeline::record(
+                    kind: Timeline::KIND_CONSENT_MISSING,
+                    details: [
+                        'type' => $type->value,
+                        'key' => $key,
+                        'consent_context' => $this->consentContextFor($plan),
+                    ],
+                    planId: $plan->getKey(),
+                    shopId: $shopId,
+                );
+            }
 
             return ChargeOutcome::skipped('no_consent', $key);
+        }
+
+        // A consent exists now (a person's "charge now" after one was recorded):
+        // the stop no longer applies.
+        if ($plan->consent_blocked_at !== null) {
+            $plan->forceFill(['consent_blocked_at' => null])->save();
         }
 
         // WHAT the customer consented to, not only THAT they did: a charge above
@@ -1466,7 +1487,13 @@ final class ChargeOrchestrator
         if ($settings->renewsFromChargeDate()) {
             $today = CarbonImmutable::now()->startOfDay();
 
-            if ($today->greaterThan($scheduled)) {
+            // A cycle due on a Saturday that a Shabbat-keeping shop collected on
+            // the Sunday was ON TIME, not late. Counted from the Sunday, every
+            // Saturday cycle would move the subscription's day for good.
+            $heldForShabbat = $settings->observesShabbat()
+                && ShabbatHold::excusesLateness($scheduled, CarbonImmutable::now());
+
+            if ($today->greaterThan($scheduled) && ! $heldForShabbat) {
                 $base = $today;
             }
         }

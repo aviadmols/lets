@@ -5,6 +5,7 @@ namespace App\Http\Controllers\WooCommerce\Storefront;
 use App\Domain\Installments\CardUpdateService;
 use App\Domain\Installments\ProductPriceResolver;
 use App\Domain\Installments\RecurringPlanService;
+use App\Domain\OutboundWebhooks\WebhookPayload;
 use App\Domain\Products\ProductPlanTemplateResolver;
 use App\Models\Shop;
 use App\Modules\PayPlusShopifyInstallments\Enums\BillingFrequency;
@@ -37,6 +38,15 @@ use Symfony\Component\HttpFoundation\Response;
 final class WooGatewaySessionController extends WooStorefrontController
 {
     // === CONSTANTS ===
+    /**
+     * An outside system's own reference for the buyer (agent.lets.co.il's account,
+     * say), carried from its "upgrade" link through the checkout (?lets_ref=…) and
+     * kept on each subscription the order starts. OPAQUE to us and never trusted:
+     * the outbound webhooks hand it back, and the system that minted it (and can
+     * sign it) is the one that verifies it. Bounded to a safe alphabet here.
+     */
+    private const CLIENT_REFERENCE_PATTERN = '/^[A-Za-z0-9._:~\-]{1,200}\z/';
+
     /** PayPlus charge_method config key + default (W17: 1 = immediate capture; 0 was verify-only). */
     private const CONFIG_CHARGE_METHOD = 'woocommerce.charge_method';
 
@@ -327,6 +337,13 @@ final class WooGatewaySessionController extends WooStorefrontController
                     'external_customer_id' => $externalCustomerId !== '' ? $externalCustomerId : null,
                 ]);
 
+                $reference = $this->clientReference($request);
+                if ($reference !== null) {
+                    $plan->forceFill(['meta' => array_merge((array) ($plan->meta ?? []), [
+                        WebhookPayload::META_CLIENT_REFERENCE => $reference,
+                    ])])->save();
+                }
+
                 $ids[] = (string) $plan->public_id;
             }
 
@@ -342,6 +359,14 @@ final class WooGatewaySessionController extends WooStorefrontController
      *
      * @return array<string, string>
      */
+    /** The checkout's client reference, or null when absent or outside the safe alphabet. */
+    private function clientReference(Request $request): ?string
+    {
+        $value = trim((string) $request->input('client_reference', ''));
+
+        return preg_match(self::CLIENT_REFERENCE_PATTERN, $value) === 1 ? $value : null;
+    }
+
     private function customer(Request $request): array
     {
         $name = trim(((string) $this->cleanString($request->input('first_name'))).' '.((string) $this->cleanString($request->input('last_name'))));

@@ -254,6 +254,114 @@ final class DocumentReconciliationTest extends TestCase
         });
     }
 
+    // === Not needed (dismiss) ===
+
+    public function test_a_failed_test_order_invoice_can_be_dismissed_and_leaves_the_badge(): void
+    {
+        [$shop, $document] = $this->documentWith(IssuedDocument::STATUS_FAILED, 'rejected');
+        Queue::fake();
+
+        Tenant::run($shop, function () use ($document): void {
+            $this->assertSame('1', IssuedDocumentResource::getNavigationBadge());
+
+            $result = $this->service()->dismiss($document, '  Test order on the staging site  ', 9);
+            $this->assertTrue($result['ok']);
+
+            $row = $document->fresh();
+            $this->assertSame(IssuedDocument::STATUS_DISMISSED, $row->status);
+            $this->assertSame('Test order on the staging site', $row->dismiss_reason);
+            $this->assertSame(9, (int) $row->dismissed_by);
+            $this->assertNotNull($row->dismissed_at);
+            // The history stays: why it failed is still on the row.
+            $this->assertSame('rejected', $row->failure_code);
+
+            $this->assertNull(IssuedDocumentResource::getNavigationBadge());
+            $this->assertTrue(ActivityEvent::query()->where('kind', Timeline::KIND_DOCUMENT_DISMISSED)->exists());
+        });
+
+        // Nothing was issued.
+        Queue::assertNothingPushed();
+    }
+
+    /** An unresolved row may have a real document behind it; it must not be hideable. */
+    public function test_only_a_failed_document_can_be_dismissed(): void
+    {
+        foreach ([IssuedDocument::STATUS_UNRESOLVED, IssuedDocument::STATUS_ISSUED, IssuedDocument::STATUS_PENDING] as $status) {
+            IssuedDocument::withoutGlobalScopes()->delete();
+            [$shop, $document] = $this->documentWith($status, null);
+
+            Tenant::run($shop, function () use ($document, $status): void {
+                $result = $this->service()->dismiss($document, 'Test order');
+
+                $this->assertFalse($result['ok'], $status);
+                $this->assertSame(DocumentReconciliationService::NOT_FAILED, $result['reason']);
+                $this->assertSame($status, $document->fresh()->status);
+            });
+        }
+    }
+
+    /**
+     * A failure that does NOT prove nothing was created (a transport error on the
+     * document call, an id-less 2xx) may have a real document behind it. Hiding
+     * that row could lead to the same income being invoiced twice by hand.
+     */
+    public function test_an_ambiguous_failure_cannot_be_dismissed(): void
+    {
+        foreach (['transport', 'no_response'] as $code) {
+            IssuedDocument::withoutGlobalScopes()->delete();
+            [$shop, $document] = $this->documentWith(IssuedDocument::STATUS_FAILED, $code);
+
+            Tenant::run($shop, function () use ($document, $code): void {
+                $result = $this->service()->dismiss($document, 'Test order');
+
+                $this->assertSame(DocumentReconciliationService::NOT_FAILED, $result['reason'], $code);
+                $this->assertSame(IssuedDocument::STATUS_FAILED, $document->fresh()->status);
+            });
+        }
+    }
+
+    /** A row reopened by a retry in the same moment is not closed under it. */
+    public function test_a_row_reopened_meanwhile_is_not_dismissed(): void
+    {
+        [$shop, $document] = $this->documentWith(IssuedDocument::STATUS_FAILED, 'rejected');
+
+        Tenant::run($shop, function () use ($document): void {
+            // Another request reopens it after this one read it as failed.
+            IssuedDocument::query()->whereKey($document->getKey())->update(['status' => IssuedDocument::STATUS_PENDING]);
+
+            $result = $this->service()->dismiss($document, 'Test order');
+
+            $this->assertFalse($result['ok']);
+            $this->assertSame(IssuedDocument::STATUS_PENDING, $document->fresh()->status);
+        });
+    }
+
+    public function test_a_dismissal_must_say_why(): void
+    {
+        [$shop, $document] = $this->documentWith(IssuedDocument::STATUS_FAILED, 'rejected');
+
+        Tenant::run($shop, function () use ($document): void {
+            $result = $this->service()->dismiss($document, '   ');
+
+            $this->assertSame(DocumentReconciliationService::MISSING_REASON, $result['reason']);
+            $this->assertSame(IssuedDocument::STATUS_FAILED, $document->fresh()->status);
+        });
+    }
+
+    /** Dismissed is final for the automatic paths: neither retry nor the issuer reopens it. */
+    public function test_a_dismissed_document_is_never_issued_again(): void
+    {
+        [$shop, $document] = $this->documentWith(IssuedDocument::STATUS_FAILED, 'rejected');
+
+        Tenant::run($shop, function () use ($document): void {
+            $this->service()->dismiss($document, 'Test order');
+            $row = $document->fresh();
+
+            $this->assertFalse($row->isRetryable());
+            $this->assertSame(DocumentReconciliationService::NOT_RETRYABLE, $this->service()->retry($row)['reason']);
+        });
+    }
+
     // === Helpers ===
 
     private function service(): DocumentReconciliationService
