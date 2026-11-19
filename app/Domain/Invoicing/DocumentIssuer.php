@@ -713,6 +713,20 @@ final class DocumentIssuer
                 shopId: $shopId,
             );
 
+            // A refund that came while this sale was still held asked for its credit
+            // note too early and was refused; now the sale exists, send it again.
+            // The sale is already saved: a hiccup here must not make it look failed.
+            if (! $context->isCredit()) {
+                try {
+                    app(WaitingCreditNotes::class)->releaseFor($row);
+                } catch (Throwable $e) {
+                    Log::warning('invoicing.credit_notes_release_failed', [
+                        'shop_id' => $shopId, 'document_id' => $row->getKey(), 'exception' => $e::class,
+                        'message' => $e->getMessage(),
+                    ]);
+                }
+            }
+
             return $row;
         }
 
