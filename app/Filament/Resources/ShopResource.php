@@ -4,7 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Domain\Billing\BillingPlan;
 use App\Domain\Tenancy\ShopHosts;
-use App\Filament\Pages\HomeDashboard;
+use App\Filament\Pages\Insights\Joins;
 use App\Filament\Resources\ShopResource\Pages;
 use App\Models\InstallmentPlan;
 use App\Models\PaymentLedger;
@@ -256,7 +256,7 @@ class ShopResource extends Resource
             ->success()
             ->send();
 
-        return redirect(HomeDashboard::getUrl());
+        return redirect(Joins::getUrl());
     }
 
     /**

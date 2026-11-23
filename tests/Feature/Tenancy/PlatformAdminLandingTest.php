@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Tenancy;
 
-use App\Filament\Pages\HomeDashboard;
+use App\Filament\Pages\Insights\Joins;
 use App\Filament\Resources\ShopResource;
 use App\Models\Shop;
 use App\Models\User;
@@ -10,12 +10,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * REGRESSION (W3): the platform owner must be able to log into /admin. The panel's
- * default landing page (HomeDashboard, slug '/') is shop-scoped — for a platform
- * admin in "platform mode" no tenant is bound, so the un-patched canAccess()
- * (Tenant::check()) returned false and Filament 403'd the owner on /admin. The fix
- * lets the platform admin LOAD '/' and mount() bounces them to the Shops list, while
- * a merchant still gets the dashboard and a shopless non-platform user stays denied.
+ * REGRESSION (W3): the platform owner must be able to log into /admin. /admin is
+ * Filament's redirect to the first screen the signed-in user may see: for a
+ * merchant that is the panel home (Overview → Joins, shop-scoped); for a platform
+ * admin in "platform mode" no tenant is bound, every shop-scoped screen is hidden,
+ * and the redirect lands on the Shops list instead of 403-ing. A shopless
+ * non-platform user stays denied.
  */
 final class PlatformAdminLandingTest extends TestCase
 {
@@ -34,7 +34,7 @@ final class PlatformAdminLandingTest extends TestCase
             ->assertRedirect(ShopResource::getUrl());
     }
 
-    public function test_merchant_landing_reaches_the_dashboard(): void
+    public function test_merchant_landing_reaches_the_overview_home(): void
     {
         $shop = Shop::create([
             'shopify_domain' => self::SHOP_DOMAIN,
@@ -43,7 +43,8 @@ final class PlatformAdminLandingTest extends TestCase
         ]);
         $merchant = User::factory()->forShop($shop)->create();
 
-        $this->actingAs($merchant)->get(self::PANEL_HOME)->assertOk();
+        $this->actingAs($merchant)->get(self::PANEL_HOME)->assertRedirect(Joins::getUrl());
+        $this->actingAs($merchant)->get(Joins::getUrl())->assertOk();
     }
 
     public function test_shopless_non_platform_user_is_denied(): void
@@ -56,22 +57,24 @@ final class PlatformAdminLandingTest extends TestCase
 
     // === canAccess() unit assertions (deterministic, no middleware) ===
 
-    public function test_home_dashboard_canaccess_allows_platform_admin_in_platform_mode(): void
+    public function test_the_shop_scoped_home_is_closed_to_a_platform_admin_in_platform_mode(): void
     {
         $platform = User::factory()->platformAdmin()->create();
 
         $this->actingAs($platform);
 
-        // No tenant bound (platform mode) — yet the owner may LOAD '/' to be redirected.
-        $this->assertTrue(HomeDashboard::canAccess());
+        // No tenant bound (platform mode): the home is shop data, so it stays shut —
+        // the owner lands on the Shops list, which IS open to them.
+        $this->assertFalse(Joins::canAccess());
+        $this->assertTrue(ShopResource::canAccess());
     }
 
-    public function test_home_dashboard_canaccess_denies_shopless_non_platform(): void
+    public function test_the_home_denies_a_shopless_non_platform_user(): void
     {
         $user = User::factory()->create(['shop_id' => null]);
 
         $this->actingAs($user);
 
-        $this->assertFalse(HomeDashboard::canAccess());
+        $this->assertFalse(Joins::canAccess());
     }
 }

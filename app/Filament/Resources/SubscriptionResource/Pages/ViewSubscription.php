@@ -45,6 +45,7 @@ use Carbon\CarbonInterface;
 use Filament\Actions;
 use Filament\Forms\Components\Checkbox;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Fieldset;
 use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
@@ -549,46 +550,72 @@ class ViewSubscription extends Page
                 ->modalHeading(__('subscriptions.action.contact.heading'))
                 ->modalDescription(__('subscriptions.action.contact.body'))
                 ->modalSubmitActionLabel(__('subscriptions.action.contact.save'))
+                // Laid out like an address is read: who (name · email · phone), then
+                // where (street · house · apartment · floor / entrance · city · zip ·
+                // country), then the courier note across the full width. Short fields
+                // share a row; one field per row made a 13-field form a long scroll.
+                ->modalWidth('4xl')
                 ->form([
-                    TextInput::make('customer_name')
-                        ->label(__('subscriptions.detail.contact.name'))
-                        ->maxLength(200),
-                    TextInput::make('customer_email')
-                        ->label(__('subscriptions.detail.contact.email'))
-                        ->email()
-                        ->maxLength(255),
-                    TextInput::make('customer_phone')
-                        ->label(__('subscriptions.detail.contact.phone'))
-                        ->maxLength(50),
-                    TextInput::make('street')
-                        ->label(__('subscriptions.detail.contact.street'))
-                        ->maxLength(200),
-                    TextInput::make('building_number')
-                        ->label(__('subscriptions.detail.contact.building'))
-                        ->maxLength(20),
-                    TextInput::make('apartment_number')
-                        ->label(__('subscriptions.detail.contact.apartment'))
-                        ->maxLength(20),
-                    TextInput::make('floor')
-                        ->label(__('subscriptions.detail.contact.floor'))
-                        ->maxLength(20),
-                    TextInput::make('entrance')
-                        ->label(__('subscriptions.detail.contact.entrance'))
-                        ->maxLength(20),
-                    TextInput::make('city')
-                        ->label(__('subscriptions.detail.contact.city'))
-                        ->maxLength(120),
-                    TextInput::make('zip_code')
-                        ->label(__('subscriptions.detail.contact.zip'))
-                        ->maxLength(20),
-                    TextInput::make('country')
-                        ->label(__('subscriptions.detail.contact.country'))
-                        ->maxLength(120),
-                    Textarea::make(InstallmentPlan::ADDRESS_DELIVERY_NOTE)
-                        ->label(__('subscriptions.detail.contact.delivery_note'))
-                        ->placeholder(__('subscriptions.detail.contact.delivery_note_placeholder'))
-                        ->rows(2)
-                        ->maxLength(InstallmentPlan::MAX_DELIVERY_NOTE),
+                    Fieldset::make(__('customers.contact.heading'))
+                        ->columns(['default' => 1, 'sm' => 6, 'lg' => 6])
+                        ->schema([
+                            TextInput::make('customer_name')
+                                ->label(__('subscriptions.detail.contact.name'))
+                                ->maxLength(200)
+                                ->columnSpan(['default' => 1, 'sm' => 2]),
+                            TextInput::make('customer_email')
+                                ->label(__('subscriptions.detail.contact.email'))
+                                ->email()
+                                ->maxLength(255)
+                                ->columnSpan(['default' => 1, 'sm' => 2]),
+                            TextInput::make('customer_phone')
+                                ->label(__('subscriptions.detail.contact.phone'))
+                                ->tel()
+                                ->maxLength(50)
+                                ->columnSpan(['default' => 1, 'sm' => 2]),
+                        ]),
+                    Fieldset::make(__('customers.contact.address'))
+                        ->columns(['default' => 2, 'sm' => 6, 'lg' => 6])
+                        ->schema([
+                            TextInput::make('street')
+                                ->label(__('subscriptions.detail.contact.street'))
+                                ->maxLength(200)
+                                ->columnSpan(['default' => 2, 'sm' => 3]),
+                            TextInput::make('building_number')
+                                ->label(__('subscriptions.detail.contact.building'))
+                                ->maxLength(20)
+                                ->columnSpan(1),
+                            TextInput::make('apartment_number')
+                                ->label(__('subscriptions.detail.contact.apartment'))
+                                ->maxLength(20)
+                                ->columnSpan(1),
+                            TextInput::make('floor')
+                                ->label(__('subscriptions.detail.contact.floor'))
+                                ->maxLength(20)
+                                ->columnSpan(1),
+                            TextInput::make('entrance')
+                                ->label(__('subscriptions.detail.contact.entrance'))
+                                ->maxLength(20)
+                                ->columnSpan(1),
+                            TextInput::make('city')
+                                ->label(__('subscriptions.detail.contact.city'))
+                                ->maxLength(120)
+                                ->columnSpan(['default' => 2, 'sm' => 2]),
+                            TextInput::make('zip_code')
+                                ->label(__('subscriptions.detail.contact.zip'))
+                                ->maxLength(20)
+                                ->columnSpan(1),
+                            TextInput::make('country')
+                                ->label(__('subscriptions.detail.contact.country'))
+                                ->maxLength(120)
+                                ->columnSpan(['default' => 2, 'sm' => 2]),
+                            Textarea::make(InstallmentPlan::ADDRESS_DELIVERY_NOTE)
+                                ->label(__('subscriptions.detail.contact.delivery_note'))
+                                ->placeholder(__('subscriptions.detail.contact.delivery_note_placeholder'))
+                                ->rows(2)
+                                ->maxLength(InstallmentPlan::MAX_DELIVERY_NOTE)
+                                ->columnSpanFull(),
+                        ]),
                 ])
                 ->action(fn (array $data) => $this->saveContact($data)),
         ];

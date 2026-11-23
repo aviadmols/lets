@@ -31,6 +31,7 @@ return [
     // group headers
     'group' => [
         'platform' => 'Platform',
+        'insights' => 'Overview',
         'customers' => 'Customers',
         'products' => 'Products',
         'payments' => 'Payments',

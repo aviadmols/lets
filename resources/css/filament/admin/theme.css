@@ -20,42 +20,65 @@
    ========================================================================== */
 
 :root {
-    /* --- 1.1 Brand + surface — the Recharge palette of docs/ux/00-design-system.md
-           (approved sketch, 2026-09-27): Recharge blue on a warm off-white canvas.
-           Every component reads these slots, so the whole admin re-skins here. --- */
-    --rc-blue: #3B5BDB;          /* Recharge blue — brand accent */
-    --rc-blue-600: #2F4BC4;      /* hover / active text */
-    --rc-blue-bg: #EEF2FE;       /* 10% wash — active nav, row hover, chips */
-    --rc-bg: #F8F8F5;            /* warm off-white canvas */
+    /* --- 1.1 Brand + surface — the LETS Agent merchant-panel language (approved
+           2026-11-23, analytics sketch): monochrome ink on a cool light plane,
+           white cards with large radii, ONE accent (lime) for the headline number
+           of a screen. The slot NAMES are the Recharge ones (--rc-blue = "the brand
+           accent") so every component re-skins from here without being touched. --- */
+    --rc-blue: #0B0B0C;          /* brand accent = ink: primary buttons, links, active states */
+    --rc-blue-600: #1D1D20;      /* hover / active text */
+    --rc-blue-bg: #EFEFF1;       /* quiet wash — row hover, chips, selected */
+    --rc-bg: #F4F4F5;            /* cool light plane */
     --rc-card: #FFFFFF;
     --rc-surface: var(--rc-card);
-    --rc-surface-sunk: #FAFAF8;  /* table headers, inset panels */
-    --rc-border: #E6E6E1;        /* warm hairline */
-    --rc-border-soft: #F0F0EE;   /* row dividers inside a card */
-    --rc-border-strong: #D4D4CE; /* inputs, secondary buttons */
+    --rc-surface-sunk: #F6F6F7;  /* table headers, inset panels */
+    --rc-border: #E8E8EB;        /* hairline */
+    --rc-border-soft: #F0F0F2;   /* row dividers inside a card */
+    --rc-border-strong: #D2D2D7; /* inputs, secondary buttons */
+
+    /* The one accent, and the black "hero" surface that carries it. */
+    --rc-lime: #E8FF78;
+    --rc-lime-ink: #0B0B0C;
+    --rc-hero: #0B0B0C;
+    --rc-hero-raised: #1C1C1F;   /* the dark tiles inside a hero */
+    --rc-hero-raised-2: #2A2A2E;
+    --rc-hero-ink: #F6F6F7;
+    --rc-hero-muted: #A3A3AB;
+    --rc-hero-grid: rgba(255, 255, 255, .035);
+    --rc-hero-line: rgba(255, 255, 255, .08);
+
+    /* The sidebar is the dark column of the LETS panel: white active pill on ink. */
+    --rc-sidebar-bg: #0B0B0C;
+    --rc-sidebar-ink: #F6F6F7;
+    --rc-sidebar-muted: #8E8E96;
+    --rc-sidebar-hover: #1C1C1F;
+    --rc-sidebar-raised: #1C1C1F;
+    --rc-sidebar-active-bg: #FFFFFF;
+    --rc-sidebar-active-ink: #0B0B0C;
+    --rc-sidebar-rule: #26262A;
 
     /* --- 1.2 Text --- */
-    --rc-ink: #1A1A1A;
-    --rc-ink-muted: #6B7280;
+    --rc-ink: #0B0B0C;
+    --rc-ink-muted: #64646C;     /* 5.8:1 on white */
+    --rc-ink-faint: #A3A3AB;     /* decoration only, never body text */
     --rc-ink-on-primary: #FFFFFF;
     --rc-link: var(--rc-blue);
 
-    /* --- 1.2b Brand mark — the LETS half-discs. These are the LOGO's own
-           colours, not themeable surfaces: they stay constant while the wordmark
-           inherits the shell's ink (light + dark). Only components/logo.css
-           consumes them. --- */
-    --rc-logo-blue: #0066FF;
-    --rc-logo-orchid: #EE82EE;
+    /* --- 1.2b Brand mark — the LETS hourglass (two facing half-discs), in ONE
+           colour as on the LETS Agent panel: ink on a light surface, lime on the
+           ink sidebar (components/logo.css). Only logo.css consumes it. --- */
+    --rc-logo-mark: var(--rc-ink);
+    --rc-logo-mark-on-dark: var(--rc-lime);
 
     /* --- 1.3 Status / semantic. The base hue marks dots + fills; the -ink shade
            is the TEXT on the -bg, one step darker than the spec so 12px badge
            text holds 4.5:1. --- */
-    --rc-green: #1E9E6A;   --rc-green-bg: #E6F4EE;  --rc-green-ink: #157A52;
-    --rc-gray: #6B7280;    --rc-gray-bg: #F0F0EE;   --rc-gray-ink: #4B5563;
-    --rc-teal: #0FA3A3;    --rc-teal-bg: #E2F5F5;   --rc-teal-ink: #0B6E6E;
-    --rc-red: #D64545;     --rc-red-bg: #FBE9E9;    --rc-red-ink: #B93232;
-    --rc-amber: #C77700;   --rc-amber-bg: #FBF1E0;  --rc-amber-ink: #8A5300;
-    --rc-amber-border: #EED9AE;
+    --rc-green: #157F3D;   --rc-green-bg: #EAF6EE;  --rc-green-ink: #12692F;
+    --rc-gray: #64646C;    --rc-gray-bg: #EFEFF1;   --rc-gray-ink: #4D4D54;
+    --rc-teal: #0F8A8A;    --rc-teal-bg: #E4F4F4;   --rc-teal-ink: #0B6464;
+    --rc-red: #B42318;     --rc-red-bg: #FDF0EF;    --rc-red-ink: #A11F15;
+    --rc-amber: #9A5B00;   --rc-amber-bg: #FFF4E0;  --rc-amber-ink: #7E4A00;
+    --rc-amber-border: #F0D9A8;
 
     /* --- 1.4 Analytics chart series (approved analytics sketch, brief §2). In
            this order; they differ in LIGHTNESS, not only hue. Positive movements
@@ -70,10 +93,10 @@
     --rc-series-6: #9CA3AF;
     --rc-series-ink: var(--rc-ink);
     /* Cohort heatmap shades: the accent at 8 / 18 / 30 / 55 % (≥55% carries white text). */
-    --rc-heat-1: rgba(59, 91, 219, .08);
-    --rc-heat-2: rgba(59, 91, 219, .18);
-    --rc-heat-3: rgba(59, 91, 219, .30);
-    --rc-heat-4: rgba(59, 91, 219, .55);
+    --rc-heat-1: rgba(11, 11, 12, .06);
+    --rc-heat-2: rgba(11, 11, 12, .14);
+    --rc-heat-3: rgba(11, 11, 12, .28);
+    --rc-heat-4: rgba(11, 11, 12, .55);
     --rc-area-opacity: .12;
     /* Plot heights — MUST equal ChartGeometry::HEIGHTS (one viewBox unit = 1px vertically). */
     --rc-chart-h-sm: 160px;
@@ -88,72 +111,89 @@
     --rc-motion-fade: 400ms;
     --rc-motion-stagger: 15ms;
 
-    /* --- 2. Typography scale — Heebo carries Hebrew AND Latin (one face) --- */
-    --rc-font: "Heebo", system-ui, -apple-system, "Segoe UI", sans-serif;
-    --rc-type-title: 700 22px/1.25 var(--rc-font);
-    --rc-type-kpi: 600 28px/1.1 var(--rc-font);
-    --rc-type-h: 600 18px/1.3 var(--rc-font);
+    /* --- 2. Typography — the LETS panel pair: Google Sans draws Latin and the
+           digits (it has no Hebrew), Heebo draws Hebrew. Big numbers use the digits
+           face at a MEDIUM weight, never bold — the panel's "₪0.00" look. --- */
+    --rc-font: "Google Sans", "Heebo", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --rc-font-digits: "Google Sans", "Heebo", system-ui, sans-serif;
+    --rc-type-title: 700 30px/1.2 var(--rc-font);
+    --rc-type-kpi: 500 30px/1.1 var(--rc-font-digits);
+    --rc-type-hero: 500 80px/1 var(--rc-font-digits);
+    --rc-type-h: 600 20px/1.3 var(--rc-font);
     --rc-type-subh: 600 15px/1.35 var(--rc-font);
     --rc-type-body: 400 14px/1.5 var(--rc-font);
     --rc-type-body-strong: 600 14px/1.5 var(--rc-font);
     --rc-type-label: 600 12px/1.4 var(--rc-font);
     --rc-type-caption: 400 12px/1.4 var(--rc-font);
-    --rc-kpi-size: 28px;
+    --rc-kpi-size: 30px;
+    --rc-chart-text: 13px;   /* axis dates + values: one step above the caption, read at a glance */
 
     /* --- 3.1 Spacing scale --- */
     --rc-space-1: 4px;  --rc-space-2: 8px;  --rc-space-3: 12px; --rc-space-4: 16px;
     --rc-space-5: 24px; --rc-space-6: 32px; --rc-space-7: 48px; --rc-space-8: 64px;
 
     /* --- 3.2 Radius --- */
-    --rc-radius-card: 12px;
-    --rc-radius-control: 8px;
+    --rc-radius-card: 20px;
+    --rc-radius-hero: 28px;
+    --rc-radius-tile: 18px;
+    --rc-radius-control: 12px;
     --rc-radius-pill: 999px;
 
-    /* --- 3.3 Shadow / elevation --- */
-    --rc-shadow-card: 0 1px 2px rgba(16, 24, 40, .06);
-    --rc-shadow-hover: 0 4px 12px rgba(16, 24, 40, .10);
-    --rc-shadow-pop: 0 8px 24px rgba(16, 24, 40, .12);
-    --rc-ring: 0 0 0 3px rgba(59, 91, 219, .30);
+    /* --- 3.3 Shadow / elevation — offset + soft blur, two layers --- */
+    --rc-shadow-card: 0 1px 2px rgba(11, 11, 12, .05), 0 1px 1px rgba(11, 11, 12, .02);
+    --rc-shadow-hover: 0 10px 28px -10px rgba(11, 11, 12, .16), 0 2px 6px rgba(11, 11, 12, .05);
+    --rc-shadow-pop: 0 28px 72px -18px rgba(11, 11, 12, .26), 0 8px 22px -10px rgba(11, 11, 12, .10);
+    --rc-ring: 0 0 0 3px rgba(11, 11, 12, .16);
     /* The raised "thumb" of a segmented control (EN|עב, Daily|Weekly|Monthly). */
-    --rc-shadow-thumb: 0 1px 2px rgba(16, 24, 40, .08);
+    --rc-shadow-thumb: 0 1px 2px rgba(11, 11, 12, .08);
     /* Modal/drawer scrim (same ink base as the shadow tokens). */
-    --rc-scrim: rgba(16, 24, 40, .35);
+    --rc-scrim: rgba(11, 11, 12, .32);
+    /* Motion — fast to start, soft to land. */
+    --rc-ease-out: cubic-bezier(.23, 1, .32, 1);
+    --rc-dur-hover: 180ms;
 
     /* --- 3.4 Layout --- */
-    --rc-sidebar-w: 248px;
+    --rc-sidebar-w: 272px;
     --rc-topbar-h: 56px;
     --rc-search-w: 380px;
     --rc-content-max: 1200px;
     --rc-gutter: var(--rc-space-6);
 
     /* --- Re-map Filament's own primary ramp onto the brand so native buttons,
-           links, toggles, active states inherit Recharge blue for free.
-           Filament reads these RGB-triplet custom props. Ramp anchored on
-           #3B5BDB at 500 / #2F4BC4 at 600. --- */
-    --primary-50:  238, 242, 254;
-    --primary-100: 224, 231, 253;
-    --primary-200: 196, 208, 250;
-    --primary-300: 155, 175, 244;
-    --primary-400: 104, 132, 234;
-    --primary-500: 59, 91, 219;
-    --primary-600: 47, 75, 196;
-    --primary-700: 39, 62, 163;
-    --primary-800: 33, 52, 133;
-    --primary-900: 29, 45, 107;
-    --primary-950: 19, 29, 69;
+           links, toggles, active states inherit the ink accent for free.
+           Filament reads these RGB-triplet custom props: buttons fill with 600
+           and hover to 500, so 600 is the ink itself. --- */
+    --primary-50:  246, 246, 247;
+    --primary-100: 239, 239, 241;
+    --primary-200: 228, 228, 231;
+    --primary-300: 210, 210, 215;
+    --primary-400: 77, 77, 84;
+    --primary-500: 29, 29, 32;
+    --primary-600: 11, 11, 12;
+    --primary-700: 0, 0, 0;
+    --primary-800: 0, 0, 0;
+    --primary-900: 0, 0, 0;
+    --primary-950: 0, 0, 0;
 
-    /* Filament's own neutral ramp, warmed to sit on the off-white canvas. */
-    --gray-50:  250, 250, 248;
-    --gray-100: 240, 240, 238;
-    --gray-200: 230, 230, 225;
-    --gray-300: 212, 212, 206;
-    --gray-400: 156, 160, 166;
-    --gray-500: 107, 114, 128;
-    --gray-600: 75, 85, 99;
-    --gray-700: 55, 60, 68;
-    --gray-800: 38, 40, 44;
-    --gray-900: 26, 26, 26;
-    --gray-950: 14, 14, 14;
+    /* Filament's own neutral ramp: the panel's cool grays. */
+    --gray-50:  246, 246, 247;
+    --gray-100: 239, 239, 241;
+    --gray-200: 228, 228, 231;
+    --gray-300: 210, 210, 215;
+    --gray-400: 163, 163, 171;
+    --gray-500: 100, 100, 108;
+    --gray-600: 77, 77, 84;
+    --gray-700: 52, 52, 58;
+    --gray-800: 29, 29, 32;
+    --gray-900: 11, 11, 12;
+    --gray-950: 5, 5, 6;
+}
+
+/* Filament writes --font-family as ONE quoted family in an inline :root style
+   AFTER this sheet. The doubled :root outranks it, so the stack keeps Heebo for
+   the Hebrew that Google Sans cannot draw. */
+:root:root {
+    --font-family: "Google Sans", "Heebo", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 /* === Filament panel surface re-skin (via stable .fi-* hooks) ============== */
@@ -167,32 +207,33 @@
     color: var(--rc-ink);
 }
 
-/* Sidebar = card surface; tight Recharge density. */
+/* Sidebar = the dark column of the LETS panel. */
 .fi-body .fi-sidebar,
 .fi-body .fi-sidebar-nav {
-    background-color: var(--rc-card);
+    background-color: var(--rc-sidebar-bg);
+    color: var(--rc-sidebar-ink);
 }
 .fi-body .fi-sidebar {
-    border-inline-end: 1px solid var(--rc-border);
+    border-inline-end: 0;
 }
 
-/* Active nav item: a rounded pill in the accent wash with a 3px rail painted
-   INSIDE its start edge (inset shadow, so the label never shifts). */
+/* Active nav item: a WHITE pill on the ink column, ink label — the one bright
+   thing in the sidebar, so "where am I" never needs a second look. */
 .fi-body .fi-sidebar-item > .fi-sidebar-item-button {
-    border-radius: var(--rc-radius-control);
+    border-radius: 14px;
 }
 .fi-body .fi-sidebar-item-active > .fi-sidebar-item-button {
-    background-color: var(--rc-blue-bg);
-    box-shadow: inset 3px 0 0 var(--rc-blue);
-    color: var(--rc-blue-600);
-    font-weight: 600;
+    background-color: var(--rc-sidebar-active-bg);
+    box-shadow: none;
+    color: var(--rc-sidebar-active-ink);
+    font-weight: 700;
 }
 [dir="rtl"] .fi-sidebar-item-active > .fi-sidebar-item-button {
-    box-shadow: inset -3px 0 0 var(--rc-blue);
+    box-shadow: none;
 }
 .fi-body .fi-sidebar-item-active > .fi-sidebar-item-button .fi-sidebar-item-icon,
 .fi-body .fi-sidebar-item-active > .fi-sidebar-item-button .fi-sidebar-item-label {
-    color: var(--rc-blue-600);
+    color: var(--rc-sidebar-active-ink);
 }
 
 /* Settings is pinned at the sidebar's FOOT with the store card
@@ -218,16 +259,17 @@
     font: var(--rc-type-label);
     text-transform: uppercase;
     letter-spacing: .04em;
-    color: var(--rc-ink-muted);
+    color: var(--rc-sidebar-muted);
 }
 
-/* Cards / sections / tables — the Recharge card look (border + soft shadow). */
+/* Cards / sections / tables — the LETS card: white, large radius, a soft
+   shadow and only a whisper of a border on the light plane. */
 /* (Tables draw their card on .fi-ta-ctn — components/table.css.) */
 .fi-body .fi-section,
 .fi-body .fi-wi,
 .fi-body .fi-modal-window {
     background-color: var(--rc-card);
-    border: 1px solid var(--rc-border);
+    border: 1px solid var(--rc-border-soft);
     border-radius: var(--rc-radius-card);
     box-shadow: var(--rc-shadow-card);
 }
@@ -251,10 +293,10 @@
     border-block-end: 1px solid var(--rc-border);
 }
 
-/* Top bar: white strip on a hairline, like the sidebar. */
+/* Top bar: no strip — it sits on the plane, its controls are white pills. */
 .fi-body .fi-topbar > nav {
-    background-color: var(--rc-card);
-    border-block-end: 1px solid var(--rc-border);
+    background-color: var(--rc-bg);
+    border-block-end: 0;
     box-shadow: none;
 }
 

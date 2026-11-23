@@ -2,7 +2,8 @@
 
 namespace Tests\Feature\Platform;
 
-use App\Filament\Pages\HomeDashboard;
+use App\Filament\Pages\Insights\Churn;
+use App\Filament\Pages\Insights\Joins;
 use App\Filament\Pages\ManagePayPlusConnection;
 use App\Filament\Resources\ProductResource;
 use App\Filament\Resources\ProductResource\Pages\ListProducts;
@@ -105,7 +106,10 @@ final class EmbeddedMenuTest extends TestCase
         $this->embed();
 
         $this->assertSame([], $this->shop->fresh()->embeddedMenu());
-        $this->assertTrue(PanelAccess::embeddedAllows(HomeDashboard::class));
+        $this->assertTrue(PanelAccess::embeddedAllows(Joins::class));
+
+        // Only the landing screen rides on HOME; the rest of Overview is an area.
+        $this->assertFalse(PanelAccess::embeddedAllows(Churn::class));
     }
 
     public function test_credentials_and_logins_are_never_embedded(): void
@@ -147,7 +151,7 @@ final class EmbeddedMenuTest extends TestCase
         $this->get(SubscriptionResource::getUrl('index'))->assertSuccessful();
 
         // Home is always reachable, and so the merchant is never stranded.
-        $this->get(HomeDashboard::getUrl())->assertSuccessful();
+        $this->get(Joins::getUrl())->assertSuccessful();
 
         // Never inside WordPress, whatever the list says.
         $this->get(ManagePayPlusConnection::getUrl())->assertForbidden();

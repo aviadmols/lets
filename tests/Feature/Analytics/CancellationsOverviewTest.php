@@ -7,18 +7,12 @@ use App\Domain\Analytics\Cancellations\CancellationsOverviewQuery;
 use App\Domain\Analytics\Context;
 use App\Domain\Analytics\Filters;
 use App\Domain\Analytics\Period;
-use App\Filament\Pages\Analytics;
-use App\Filament\Pages\Analytics\Screens\CancellationsOverview;
 use App\Models\ActivityEvent;
 use App\Models\InstallmentPlan;
 use App\Models\Shop;
-use App\Models\User;
-use App\Support\CsvCell;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
-use Livewire\Livewire;
 use Tests\Feature\Analytics\Concerns\BuildsLedger;
 use Tests\Feature\Analytics\Concerns\BuildsSubscriptions;
 use Tests\TestCase;
@@ -208,21 +202,6 @@ final class CancellationsOverviewTest extends TestCase
         $this->assertSame(0, $q['subscription']['cancelled']);
         $this->assertSame([], $q['reasons']);
         $this->assertSame(1, array_sum(array_column($q['order_wise'], 'active')));
-
-        $export = Tenant::run($this->shop, fn () => (new CancellationsOverview())->export(Context::default()));
-        $this->assertSame([], $export['rows']);
-    }
-
-    public function test_the_export_lists_the_periods_cancellations_formula_safe(): void
-    {
-        $this->fixture($this->shop);
-        $e = $this->plan($this->shop, '7', 50, createdAt: CarbonImmutable::now()->subDays(100));
-        $this->cancel($e, CarbonImmutable::now()->subDays(1), 'admin:7', '=HYPERLINK("x")');
-
-        $export = Tenant::run($this->shop, fn () => (new CancellationsOverview())->export(Context::default()));
-        $this->assertCount(3, $export['rows']);
-
-        $this->assertSame("'=HYPERLINK(\"x\")", CsvCell::neutralise(end($export['rows'])[8]));
     }
 
     public function test_a_product_filter_narrows_the_cancellations(): void
@@ -234,31 +213,5 @@ final class CancellationsOverviewTest extends TestCase
         $q = $this->query($context);
 
         $this->assertSame(1, $q['subscription']['cancelled']);
-    }
-
-    public function test_the_screen_renders_with_data_and_for_an_empty_shop(): void
-    {
-        Tenant::set($this->shop);
-        $this->actingAs(User::factory()->forShop($this->shop)->create());
-
-        Livewire::test(Analytics::class)->call('go', 'cancellations', 'overview')
-            ->assertOk()
-            ->assertSee(__('analytics/cancellations_overview.kpi.churn_rate'))
-            ->assertSee(__('analytics/cancellations_overview.kpi.upcoming'))
-            ->assertSee(__('analytics.empty.not_tracked_title'));
-
-        $this->fixture($this->shop);
-        Cache::flush(); // the empty render above cached its numbers for 5 minutes
-
-        Livewire::test(Analytics::class)->call('go', 'cancellations', 'overview')
-            ->assertOk()
-            ->assertSee('50%')
-            ->assertSee('rc-chart__stack--pos', false)
-            ->assertSee('rc-donut__slice', false)
-            ->assertSee(__('analytics/cancellations_overview.channel.payment_failed'))
-            ->call('setOption', 'trend', 'mrr')
-            ->assertOk()
-            ->call('setGrain', 'churn_trend', 'weekly')
-            ->assertOk();
     }
 }

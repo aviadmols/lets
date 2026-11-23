@@ -2,6 +2,8 @@
 
 namespace App\Filament\Pages;
 
+use App\Domain\Insights\InsightsClock;
+use App\Domain\Insights\UnpaidSubscribers;
 use App\Domain\Installments\CardUpdateLinkSender;
 use App\Domain\Installments\CardUpdateService;
 use App\Domain\Installments\ImportedTokenRecovery;
@@ -73,14 +75,14 @@ class PaymentRecovery extends Page implements HasTable
     use ShopScopedScreen; // hidden + denied unless a tenant shop is bound (W2)
 
     // === CONSTANTS ===
-    protected static ?string $navigationIcon = 'heroicon-o-exclamation-triangle';
+    protected static ?string $navigationIcon = 'heroicon-o-credit-card';
 
     protected static string $view = 'filament.pages.payment-recovery';
 
     protected static ?string $slug = 'payment-recovery';
 
     /** Beside Subscriptions (20) and its bulk editor (25). */
-    protected static ?int $navigationSort = 26;
+    protected static ?int $navigationSort = 60;
 
     /** Still being asked: the latest attempt is waiting out its backoff. */
     public const TAB_RETRYING = 'retrying';
@@ -118,19 +120,58 @@ class PaymentRecovery extends Page implements HasTable
 
     public string $activeTab = self::TAB_RETRYING;
 
+    /** "Payment problems" (approved 2026-11-23): this screen leads the Overview group. */
     public static function getNavigationGroup(): ?string
     {
-        return __('nav.group.customers');
+        return __('nav.group.insights');
     }
 
     public static function getNavigationLabel(): string
     {
-        return __('recovery.nav');
+        return __('insights.payments.nav');
     }
 
     public function getTitle(): string|Htmlable
     {
-        return __('recovery.title');
+        return __('insights.payments.nav');
+    }
+
+    /**
+     * The hero above the tabs: who owes money right now, the days charges failed,
+     * and how many have no saved card (UnpaidSubscribers — the same three shapes the
+     * tabs below act on).
+     *
+     * @return array<string, mixed>
+     */
+    public function problems(): array
+    {
+        $unpaid = new UnpaidSubscribers;
+        $rows = $unpaid->all();
+        $days = (int) config('insights.failure_days');
+        $byDay = $unpaid->failuresByDay($days);
+        $today = InsightsClock::today();
+
+        $points = [];
+        for ($i = $days - 1; $i >= 0; $i--) {
+            $key = $today->subDays($i)->format('Y-m-d');
+            $points[] = [
+                'label' => $today->subDays($i)->format('d/m'),
+                'value' => $byDay[$key]['count'] ?? 0,
+                'tip' => [
+                    $today->subDays($i)->locale(app()->getLocale())->translatedFormat('l, d/m/Y'),
+                    (string) __('insights.payments.tip', ['count' => $byDay[$key]['count'] ?? 0, 'amount' => '₪'.number_format($byDay[$key]['amount'] ?? 0, 0)]),
+                ],
+            ];
+        }
+
+        return [
+            'count' => count($rows),
+            'owed' => round(array_sum(array_column($rows, 'amount')), 2),
+            'retrying' => count(array_filter($rows, static fn (array $r): bool => $r['state'] === UnpaidSubscribers::STATE_RETRYING)),
+            'no_card' => count(array_filter($rows, static fn (array $r): bool => $r['no_card'])),
+            'days' => $days,
+            'chart' => ['tone' => 'hero', 'points' => $points],
+        ];
     }
 
     /**

@@ -4,16 +4,12 @@ namespace Tests\Feature\Analytics;
 
 use App\Domain\Analytics\Context;
 use App\Domain\Analytics\Subscribers\OrderFunnelQuery;
-use App\Filament\Pages\Analytics;
 use App\Models\PaymentLedger;
 use App\Models\Shop;
 use App\Models\SubscriptionBillingAttempt;
-use App\Models\User;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
-use Livewire\Livewire;
 use Tests\Feature\Analytics\Concerns\BuildsLedger;
 use Tests\Feature\Analytics\Concerns\BuildsSubscriptions;
 use Tests\TestCase;
@@ -114,30 +110,5 @@ final class SubscribersOrderFunnelTest extends TestCase
         $this->assertSame([1 => 1], $q['order_wise']);
         $this->assertSame(['success' => 1, 'retrying' => 0, 'failed' => 0, 'pending' => 0], $q['funnel']);
         $this->assertSame(3, $this->query($this->other)['funnel']['success']);
-    }
-
-    public function test_the_screen_renders_empty_and_with_data(): void
-    {
-        Tenant::set($this->shop);
-        $this->actingAs(User::factory()->forShop($this->shop)->create());
-
-        Livewire::test(Analytics::class)->call('go', 'subscribers', 'order_funnel')
-            ->assertOk()
-            ->assertSee(__('analytics/subscribers_order_funnel.funnel.title'))
-            ->assertSee(__('analytics/subscribers_order_funnel.funnel.stage_1_not_tracked'))
-            ->assertSee(__('analytics.empty.no_data_title'));
-
-        $this->fixture($this->shop);
-        Cache::flush();
-
-        Livewire::test(Analytics::class)->call('go', 'subscribers', 'order_funnel')
-            ->assertOk()
-            ->assertSee('rc-funnel__shape', false)
-            ->assertSee('rc-chart__stack--pos', false)
-            ->assertSee(__('analytics/subscribers_order_funnel.leakage.all'))
-            ->call('setOption', 'orders', 'dunning')
-            ->assertOk()
-            ->call('setOption', 'unit', 'percent')
-            ->assertSee('66.7%'); // dunning totals: 2 of 3 failed for good
     }
 }

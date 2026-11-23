@@ -4,7 +4,7 @@
 // מראה את מפתחות lang/en/embedded.php אחד לאחד.
 return [
     'areas' => [
-        'home' => 'בית',
+        'home' => 'סקירה · מצטרפים (בית)',
         'customers' => 'לקוחות',
         'subscriptions' => 'מנויים',
         'loyalty' => 'מועדון לקוחות',
@@ -16,7 +16,7 @@ return [
         'documents' => 'חשבוניות ומסמכים',
         'upsell' => 'הצעות לאחר רכישה',
         'storefront' => 'רכיבי חנות',
-        'analytics' => 'אנליטיקה',
+        'analytics' => 'סקירה · עזיבות, עגלות, צפי הכנסות',
         'observability' => 'בריאות המערכת',
         'settings_billing' => 'הגדרות · חיוב',
         'settings_invoicing' => 'הגדרות · חשבוניות',

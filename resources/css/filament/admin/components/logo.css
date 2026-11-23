@@ -23,12 +23,15 @@
     overflow: visible;
 }
 
-.rc-logo__mark-top {
-    fill: var(--rc-logo-blue);
+/* The hourglass is one colour (the LETS Agent mark): ink on light, lime on the ink sidebar. */
+.rc-logo__mark-top,
+.rc-logo__mark-bottom {
+    fill: var(--rc-logo-mark);
 }
 
-.rc-logo__mark-bottom {
-    fill: var(--rc-logo-orchid);
+.fi-sidebar .rc-logo__mark-top,
+.fi-sidebar .rc-logo__mark-bottom {
+    fill: var(--rc-logo-mark-on-dark);
 }
 
 /* Real text in the panel font — crisp at any zoom, and it inherits the shell's
@@ -47,26 +50,36 @@
     font-size: 1.35rem;
 }
 
+/* On the ink sidebar the wordmark is white; the half-discs keep their own colours. */
+.fi-sidebar-header .rc-logo,
+.fi-sidebar .fi-logo .rc-logo {
+    color: var(--rc-sidebar-ink);
+}
+
 /* The store card at the foot of the sidebar (filament/partials/sidebar-shop):
-   a mark in the accent, the business name, and the platform under it. */
+   the LETS panel's raised dark card — a square initial, the business name, and
+   the platform under it. */
 .rc-sidebar-shop {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 10px 10px var(--rc-space-1);
+    gap: 12px;
+    margin-block-start: var(--rc-space-2);
+    padding: 12px;
+    border-radius: var(--rc-radius-tile);
+    background: var(--rc-sidebar-raised);
 }
 .rc-sidebar-shop__mark {
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    inline-size: 30px;
-    block-size: 30px;
-    border-radius: var(--rc-radius-pill);
-    background: var(--rc-blue);
-    color: var(--rc-ink-on-primary);
+    inline-size: 36px;
+    block-size: 36px;
+    border-radius: 10px;
+    background: var(--rc-lime);
+    color: var(--rc-lime-ink);
     font: var(--rc-type-body-strong);
-    font-size: 13px;
+    font-size: 14px;
 }
 .rc-sidebar-shop__text {
     display: flex;
@@ -75,13 +88,13 @@
 }
 .rc-sidebar-shop__name {
     font: var(--rc-type-body-strong);
-    font-size: 13px;
-    color: var(--rc-ink);
+    font-size: 14px;
+    color: var(--rc-sidebar-ink);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 .rc-sidebar-shop__meta {
     font: var(--rc-type-caption);
-    color: var(--rc-ink-muted);
+    color: var(--rc-sidebar-muted);
 }

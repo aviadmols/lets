@@ -4,14 +4,10 @@ namespace Tests\Feature\Analytics;
 
 use App\Domain\Analytics\Context;
 use App\Domain\Analytics\Subscribers\LifetimeValueQuery;
-use App\Filament\Pages\Analytics;
 use App\Models\Shop;
-use App\Models\User;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
-use Livewire\Livewire;
 use Tests\Feature\Analytics\Concerns\BuildsLedger;
 use Tests\Feature\Analytics\Concerns\BuildsSubscriptions;
 use Tests\TestCase;
@@ -108,26 +104,5 @@ final class SubscribersLifetimeValueTest extends TestCase
         $this->assertSame(1, $q['now']['customers']);
         $this->assertSame(10.0, $q['now']['ltv']);
         $this->assertSame(90.0, $this->query($this->other)['now']['ltv']);
-    }
-
-    public function test_the_screen_renders_empty_and_with_data(): void
-    {
-        Tenant::set($this->shop);
-        $this->actingAs(User::factory()->forShop($this->shop)->create());
-
-        Livewire::test(Analytics::class)->call('go', 'subscribers', 'lifetime_value')
-            ->assertOk()
-            ->assertSee(__('analytics/subscribers_lifetime_value.summary.empty'))
-            ->assertSee(__('analytics/subscribers_lifetime_value.segments.not_tracked'));
-
-        $this->fixture($this->shop);
-        Cache::flush();
-
-        Livewire::test(Analytics::class)->call('go', 'subscribers', 'lifetime_value')
-            ->assertOk()
-            ->assertSee(__('analytics/subscribers_lifetime_value.summary.lead_before'))
-            ->assertSee('₪90', false)
-            ->assertSee(__('analytics/subscribers_lifetime_value.segment.non_subscribers'))
-            ->assertSee('rc-chart__line', false);
     }
 }

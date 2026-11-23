@@ -13,6 +13,7 @@ use Filament\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Livewire\Attributes\Url;
 
 /**
  * Customers list (docs/ux/20-customers.md Part A). v1: customers are DERIVED from
@@ -30,21 +31,93 @@ class Customers extends Page
 
     // === CONSTANTS ===
     protected static ?string $navigationIcon = 'heroicon-o-users';
+
     protected static string $view = 'filament.pages.customers';
+
     protected static ?string $slug = 'customers';
+
     protected static ?int $navigationSort = 10;
 
-    /** Payment-status dot derivation: worst-status wins → dot tone (§1.3). */
-    public const DOT_BY_STATUS = [
-        'failed' => 'red',
-        'awaiting_first_payment' => 'amber',
+    /**
+     * The status badges a customer row can carry, MOST urgent first, each with its
+     * tone. A row shows every one of these its subscriptions are in — "פעיל" beside
+     * "תשלום נכשל" says plainly that one subscription pays and another stopped,
+     * where a single coloured dot left the merchant guessing which.
+     */
+    public const STATUS_TONES = [
+        'awaiting_payment' => 'amber',        // a charge failed; we are still retrying
+        'failed' => 'red',                    // retries ran out
         'active' => 'green',
+        'awaiting_activation' => 'teal',      // paid, waiting for the customer to start it
+        'paused' => 'gray',
+        'awaiting_first_payment' => 'amber',  // only an IMPORTED one reaches here (see planRows)
+        'draft' => 'gray',                    // typed in by hand, not charged yet
     ];
 
-    /** Worst-wins ranking when a customer's rows come from BOTH rails. */
-    private const DOT_RANK = ['gray' => 0, 'green' => 1, 'amber' => 2, 'red' => 3];
+    /** The one badge for a customer none of whose subscriptions is live any more. */
+    public const STATUS_INACTIVE = 'inactive';
+
+    public const INACTIVE_TONE = 'gray';
+
+    /** A Shopify contract's status in the plan vocabulary above. */
+    private const CONTRACT_STATUS_MAP = [
+        SubscriptionContract::STATUS_ACTIVE => 'active',
+        SubscriptionContract::STATUS_FAILED => 'failed',
+        SubscriptionContract::STATUS_PAUSED => 'paused',
+    ];
 
     public string $search = '';
+
+    /** The quick filter above the list: all | active | problem | inactive. */
+    #[Url(as: 'show')]
+    public string $show = 'all';
+
+    public const SHOW = ['all', 'active', 'problem', 'inactive'];
+
+    /** The statuses that mean "this customer owes money right now". */
+    public const PROBLEM_STATUSES = ['awaiting_payment', 'failed'];
+
+    public function setShow(string $show): void
+    {
+        $this->show = in_array($show, self::SHOW, true) ? $show : 'all';
+    }
+
+    /**
+     * The hero's numbers, over every customer (not the filtered list), and the list
+     * as the quick filter narrows it.
+     *
+     * @return array{all: Collection<int, array<string, mixed>>, rows: Collection<int, array<string, mixed>>, total: int, active: int, problem: int, revenue: float}
+     */
+    public function screen(): array
+    {
+        $all = $this->customers();
+        $is = static fn (array $row, array $keys): bool => collect($row['statuses'])->pluck('key')->intersect($keys)->isNotEmpty();
+
+        return [
+            'all' => $all,
+            'rows' => $all->filter(fn (array $row): bool => match ($this->show) {
+                'active' => $row['active_subs'] > 0,
+                'problem' => $is($row, self::PROBLEM_STATUSES),
+                'inactive' => $row['active_subs'] === 0 && ! $is($row, self::PROBLEM_STATUSES),
+                default => true,
+            })->values(),
+            'total' => $all->count(),
+            'active' => $all->filter(fn (array $row): bool => $row['active_subs'] > 0)->count(),
+            'problem' => $all->filter(fn (array $row): bool => $is($row, self::PROBLEM_STATUSES))->count(),
+            'revenue' => round((float) $all->sum('spend_raw'), 2),
+        ];
+    }
+
+    /** "Yael Barak" → "YB"; one word → its first two letters. */
+    public static function initials(string $label): string
+    {
+        $words = preg_split('/\s+/u', trim($label)) ?: [];
+        $letters = count($words) > 1
+            ? mb_substr($words[0], 0, 1).mb_substr($words[1], 0, 1)
+            : mb_substr($words[0] ?? '', 0, 2);
+
+        return mb_strtoupper($letters);
+    }
 
     /**
      * The plan groups behind the rows planRows() just built — kept for the spend
@@ -76,7 +149,7 @@ class Customers extends Page
      * numeric customer id. A store on the Shopify rail has no plan rows at all —
      * deriving only from plans is why its Customers screen sat empty.
      *
-     * @return Collection<int, array{id:string,active_subs:int,dot:string}>
+     * @return Collection<int, array{id:string,active_subs:int,statuses:list<array{key:string,tone:string}>}>
      */
     public function customers(): Collection
     {
@@ -91,12 +164,12 @@ class Customers extends Page
 
             // The customer lives on both rails: keep the richer identity (a plan
             // captured at checkout usually names them; a contract may not until
-            // the protected-data approval lands), sum the subscriptions, and let
-            // the WORST payment status win the dot.
+            // the protected-data approval lands), sum the subscriptions, and show
+            // every status either rail has.
             $rows[$id]['label'] = $rows[$id]['named'] ? $rows[$id]['label'] : $contractRow['label'];
             $rows[$id]['email'] = $rows[$id]['email'] ?? $contractRow['email'];
             $rows[$id]['active_subs'] += $contractRow['active_subs'];
-            $rows[$id]['dot'] = $this->worstDot($rows[$id]['dot'], $contractRow['dot']);
+            $rows[$id]['raw_statuses'] = [...$rows[$id]['raw_statuses'], ...$contractRow['raw_statuses']];
         }
 
         // Lifetime spend for EVERY listed customer in one grouped query. Summing
@@ -109,7 +182,9 @@ class Customers extends Page
             ->map(function (array $row, string|int $id) use ($spend): array {
                 $row['id'] = (string) $id;
                 $row['spend'] = Money::format((float) ($spend[(string) $id] ?? 0));
-                unset($row['named']);
+                $row['spend_raw'] = (float) ($spend[(string) $id] ?? 0);
+                $row['statuses'] = self::statusBadges($row['raw_statuses']);
+                unset($row['named'], $row['raw_statuses']);
 
                 return $row;
             })
@@ -145,6 +220,17 @@ class Customers extends Page
                     ->orWhere('customer_email', 'like', $term)
                     ->orWhere('shopify_customer_id', 'like', $term));
             })
+            // NOT A CUSTOMER YET: a plan still awaiting its first payment is what an
+            // abandoned checkout leaves behind — the shopper reached the payment page
+            // and never paid. Listing them made someone who never bought look like a
+            // customer, and their amber dot made a paying customer with one such
+            // leftover look like a problem. A real payment promotes the plan to
+            // active, and they appear then.
+            // An IMPORTED one stays: the store's old system said "pending/trial", and
+            // that is a member the merchant brought in on purpose.
+            ->where(fn ($q) => $q
+                ->where('status', '!=', PlanStatus::AWAITING_FIRST_PAYMENT->value)
+                ->orWhereNotNull('meta->import'))
             // customer_phone comes from the plan, captured at checkout — NOT from a
             // per-row store read. A column that cost one API call per customer
             // would turn this list into a page that never paints.
@@ -179,7 +265,7 @@ class Customers extends Page
                     'email' => trim((string) ($named?->customer_email ?? '')) ?: null,
                     'phone' => trim((string) ($withPhone?->customer_phone ?? '')) ?: null,
                     'active_subs' => $statuses->filter(fn (string $s): bool => $s === 'active')->count(),
-                    'dot' => $this->dotTone($statuses->all()),
+                    'raw_statuses' => $statuses->values()->all(),
                 ];
             })
             ->all();
@@ -228,26 +314,31 @@ class Customers extends Page
                     'email' => trim((string) ($named?->customer_email ?? '')) ?: null,
                     'phone' => null, // contracts carry no phone (protected data)
                     'active_subs' => $statuses->filter(fn (string $s): bool => $s === SubscriptionContract::STATUS_ACTIVE)->count(),
-                    'dot' => $this->contractDot($statuses->all()),
+                    // In the plan vocabulary; cancelled/expired map to nothing (not live).
+                    'raw_statuses' => $statuses->map(fn (string $s): string => self::CONTRACT_STATUS_MAP[$s] ?? '')->values()->all(),
                 ];
             })
             ->all();
     }
 
-    /** Contract-status dot: FAILED → red, any ACTIVE → green, else gray. */
-    private function contractDot(array $statuses): string
+    /**
+     * The badges for one customer: each live status their subscriptions are in, most
+     * urgent first, once each — or the single "inactive" badge when none is live
+     * (every subscription cancelled or completed).
+     *
+     * @param  array<int, string>  $statuses  plan-vocabulary status values
+     * @return list<array{key: string, tone: string}>
+     */
+    public static function statusBadges(array $statuses): array
     {
-        if (in_array(SubscriptionContract::STATUS_FAILED, $statuses, true)) {
-            return 'red';
+        $badges = [];
+        foreach (self::STATUS_TONES as $status => $tone) {
+            if (in_array($status, $statuses, true)) {
+                $badges[] = ['key' => $status, 'tone' => $tone];
+            }
         }
 
-        return in_array(SubscriptionContract::STATUS_ACTIVE, $statuses, true) ? 'green' : 'gray';
-    }
-
-    /** The worse of two dot tones (red > amber > green > gray). */
-    private function worstDot(string $a, string $b): string
-    {
-        return (self::DOT_RANK[$a] ?? 0) >= (self::DOT_RANK[$b] ?? 0) ? $a : $b;
+        return $badges !== [] ? $badges : [['key' => self::STATUS_INACTIVE, 'tone' => self::INACTIVE_TONE]];
     }
 
     /**
@@ -319,17 +410,5 @@ class Customers extends Page
             });
 
         return $totals;
-    }
-
-    /** Worst-status-wins dot: red > amber > green > gray (no active plan). */
-    public function dotTone(array $statuses): string
-    {
-        foreach (['failed', 'awaiting_first_payment', 'active'] as $priority) {
-            if (in_array($priority, $statuses, true)) {
-                return self::DOT_BY_STATUS[$priority];
-            }
-        }
-
-        return 'gray';
     }
 }

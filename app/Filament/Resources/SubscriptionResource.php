@@ -40,18 +40,18 @@ class SubscriptionResource extends Resource
 
     protected static ?string $slug = 'subscriptions';
 
-    protected static ?string $navigationIcon = 'heroicon-o-arrow-path-rounded-square';
+    protected static ?string $navigationIcon = 'heroicon-o-check-circle';
 
     protected static ?int $navigationSort = 20;
 
     public static function getNavigationGroup(): ?string
     {
-        return __('nav.group.customers');
+        return __('nav.group.insights');
     }
 
     public static function getNavigationLabel(): string
     {
-        return __('nav.subscriptions');
+        return __('insights.active.nav');
     }
 
     public static function getModelLabel(): string

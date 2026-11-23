@@ -5,15 +5,11 @@ namespace Tests\Feature\Analytics;
 use App\Domain\Analytics\Context;
 use App\Domain\Analytics\Subscribers\AcquisitionQuery;
 use App\Domain\Analytics\Subscribers\ActiveBook;
-use App\Filament\Pages\Analytics;
 use App\Models\Product;
 use App\Models\Shop;
-use App\Models\User;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
-use Livewire\Livewire;
 use Tests\Feature\Analytics\Concerns\BuildsLedger;
 use Tests\Feature\Analytics\Concerns\BuildsSubscriptions;
 use Tests\TestCase;
@@ -117,27 +113,5 @@ final class SubscribersAcquisitionTest extends TestCase
         $this->assertSame(0, $mine['zero_day']['value']);
         $this->assertSame([], array_values(array_filter($mine['by_product'], static fn (array $p): bool => $p['revenue'] > 0)));
         $this->assertSame(3, $theirs['acquired']['value']);
-    }
-
-    public function test_the_screen_renders_empty_and_with_data(): void
-    {
-        Tenant::set($this->shop);
-        $this->actingAs(User::factory()->forShop($this->shop)->create());
-
-        Livewire::test(Analytics::class)->call('go', 'subscribers', 'acquisition')
-            ->assertOk()
-            ->assertSee(__('analytics/subscribers_acquisition.kpi.acquired'))
-            ->assertSee(__('analytics.empty.not_tracked_title'))
-            ->assertSee(__('analytics.empty.no_data_title'));
-
-        $this->fixture($this->shop);
-        Cache::flush(); // the empty render above cached its numbers
-
-        Livewire::test(Analytics::class)->call('go', 'subscribers', 'acquisition')
-            ->assertOk()
-            ->assertSee('Novel')
-            ->assertSee('rc-hbar__fill', false)
-            ->assertSee(__('analytics/subscribers_acquisition.table.title'))
-            ->assertSee(__('analytics/subscribers_acquisition.order_number.not_tracked'));
     }
 }

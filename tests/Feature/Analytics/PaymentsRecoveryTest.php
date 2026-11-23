@@ -6,14 +6,10 @@ use App\Domain\Analytics\Context;
 use App\Domain\Analytics\Payments\DeclineReason;
 use App\Domain\Analytics\Payments\PaymentJourneys;
 use App\Domain\Analytics\Payments\PaymentsRecoveryQuery;
-use App\Filament\Pages\Analytics;
 use App\Models\Shop;
-use App\Models\User;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
-use Livewire\Livewire;
 use Tests\Feature\Analytics\Concerns\BuildsPayments;
 use Tests\Feature\Analytics\Concerns\BuildsSubscriptions;
 use Tests\TestCase;
@@ -185,26 +181,5 @@ final class PaymentsRecoveryTest extends TestCase
         $this->assertSame(DeclineReason::INSUFFICIENT_FUNDS, DeclineReason::of(null, 'insufficient_funds'));
         $this->assertSame(DeclineReason::OTHER, DeclineReason::of('משהו חדש לגמרי'));
         $this->assertSame(DeclineReason::OTHER, DeclineReason::of(''));
-    }
-
-    public function test_screen_renders_empty_and_with_data(): void
-    {
-        Tenant::set($this->shop);
-        $this->actingAs(User::factory()->forShop($this->shop)->create());
-
-        Livewire::test(Analytics::class)->call('go', 'payments', 'recovery')
-            ->assertOk()
-            ->assertSee(__('analytics/payments_recovery.empty.title'));
-
-        Cache::flush();
-        $this->septemberStory($this->shop);
-
-        Livewire::test(Analytics::class)->call('go', 'payments', 'recovery')
-            ->assertOk()
-            ->assertSee(__('analytics/payments_recovery.strategy.title'))
-            ->assertSee(__('analytics/payments_recovery.strategy.backup_card'))
-            ->assertSee(__('analytics/payments_failures.reason.blocked'))
-            ->call('setGrain', 'recovery_trend', 'daily')
-            ->assertOk();
     }
 }

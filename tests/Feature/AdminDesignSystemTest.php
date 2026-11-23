@@ -70,7 +70,7 @@ class AdminDesignSystemTest extends TestCase
 
         $css = file_get_contents($path);
         // The brand accent token is published (Recharge blue, docs/ux/00-design-system.md).
-        $this->assertStringContainsString('--rc-blue: #3B5BDB', $css);
+        $this->assertStringContainsString('--rc-blue: #0B0B0C', $css);
         $this->assertStringContainsString('"Heebo"', $css);
     }
 

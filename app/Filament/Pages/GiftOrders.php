@@ -177,7 +177,7 @@ class GiftOrders extends Page
 
         // An export started before a reload is still this merchant's: show its
         // progress, or its file, rather than a screen that forgot it.
-        $latest = app(GiftExportRunner::class)->latest();
+        $latest = app(GiftExportRunner::class)->latest(allActive: false);
         $this->exportRunId = $latest?->getKey();
         $this->exportWatching = $latest !== null && ! $latest->isFinished();
     }

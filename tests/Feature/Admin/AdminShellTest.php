@@ -3,7 +3,6 @@
 namespace Tests\Feature\Admin;
 
 use App\Filament\Clusters\Settings;
-use App\Filament\Pages\HomeDashboard;
 use App\Livewire\TopbarAlerts;
 use App\Models\IssuedDocument;
 use App\Models\Shop;
@@ -16,15 +15,16 @@ use Tests\TestCase;
 
 /**
  * The approved sketch's shell: sidebar groups in the same order in both
- * languages, Settings pinned at the foot, and the bell + Home strip reading the
- * same counts as the sidebar badges.
+ * languages, Settings pinned at the foot, and the bell reading the same counts
+ * as the sidebar badges. /admin redirects to the panel home (the first Overview
+ * screen), so the shell is read from wherever that redirect lands.
  */
 final class AdminShellTest extends TestCase
 {
     use RefreshDatabase;
 
     // === CONSTANTS ===
-    private const GROUP_KEYS = ['nav.group.customers', 'nav.group.products', 'nav.group.payments', 'nav.group.upsell'];
+    private const GROUP_KEYS = ['nav.group.insights', 'nav.group.customers', 'nav.group.products', 'nav.group.payments', 'nav.group.upsell'];
 
     private Shop $shop;
 
@@ -57,7 +57,7 @@ final class AdminShellTest extends TestCase
     #[\PHPUnit\Framework\Attributes\DataProvider('locales')]
     public function test_the_sidebar_groups_keep_their_order_in_every_language(string $locale): void
     {
-        $html = $this->get('/admin?locale='.$locale)->assertOk()->getContent();
+        $html = $this->followingRedirects()->get('/admin?locale='.$locale)->assertOk()->getContent();
 
         preg_match_all('/fi-sidebar-group-label[^>]*>\s*(.*?)\s*</su', $html, $m);
         $rendered = array_map(fn (string $label): string => html_entity_decode($label), $m[1]);
@@ -73,30 +73,25 @@ final class AdminShellTest extends TestCase
     {
         $this->assertFalse(Settings::shouldRegisterNavigation());
 
-        $html = $this->get('/admin')->assertOk()->getContent();
+        $html = $this->followingRedirects()->get('/admin')->assertOk()->getContent();
 
         $foot = mb_strpos($html, 'rc-sidebar-foot');
         $this->assertNotFalse($foot);
         $this->assertStringContainsString(__('nav.settings'), mb_substr($html, $foot, 4000));
     }
 
-    public function test_the_bell_and_the_home_strip_count_documents_needing_attention(): void
+    public function test_the_bell_counts_documents_needing_attention(): void
     {
         $this->document(IssuedDocument::STATUS_FAILED);
 
         $alerts = Livewire::test(TopbarAlerts::class)->instance()->alerts();
         $this->assertCount(1, $alerts);
         $this->assertSame('1', $alerts[0]['count']);
-
-        $attention = Livewire::test(HomeDashboard::class)->instance()->attention();
-        $this->assertSame('1', $attention['invoices']);
-        $this->assertNull($attention['charges']);
     }
 
-    public function test_nothing_waiting_means_no_strip_and_a_quiet_bell(): void
+    public function test_nothing_waiting_means_a_quiet_bell(): void
     {
         $this->assertSame([], Livewire::test(TopbarAlerts::class)->instance()->alerts());
-        $this->assertNull(Livewire::test(HomeDashboard::class)->instance()->attention());
     }
 
     public function test_the_bell_is_silent_without_a_bound_shop(): void

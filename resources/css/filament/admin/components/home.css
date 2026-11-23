@@ -1,15 +1,11 @@
 /* =============================================================================
-   home.css — the Home board of the approved sketch (Main.dc.html): the KPI
-   card foot (delta chip + "vs previous 30 days"), the amber attention strip,
-   the performance table's Change chips, card-head links, and the compact
-   "Recent activity" feed (x-rc.timeline variant="feed").
+   home.css — shared card rules born on the old Home board (the board itself
+   was replaced by the Overview screens, 2026-11-23): the KPI card foot
+   (x-rc.kpi delta + compare line), card-table gutters, the compact
+   x-rc.timeline variant="feed", and two small row/cell fixes.
 
-   TOKENS: --rc-card --rc-border --rc-border-soft --rc-border-strong --rc-ink
-           --rc-ink-muted --rc-link --rc-amber-bg --rc-amber-border --rc-amber-ink
-           --rc-green-bg --rc-green-ink --rc-red-bg --rc-red-ink --rc-gray-bg
-           --rc-gray-ink --rc-radius-card --rc-radius-control --rc-radius-pill
-           --rc-type-* --rc-space-*
-   RTL: logical properties only; the ▲/▼ arrows are vertical and do not flip.
+   TOKENS: --rc-border-soft --rc-ink --rc-ink-muted --rc-type-* --rc-space-*
+   RTL: logical properties only.
    ========================================================================== */
 
 /* ---------------------------------------------------------- KPI card --- */
@@ -26,72 +22,6 @@
     color: var(--rc-ink-muted);
 }
 
-/* ------------------------------------------------------ attention strip --- */
-
-.rc-attention {
-    display: flex;
-    align-items: center;
-    gap: var(--rc-space-3);
-    padding: var(--rc-space-3) var(--rc-space-4);
-    background: var(--rc-amber-bg);
-    border: 1px solid var(--rc-amber-border);
-    border-radius: var(--rc-radius-card);
-}
-
-.rc-attention__icon {
-    flex: none;
-    inline-size: 20px;
-    block-size: 20px;
-    color: var(--rc-amber-ink);
-}
-
-.rc-attention__text {
-    flex: 1 1 auto;
-    font: var(--rc-type-body);
-    color: var(--rc-ink);
-}
-
-.rc-attention__text strong {
-    font-weight: 600;
-}
-
-.rc-attention__btn {
-    display: inline-flex;
-    align-items: center;
-    flex: none;
-    block-size: 32px;
-    padding-inline: var(--rc-space-3);
-    border: 1px solid var(--rc-border-strong);
-    border-radius: var(--rc-radius-control);
-    background: var(--rc-card);
-    color: var(--rc-ink);
-    font: var(--rc-type-body-strong);
-    font-size: 13px;
-    text-decoration: none;
-    white-space: nowrap;
-}
-
-.rc-attention__btn:hover {
-    border-color: var(--rc-ink-muted);
-}
-
-.rc-attention__btn--ghost {
-    border-color: transparent;
-    background: transparent;
-    color: var(--rc-amber-ink);
-}
-
-.rc-attention__btn--ghost:hover {
-    border-color: transparent;
-    text-decoration: underline;
-}
-
-@media (max-width: 767px) {
-    .rc-attention {
-        flex-wrap: wrap;
-    }
-}
-
 /* ----------------------------------------------- tables inside a card --- */
 
 /* The sketch's card tables: 20px gutters, 10px header / 11px row padding. */
@@ -101,30 +31,6 @@
 
 .rc-section > .rc-table td {
     padding: 11px var(--rc-space-5);
-}
-
-.rc-table--perf th:first-child {
-    inline-size: 40%;
-}
-
-/* The Change cell: a small signed chip. */
-.rc-change {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px var(--rc-space-2);
-    border-radius: var(--rc-radius-pill);
-    font: var(--rc-type-label);
-    white-space: nowrap;
-}
-
-.rc-change--up   { background: var(--rc-green-bg); color: var(--rc-green-ink); }
-.rc-change--down { background: var(--rc-red-bg);   color: var(--rc-red-ink); }
-.rc-change--flat { background: var(--rc-gray-bg);  color: var(--rc-gray-ink); }
-
-/* A card head's trailing link ("View all subscriptions →"). */
-.rc-section__link {
-    font: var(--rc-type-body-strong);
-    font-size: 13px;
 }
 
 /* ---------------------------------------------- recent activity (feed) --- */

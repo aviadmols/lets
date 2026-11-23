@@ -6,21 +6,12 @@ use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
 /**
- * Module-wide conventions every Analytics screen inherits — including the ones
- * other agents add: EN↔HE copy parity for lang/*\/analytics.php AND every
- * per-screen file under lang/*\/analytics/, and zero inline CSS in the
- * module's views and components (style="…" or Tailwind arbitrary values).
+ * EN↔HE copy parity for lang/*\/analytics.php AND every per-file copy under
+ * lang/*\/analytics/ — the strings the App\Domain\Analytics query classes
+ * still label their numbers with (the old Analytics screens are gone).
  */
 final class AnalyticsConventionsTest extends TestCase
 {
-    // === CONSTANTS ===
-    private const VIEW_DIRS = [
-        'resources/views/filament/pages/analytics',
-        'resources/views/components/rc/chart',
-    ];
-
-    private const VIEW_FILES = ['resources/views/filament/pages/analytics.blade.php'];
-
     public function test_analytics_copy_mirrors_between_en_and_he(): void
     {
         $files = ['analytics.php'];
@@ -39,23 +30,6 @@ final class AnalyticsConventionsTest extends TestCase
 
         foreach (File::files(lang_path('he/analytics')) as $file) {
             $this->assertFileExists(lang_path('en/analytics/'.$file->getFilename()));
-        }
-    }
-
-    public function test_no_inline_css_in_analytics_views(): void
-    {
-        $files = array_map('base_path', self::VIEW_FILES);
-        foreach (self::VIEW_DIRS as $dir) {
-            foreach (File::allFiles(base_path($dir)) as $file) {
-                $files[] = $file->getPathname();
-            }
-        }
-
-        foreach ($files as $path) {
-            $source = (string) file_get_contents($path);
-            $this->assertDoesNotMatchRegularExpression('/\sstyle\s*=|<style\b/i', $source, "$path carries inline CSS.");
-            $this->assertDoesNotMatchRegularExpression('/\b(bg|text|p|m|w|h)-\[/', $source, "$path uses a Tailwind arbitrary value.");
-            $this->assertDoesNotMatchRegularExpression('/#[0-9a-fA-F]{6}\b/', $source, "$path hard-codes a colour.");
         }
     }
 

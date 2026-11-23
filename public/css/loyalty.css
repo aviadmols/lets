@@ -189,3 +189,52 @@ html, body {
     .lc-hero { padding: 20px; }
     .lc-perks { display: block; overflow-x: auto; }
 }
+
+/* === The LETS panel language (2026-11-23) ================================
+   The club page adopts the LETS card system while keeping the MERCHANT's own
+   accent: the status card becomes the black hero (white figures, a faint grid),
+   the merchant's colour drives the progress bar, buttons and tier marks, and
+   every surface gets the larger LETS radii. Colours still come only from
+   --lets-* properties, so a merchant's appearance settings keep working. */
+:root {
+    --lets-hero: #0b0b0c;
+    --lets-hero-raised: #1c1c1f;
+    --lets-hero-ink: #f6f6f7;
+    --lets-hero-muted: #a3a3ab;
+    --lets-hero-grid: rgba(255, 255, 255, .035);
+    --lets-radius: 20px;
+}
+
+.lc-hero {
+    position: relative;
+    overflow: hidden;
+    background: var(--lets-hero);
+    color: var(--lets-hero-ink);
+    border-radius: 28px;
+    padding: 32px;
+}
+.lc-hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+        linear-gradient(var(--lets-hero-grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--lets-hero-grid) 1px, transparent 1px);
+    background-size: 44px 44px;
+}
+.lc-hero > * { position: relative; }
+.lc-hero__label,
+.lc-hero__credit,
+.lc-hero .lc-progress__note { color: var(--lets-hero-muted); }
+.lc-hero__tier { font-size: 30px; font-weight: 700; letter-spacing: -.01em; }
+.lc-hero__points { font-size: 64px; font-weight: 500; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+.lc-hero .lc-progress__track { background: rgba(255, 255, 255, .14); }
+
+.lc-tier { border-width: 1.5px; border-radius: var(--lets-radius); }
+.lc-tier--current { box-shadow: 0 10px 28px -10px rgba(11, 11, 12, .18), 0 2px 6px rgba(11, 11, 12, .05); }
+.lc-section__title { font-weight: 700; letter-spacing: -.01em; }
+.lc-btn { min-block-size: 44px; padding: 0 22px; font-weight: 600; transition: transform 140ms cubic-bezier(.23, 1, .32, 1), filter 180ms; }
+.lc-btn:active { transform: scale(.98); }
+.lc-btn--sm { min-block-size: 34px; }
+.lc-input { border-radius: 12px; min-block-size: 46px; }

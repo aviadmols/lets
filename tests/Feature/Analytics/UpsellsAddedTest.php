@@ -4,14 +4,10 @@ namespace Tests\Feature\Analytics;
 
 use App\Domain\Analytics\Context;
 use App\Domain\Analytics\Upsells\UpsellsQuery;
-use App\Filament\Pages\Analytics;
 use App\Models\Shop;
-use App\Models\User;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
-use Livewire\Livewire;
 use Tests\Feature\Analytics\Concerns\UpsellFixture;
 use Tests\TestCase;
 
@@ -131,31 +127,5 @@ final class UpsellsAddedTest extends TestCase
 
         $this->assertSame(208.0, $this->added($this->shop)['revenue']);
         $this->assertSame(708.0, $this->added($this->other)['revenue']);
-    }
-
-    public function test_the_screen_renders_empty_and_with_data(): void
-    {
-        Tenant::set($this->shop);
-        $this->actingAs(User::factory()->forShop($this->shop)->create());
-
-        Livewire::test(Analytics::class)->call('go', 'upsells', 'added')
-            ->assertOk()
-            ->assertSee(__('analytics/upsells_added.steps.title'))
-            ->assertSee(__('analytics/upsells_added.offers.note'))
-            ->assertSee(__('analytics.empty.no_data_title'));
-
-        $this->upsellStory($this->shop);
-        Cache::flush();
-
-        Livewire::test(Analytics::class)->call('go', 'upsells', 'added')
-            ->assertOk()
-            ->assertSee('Mug')
-            ->assertSee('Bookmark set')
-            ->assertSee('rc-an-step--pending', false)
-            ->assertSee(__('analytics/upsells_added.kpi.rate_formula'))
-            ->call('setOption', 'channel', UpsellsQuery::CHANNEL_ACCOUNT)
-            ->assertOk()
-            ->assertDontSee('Mug')
-            ->assertSee(__('analytics/upsells_added.kpi.rate_untracked'));
     }
 }

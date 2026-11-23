@@ -3,7 +3,6 @@
 namespace Tests\Feature\Dashboard;
 
 use App\Domain\Dashboard\PaymentMetrics;
-use App\Filament\Pages\Analytics;
 use App\Models\InstallmentPlan;
 use App\Models\PaymentLedger;
 use App\Models\Shop;

@@ -9,7 +9,7 @@
     gap: var(--rc-space-2);
     padding-block: var(--rc-space-2);
     padding-inline: var(--rc-space-4);
-    border-radius: var(--rc-radius-control);
+    border-radius: var(--rc-radius-pill);
     font: var(--rc-type-body-strong);
     cursor: pointer;
     border: 1px solid transparent;
@@ -49,7 +49,7 @@
 .rc-add-filter,
 .fi-ta-filters-trigger .fi-btn {
     border: 1px dashed var(--rc-border-strong);
-    border-radius: var(--rc-radius-control);
+    border-radius: var(--rc-radius-pill);
     color: var(--rc-ink-muted);
     background: transparent;
     box-shadow: none;
@@ -58,3 +58,34 @@
     border-color: var(--rc-blue);
     color: var(--rc-blue);
 }
+
+/* =============================================================================
+   Every button in the LETS panel language (Filament's .fi-btn + our .rc-cta):
+   a full pill, 40px tall, medium-bold label. Primary = solid ink; secondary
+   (gray) = white with a firm outline; the press is a small, quick squeeze.
+   ========================================================================== */
+.fi-body .fi-btn {
+    min-block-size: 40px;
+    padding-inline: 18px;
+    border-radius: var(--rc-radius-pill);
+    font-weight: 600;
+    transition: background-color var(--rc-dur-hover) var(--rc-ease-out), box-shadow var(--rc-dur-hover), transform 140ms var(--rc-ease-out);
+}
+.fi-body .fi-btn:active { transform: scale(.98); }
+.fi-body .fi-btn.fi-size-sm,
+.fi-body .fi-btn.fi-btn-size-sm { min-block-size: 34px; padding-inline: 14px; }
+.fi-body .fi-btn.fi-size-xs,
+.fi-body .fi-btn.fi-btn-size-xs { min-block-size: 30px; padding-inline: 12px; }
+.fi-body .fi-btn.fi-color-gray {
+    background-color: var(--rc-card);
+    box-shadow: inset 0 0 0 1px var(--rc-border-strong);
+    color: var(--rc-ink);
+}
+.fi-body .fi-btn.fi-color-gray:hover { background-color: var(--rc-gray-bg); }
+.fi-body .fi-btn.fi-color-primary:hover { background-color: var(--rc-blue-600); }
+.fi-body .fi-btn:focus-visible { box-shadow: var(--rc-ring); }
+
+/* Modal footers: the action row sits apart from the form, primary first. */
+.fi-body .fi-modal-footer { padding-block-start: var(--rc-space-4); }
+
+.rc-cta { min-block-size: 40px; padding-inline: 18px; font-weight: 600; }

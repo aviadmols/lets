@@ -197,7 +197,7 @@ final class TopbarSearchTest extends TestCase
 
     public function test_the_admin_shell_draws_the_search_box(): void
     {
-        $this->get('/admin')
+        $this->followingRedirects()->get('/admin')
             ->assertOk()
             ->assertSee(__('nav.search.placeholder'))
             ->assertSee('rc-topbar-search', false);

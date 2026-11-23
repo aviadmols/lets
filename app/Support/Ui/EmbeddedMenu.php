@@ -2,14 +2,16 @@
 
 namespace App\Support\Ui;
 
-use App\Filament\Pages\Analytics;
 use App\Filament\Pages\BulkEditSubscriptions;
 use App\Filament\Pages\CustomerDetail;
 use App\Filament\Pages\Customers;
 use App\Filament\Pages\FlowBuilder;
 use App\Filament\Pages\GiftOrders;
-use App\Filament\Pages\HomeDashboard;
 use App\Filament\Pages\ImportSubscriptions;
+use App\Filament\Pages\Insights\AbandonedCarts;
+use App\Filament\Pages\Insights\Churn;
+use App\Filament\Pages\Insights\Joins;
+use App\Filament\Pages\Insights\RevenueForecast;
 use App\Filament\Pages\LoyaltyMembers;
 use App\Filament\Pages\ManageBillingSettings;
 use App\Filament\Pages\ManageCustomerArea;
@@ -43,8 +45,8 @@ use App\Filament\Resources\TeamMemberResource;
  *      (Team) are not managed from inside somebody else's admin, and the
  *      platform's own Shops list is never reachable from a merchant's iframe.
  *   2. HOME is always allowed — an embed that lands on a 403 is a broken menu
- *      item in wp-admin, and there is nothing sensitive on the dashboard the
- *      merchant does not already own.
+ *      item in wp-admin, and there is nothing sensitive on the landing screen
+ *      (Overview → Joins, the panel's home URL) the merchant does not already own.
  *   3. Everything else consults the shop's allow-list. A NULL list means "no
  *      restriction", and a screen that is not in SCREEN_AREAS is ALLOWED —
  *      failing OPEN here is deliberate: a newly added screen must not silently
@@ -104,6 +106,7 @@ final class EmbeddedMenu
      */
     public const AREAS = [
         self::AREA_HOME => 'embedded.areas.home',
+        self::AREA_ANALYTICS => 'embedded.areas.analytics',
         self::AREA_CUSTOMERS => 'embedded.areas.customers',
         self::AREA_SUBSCRIPTIONS => 'embedded.areas.subscriptions',
         self::AREA_LOYALTY => 'embedded.areas.loyalty',
@@ -115,7 +118,6 @@ final class EmbeddedMenu
         self::AREA_DOCUMENTS => 'embedded.areas.documents',
         self::AREA_UPSELL => 'embedded.areas.upsell',
         self::AREA_STOREFRONT => 'embedded.areas.storefront',
-        self::AREA_ANALYTICS => 'embedded.areas.analytics',
         self::AREA_OBSERVABILITY => 'embedded.areas.observability',
         self::AREA_SETTINGS_BILLING => 'embedded.areas.settings_billing',
         self::AREA_SETTINGS_INVOICING => 'embedded.areas.settings_invoicing',
@@ -131,7 +133,14 @@ final class EmbeddedMenu
      * @var array<class-string, string>
      */
     public const SCREEN_AREAS = [
-        HomeDashboard::class => self::AREA_HOME,
+        // The Overview group. Joins is the panel's home URL — where the embed
+        // lands — so it rides on HOME and is reachable whatever the list says;
+        // the other Overview screens are the area the owner may switch off
+        // (stored under the old "analytics" key, so existing lists keep meaning).
+        Joins::class => self::AREA_HOME,
+        Churn::class => self::AREA_ANALYTICS,
+        AbandonedCarts::class => self::AREA_ANALYTICS,
+        RevenueForecast::class => self::AREA_ANALYTICS,
 
         Customers::class => self::AREA_CUSTOMERS,
         CustomerDetail::class => self::AREA_CUSTOMERS,
@@ -164,7 +173,6 @@ final class EmbeddedMenu
         AccountOfferResource::class => self::AREA_UPSELL,
 
         StorefrontElements::class => self::AREA_STOREFRONT,
-        Analytics::class => self::AREA_ANALYTICS,
         ObservabilityDashboard::class => self::AREA_OBSERVABILITY,
 
         ManageBillingSettings::class => self::AREA_SETTINGS_BILLING,

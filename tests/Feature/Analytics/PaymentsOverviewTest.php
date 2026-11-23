@@ -6,14 +6,10 @@ use App\Domain\Analytics\Context;
 use App\Domain\Analytics\Filters;
 use App\Domain\Analytics\Payments\PaymentsOverviewQuery;
 use App\Domain\Analytics\Period;
-use App\Filament\Pages\Analytics;
 use App\Models\Shop;
-use App\Models\User;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
-use Livewire\Livewire;
 use Tests\Feature\Analytics\Concerns\BuildsPayments;
 use Tests\Feature\Analytics\Concerns\BuildsSubscriptions;
 use Tests\TestCase;
@@ -135,28 +131,5 @@ final class PaymentsOverviewTest extends TestCase
         $this->assertFalse($q['has_data']);
         $this->assertSame(0, $q['kpis']['attempted']['value']);
         $this->assertNull($q['kpis']['success']['value']);
-    }
-
-    public function test_screen_renders_empty_and_with_data(): void
-    {
-        Tenant::set($this->shop);
-        $this->actingAs(User::factory()->forShop($this->shop)->create());
-
-        Livewire::test(Analytics::class)->call('go', 'payments', 'overview')
-            ->assertOk()
-            ->assertSee(__('analytics/payments_overview.kpi.attempted'))
-            ->assertSee(__('analytics/payments_overview.backup.not_tracked'))
-            ->assertSee(__('analytics.empty.not_tracked_title'));
-
-        $this->septemberStory($this->shop);
-        Cache::flush(); // the empty render cached its numbers for five minutes
-
-        Livewire::test(Analytics::class)->call('go', 'payments', 'overview')
-            ->assertOk()
-            ->assertSee('66.7%')
-            ->assertSee(__('analytics/payments_overview.source.payplus'))
-            ->assertSee(__('analytics/payments_overview.source.shopify'))
-            ->call('setOption', 'unit', 'revenue')
-            ->assertOk();
     }
 }

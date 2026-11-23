@@ -3,7 +3,6 @@
 namespace Tests\Feature\Admin;
 
 use App\Support\Ui\TextDirection;
-use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
@@ -58,45 +57,6 @@ final class RtlConventionsTest extends TestCase
             }
             $this->assertDoesNotMatchRegularExpression('/direction:\s*ltr/', (string) file_get_contents($file->getPathname()), $file->getFilename().' forces LTR.');
         }
-    }
-
-    public function test_charts_are_not_mirrored_with_css(): void
-    {
-        $css = (string) file_get_contents(base_path(self::CSS_DIR.'/analytics.css'));
-
-        $this->assertDoesNotMatchRegularExpression('/rc-chart__svg[^{]*\{[^}]*scaleX\(-1\)/', $css);
-        $this->assertDoesNotMatchRegularExpression('/rc-hbar__track[^{]*\{[^}]*scaleX\(-1\)/', $css);
-        $this->assertDoesNotMatchRegularExpression('/rc-chart__axis[^{]*\{[^}]*direction:\s*ltr/', $css);
-    }
-
-    public function test_values_render_isolated_not_ltr_in_hebrew(): void
-    {
-        app()->setLocale('he');
-        $html = Blade::render(
-            '<x-rc.chart.kpi label="שיעור" value="19.5%" :delta="-4" unit="points" />'
-            .'<x-rc.chart.numbers :rows="$rows" />',
-            ['rows' => [['label' => 'שינוי', 'value' => '+53', 'kind' => 'row']]],
-        );
-        app()->setLocale('en');
-
-        $this->assertStringContainsString('rc-kpi__value rc-iso', $html);
-        $this->assertStringContainsString('rc-numbers__value rc-iso', $html);
-        $this->assertStringNotContainsString('rc-ltr', $html);
-        $this->assertDoesNotMatchRegularExpression('/dir="ltr"/', $html);
-    }
-
-    public function test_hbars_anchor_to_the_right_only_in_hebrew(): void
-    {
-        $tpl = '<x-rc.chart.hbars title="T" :rows="$rows" />';
-        $rows = ['rows' => [['label' => 'a', 'value' => 4], ['label' => 'b', 'value' => 1]]];
-
-        app()->setLocale('he');
-        $he = Blade::render($tpl, $rows);
-        app()->setLocale('en');
-        $en = Blade::render($tpl, $rows);
-
-        $this->assertStringContainsString('x="75" y="0" width="25"', $he);
-        $this->assertStringContainsString('x="0" y="0" width="25"', $en);
     }
 
     public function test_text_direction(): void

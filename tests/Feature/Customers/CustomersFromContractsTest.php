@@ -57,7 +57,7 @@ final class CustomersFromContractsTest extends TestCase
         // Protected data pending ⇒ the row says "Customer #id", never a blank.
         $this->assertSame(__('shopify_subscriptions.detail.customer_ref', ['id' => '777']), $rows->first()['label']);
         $this->assertSame(1, $rows->first()['active_subs']);
-        $this->assertSame('green', $rows->first()['dot']);
+        $this->assertSame([['key' => 'active', 'tone' => 'green']], $rows->first()['statuses']);
     }
 
     public function test_a_named_contract_customer_shows_the_name(): void
@@ -88,7 +88,7 @@ final class CustomersFromContractsTest extends TestCase
     {
         $contract = $this->contract('780', name: 'Noa', email: 'noa@example.com');
 
-        $page = new CustomerDetail();
+        $page = new CustomerDetail;
         $page->mount('780');
 
         $this->assertSame('Noa', $page->displayName());
@@ -100,7 +100,7 @@ final class CustomersFromContractsTest extends TestCase
 
     private function contract(string $customerId, ?string $name, ?string $email): SubscriptionContract
     {
-        $contract = new SubscriptionContract();
+        $contract = new SubscriptionContract;
         $contract->forceFill([
             'shop_id' => $this->shop->getKey(),
             'shopify_gid' => 'gid://shopify/SubscriptionContract/9'.$customerId,

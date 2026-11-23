@@ -1,0 +1,791 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>אנליטיקה — סקיצה</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;600;700&family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/*
+ * The LETS Agent merchant-panel language (Let Agents: panel-overview / panel-plan / panel head.html):
+ * Google Sans for digits + Heebo for Hebrew, 14px body, monochrome ink on a light plane, white cards
+ * with big radii and no borders, ONE black hero card per screen, lime #e8ff78 as the only accent,
+ * pill controls, dark sidebar with a white active pill.
+ */
+:root {
+  color-scheme: light;
+  --plane: #f4f4f5; --bg: #ffffff; --sunken: #efeff1; --line: #e4e4e7; --line-strong: #d2d2d7;
+  --fg: #0b0b0c; --fg-2: #4d4d54; --muted: #64646c; --faint: #a3a3ab;
+  --ink: #0b0b0c; --ink-2: #1c1c1f; --ink-3: #2a2a2e; --on-ink: #f6f6f7; --on-ink-muted: #a3a3ab;
+  --lime: #e8ff78; --lime-ink: #0b0b0c;
+  --good: #157f3d; --good-soft: #eaf6ee; --bad: #b42318; --bad-soft: #fdf0ef; --warn: #9a5b00; --warn-soft: #fff4e0;
+  --font: "Google Sans", "Heebo", "Segoe UI", system-ui, sans-serif;
+  --digits: "Google Sans", "Heebo", system-ui, sans-serif;
+  --r-sm: 12px; --r-md: 18px; --r-lg: 28px; --r-pill: 999px;
+  --sh-sm: 0 1px 2px rgb(11 11 12 / .05), 0 1px 1px rgb(11 11 12 / .02);
+  --sh-md: 0 10px 28px -10px rgb(11 11 12 / .16), 0 2px 6px rgb(11 11 12 / .05);
+  --ease: cubic-bezier(.23, 1, .32, 1);
+  /* chart type: one step above the body copy, so axis dates and values read at a glance */
+  --chart-text: 13px;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--plane); color: var(--fg); font-family: var(--font); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: -.01em; text-wrap: balance; }
+p { margin: 0; }
+button, input { font: inherit; color: inherit; }
+button { border: 0; background: none; padding: 0; cursor: pointer; }
+td, .big, .v, .step b { font-variant-numeric: tabular-nums; }
+
+/* ---------- shell ---------- */
+.shell { display: grid; grid-template-columns: 300px minmax(0, 1fr); min-height: 100vh; }
+.side { position: sticky; top: 0; height: 100vh; background: var(--ink); color: var(--on-ink); padding: 22px 16px; display: flex; flex-direction: column; gap: 18px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 20px; letter-spacing: -.02em; padding: 0 8px; font-family: var(--digits); }
+.brand svg { width: 22px; height: 22px; }
+.shop-card { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: var(--r-md); background: var(--ink-2); }
+.shop-card .av { width: 36px; height: 36px; border-radius: 10px; background: #f3efe6; color: var(--ink); display: grid; place-items: center; font-weight: 700; font-size: 13px; flex: none; }
+.shop-card b { display: block; font-weight: 600; }
+.shop-card span { font-size: 12.5px; color: var(--on-ink-muted); display: flex; align-items: center; gap: 6px; }
+.shop-card .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--lime); }
+.nav { display: flex; flex-direction: column; gap: 4px; }
+.nav button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 11px 14px; border-radius: 14px; font-size: 15px; color: var(--on-ink); text-align: start; transition: background 180ms var(--ease); }
+.nav button:hover { background: var(--ink-2); }
+.nav button svg { width: 19px; height: 19px; flex: none; opacity: .85; }
+.nav button .count { margin-inline-start: auto; font-size: 12px; min-width: 22px; height: 22px; padding-inline: 7px; border-radius: var(--r-pill); background: var(--lime); color: var(--lime-ink); display: grid; place-items: center; font-weight: 700; font-family: var(--digits); }
+.nav button[aria-current="page"] { background: var(--bg); color: var(--fg); font-weight: 700; }
+.side-foot { margin-top: auto; padding: 14px; border-radius: var(--r-md); background: var(--ink-2); font-size: 13px; color: var(--on-ink-muted); line-height: 1.6; }
+.side-foot b { color: var(--on-ink); font-weight: 600; display: block; }
+
+.main { padding: 22px 32px 64px; min-width: 0; }
+.topbar { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 26px; }
+.pill-btn { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 16px; border-radius: var(--r-pill); background: var(--bg); box-shadow: inset 0 0 0 1px var(--line); font-size: 14px; font-weight: 500; }
+.pill-btn svg { width: 16px; height: 16px; }
+.pill-btn.dark { background: var(--ink); color: var(--on-ink); box-shadow: none; }
+.user { display: inline-flex; align-items: center; gap: 10px; padding: 4px 6px 4px 14px; border-radius: var(--r-pill); background: var(--bg); box-shadow: inset 0 0 0 1px var(--line); }
+.user .av { width: 32px; height: 32px; border-radius: 50%; background: var(--ink); color: var(--on-ink); display: grid; place-items: center; font-weight: 700; font-size: 13px; }
+.user b { display: block; font-size: 14px; font-weight: 600; line-height: 1.2; }
+.user span { font-size: 12px; color: var(--muted); }
+
+.screen { display: none; max-width: 1180px; }
+.screen.on { display: flex; flex-direction: column; gap: 20px; animation: rise 360ms var(--ease); }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.head h1 { font-size: 34px; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; }
+.head h1 .soft { color: var(--faint); }
+.head p { margin-top: 6px; color: var(--muted); font-size: 15px; max-width: 72ch; }
+
+/* ---------- controls ---------- */
+.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.seg { display: inline-flex; padding: 4px; background: var(--sunken); border-radius: var(--r-pill); }
+.seg button { padding: 8px 16px; border-radius: var(--r-pill); font-size: 14px; color: var(--muted); font-weight: 500; transition: background 180ms var(--ease), color 180ms; }
+.seg button[aria-pressed="true"] { background: var(--bg); color: var(--fg); font-weight: 700; box-shadow: var(--sh-sm); }
+.dates { display: none; align-items: center; gap: 8px; padding: 4px 6px 4px 14px; background: var(--bg); border-radius: var(--r-pill); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.dates.on { display: inline-flex; }
+.dates label { font-size: 13px; color: var(--muted); }
+.dates input { border: 0; background: var(--sunken); border-radius: var(--r-pill); padding: 6px 12px; font-size: 14px; font-family: var(--digits); }
+.spacer { flex: 1; }
+
+/* ---------- the black hero ---------- */
+.hero { position: relative; overflow: hidden; background: var(--ink); color: var(--on-ink); border-radius: var(--r-lg); padding: 28px; display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(260px, 1fr); gap: 24px; }
+.hero::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .5;
+  background-image: linear-gradient(rgb(255 255 255 / .035) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / .035) 1px, transparent 1px);
+  background-size: 44px 44px; }
+.hero > * { position: relative; min-width: 0; }
+.hero .eyebrow { display: flex; align-items: center; gap: 8px; color: var(--on-ink-muted); font-size: 14px; }
+.hero .eyebrow svg { width: 16px; height: 16px; color: var(--lime); }
+.hero .big { font-family: var(--digits); font-size: 80px; font-weight: 500; letter-spacing: -.04em; line-height: 1; margin: 16px 0 10px; }
+.hero .say { font-size: 16px; }
+.hero .say b { color: var(--lime); font-weight: 700; }
+.hero .chart { margin-top: 18px; }
+.mini { display: flex; flex-direction: column; gap: 12px; }
+.mini .m { display: flex; align-items: center; gap: 14px; padding: 16px; border-radius: var(--r-md); background: var(--ink-2); }
+.mini .ic { width: 44px; height: 44px; border-radius: 12px; background: var(--lime); color: var(--lime-ink); display: grid; place-items: center; flex: none; }
+.mini .ic svg { width: 20px; height: 20px; }
+.mini .ic.dim { background: var(--ink-3); color: var(--on-ink); }
+.mini .v { font-family: var(--digits); font-size: 30px; font-weight: 500; line-height: 1.1; letter-spacing: -.02em; }
+.mini .k { font-size: 13.5px; color: var(--on-ink-muted); }
+
+/* ---------- white cards ---------- */
+.card { background: var(--bg); border-radius: var(--r-lg); padding: 24px; box-shadow: var(--sh-sm); min-width: 0; }
+.card-t { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.card h2 { font-size: 20px; font-weight: 600; }
+.card .sub { margin: 4px 0 16px; color: var(--muted); font-size: 13.5px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+/* ---------- charts: drawn at their real pixel width, so text is never stretched ---------- */
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.axis { fill: var(--muted); font-size: var(--chart-text); font-family: var(--digits); }
+.hero .axis { fill: var(--on-ink-muted); }
+.gridline { stroke: var(--line); stroke-width: 1; }
+.hero .gridline { stroke: rgb(255 255 255 / .08); }
+.vlabel { font-size: 15px; font-weight: 600; font-family: var(--digits); fill: var(--fg); }
+.line-path { fill: none; stroke: var(--ink); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.line-area { fill: url(#areaGrad); }
+.line-dot { fill: var(--bg); stroke: var(--ink); stroke-width: 2.5; }
+.cross { stroke: var(--line-strong); stroke-width: 1; }
+.tip { position: absolute; pointer-events: none; background: var(--bg); color: var(--fg); padding: 9px 13px; border-radius: 12px; font-size: 14px; white-space: nowrap; transform: translate(50%, -112%); display: none; z-index: 3; box-shadow: var(--sh-md); }
+.tip b { font-weight: 800; font-family: var(--digits); }
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: start; font-weight: 500; color: var(--muted); font-size: 13px; padding: 10px 8px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--bg); }
+td { padding: 13px 8px; border-bottom: 1px solid var(--sunken); }
+tr:last-child td { border-bottom: 0; }
+td.num, th.num { text-align: end; }
+td.strong { font-weight: 600; }
+td small { display: block; color: var(--muted); font-size: 12.5px; }
+a.who { color: inherit; text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 4px; transition: text-decoration-color 180ms; }
+a.who:hover { text-decoration-color: var(--fg); }
+.scroll { max-height: 480px; overflow: auto; }
+.empty { color: var(--muted); padding: 14px 0; }
+
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 11px; border-radius: var(--r-pill); font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pill.good { background: var(--good-soft); color: var(--good); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.muted { background: var(--sunken); color: var(--fg-2); }
+.pill.lime { background: var(--lime); color: var(--lime-ink); }
+
+.hbar { display: grid; grid-template-columns: minmax(120px, 36%) 1fr auto; gap: 12px; align-items: center; padding: 8px 0; }
+.track { height: 8px; background: var(--sunken); border-radius: var(--r-pill); overflow: hidden; }
+.fill { height: 100%; border-radius: var(--r-pill); background: var(--ink); }
+.hbar .val { color: var(--fg-2); font-size: 14px; min-width: 110px; text-align: end; }
+.step { padding: 16px 0; border-bottom: 1px solid var(--sunken); }
+.step:last-child { border-bottom: 0; }
+.step .t { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.step .t span { font-weight: 600; }
+.step .t b { font-family: var(--digits); font-size: 26px; font-weight: 500; letter-spacing: -.02em; }
+.step p { color: var(--muted); font-size: 14px; margin: 2px 0 10px; }
+
+/* pace: three columns now → +1 → +2 months */
+.pace { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 4px; }
+.pace .col { padding: 18px; border-radius: var(--r-md); background: var(--sunken); }
+.pace .col.now { background: var(--ink); color: var(--on-ink); }
+.pace .col .k { font-size: 13px; color: var(--muted); }
+.pace .col.now .k { color: var(--on-ink-muted); }
+.pace .col .v { font-family: var(--digits); font-size: 34px; font-weight: 500; letter-spacing: -.02em; line-height: 1.15; margin-top: 6px; }
+.pace .col .r { font-family: var(--digits); font-size: 15px; margin-top: 2px; }
+.trend { display: inline-flex; align-items: center; gap: 6px; font-family: var(--digits); font-weight: 700; font-size: 15px; padding: 4px 12px; border-radius: var(--r-pill); }
+.trend.up { background: var(--good-soft); color: var(--good); }
+.trend.down { background: var(--bad-soft); color: var(--bad); }
+.trend.flat { background: var(--sunken); color: var(--fg-2); }
+.note { color: var(--muted); font-size: 13px; margin-top: 12px; }
+
+@media (max-width: 1000px) {
+  .shell { grid-template-columns: 1fr; }
+  .side { position: static; height: auto; }
+  .nav { flex-direction: row; overflow-x: auto; }
+  .nav button { width: auto; white-space: nowrap; }
+  .side-foot, .shop-card { display: none; }
+  .main { padding: 18px 16px 48px; }
+  .hero, .two, .pace { grid-template-columns: 1fr; }
+  .hero .big { font-size: 56px; }
+  .head h1 { font-size: 28px; }
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b0b0c" stop-opacity=".12"/><stop offset="1" stop-color="#0b0b0c" stop-opacity="0"/></linearGradient>
+</defs></svg>
+<div class="shell">
+  <aside class="side">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" fill="#e8ff78" aria-hidden="true"><path d="M5 2h14v4.5L13.6 12 19 17.5V22H5v-4.5L10.4 12 5 6.5z"/></svg>
+      Let’s
+    </div>
+    <div class="shop-card">
+      <div class="av">סמ</div>
+      <div><b id="shopName"></b><span><i class="dot"></i>סקיצה לאישור</span></div>
+    </div>
+    <nav class="nav" id="nav">
+      <button data-screen="joins" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>מצטרפים</button>
+      <button data-screen="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>מנויים פעילים</button>
+      <button data-screen="churn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M16 11h6"/></svg>עזיבות</button>
+      <button data-screen="abandoned"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h3l2.6 12.2a2 2 0 0 0 2 1.6h8.6a2 2 0 0 0 2-1.5L22 8H6.2"/></svg>עגלות נטושות</button>
+      <button data-screen="forecast"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>צפי הכנסות</button>
+      <button data-screen="payments"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20M6 15h4"/></svg>בעיות תשלום<span class="count" id="navUnpaid"></span></button>
+    </nav>
+    <div class="side-foot"><b>הנתונים נכונים ל־</b><span id="asof"></span></div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <span class="pill-btn">סלע מאיר</span>
+      <span class="user"><span><b>אביעד</b><span>בעלים</span></span><span class="av">א</span></span>
+    </div>
+
+    <!-- 1. JOINS -->
+    <section class="screen on" id="joins">
+      <div class="head"><h1>מצטרפים. <span class="soft" id="joinsMood"></span></h1><p id="joinsLead"></p></div>
+      <div class="controls" data-range="joins">
+        <div class="seg" data-ctl="range"><button data-v="7">7 ימים</button><button data-v="30" aria-pressed="true">30 ימים</button><button data-v="90">90 ימים</button><button data-v="365">שנה</button><button data-v="custom">תאריכים…</button></div>
+        <span class="dates"><label>מ־</label><input type="date" data-d="from"><label>עד</label><input type="date" data-d="to"></span>
+        <div class="seg" data-ctl="grain"><button data-v="day" aria-pressed="true">לפי יום</button><button data-v="month">לפי חודש</button></div>
+      </div>
+      <div class="hero">
+        <div>
+          <div class="eyebrow"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 2h14v4.5L13.6 12 19 17.5V22H5v-4.5L10.4 12 5 6.5z"/></svg><span id="joinsEyebrow"></span></div>
+          <div class="big" id="joinsBig"></div>
+          <div class="say" id="joinsSay"></div>
+          <div class="chart" id="joinsChart"></div>
+        </div>
+        <div class="mini" id="joinsMini"></div>
+      </div>
+      <div class="card"><h2>פירוט</h2><p class="sub" id="joinsSub"></p><div class="scroll" id="joinsTable"></div></div>
+    </section>
+
+    <!-- 2. ACTIVE -->
+    <section class="screen" id="active">
+      <div class="head"><h1>מנויים פעילים. <span class="soft" id="activeMood"></span></h1><p>מי משלם כרגע, ובכמה. מנויים בחינם נספרים גם הם.</p></div>
+      <div class="hero">
+        <div>
+          <div class="eyebrow"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 2h14v4.5L13.6 12 19 17.5V22H5v-4.5L10.4 12 5 6.5z"/></svg>מנויים פעילים, כולל בחינם</div>
+          <div class="big" id="activeBig"></div>
+          <div class="say" id="activeSay"></div>
+        </div>
+        <div class="mini" id="activeMini"></div>
+      </div>
+      <div class="card">
+        <div class="card-t"><div><h2>האם המנויים גדלים או קטנים</h2><p class="sub" id="netSub"></p></div><span id="netTrend"></span></div>
+        <div class="chart" id="netChart"></div>
+      </div>
+      <div class="two">
+        <div class="card"><h2>לפי מוצר</h2><p class="sub">כמה מנויים פעילים יש בכל מוצר, וכמה הם משלמים בכל חיוב</p><div id="activeProducts"></div></div>
+        <div class="card"><h2>מצב כל המנויים</h2><p class="sub">כמה מנויים יש בכל מצב, נכון לעכשיו</p><div id="activeStatuses"></div></div>
+      </div>
+    </section>
+
+    <!-- 3. CHURN -->
+    <section class="screen" id="churn">
+      <div class="head"><h1>עזיבות.</h1><p id="churnLead"></p></div>
+      <div class="controls">
+        <div class="seg" data-ctl="churnRange"><button data-v="7">7 ימים</button><button data-v="30" aria-pressed="true">30 ימים</button><button data-v="90">90 ימים</button><button data-v="365">שנה</button></div>
+        <div class="seg" data-ctl="churnGrain"><button data-v="day" aria-pressed="true">לפי יום</button><button data-v="month">לפי חודש</button></div>
+      </div>
+      <div class="hero">
+        <div>
+          <div class="eyebrow"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 2h14v4.5L13.6 12 19 17.5V22H5v-4.5L10.4 12 5 6.5z"/></svg><span id="churnEyebrow"></span></div>
+          <div class="big" id="churnBig"></div>
+          <div class="say" id="churnSay"></div>
+          <div class="chart" id="churnChart"></div>
+        </div>
+        <div class="mini" id="churnMini"></div>
+      </div>
+      <div class="two">
+        <div class="card"><h2>למה ביטלו</h2><p class="sub" id="reasonsSub"></p><div id="churnReasons"></div></div>
+        <div class="card"><h2>כמה ממשיכים לשלם</h2><p class="sub" id="ladderSub"></p><div id="ladder"></div></div>
+      </div>
+      <div class="card"><h2 id="churnTableTitle">מי עזב</h2><p class="sub">החדשים ביותר למעלה</p><div class="scroll" id="churnTable"></div></div>
+    </section>
+
+    <!-- 4. ABANDONED -->
+    <section class="screen" id="abandoned">
+      <div class="head"><h1>עגלות נטושות.</h1><p>אנשים שהתחילו לקנות מנוי, הגיעו לדף התשלום, ולא סיימו.</p></div>
+      <div class="controls" data-range="abandoned">
+        <div class="seg" data-ctl="range"><button data-v="7">7 ימים</button><button data-v="30" aria-pressed="true">30 ימים</button><button data-v="90">90 ימים</button><button data-v="365">שנה</button><button data-v="custom">תאריכים…</button></div>
+        <span class="dates"><label>מ־</label><input type="date" data-d="from"><label>עד</label><input type="date" data-d="to"></span>
+        <div class="seg" data-ctl="who"><button data-v="all" aria-pressed="true">כולם</button><button data-v="lost">רק מי שלא חזרו</button><button data-v="back">רק מי שחזרו וקנו</button></div>
+        <span class="spacer"></span>
+        <button class="pill-btn dark" id="abExport"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>ייצוא הרשימה (CSV)</button>
+      </div>
+      <div class="hero">
+        <div>
+          <div class="eyebrow"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 2h14v4.5L13.6 12 19 17.5V22H5v-4.5L10.4 12 5 6.5z"/></svg><span id="abEyebrow"></span></div>
+          <div class="big" id="abBig"></div>
+          <div class="say" id="abSay"></div>
+          <div class="chart" id="abChart"></div>
+        </div>
+        <div class="mini" id="abMini"></div>
+      </div>
+      <div class="card"><h2 id="abTitle">מי נטש</h2><p class="sub">מתי, מה הוא ניסה לקנות, ואיך לחזור אליו. החדשים ביותר למעלה</p><div class="scroll" id="abTable"></div></div>
+    </section>
+
+    <!-- 5. FORECAST -->
+    <section class="screen" id="forecast">
+      <div class="head"><h1>צפי הכנסות.</h1><p>כמה צפוי להיגבות בכל יום, ומה יקרה אם הקצב של החודש האחרון יימשך.</p></div>
+      <div class="controls">
+        <div class="seg" data-ctl="fcRange"><button data-v="7">שבוע</button><button data-v="30" aria-pressed="true">חודש</button><button data-v="90">3 חודשים</button><button data-v="180">6 חודשים</button></div>
+      </div>
+      <div class="hero">
+        <div>
+          <div class="eyebrow"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 2h14v4.5L13.6 12 19 17.5V22H5v-4.5L10.4 12 5 6.5z"/></svg><span id="fcEyebrow"></span></div>
+          <div class="big" id="fcBig"></div>
+          <div class="say" id="fcSay"></div>
+          <div class="chart" id="fcChart"></div>
+        </div>
+        <div class="mini" id="fcMini"></div>
+      </div>
+      <div class="card">
+        <div class="card-t"><div><h2>אם הקצב יימשך</h2><p class="sub" id="paceSub"></p></div><span id="paceTrend"></span></div>
+        <div class="pace" id="pace"></div>
+        <p class="note" id="paceNote"></p>
+      </div>
+      <div class="card"><h2>פירוט לפי יום</h2><p class="sub">רק ימים שבהם יש חיובים</p><div class="scroll" id="fcTable"></div></div>
+    </section>
+
+    <!-- 6. PAYMENT PROBLEMS -->
+    <section class="screen" id="payments">
+      <div class="head"><h1>בעיות תשלום.</h1><p>רק לקוחות שהתשלום שלהם לא עבר ועוד לא שולם.</p></div>
+      <div class="hero">
+        <div>
+          <div class="eyebrow"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 2h14v4.5L13.6 12 19 17.5V22H5v-4.5L10.4 12 5 6.5z"/></svg>לקוחות שהתשלום שלהם לא עבר</div>
+          <div class="big" id="payBig"></div>
+          <div class="say" id="paySay"></div>
+          <div class="chart" id="failChart"></div>
+        </div>
+        <div class="mini" id="payMini"></div>
+      </div>
+      <div class="card"><h2>הלקוחות</h2><p class="sub">כולל מנויים שהמערכת השהתה כי התשלום לא עבר. הוותיקים ביותר למעלה</p><div class="scroll" id="unpaidTable"></div></div>
+    </section>
+  </main>
+</div>
+
+<script>
+const DATA = /*DATA*/null;
+
+// ---------- helpers ----------
+const $ = (s) => document.querySelector(s);
+const nf = new Intl.NumberFormat('he-IL');
+const money = (v) => '₪' + nf.format(Math.round(v));
+const pct = (a, b) => b > 0 ? Math.round((a / b) * 100) + '%' : '—';
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const today = new Date(); today.setHours(0, 0, 0, 0);
+const iso = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const fromIso = (s) => new Date(s + 'T00:00:00');
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const dayLabel = (s) => { const [, m, d] = s.split('-'); return d + '/' + m; };
+const monthNames = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+const monthLabel = (s) => { const [y, m] = s.split('-'); return monthNames[+m - 1] + ' ' + y.slice(2); };
+const weekday = (s) => ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'][fromIso(s).getDay()];
+const fullDate = (s) => s ? s.split('-').reverse().join('/') : '—';
+const daysBetween = (a, b) => Math.round((b - a) / 86400000) + 1;
+const state = {
+  joins: { range: '30', from: null, to: null, grain: 'day' },
+  abandoned: { range: '30', from: null, to: null, who: 'all' },
+  churnRange: '30', churnGrain: 'day', fcRange: '30',
+};
+const ICON = {
+  user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>',
+  cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18"/></svg>',
+  coin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M14.5 9.5c-.5-1-1.5-1.5-2.5-1.5-1.5 0-2.5.8-2.5 2s1 1.7 2.5 2 2.5.8 2.5 2-1 2-2.5 2c-1 0-2-.5-2.5-1.5M12 6v2M12 16v2"/></svg>',
+  out: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>',
+  card: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>',
+  retry: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg>',
+  pause: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 5v14M15 5v14"/></svg>',
+  pct: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 5 5 19"/><circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="17" r="2.5"/></svg>',
+  gift: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8v13M3 12h18M12 8S10 3 7.5 4.5 9 8 12 8zm0 0s2-5 4.5-3.5S15 8 12 8z"/></svg>',
+  back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>',
+  star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/></svg>',
+};
+const mini = (icon, v, k, dim = false) => `<div class="m"><div class="ic ${dim ? 'dim' : ''}">${ICON[icon]}</div><div><div class="v">${v}</div><div class="k">${k}</div></div></div>`;
+
+// The window a screen is showing: a fixed range back from today, or the merchant's own dates.
+function windowOf(s) {
+  if (s.range === 'custom' && s.from && s.to) {
+    const a = fromIso(s.from), b = fromIso(s.to);
+    return a <= b ? { from: a, to: b } : { from: b, to: a };
+  }
+  const days = s.range === 'custom' ? 30 : +s.range;
+  return { from: addDays(today, -(days - 1)), to: today };
+}
+const windowWords = (w) => iso(w.to) === iso(today)
+  ? ({ 7: 'ב־7 הימים האחרונים', 30: 'ב־30 הימים האחרונים', 90: 'ב־90 הימים האחרונים', 365: 'בשנה האחרונה' }[daysBetween(w.from, w.to)] || `מ־${fullDate(iso(w.from))} עד היום`)
+  : `בין ${fullDate(iso(w.from))} ל־${fullDate(iso(w.to))}`;
+
+// Every day (or month) of a window, with zeros where nothing happened.
+function buckets(rows, w, grain, valueKeys) {
+  const map = new Map();
+  if (grain === 'month') {
+    const d = new Date(w.from.getFullYear(), w.from.getMonth(), 1);
+    while (d <= w.to) { map.set(iso(d).slice(0, 7), {}); d.setMonth(d.getMonth() + 1); }
+  } else {
+    for (let d = new Date(w.from); d <= w.to; d = addDays(d, 1)) map.set(iso(d), {});
+  }
+  const a = iso(w.from), b = iso(w.to);
+  for (const r of rows) {
+    if (r.day < a || r.day > b) continue;
+    const bk = map.get(grain === 'month' ? r.day.slice(0, 7) : r.day); if (!bk) continue;
+    for (const v of valueKeys) bk[v] = (bk[v] || 0) + (typeof r[v] === 'number' ? r[v] : 1);
+  }
+  return [...map.entries()].map(([k, bk]) => ({ key: k, ...Object.fromEntries(valueKeys.map((v) => [v, bk[v] || 0])) }));
+}
+const lastN = (n) => ({ from: addDays(today, -(n - 1)), to: today });
+const inWindow = (rows, w) => rows.filter((r) => r.day >= iso(w.from) && r.day <= iso(w.to));
+
+// Bars, drawn at the element's REAL width: text stays 13px and never stretches.
+// On the black hero they are lime; elsewhere ink. Time runs right → left with the page.
+function barChart(el, items, { value, label, tip, fill, height, valueLabels = false }) {
+  const onHero = !!el.closest('.hero');
+  const W = Math.max(320, Math.round(el.clientWidth || el.parentElement.clientWidth || 800));
+  const H = height || (onHero ? 190 : 240);
+  const padL = 6, padR = 52, padT = valueLabels ? 26 : 10, padB = 30;
+  const nice = niceMax(Math.max(1, ...items.map((i) => i[value])));
+  const n = Math.max(1, items.length), slot = (W - padL - padR) / n;
+  const bw = Math.max(3, Math.min(valueLabels ? 120 : 34, slot - 4));
+  const y = (v) => padT + (H - padT - padB) * (1 - v / nice);
+  fill = fill || (onHero ? 'var(--lime)' : 'var(--ink)');
+  let g = '';
+  for (let t = 0; t <= 4; t++) {
+    const v = (nice / 4) * t, yy = y(v);
+    g += `<line class="gridline" x1="${padL}" x2="${W - padR}" y1="${yy}" y2="${yy}"/>`;
+    g += `<text class="axis" x="${W - padR + 10}" y="${yy + 4}">${nf.format(Math.round(v))}</text>`;
+  }
+  const every = Math.max(1, Math.ceil(n / Math.max(4, Math.floor((W - padL - padR) / 64))));
+  items.forEach((it, i) => {
+    const x = W - padR - (i + 1) * slot + (slot - bw) / 2;
+    const v = it[value];
+    if (v > 0) {
+      const top = y(v), h = (H - padB) - top, r = Math.min(6, bw / 2, h);
+      g += `<path fill="${typeof fill === 'function' ? fill(it) : fill}" d="M${x},${H - padB} V${top + r} Q${x},${top} ${x + r},${top} H${x + bw - r} Q${x + bw},${top} ${x + bw},${top + r} V${H - padB} Z"/>`;
+      if (valueLabels) g += `<text class="vlabel" text-anchor="middle" x="${x + bw / 2}" y="${top - 8}">${valueLabels(it)}</text>`;
+    }
+    g += `<rect data-i="${i}" x="${W - padR - (i + 1) * slot}" y="${padT}" width="${slot}" height="${H - padT - padB}" fill="transparent"/>`;
+    if (i % every === 0) g += `<text class="axis" text-anchor="middle" x="${x + bw / 2}" y="${H - 8}">${label(it)}</text>`;
+  });
+  el.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img">${g}</svg><div class="tip"></div>`;
+  hover(el, (i) => tip(items[i]));
+}
+// One line with a soft area under it (a level over time, e.g. the size of the subscriber book).
+function lineChart(el, items, { value, label, tip, height = 260 }) {
+  const W = Math.max(320, Math.round(el.clientWidth || 800)), H = height;
+  const padL = 10, padR = 60, padT = 14, padB = 30;
+  const vals = items.map((i) => i[value]);
+  const lo0 = Math.min(...vals), hi0 = Math.max(...vals);
+  const span = Math.max(4, hi0 - lo0), step = niceStep(span / 4);
+  const lo = Math.floor((lo0 - span * .15) / step) * step, hi = Math.ceil((hi0 + span * .15) / step) * step;
+  const n = items.length, x = (i) => W - padR - (n === 1 ? 0 : (i / (n - 1)) * (W - padL - padR));
+  const y = (v) => padT + (H - padT - padB) * (1 - (v - lo) / (hi - lo));
+  let g = '';
+  for (let v = lo; v <= hi + 1e-9; v += step) {
+    g += `<line class="gridline" x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}"/><text class="axis" x="${W - padR + 10}" y="${y(v) + 4}">${nf.format(Math.round(v))}</text>`;
+  }
+  const pts = items.map((it, i) => `${x(i)},${y(it[value])}`);
+  g += `<path class="line-area" d="M${x(0)},${H - padB} L${pts.join(' L')} L${x(n - 1)},${H - padB} Z"/>`;
+  g += `<path class="line-path" d="M${pts.join(' L')}"/>`;
+  g += `<circle class="line-dot" cx="${x(n - 1)}" cy="${y(items[n - 1][value])}" r="5"/>`;
+  const every = Math.max(1, Math.ceil(n / Math.max(4, Math.floor((W - padL - padR) / 70))));
+  items.forEach((it, i) => { if (i % every === 0 || i === n - 1) g += `<text class="axis" text-anchor="middle" x="${x(i)}" y="${H - 8}">${label(it)}</text>`; });
+  g += `<line class="cross" id="cross" x1="0" x2="0" y1="${padT}" y2="${H - padB}" visibility="hidden"/>`;
+  const slot = (W - padL - padR) / Math.max(1, n - 1);
+  items.forEach((it, i) => { g += `<rect data-i="${i}" x="${x(i) - slot / 2}" y="${padT}" width="${slot}" height="${H - padT - padB}" fill="transparent"/>`; });
+  el.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img">${g}</svg><div class="tip"></div>`;
+  const cross = el.querySelector('#cross');
+  hover(el, (i) => { cross.setAttribute('x1', x(i)); cross.setAttribute('x2', x(i)); cross.setAttribute('visibility', 'visible'); return tip(items[i]); },
+    () => cross.setAttribute('visibility', 'hidden'));
+}
+function hover(el, onTip, onLeave = () => {}) {
+  const tipEl = el.querySelector('.tip'), svg = el.querySelector('svg');
+  svg.addEventListener('mousemove', (e) => {
+    const i = e.target.dataset?.i; if (i === undefined) { tipEl.style.display = 'none'; onLeave(); return; }
+    const box = el.getBoundingClientRect();
+    tipEl.innerHTML = onTip(+i); tipEl.style.display = 'block';
+    tipEl.style.left = (e.clientX - box.left) + 'px'; tipEl.style.top = (e.clientY - box.top) + 'px';
+  });
+  svg.addEventListener('mouseleave', () => { tipEl.style.display = 'none'; onLeave(); });
+}
+function niceStep(raw) { const p = Math.pow(10, Math.floor(Math.log10(Math.max(raw, 1e-9)))); for (const m of [1, 2, 5, 10]) if (m * p >= raw) return m * p; return raw; }
+function niceMax(v) { return Math.max(4, niceStep(Math.max(1, v / 4)) * 4); }
+function hbars(el, rows) {
+  if (!rows.length) { el.innerHTML = '<div class="empty">אין נתונים בתקופה הזו</div>'; return; }
+  const max = Math.max(...rows.map((r) => r.n));
+  el.innerHTML = rows.map((r) => `<div class="hbar"><div>${r.label}</div><div class="track"><div class="fill" style="width:${(r.n / max) * 100}%"></div></div><div class="val">${r.text}</div></div>`).join('');
+}
+function table(el, head, rows) {
+  if (!rows.length) { el.innerHTML = '<div class="empty">אין נתונים בתקופה הזו</div>'; return; }
+  el.innerHTML = `<table><thead><tr>${head.map((h) => `<th class="${h.num ? 'num' : ''}">${h.t}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c, i) => `<td class="${head[i].num ? 'num' : ''} ${i === 0 && head[0].strong ? 'strong' : ''}">${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+// Every person on every screen opens their subscription page.
+const SUB_URL = 'https://app.lets.co.il/admin/subscriptions/';
+const who = (planId, name) => planId ? `<a class="who" href="${SUB_URL}${planId}" target="_blank" rel="noopener">${esc(name || '—')}</a>` : esc(name || '—');
+const grainLabel = (grain, k) => grain === 'month' ? monthLabel(k) : dayLabel(k);
+const grainLong = (grain, k) => grain === 'month' ? monthLabel(k) : `${fullDate(k)}, יום ${weekday(k)}`;
+const joinRows = () => DATA.cohort.map((c) => ({ day: c.joined }));
+const leaveRows = () => DATA.cancellations.filter((c) => c.day >= DATA.first_charge);
+
+// ---------- 1. joins ----------
+function renderJoins() {
+  const s = state.joins, w = windowOf(s), days = daysBetween(w.from, w.to);
+  const rows = joinRows(), inW = inWindow(rows, w);
+  const b = buckets(rows, w, s.grain, ['n']);
+  const total = inW.length;
+  // The same-length period just before — compared only when the system saw all of it.
+  const pw = { from: addDays(w.from, -days), to: addDays(w.from, -1) };
+  const fair = iso(pw.from) >= DATA.go_live, prev = inWindow(rows, pw).length;
+  $('#joinsMood').textContent = !fair || prev === 0 ? '' : total > prev ? 'עלייה.' : total < prev ? 'ירידה.' : 'יציב.';
+  $('#joinsLead').textContent = `נספרים רק מי שהצטרפו דרך האתר ושילמו, החל מ־${fullDate(DATA.go_live)}. מנויים שיובאו מהמערכת הקודמת לא נספרים.`;
+  $('#joinsEyebrow').textContent = `מנויים חדשים · ${windowWords(w)}`;
+  $('#joinsBig').textContent = nf.format(total);
+  const avg = Math.round((total / days) * 10) / 10;
+  $('#joinsSay').innerHTML = fair && prev ? `לעומת <b>${nf.format(prev)}</b> בתקופה שלפני. ממוצע ${avg} ביום.` : `ממוצע ${avg} ביום.`;
+  barChart($('#joinsChart'), b, { value: 'n', label: (it) => grainLabel(s.grain, it.key), tip: (it) => `${grainLong(s.grain, it.key)}<br><b>${it.n}</b> הצטרפו` });
+  // The side cards follow the window too: best day, average, and the window's last day.
+  const byDay = buckets(rows, w, 'day', ['n']);
+  const best = [...byDay].sort((a, z) => z.n - a.n)[0];
+  const last7 = inWindow(rows, { from: addDays(w.to, -6) < w.from ? w.from : addDays(w.to, -6), to: w.to }).length;
+  $('#joinsMini').innerHTML =
+    mini('star', best && best.n ? nf.format(best.n) : '0', best && best.n ? `היום החזק בטווח · ${fullDate(best.key)}` : 'היום החזק בטווח') +
+    mini('cal', String(avg), 'ממוצע הצטרפויות ליום', true) +
+    mini('user', nf.format(last7), `ב־7 הימים האחרונים בטווח (עד ${fullDate(iso(w.to))})`, true);
+  $('#joinsSub').textContent = (s.grain === 'month' ? 'כמה הצטרפו בכל חודש' : 'כמה הצטרפו בכל יום') + ` · ${windowWords(w)}`;
+  table($('#joinsTable'), [{ t: s.grain === 'month' ? 'חודש' : 'תאריך', strong: true }, { t: 'הצטרפו', num: true }],
+    b.filter((r) => r.n > 0).reverse().map((r) => [s.grain === 'month' ? monthLabel(r.key) : `${fullDate(r.key)} · ${weekday(r.key)}`, nf.format(r.n)]));
+}
+
+// ---------- 2. active ----------
+const STATUS = {
+  active: ['פעיל', 'good'], awaiting_payment: ['נכשל, המערכת מנסה שוב', 'warn'], failed: ['נכשל, הניסיונות נגמרו', 'bad'],
+  held_for_payment: ['הושהה כי לא שילם', 'bad'], paused: ['מושהה', 'muted'], awaiting_activation: ['שולם, ממתין להפעלה', 'muted'],
+  awaiting_first_payment: ['ממתין לתשלום ראשון (מיובא)', 'muted'], draft: ['טרם חויב', 'muted'], cancelled: ['בוטל', 'muted'], completed: ['הסתיים', 'muted'],
+};
+const pill = (s) => { const [t, c] = STATUS[s] || [s, 'muted']; return `<span class="pill ${c}"><i class="dot"></i>${t}</span>`; };
+const BOOK_START = '2026-09-15';
+// The size of the subscriber book on every day since the system started billing, rebuilt BACKWARDS
+// from today's count: each day before a join had one fewer, each day before a leave one more.
+function bookSeries() {
+  const joins = joinRows(), leaves = leaveRows();
+  // The merchant's chosen start: the day after the import's mass status corrections (14/09),
+  // which were moves of the old book, not people joining or leaving.
+  const start = fromIso(BOOK_START);
+  const delta = new Map();
+  for (const j of joins) delta.set(j.day, (delta.get(j.day) || 0) + 1);
+  for (const l of leaves) delta.set(l.day, (delta.get(l.day) || 0) - 1);
+  const out = []; let level = DATA.active.count;
+  for (let d = new Date(today); d >= start; d = addDays(d, -1)) {
+    out.push({ key: iso(d), n: level, joined: joins.filter((j) => j.day === iso(d)).length, left: leaves.filter((l) => l.day === iso(d)).length });
+    level -= (delta.get(iso(d)) || 0);
+  }
+  return out.reverse();
+}
+function renderActive() {
+  const a = DATA.active, st = a.statuses || {};
+  const held = DATA.unpaid.filter((u) => u.status === 'held_for_payment').length;
+  const free = (DATA.free && DATA.free.active) || 0;
+  $('#activeBig').textContent = nf.format(a.count);
+  $('#activeSay').innerHTML = `מתוכם <b>${nf.format(free)}</b> בחינם. ביחד הם משלמים <b>${money(a.amount)}</b> בכל מחזור חיוב.`;
+  $('#activeMini').innerHTML =
+    mini('coin', money(a.amount), 'הכנסה ממנויים פעילים') +
+    mini('gift', nf.format(free), 'מנויים בחינם (נספרים בפעילים)', true) +
+    mini('card', nf.format(DATA.unpaid.length), 'התשלום לא עבר', true);
+
+  const series = bookSeries();
+  const w30 = lastN(30), j30 = inWindow(joinRows(), w30).length, l30 = inWindow(leaveRows(), w30).length, net30 = j30 - l30;
+  $('#activeMood').textContent = net30 > 0 ? 'גדלים.' : net30 < 0 ? 'קטנים.' : 'יציב.';
+  $('#netSub').textContent = `כמה מנויים היו בכל יום מאז ${fullDate(series[0].key)}: מי שהצטרף פחות מי שעזב. ב־30 הימים האחרונים: ${nf.format(j30)} הצטרפו, ${nf.format(l30)} עזבו.`;
+  $('#netTrend').innerHTML = `<span class="trend ${net30 > 0 ? 'up' : net30 < 0 ? 'down' : 'flat'}">${net30 > 0 ? '▲ +' : net30 < 0 ? '▼ ' : ''}${nf.format(net30)} בחודש האחרון</span>`;
+  lineChart($('#netChart'), series, { value: 'n', label: (it) => dayLabel(it.key), tip: (it) => `${fullDate(it.key)}, יום ${weekday(it.key)}<br><b>${nf.format(it.n)}</b> מנויים · +${it.joined} / −${it.left}` });
+
+  hbars($('#activeProducts'), a.by_product.map((p) => ({ label: esc(p.title), n: p.count, text: `${nf.format(p.count)} · ${money(p.amount)}` })));
+  const rows = { ...st, paused: Math.max(0, (st.paused || 0) - held), held_for_payment: held };
+  const order = ['active', 'awaiting_payment', 'held_for_payment', 'failed', 'paused', 'awaiting_activation', 'awaiting_first_payment', 'draft', 'cancelled', 'completed'];
+  table($('#activeStatuses'), [{ t: 'מצב' }, { t: 'מנויים', num: true }], order.filter((s) => rows[s]).map((s) => [pill(s) + (s === 'active' && free ? ` <small>כולל ${free} בחינם</small>` : ''), nf.format(rows[s])]));
+}
+
+// ---------- 3. churn ----------
+const LADDER_GRACE_DAYS = 5;
+const REASON_FALLBACK = (r) => r.to === 'cancelled' ? 'לא נמסרה סיבה' : 'החיוב נכשל ולא חזר';
+const reasonText = (r) => {
+  const s = (r.reason || '').trim();
+  if (s === '') return REASON_FALLBACK(r);
+  if (s.startsWith('account_offer')) return 'עבר למנוי אחר (הצעה באזור החשבון)';
+  if (s === 'order_refunded') return 'ההזמנה זוכתה';
+  return s;
+};
+function renderChurn() {
+  const days = +state.churnRange, grain = state.churnGrain, w = lastN(days);
+  const all = leaveRows(), rows = inWindow(all, w);
+  const quit = rows.filter((r) => r.to === 'cancelled'), lapsed = rows.filter((r) => r.to !== 'cancelled');
+  const lost = rows.reduce((a, r) => a + r.mrr, 0), book = DATA.active.count + rows.length;
+  $('#churnLead').textContent = `${windowWords(w)} עזבו ${nf.format(rows.length)} מנויים: ${nf.format(quit.length)} ביטלו בעצמם, ו־${nf.format(lapsed.length)} הפסיקו לשלם.`;
+  $('#churnEyebrow').textContent = `עזבו · ${windowWords(w)}`;
+  $('#churnBig').textContent = nf.format(rows.length);
+  $('#churnSay').innerHTML = `יחד הם היו משלמים <b>${money(lost)}</b> בכל חודש.`;
+  barChart($('#churnChart'), buckets(all, w, grain, ['n', 'mrr']), { value: 'n', label: (it) => grainLabel(grain, it.key), tip: (it) => `${grainLong(grain, it.key)}<br><b>${it.n}</b> עזבו · ${money(it.mrr)} בחודש` });
+  $('#churnMini').innerHTML =
+    mini('out', nf.format(quit.length), `ביטלו בעצמם · ${money(quit.reduce((a, r) => a + r.mrr, 0))} בחודש`) +
+    mini('card', nf.format(lapsed.length), `הפסיקו לשלם · ${money(lapsed.reduce((a, r) => a + r.mrr, 0))} בחודש`, true) +
+    mini('pct', pct(rows.length, book), `אחוז העזיבה · מתוך כ־${nf.format(book)}`, true);
+  const reasons = {};
+  for (const r of quit) { const k = reasonText(r); reasons[k] = (reasons[k] || 0) + 1; }
+  $('#reasonsSub').textContent = quit.length ? `מתוך ${quit.length} שביטלו בעצמם בתקופה` : '';
+  hbars($('#churnReasons'), Object.entries(reasons).sort((a, b) => b[1] - a[1]).map(([k, n]) => ({ label: esc(k), n, text: `${n} · ${pct(n, quit.length)}` })));
+  renderLadder();
+  $('#churnTableTitle').textContent = `מי עזב (${rows.length})`;
+  table($('#churnTable'), [{ t: 'לקוח', strong: true }, { t: 'תאריך' }, { t: 'מוצר' }, { t: 'איך עזב' }, { t: 'סיבה' }, { t: 'בחודש', num: true }],
+    [...rows].sort((a, b) => b.day.localeCompare(a.day)).map((r) => [who(r.sub, r.name), fullDate(r.day), esc(r.product || '—'),
+      r.to === 'cancelled' ? '<span class="pill muted">ביטל</span>' : '<span class="pill bad">הפסיק לשלם</span>',
+      r.to === 'cancelled' ? esc(reasonText(r)) : '—', money(r.mrr)]));
+}
+const ORDINAL = { 1: 'ראשון', 2: 'שני', 3: 'שלישי', 4: 'רביעי', 5: 'חמישי', 6: 'שישי', 7: 'שביעי', 8: 'שמיני', 9: 'תשיעי', 10: 'עשירי', 11: 'אחד עשר', 12: 'שנים עשר', 13: 'שלושה עשר' };
+function renderLadder() {
+  // Everyone the system has charged since BOOK_START, imported members too: month 1 starts at
+  // their first charge IN THE SYSTEM, not at the day they joined the old one.
+  const c = DATA.ladder_group, out = [];
+  for (let n = 1; n <= 12; n++) {
+    const eligible = c.filter((p) => { const due = fromIso(p.joined); due.setMonth(due.getMonth() + n); return addDays(due, LADDER_GRACE_DAYS) <= today; });
+    if (!eligible.length) break;
+    out.push({ n, eligible: eligible.length, passed: eligible.filter((p) => p.paid >= n + 1).length });
+  }
+  const imported = c.filter((p) => p.imported).length;
+  $('#ladderSub').textContent = `כל מי שהמערכת התחילה לחייב מ־${fullDate(BOOK_START)}: ${nf.format(c.length)} מנויים, מתוכם ${nf.format(imported)} שהועברו מהמערכת הקודמת. החודש הראשון נספר מהחיוב הראשון במערכת. "עבר את החודש" = שילם גם על החודש שאחריו.`;
+  if (!out.length) { $('#ladder').innerHTML = '<div class="empty">עוד לא עבר חודש מאז שהמערכת התחילה לגבות</div>'; return; }
+  $('#ladder').innerHTML = out.map((l) => `<div class="step"><div class="t"><span>עברו את החודש ה${ORDINAL[l.n]}</span><b>${pct(l.passed, l.eligible)}</b></div>
+    <p>מתוך ${nf.format(l.eligible)} שהצטרפו לפני יותר מ־${l.n === 1 ? 'חודש' : l.n + ' חודשים'}, ${nf.format(l.passed)} שילמו גם על החודש ה${ORDINAL[l.n + 1]}</p>
+    <div class="track"><div class="fill" style="width:${(l.passed / l.eligible) * 100}%"></div></div></div>`).join('')
+    + (out.length < 3 ? '<p class="note">השורות הבאות יתווספו מעצמן ככל שיעברו חודשים.</p>' : '');
+}
+
+// ---------- 4. abandoned carts ----------
+function abandonedIn(w) { return DATA.abandoned.filter((r) => r.day >= iso(w.from) && r.day <= iso(w.to)); }
+function renderAbandoned() {
+  const w = windowOf(state.abandoned), rows = abandonedIn(w);
+  const back = rows.filter((r) => r.later_bought), lost = rows.filter((r) => !r.later_bought);
+  $('#abEyebrow').textContent = `התחילו לקנות מנוי ולא סיימו · ${windowWords(w)}`;
+  $('#abBig').textContent = nf.format(rows.length);
+  $('#abSay').innerHTML = rows.length ? `<b>${nf.format(back.length)}</b> מהם חזרו וקנו מנוי בכל זאת. <b>${nf.format(lost.length)}</b> לא חזרו.` : 'אף אחד לא נטש בתקופה הזו.';
+  barChart($('#abChart'), buckets(DATA.abandoned, w, daysBetween(w.from, w.to) > 120 ? 'month' : 'day', ['n']), {
+    value: 'n', label: (it) => it.key.length === 7 ? monthLabel(it.key) : dayLabel(it.key),
+    tip: (it) => `${it.key.length === 7 ? monthLabel(it.key) : fullDate(it.key) + ', יום ' + weekday(it.key)}<br><b>${it.n}</b> נטשו`,
+  });
+  $('#abMini').innerHTML =
+    mini('back', nf.format(back.length), `חזרו וקנו · ${pct(back.length, rows.length)}`) +
+    mini('out', nf.format(lost.length), 'לא חזרו · כדאי ליצור איתם קשר', true) +
+    mini('coin', money(lost.reduce((a, r) => a + r.amount, 0)), 'הכסף שלא נכנס (חיוב ראשון)', true);
+  // The list (and the export) follow the "who" filter; the numbers above always show everyone.
+  const listed = abandonedListed(rows);
+  $('#abTitle').textContent = { all: 'מי נטש', lost: 'מי שלא חזרו', back: 'מי שחזרו וקנו' }[state.abandoned.who] + ` (${listed.length})`;
+  table($('#abTable'), [{ t: 'לקוח', strong: true }, { t: 'מתי' }, { t: 'מה ניסה לקנות' }, { t: 'מה קרה אחר כך' }, { t: 'סכום', num: true }],
+    listed.map((r) => [
+      `${who(r.plan, r.name)}<small>${esc(r.email || '')}${r.phone ? ' · ' + esc(r.phone) : ''}</small>`,
+      `${fullDate(r.day)} · ${r.at.slice(11)}<small>יום ${weekday(r.day)}</small>`,
+      esc(r.product || '—'),
+      r.later_bought ? '<span class="pill good"><i class="dot"></i>חזר וקנה</span>' : '<span class="pill warn"><i class="dot"></i>לא חזר</span>',
+      money(r.amount)]));
+}
+function abandonedListed(rows) {
+  const who = state.abandoned.who;
+  return who === 'lost' ? rows.filter((r) => !r.later_bought) : who === 'back' ? rows.filter((r) => r.later_bought) : rows;
+}
+function exportAbandoned() {
+  const w = windowOf(state.abandoned), rows = abandonedListed(abandonedIn(w));
+  const head = ['שם', 'אימייל', 'טלפון', 'תאריך', 'שעה', 'מוצר', 'סכום', 'חזר וקנה'];
+  const cell = (v) => { let s = String(v ?? ''); if (/^[=+\-@]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; };
+  const csv = '﻿' + [head, ...rows.map((r) => [r.name, r.email, r.phone, fullDate(r.day), r.at.slice(11), r.product, r.amount, r.later_bought ? 'כן' : 'לא'])]
+    .map((line) => line.map(cell).join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `abandoned-carts-${state.abandoned.who === 'lost' ? 'not-returned-' : state.abandoned.who === 'back' ? 'returned-' : ''}${iso(w.from)}-${iso(w.to)}.csv`;
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+// ---------- 5. forecast ----------
+function renderForecast() {
+  const days = +state.fcRange, until = iso(addDays(today, days - 1));
+  const map = new Map(DATA.forecast.map((r) => [r.day, r]));
+  const items = [];
+  for (let d = new Date(today); iso(d) <= until; d = addDays(d, 1)) { const r = map.get(iso(d)) || { count: 0, amount: 0 }; items.push({ key: iso(d), count: r.count, amount: r.amount }); }
+  const total = items.reduce((a, r) => a + r.amount, 0), charges = items.reduce((a, r) => a + r.count, 0);
+  const busiest = [...items].sort((a, b) => b.amount - a.amount)[0];
+  const label = { 7: 'בשבוע הקרוב', 30: 'בחודש הקרוב', 90: 'ב־3 החודשים הקרובים', 180: 'ב־6 החודשים הקרובים' }[days];
+  $('#fcEyebrow').textContent = `צפי הכנסות · ${label}`;
+  $('#fcBig').textContent = money(total);
+  $('#fcSay').innerHTML = `<b>${nf.format(charges)}</b> חיובים צפויים, בממוצע ${money(total / days)} ביום.`;
+  barChart($('#fcChart'), items, { value: 'amount', label: (it) => dayLabel(it.key), tip: (it) => `${fullDate(it.key)}, יום ${weekday(it.key)}<br><b>${money(it.amount)}</b> · ${it.count} מנויים יחויבו` });
+  $('#fcMini').innerHTML =
+    mini('cal', busiest && busiest.amount > 0 ? fullDate(busiest.key) : '—', busiest && busiest.amount > 0 ? `היום העמוס ביותר · ${money(busiest.amount)}` : 'אין חיובים') +
+    mini('user', nf.format(busiest?.count || 0), 'מנויים יחויבו ביום הזה', true) +
+    mini('coin', money(total / days), 'ממוצע ליום', true);
+  renderPace();
+  table($('#fcTable'), [{ t: 'תאריך', strong: true }, { t: 'יום' }, { t: 'מנויים שיחויבו', num: true }, { t: 'צפי הכנסה', num: true }],
+    items.filter((r) => r.count > 0).map((r) => [fullDate(r.key), weekday(r.key), nf.format(r.count), money(r.amount)]));
+}
+// If the last 30 days' pace holds: (joined − left) per month, carried forward one and two months.
+function renderPace() {
+  const w = lastN(30), pw = { from: addDays(today, -59), to: addDays(today, -30) };
+  const net = inWindow(joinRows(), w).length - inWindow(leaveRows(), w).length;
+  const prevNet = inWindow(joinRows(), pw).length - inWindow(leaveRows(), pw).length;
+  const price = DATA.active.count ? DATA.active.amount / DATA.active.count : 0;
+  const cols = [0, 1, 2].map((m) => ({ m, subs: DATA.active.count + net * m, rev: DATA.active.amount + net * m * price }));
+  const fair = iso(pw.from) >= DATA.go_live;
+  const change = prevNet !== 0 ? Math.round(((net - prevNet) / Math.abs(prevNet)) * 100) : null;
+  $('#paceSub').textContent = `בחודש האחרון נוספו ${nf.format(inWindow(joinRows(), w).length)} מנויים ועזבו ${nf.format(inWindow(leaveRows(), w).length)}: נטו ${net >= 0 ? '+' : ''}${nf.format(net)}. אם זה יימשך:`;
+  $('#paceTrend').innerHTML = change === null
+    ? ''
+    : `<span class="trend ${change > 0 ? 'up' : change < 0 ? 'down' : 'flat'}">${change > 0 ? '▲' : change < 0 ? '▼' : ''} ${Math.abs(change)}% לעומת החודש שלפני</span>`;
+  $('#pace').innerHTML = cols.map((c) => `<div class="col ${c.m === 0 ? 'now' : ''}">
+    <div class="k">${c.m === 0 ? 'היום' : c.m === 1 ? 'בעוד חודש' : 'בעוד חודשיים'}</div>
+    <div class="v">${nf.format(Math.round(c.subs))} <span class="k">מנויים</span></div>
+    <div class="r">${money(c.rev)} בחודש</div></div>`).join('');
+  $('#paceNote').textContent = (fair ? '' : `האחוז משווה לחודש שלפני, שחלקו לפני ${fullDate(DATA.go_live)} (לפני שהאתר התחיל למכור מנויים), ולכן הוא עוד לא מדויק. `)
+    + 'הצפי מניח שקצב ההצטרפות והעזיבה של 30 הימים האחרונים יישאר כמו שהוא, ושכל מנוי חדש משלם את המחיר הממוצע של היום.';
+}
+
+// ---------- 6. payments ----------
+const failText = (m) => {
+  const s = (m || '').trim();
+  if (s === '') return 'לא נמסרה סיבה';
+  if (s.includes('token-not-exist') || s.includes('token not exist')) return 'אין כרטיס שמור ב־PayPlus';
+  return s;
+};
+function renderPayments() {
+  const u = DATA.unpaid, f = DATA.failures;
+  const lastFail = new Map(); for (const r of f) lastFail.set(r.plan, r);
+  const owed = u.reduce((a, r) => a + r.amount, 0);
+  const retrying = u.filter((r) => r.status === 'awaiting_payment').length;
+  const noCard = u.filter((r) => failText(lastFail.get(r.plan)?.message) === 'אין כרטיס שמור ב־PayPlus').length;
+  $('#navUnpaid').textContent = u.length || '';
+  $('#payBig').textContent = nf.format(u.length);
+  $('#paySay').innerHTML = u.length ? `יחד הם חייבים <b>${money(owed)}</b>. למטה: באיזה ימים חיובים נכשלו (120 יום).` : 'אין כרגע אף לקוח שהתשלום שלו לא עבר.';
+  barChart($('#failChart'), buckets(f, lastN(120), 'day', ['n', 'amount']), { value: 'n', label: (it) => dayLabel(it.key), tip: (it) => `${fullDate(it.key)}, יום ${weekday(it.key)}<br><b>${it.n}</b> חיובים נכשלו · ${money(it.amount)}` });
+  $('#payMini').innerHTML =
+    mini('coin', money(owed), 'סכום שלא נגבה') +
+    mini('retry', nf.format(retrying), 'המערכת עוד מנסה לגבות', true) +
+    mini('card', nf.format(noCard), 'בלי כרטיס שמור · צריך לבקש עדכון', true);
+  table($('#unpaidTable'), [{ t: 'לקוח', strong: true }, { t: 'מוצר' }, { t: 'מצב' }, { t: 'לא שילם מאז' }, { t: 'למה נכשל' }, { t: 'סכום', num: true }],
+    [...u].sort((a, b) => (a.since || '9').localeCompare(b.since || '9')).map((r) => [who(r.plan, r.name), esc(r.product), pill(r.status), fullDate(r.since), esc(failText(lastFail.get(r.plan)?.message)), money(r.amount)]));
+}
+
+// ---------- wiring ----------
+const RENDER = { joins: renderJoins, active: renderActive, churn: renderChurn, abandoned: renderAbandoned, forecast: renderForecast, payments: renderPayments };
+const current = () => document.querySelector('.screen.on').id;
+document.querySelectorAll('#nav button').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('#nav button').forEach((x) => x === b ? x.setAttribute('aria-current', 'page') : x.removeAttribute('aria-current'));
+  document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('on', s.id === b.dataset.screen));
+  RENDER[b.dataset.screen]();
+}));
+document.querySelectorAll('.seg').forEach((seg) => seg.addEventListener('click', (e) => {
+  const btn = e.target.closest('button'); if (!btn) return;
+  seg.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', x === btn));
+  const scope = seg.closest('[data-range]')?.dataset.range;
+  if (scope) {
+    state[scope][seg.dataset.ctl] = btn.dataset.v;
+    const dates = seg.closest('.controls').querySelector('.dates');
+    if (seg.dataset.ctl === 'range' && dates) {
+      dates.classList.toggle('on', btn.dataset.v === 'custom');
+      if (btn.dataset.v === 'custom' && !state[scope].from) {
+        const w = windowOf({ range: '30' });
+        state[scope].from = iso(w.from); state[scope].to = iso(w.to);
+        dates.querySelector('[data-d="from"]').value = state[scope].from;
+        dates.querySelector('[data-d="to"]').value = state[scope].to;
+      }
+    }
+  } else {
+    state[seg.dataset.ctl] = btn.dataset.v;
+  }
+  RENDER[current()]();
+}));
+document.querySelectorAll('.dates input').forEach((inp) => inp.addEventListener('change', () => {
+  const scope = inp.closest('[data-range]').dataset.range;
+  state[scope][inp.dataset.d] = inp.value || null;
+  RENDER[current()]();
+}));
+$('#abExport').addEventListener('click', exportAbandoned);
+let resizeT; window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => RENDER[current()](), 150); });
+$('#shopName').textContent = DATA.shop;
+$('#asof').textContent = DATA.generated_at.slice(0, 16).split(' ').map((p, i) => i === 0 ? fullDate(p) : p).join(' בשעה ');
+document.querySelectorAll('.dates input').forEach((i) => { i.max = iso(today); });
+renderPayments(); renderJoins();
+</script>
+</body>
+</html>

@@ -95,7 +95,7 @@ final class GiftListExporter
      * @param  array<int|string, array<string, mixed>>  $rows  GiftEligibility::qualifying() rows
      * @return array<int|string, list<string>> the same keys, each in COLUMNS order
      */
-    public function fieldsForMany(Shop $shop, array $rows, bool $withFirstOrderItems = false): array
+    public function fieldsForMany(Shop $shop, array $rows, bool $withFirstOrderItems = false, bool $firstCycleOnly = true): array
     {
         $recipients = array_map(fn (array $row): GiftRecipient => $this->recipientFor($shop, $row), $rows);
 
@@ -103,7 +103,7 @@ final class GiftListExporter
         // address and courier note AND the products the member bought.
         $reads = $this->addresses->readInBulk($shop, $recipients);
         $resolved = $this->addresses->resolveMany($shop, $recipients, $reads);
-        $items = $withFirstOrderItems ? $this->firstOrderItems->forMany($shop, $rows, $reads) : [];
+        $items = $withFirstOrderItems ? $this->firstOrderItems->forMany($shop, $rows, $reads, $firstCycleOnly) : [];
 
         $lines = [];
         foreach ($rows as $key => $row) {

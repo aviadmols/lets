@@ -3,16 +3,17 @@
 namespace App\Providers\Filament;
 
 use App\Domain\Loyalty\Http\Controllers\AdminLoyaltyPreviewController;
+use App\Domain\Tenancy\ShopHosts;
 use App\Domain\Upsell\Http\Controllers\AdminUpsellPreviewController;
 use App\Domain\Upsell\Http\Controllers\PostPurchaseController;
+use App\Domain\Upsell\Rendering\UpsellCardPresenter;
 use App\Filament\Pages\Auth\Login;
 use App\Filament\Pages\Auth\TwoFactorChallenge;
-use App\Filament\Search\TenantGlobalSearchProvider;
+use App\Filament\Pages\Insights\Joins;
 use App\Filament\Pages\TwoFactorSecurity;
-use App\Domain\Upsell\Rendering\UpsellCardPresenter;
+use App\Filament\Search\TenantGlobalSearchProvider;
 use App\Http\Controllers\Admin\AdminAccountPreviewController;
 use App\Http\Controllers\Admin\AdminCustomerAccountViewController;
-use App\Http\Controllers\Admin\AnalyticsDownloadController;
 use App\Http\Middleware\BindDevTenant;
 use App\Http\Middleware\BindTenantFromUser;
 use App\Http\Middleware\DevAutoLogin;
@@ -22,7 +23,6 @@ use App\Http\Middleware\PersistEmbeddedContext;
 use App\Http\Middleware\RequireTwoFactorEnrollment;
 use App\Http\Middleware\ResolveShopFromHost;
 use App\Http\Middleware\SetAdminLocale;
-use App\Domain\Tenancy\ShopHosts;
 use App\Support\RequestedShop;
 use App\Support\Ui\PanelAccess;
 use BezhanSalleh\FilamentLanguageSwitch\LanguageSwitch;
@@ -30,8 +30,8 @@ use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
-use Filament\Navigation\NavigationGroup;
 use Filament\Navigation\MenuItem;
+use Filament\Navigation\NavigationGroup;
 use Filament\Navigation\NavigationItem;
 use Filament\Panel;
 use Filament\PanelProvider;
@@ -45,7 +45,6 @@ use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
-use Illuminate\Routing\Middleware\ValidateSignature;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\URL;
@@ -88,6 +87,11 @@ class AdminPanelProvider extends PanelProvider
 
     public const SIDEBAR_GROUPS_ASSET_PATH = 'js/rc-sidebar-groups.js';
 
+    /** The analytics screens' bar + line charts (public/js/rc-insights-charts.js) — a panel asset for SPA mode. */
+    public const INSIGHTS_CHARTS_ASSET_ID = 'rc-insights-charts';
+
+    public const INSIGHTS_CHARTS_ASSET_PATH = 'js/rc-insights-charts.js';
+
     /** Standalone brand files for slots that cannot render Blade (favicon, docs). */
     public const LOGO_PATH = 'images/lets-logo.svg';
 
@@ -98,38 +102,47 @@ class AdminPanelProvider extends PanelProvider
     /** Horizon's dashboard — on the platform root host, never a shop host. */
     public const HORIZON_PATH = '/horizon';
 
-    /** The sketch's sidebar: 248px (theme.css --rc-sidebar-w). */
-    public const SIDEBAR_WIDTH = '15.5rem';
+    /** The LETS panel's sidebar: 272px (theme.css --rc-sidebar-w). */
+    public const SIDEBAR_WIDTH = '17rem';
 
     /** Top-bar search: wait for a pause in typing, and focus on Ctrl/Cmd+K. */
     public const SEARCH_DEBOUNCE = '300ms';
 
     public const SEARCH_KEY_BINDINGS = ['mod+k'];
 
-    /** Recharge blue — the one brand accent (theme.css --rc-blue). */
-    public const BRAND_ACCENT = '#3B5BDB';
+    /** The brand accent: ink (theme.css --rc-blue — the LETS Agent panel language). */
+    public const BRAND_ACCENT = '#0B0B0C';
 
     /** Status hues — theme.css --rc-green / --rc-amber / --rc-red. */
-    public const STATUS_SUCCESS = '#1E9E6A';
+    public const STATUS_SUCCESS = '#157F3D';
 
-    public const STATUS_WARNING = '#C77700';
+    public const STATUS_WARNING = '#9A5B00';
 
-    public const STATUS_DANGER = '#D64545';
+    public const STATUS_DANGER = '#B42318';
 
-    /** Warm neutral ramp (RGB triplets, Filament's format) — theme.css --gray-*. */
+    /** Cool neutral ramp (RGB triplets, Filament's format) — theme.css --gray-*. */
     public const WARM_GRAY = [
-        50 => '250, 250, 248',
-        100 => '240, 240, 238',
-        200 => '230, 230, 225',
-        300 => '212, 212, 206',
-        400 => '156, 160, 166',
-        500 => '107, 114, 128',
-        600 => '75, 85, 99',
-        700 => '55, 60, 68',
-        800 => '38, 40, 44',
-        900 => '26, 26, 26',
-        950 => '14, 14, 14',
+        50 => '246, 246, 247',
+        100 => '239, 239, 241',
+        200 => '228, 228, 231',
+        300 => '210, 210, 215',
+        400 => '163, 163, 171',
+        500 => '100, 100, 108',
+        600 => '77, 77, 84',
+        700 => '52, 52, 58',
+        800 => '29, 29, 32',
+        900 => '11, 11, 12',
+        950 => '5, 5, 6',
     ];
+
+    /**
+     * The LETS panel pair, in ONE request: Google Sans draws Latin and the digits
+     * (it has no Hebrew glyphs), Heebo draws Hebrew. theme.css lists them in that
+     * order, so every character falls to the face that has it.
+     */
+    public const FONT_FAMILY = 'Google Sans';
+
+    public const FONT_URL = 'https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;600;700&family=Heebo:wght@400;500;600;700;800&display=swap';
 
     /**
      * Sidebar nav-group order (docs/ux/01-navigation.md). Resources/pages declare
@@ -141,6 +154,9 @@ class AdminPanelProvider extends PanelProvider
         // its own nav registration on the role). Listed first so the owner's Shops
         // list sits at the top; merchants never see this group at all.
         'nav.group.platform',
+        // The merchant's analytics screens lead the sidebar: joins, active
+        // subscriptions, churn, abandoned carts, forecast, payment problems.
+        'nav.group.insights',
         'nav.group.customers',
         'nav.group.products',
         'nav.group.payments',
@@ -201,6 +217,7 @@ class AdminPanelProvider extends PanelProvider
             // Clears a stale remembered "collapsed" sidebar group (groups are not
             // collapsible here, yet Filament honours the remembered state).
             Js::make(self::SIDEBAR_GROUPS_ASSET_ID, self::versionedAssetUrl(self::SIDEBAR_GROUPS_ASSET_PATH)),
+            Js::make(self::INSIGHTS_CHARTS_ASSET_ID, self::versionedAssetUrl(self::INSIGHTS_CHARTS_ASSET_PATH)),
         ]);
 
         // RTL is automatic: Filament reads <html dir> from the translation key
@@ -223,6 +240,10 @@ class AdminPanelProvider extends PanelProvider
                     ->icon('heroicon-o-shield-check')
                     ->url(fn (): string => TwoFactorSecurity::getUrl()),
             ])
+            // Home is the /admin landing (PanelHome, approved 2026-11-23): it sends a
+            // merchant to Overview → Joins and a platform admin who has not entered a
+            // shop to the Shops list — the logo never lands anyone on a 403.
+            ->homeUrl(fn (): string => \App\Filament\Pages\PanelHome::getUrl())
             ->brandName(self::BRAND_NAME)
             // The brand slot renders the LETS lockup (inline SVG mark + wordmark in
             // the panel font) instead of the app name as text — brandName stays as
@@ -242,10 +263,11 @@ class AdminPanelProvider extends PanelProvider
                 'danger' => Color::hex(self::STATUS_DANGER),
                 'info' => Color::hex(self::BRAND_ACCENT),
             ])
-            // Heebo carries Hebrew and Latin in one face, so EN and HE match.
-            ->font('Heebo')
-            // The sketch's shell: a 248px sidebar whose group headings are labels,
-            // not accordions.
+            // Google Sans + Heebo from one stylesheet; theme.css sets the stack
+            // ("Google Sans", "Heebo") so Hebrew falls through to Heebo.
+            ->font(self::FONT_FAMILY, url: self::FONT_URL)
+            // The LETS panel's shell: a 272px ink sidebar whose group headings
+            // are labels, not accordions.
             ->sidebarWidth(self::SIDEBAR_WIDTH)
             ->collapsibleNavigationGroups(false)
             // The top bar's search: customers, subscriptions and orders of the
@@ -366,15 +388,6 @@ class AdminPanelProvider extends PanelProvider
                 Route::get('account/view-as/{customer}', AdminCustomerAccountViewController::class)
                     ->middleware(Authenticate::class)
                     ->name('account.view_as');
-
-                // Every Analytics CSV (shell Export, risk table, report library),
-                // streamed. Only via a link minted minutes ago (relative signature:
-                // a proxy rewriting scheme/host cannot break it) AND only for the
-                // signed-in user's own bound shop — the controller compares.
-                //   → GET /admin/analytics/download  (name filament.admin.analytics.download)
-                Route::get('analytics/download', AnalyticsDownloadController::class)
-                    ->middleware([Authenticate::class, ValidateSignature::relative()])
-                    ->name('analytics.download');
             })
             ->navigationGroups($this->navigationGroups())
             // Platform-admin link to the Horizon dashboard (queues, throughput, FAILED

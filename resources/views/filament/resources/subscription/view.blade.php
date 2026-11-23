@@ -6,10 +6,16 @@
 --}}
 <x-filament-panels::page>
     <div class="rc-stack">
-        {{-- Header summary line (kind-aware) --}}
-        <div class="rc-section">
+        {{-- Header summary (kind-aware) — the page's ONE black hero card, the LETS
+             panel language: what they subscribe to, what it costs in large type,
+             and when the next charge falls, in the accent. --}}
+        <div class="rc-section rc-section--hero">
             <div class="rc-row rc-row--between">
                 <div class="rc-stack rc-stack--tight">
+                    <span class="rc-hero-figure rc-iso">{{ \App\Support\Ui\Money::format($record->installment_amount) }}</span>
+                    @if($record->next_charge_at)
+                        <span class="rc-hero-note">{{ __('subscriptions.detail.next_cycle') }}: <b>{{ $record->next_charge_at->format('d/m/Y') }}</b></span>
+                    @endif
                     {{-- The PRODUCT, not the PLN code: the code named the row in our
                          database, which is not something a merchant recognises. --}}
                     @if($this->productTitle())

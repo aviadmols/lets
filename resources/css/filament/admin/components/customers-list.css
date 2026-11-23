@@ -1,0 +1,71 @@
+/* =============================================================================
+   customers-list.css — the Customers screen's own pieces, in the LETS panel
+   language: the white pill search field and the person cell (an initials avatar,
+   the name, the email under it). The hero, the quick filter and the table come
+   from components/insights.css.
+
+   TOKENS: --rc-card --rc-border* --rc-ink* --rc-gray-bg --rc-radius-pill --rc-ring
+           --rc-font --rc-dur-hover --rc-ease-out. Logical properties only.
+   ========================================================================== */
+
+.rc-cust-search {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--rc-space-2);
+    flex: 1 1 320px;
+    max-inline-size: 460px;
+    min-block-size: 44px;
+    padding: 0 var(--rc-space-4);
+    border-radius: var(--rc-radius-pill);
+    background: var(--rc-card);
+    box-shadow: inset 0 0 0 1.5px var(--rc-border-strong);
+    color: var(--rc-ink-muted);
+    transition: box-shadow var(--rc-dur-hover) var(--rc-ease-out);
+}
+.rc-cust-search:focus-within { box-shadow: inset 0 0 0 1.5px var(--rc-ink), var(--rc-ring); }
+.rc-cust-search__icon { inline-size: 18px; block-size: 18px; flex: none; }
+.fi-body .rc-cust-search input {
+    flex: 1;
+    min-inline-size: 0;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    box-shadow: none;
+    font: 400 15px/1.4 var(--rc-font);
+    color: var(--rc-ink);
+}
+
+/* The whole list scrolls with the page here (insights.css loads after this file, so the pair outranks it). */
+.rc-ins-scroll.rc-cust-scroll { max-block-size: none; overflow: visible; }
+
+.rc-cust-person {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    color: inherit;
+    text-decoration: none;
+}
+.rc-cust-person__avatar {
+    display: grid;
+    place-items: center;
+    flex: none;
+    inline-size: 38px;
+    block-size: 38px;
+    border-radius: 50%;
+    background: var(--rc-gray-bg);
+    color: var(--rc-ink);
+    font: 700 13px/1 var(--rc-font);
+    transition: background-color var(--rc-dur-hover) var(--rc-ease-out), color var(--rc-dur-hover);
+}
+.rc-cust-person:hover .rc-cust-person__avatar { background: var(--rc-ink); color: var(--rc-card); }
+.rc-cust-person__text { display: flex; flex-direction: column; min-inline-size: 0; }
+.rc-cust-person__name {
+    font-weight: 600;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-underline-offset: 4px;
+    transition: text-decoration-color var(--rc-dur-hover);
+}
+.rc-cust-person:hover .rc-cust-person__name { text-decoration-color: var(--rc-ink); }
+.rc-cust-person__meta { font-size: 12.5px; color: var(--rc-ink-muted); }

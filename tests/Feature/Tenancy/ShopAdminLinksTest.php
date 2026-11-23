@@ -65,18 +65,6 @@ final class ShopAdminLinksTest extends TestCase
         $this->assertSame('https://connect-me-co-il.'.self::ROOT.'/admin', $page->get('wcConnection')['admin_url'] ?? null);
     }
 
-    public function test_the_first_run_banner_shows_the_store_address(): void
-    {
-        $shop = $this->shop('first-run.myshopify.com');
-        $merchant = User::factory()->forShop($shop)->create();
-
-        $this->actingAs($merchant)
-            ->get('https://first-run.'.self::ROOT.'/admin')
-            ->assertOk()
-            ->assertSee(__('tenancy.onboarding.admin_url_intro'))
-            ->assertSee('https://first-run.'.self::ROOT.'/admin');
-    }
-
     public function test_adding_a_colleague_says_where_they_sign_in(): void
     {
         $shop = $this->shop('team.myshopify.com');

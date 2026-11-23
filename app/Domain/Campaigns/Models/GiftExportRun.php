@@ -39,6 +39,13 @@ class GiftExportRun extends Model
      */
     public const VISIBLE_HOURS = 24;
 
+    /**
+     * min_cycles = 0 marks the Active subscriptions export (every active subscriber, no
+     * threshold) — a gift list always has at least GiftEligibility::MIN_THRESHOLD. Kept in
+     * the existing column so the second kind needed no migration.
+     */
+    public const ALL_ACTIVE = 0;
+
     protected $guarded = [];
 
     protected $casts = [
@@ -66,6 +73,11 @@ class GiftExportRun extends Model
     public function emailList(): array
     {
         return array_values(array_map('strval', (array) ($this->emails ?? [])));
+    }
+
+    public function isAllActive(): bool
+    {
+        return (int) $this->min_cycles === self::ALL_ACTIVE;
     }
 
     public function isFinished(): bool

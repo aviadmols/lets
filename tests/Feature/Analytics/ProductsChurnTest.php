@@ -4,14 +4,10 @@ namespace Tests\Feature\Analytics;
 
 use App\Domain\Analytics\Context;
 use App\Domain\Analytics\Products\ProductsChurnQuery;
-use App\Filament\Pages\Analytics;
 use App\Models\Shop;
-use App\Models\User;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
-use Livewire\Livewire;
 use Tests\Feature\Analytics\Concerns\BuildsProductsAndUpsells;
 use Tests\Feature\Analytics\Concerns\BuildsSubscriptions;
 use Tests\TestCase;
@@ -128,29 +124,5 @@ final class ProductsChurnTest extends TestCase
 
         $this->assertSame(['mrr' => 140.0, 'qty' => 3], $this->query($this->shop)['churned']);
         $this->assertSame(['mrr' => 640.0, 'qty' => 4], $this->query($this->other)['churned']);
-    }
-
-    public function test_the_screen_renders_empty_and_with_data_and_flags_the_flow_not_tracked(): void
-    {
-        Tenant::set($this->shop);
-        $this->actingAs(User::factory()->forShop($this->shop)->create());
-
-        Livewire::test(Analytics::class)->call('go', 'products', 'churn')
-            ->assertOk()
-            ->assertSee(__('analytics/products_churn.trend.title'))
-            ->assertSee(__('analytics.empty.not_tracked_title'))
-            ->assertSee(__('analytics/products_churn.flow.body'));
-
-        $this->fixture($this->shop);
-        Cache::flush();
-
-        Livewire::test(Analytics::class)->call('go', 'products', 'churn')
-            ->assertOk()
-            ->assertSee('Too expensive')
-            ->assertSee(__('analytics/products_churn.reasons.payment_failed'))
-            ->assertSee('rc-chart__line', false)
-            ->call('setOption', 'measure', 'quantity')
-            ->assertOk()
-            ->assertSee(__('analytics/products_churn.reasons.caption_quantity'));
     }
 }

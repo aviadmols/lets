@@ -13,7 +13,22 @@
         $report = $run === null ? $this->lastReport() : null;
     @endphp
 
+    @php $p = $this->problems(); @endphp
     <div class="rc-stack">
+
+        {{-- Payment problems, at a glance: who owes money now, and when charges failed. --}}
+        <x-rc.insights.hero :eyebrow="__('insights.payments.eyebrow')" :big="number_format($p['count'])" :chart="$p['chart']">
+            @if ($p['count'] > 0)
+                {!! __('insights.payments.say', ['amount' => '<b>'.e('₪'.number_format($p['owed'], 0)).'</b>', 'days' => $p['days']]) !!}
+            @else
+                {{ __('insights.payments.say_none') }}
+            @endif
+            <x-slot:tiles>
+                <x-rc.insights.tile icon="heroicon-o-banknotes" :accent="true" :value="'₪'.number_format($p['owed'], 0)" :label="__('insights.payments.tile_owed')" />
+                <x-rc.insights.tile icon="heroicon-o-arrow-path" :value="number_format($p['retrying'])" :label="__('insights.payments.tile_retrying')" />
+                <x-rc.insights.tile icon="heroicon-o-credit-card" :value="number_format($p['no_card'])" :label="__('insights.payments.tile_no_card')" />
+            </x-slot:tiles>
+        </x-rc.insights.hero>
 
         {{-- A "find saved cards" pass, while it walks.
              Polls ONLY while one is running: a hundred members is a few minutes of

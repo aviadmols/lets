@@ -6,15 +6,10 @@ use App\Domain\Analytics\Cohorts\CohortsQuery;
 use App\Domain\Analytics\Context;
 use App\Domain\Analytics\Filters;
 use App\Domain\Analytics\Period;
-use App\Filament\Pages\Analytics;
-use App\Filament\Pages\Analytics\Screens\Cohorts;
 use App\Models\Shop;
-use App\Models\User;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
-use Livewire\Livewire;
 use Tests\Feature\Analytics\Concerns\BuildsPayments;
 use Tests\Feature\Analytics\Concerns\BuildsSubscriptions;
 use Tests\TestCase;
@@ -123,29 +118,6 @@ final class CohortsTest extends TestCase
         $this->assertSame([1.0, 1.5, 2.0, 2.0], $avg['values']);
     }
 
-    public function test_retention_reads_as_churn(): void
-    {
-        $this->june($this->shop);
-
-        $churn = Cohorts::churn($this->cohorts(), Cohorts::MODE_PERCENT, true);
-
-        $this->assertSame(__('analytics/cohorts_overview.churn.insight.title', ['n' => 3]), $churn['insight']['title'], 'B left in month 3 — the only month anyone left.');
-        $this->assertSame('100%', $churn['kpis'][0]['value'], 'Still active after 1 month.');
-        $this->assertSame('50%', $churn['kpis'][2]['value'], 'Still active after 3 months.');
-        $this->assertSame('1', $churn['kpis'][3]['value'], 'Left to date.');
-
-        $this->assertCount(1, $churn['table']['rows'], 'Months nobody joined are hidden.');
-        $june = $churn['table']['rows'][0];
-        $this->assertSame(__('analytics/cohorts_overview.churn.table.small'), $june['flag'], 'Two people are a small sample.');
-        $this->assertSame('small', $june['cells'][2]['band']);
-        $this->assertSame(trans_choice('analytics/cohorts_overview.churn.table.left', 1, ['count' => '1']), $june['cells'][2]['left']);
-        $this->assertCount(3, $june['cells'], 'Columns stop at month 3, the furthest a cohort with people has reached.');
-        $this->assertCount(11, Cohorts::churn($this->cohorts(), Cohorts::MODE_PERCENT, false)['table']['columns'], 'Showing every month brings back the columns of the oldest month.');
-
-        $this->assertCount(12, Cohorts::churn($this->cohorts(), Cohorts::MODE_PERCENT, false)['table']['rows'], 'Every month when asked.');
-        $this->assertSame('1', Cohorts::churn($this->cohorts(), Cohorts::MODE_NUMBER, true)['table']['rows'][0]['cells'][2]['main'], '# shows who is still active.');
-    }
-
     public function test_span_option(): void
     {
         $this->june($this->shop);
@@ -154,31 +126,5 @@ final class CohortsTest extends TestCase
 
         $this->assertSame(['2026-07', '2026-08', '2026-09'], array_column($q['rows'], 'month'));
         $this->assertFalse($q['has_data'], 'June is outside a 3-month window.');
-    }
-
-    public function test_screen_renders_empty_and_with_data(): void
-    {
-        Tenant::set($this->shop);
-        $this->actingAs(User::factory()->forShop($this->shop)->create());
-
-        Livewire::test(Analytics::class)->call('go', 'cohorts')
-            ->assertOk()
-            ->assertSee(__('analytics/cohorts_overview.empty.title'));
-
-        Cache::flush();
-        $this->june($this->shop);
-
-        Livewire::test(Analytics::class)->call('go', 'cohorts')
-            ->assertOk()
-            ->assertSee(__('analytics/cohorts_overview.month', ['n' => 3]))
-            ->assertSee('50%')
-            ->assertSee(__('analytics/cohorts_overview.churn.drops.title'))
-            ->assertSee('rc-churn__cell--small', false)
-            ->call('setOption', 'empty', 'show')
-            ->assertOk()
-            ->call('setOption', 'mode', 'number')
-            ->assertOk()
-            ->call('setOption', 'metric', 'subscription_ltv')
-            ->assertSee(__('analytics/cohorts_overview.cumulative_note'));
     }
 }

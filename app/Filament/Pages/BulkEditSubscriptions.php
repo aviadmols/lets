@@ -149,7 +149,7 @@ class BulkEditSubscriptions extends Page
     /** Nested under Subscriptions: shown in the sidebar only while that section is open. */
     public static function getNavigationParentItem(): ?string
     {
-        return __('nav.subscriptions');
+        return __('insights.active.nav');
     }
 
     public static function getNavigationLabel(): string

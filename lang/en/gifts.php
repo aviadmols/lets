@@ -94,7 +94,7 @@ return [
         ],
         // The export's checkbox, and how each product is written in that one column.
         'first_order_items_toggle' => 'Also export the products from the first order',
-        'first_order_items_hint' => 'For subscribers still in their first cycle: the other products they bought in the order they subscribed through, with the quantity of each, in one column.',
+        'first_order_items_hint' => 'New subscribers still in their first cycle? We\'ll add a column with everything else they bought in their first order, each product and its quantity, so it can all go out in one package with the gift.',
         'first_order_item' => ':name × :qty',
     ],
 

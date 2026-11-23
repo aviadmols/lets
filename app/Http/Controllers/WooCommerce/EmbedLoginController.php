@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\WooCommerce;
 
-use App\Filament\Pages\HomeDashboard;
+use App\Filament\Pages\Insights\Joins;
 use App\Http\Middleware\SetAdminLocale;
 use App\Models\Shop;
 use App\Models\User;
@@ -101,7 +101,7 @@ final class EmbedLoginController
             'wp_user_id' => (int) ($payload['wp_user_id'] ?? 0),
         ]);
 
-        return redirect(HomeDashboard::getUrl());
+        return redirect(Joins::getUrl());
     }
 
     /**

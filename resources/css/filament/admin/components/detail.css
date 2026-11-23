@@ -90,3 +90,49 @@
 
 /* small inline icon sizing (used by the lock chip) without per-call styles. */
 .rc-icon-sm { inline-size: 14px; block-size: 14px; }
+
+/* ---------------------------------------------------------------------------
+   The detail pages' hero (subscription, customer): the first summary card turns
+   into the LETS panel's black card — large figure, lime accent, white text. Only
+   colours and type change; the content and its order stay exactly as they were.
+   --------------------------------------------------------------------------- */
+.fi-body .rc-section.rc-section--hero {
+    position: relative;
+    overflow: hidden;
+    padding: 28px;
+    border: 0;
+    border-radius: var(--rc-radius-hero);
+    background: var(--rc-hero);
+    color: var(--rc-hero-ink);
+    box-shadow: none;
+}
+.fi-body .rc-section--hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+        linear-gradient(var(--rc-hero-grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--rc-hero-grid) 1px, transparent 1px);
+    background-size: 44px 44px;
+}
+.fi-body .rc-section--hero > * { position: relative; }
+.fi-body .rc-section--hero .rc-section__title { color: var(--rc-hero-ink); font-size: 18px; }
+.fi-body .rc-section--hero .rc-kv__k,
+.fi-body .rc-section--hero .rc-muted { color: var(--rc-hero-muted); }
+.fi-body .rc-section--hero .rc-kv__v { color: var(--rc-hero-ink); }
+.fi-body .rc-section--hero .rc-kpi__value,
+.fi-body .rc-section--hero .rc-kpi__label { color: inherit; }
+
+.rc-hero-figure {
+    font: 500 56px/1.05 var(--rc-font-digits);
+    letter-spacing: -.035em;
+    color: var(--rc-hero-ink);
+}
+.rc-hero-note { font-size: 15px; color: var(--rc-hero-muted); }
+.rc-hero-note b { color: var(--rc-lime); font-weight: 700; font-family: var(--rc-font-digits); }
+
+/* A page title never breaks a person's name in two: the header's buttons wrap
+   under it instead when the row runs out of room. */
+.fi-body .fi-header { flex-wrap: wrap; row-gap: var(--rc-space-3); }
+.fi-body .fi-header-heading { white-space: nowrap; }

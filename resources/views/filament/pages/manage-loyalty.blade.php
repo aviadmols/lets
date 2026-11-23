@@ -42,7 +42,7 @@
     >
         {{-- The club at a glance (the approved sketch): who is in it and what it moved. --}}
         @php $stats = $this->clubStats(); @endphp
-        <div class="rc-kpi-grid rc-loyalty__kpis">
+        <div class="rc-kpi-grid rc-kpi-grid--hero rc-loyalty__kpis">
             <x-rc.kpi label="loyalty.admin.kpi.members" :value="number_format($stats['members'])"
                 :sub="__('loyalty.admin.kpi.joined', ['count' => number_format($stats['joined']), 'days' => \App\Filament\Pages\ManageLoyalty::STATS_WINDOW_DAYS])"
                 href="{{ \App\Filament\Pages\LoyaltyMembers::getUrl() }}" />

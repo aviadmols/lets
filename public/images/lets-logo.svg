@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 843 232" role="img" aria-label="LETS">
   <title>LETS</title>
   <!--
-    The LETS mark: two facing half-discs (blue above, orchid below) + the "let's"
+    The LETS mark: two facing half-discs (the hourglass, one ink colour) + the "let’s"
     wordmark. The wordmark uses currentColor so the same file reads correctly on
-    a light or a dark surface; the two half-discs keep their brand colours.
+    a light or a dark surface; the hourglass is ink, as on the LETS Agent panel.
   -->
-  <path d="M0 0 H222 A111 111 0 0 1 0 0 Z" fill="#0066FF"/>
-  <path d="M0 232 H222 A111 111 0 0 0 0 232 Z" fill="#EE82EE"/>
+  <path d="M0 0 H222 A111 111 0 0 1 0 0 Z" fill="#0B0B0C"/>
+  <path d="M0 232 H222 A111 111 0 0 0 0 232 Z" fill="#0B0B0C"/>
   <text x="262" y="196"
         font-family="Figtree, Heebo, 'Helvetica Neue', Arial, sans-serif"
         font-size="232" font-weight="900" letter-spacing="-8"

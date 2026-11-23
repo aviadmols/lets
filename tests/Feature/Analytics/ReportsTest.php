@@ -6,18 +6,13 @@ use App\Domain\Analytics\Filters;
 use App\Domain\Analytics\Period;
 use App\Domain\Analytics\Reports\ReportCatalog;
 use App\Domain\Analytics\Reports\ReportRunner;
-use App\Filament\Pages\Analytics;
-use App\Livewire\Analytics\ReportLibrary;
 use App\Models\ActivityEvent;
 use App\Models\Shop;
-use App\Models\User;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Livewire\Livewire;
 use Tests\Feature\Analytics\Concerns\BuildsLedger;
 use Tests\Feature\Analytics\Concerns\BuildsSubscriptions;
-use Tests\Feature\Analytics\Concerns\FollowsAnalyticsDownloads;
 use Tests\TestCase;
 
 /**
@@ -29,7 +24,6 @@ final class ReportsTest extends TestCase
 {
     use BuildsLedger;
     use BuildsSubscriptions;
-    use FollowsAnalyticsDownloads;
     use RefreshDatabase;
 
     // === CONSTANTS ===
@@ -136,46 +130,5 @@ final class ReportsTest extends TestCase
         $this->assertFalse(ReportCatalog::isAvailable('bundle_orders'));
         $this->assertNull(Tenant::run($this->shop, fn () => (new ReportRunner(Period::default(), Filters::none()))->download('bundle_orders')));
         $this->assertNull(Tenant::run($this->shop, fn () => (new ReportRunner(Period::default(), Filters::none()))->download('../../etc')));
-    }
-
-    public function test_the_library_lists_reports_and_runs_them_as_downloads(): void
-    {
-        $this->fixture($this->shop, self::MINE);
-        $this->fixture($this->other, self::THEIRS);
-        Tenant::set($this->shop);
-        $this->actingAs(User::factory()->forShop($this->shop)->create());
-
-        Livewire::test(Analytics::class)->call('go', 'reports', 'reports')
-            ->assertOk()
-            ->assertSee(__('analytics/reports_reports.report.transaction_logs.title'))
-            ->assertSee(__('analytics/reports_reports.report.bundle_orders.title'))
-            ->assertSee(__('analytics.empty.not_tracked_title'));
-
-        $logsUrl = $this->downloadLink(Livewire::test(ReportLibrary::class, ['from' => '2026-08-31', 'to' => '2026-09-29'])
-            ->set('search', 'cancellation')
-            ->assertSee(__('analytics/reports_reports.report.cancellation_logs.title'))
-            ->assertDontSee(__('analytics/reports_reports.report.transaction_logs.title'))
-            ->call('run', 'cancellation_logs'));
-        $subscriptionsUrl = $this->downloadLink(Livewire::test(ReportLibrary::class, ['from' => '2026-08-31', 'to' => '2026-09-29'])
-            ->call('run', 'subscriptions'));
-        $untracked = Livewire::test(ReportLibrary::class, ['from' => '2026-08-31', 'to' => '2026-09-29'])
-            ->call('run', 'bundle_orders');
-        $this->assertArrayNotHasKey('redirect', $untracked->effects);
-
-        $this->assertStringNotContainsString(self::THEIRS, $this->fetchCsv($logsUrl));
-        $content = $this->fetchCsv($subscriptionsUrl);
-        $this->assertStringContainsString('mine.customer@x.test', $content);
-        $this->assertStringNotContainsString('their.customer@x.test', $content);
-    }
-
-    public function test_the_exports_tab_is_an_honest_empty_state(): void
-    {
-        Tenant::set($this->shop);
-        $this->actingAs(User::factory()->forShop($this->shop)->create());
-
-        Livewire::test(Analytics::class)->call('go', 'reports', 'exports')
-            ->assertOk()
-            ->assertSee(__('analytics/reports_exports.empty.title'))
-            ->assertSee('rc-an-empty--not-tracked', false);
     }
 }

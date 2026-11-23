@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\WooCommerce;
 
-use App\Filament\Pages\HomeDashboard;
+use App\Filament\Pages\Insights\Joins;
 use App\Http\Middleware\SetAdminLocale;
 use App\Models\Shop;
 use App\Models\User;
@@ -62,7 +62,7 @@ final class WooEmbedLoginTest extends TestCase
         $token = $this->tokenFrom($response->json('url'));
         $this->assertGreaterThanOrEqual(40, strlen($token));
 
-        $this->get('/embed/woocommerce/'.$token)->assertRedirect(HomeDashboard::getUrl());
+        $this->get('/embed/woocommerce/'.$token)->assertRedirect(Joins::getUrl());
 
         // No team member with that email → the shop's oldest user, the owner.
         $this->assertAuthenticatedAs($owner);
@@ -84,7 +84,7 @@ final class WooEmbedLoginTest extends TestCase
 
         $token = $this->tokenFrom($this->mint($key, $secret)->json('url'));
 
-        $this->get('/embed/woocommerce/'.$token)->assertRedirect(HomeDashboard::getUrl());
+        $this->get('/embed/woocommerce/'.$token)->assertRedirect(Joins::getUrl());
 
         $this->post(route('platform.exit')); // any request; the session stays signed in
         $this->get('/embed/woocommerce/'.$token)
@@ -121,7 +121,7 @@ final class WooEmbedLoginTest extends TestCase
         $this->assertGuest();
 
         $this->get('/embed/woocommerce/'.$token, [SessionSwapGuard::DEST_HEADER => 'iframe'])
-            ->assertRedirect(HomeDashboard::getUrl());
+            ->assertRedirect(Joins::getUrl());
         $this->assertAuthenticatedAs($owner);
     }
 
@@ -164,7 +164,7 @@ final class WooEmbedLoginTest extends TestCase
             'wp_user_email' => 'b@embed-b.example.com', // shop B's login, named by shop A
         ])->json('url'));
 
-        $this->get('/embed/woocommerce/'.$token)->assertRedirect(HomeDashboard::getUrl());
+        $this->get('/embed/woocommerce/'.$token)->assertRedirect(Joins::getUrl());
 
         // Shop A's own user — never B's, even though B's email was handed to us.
         $this->assertAuthenticatedAs($userA);
@@ -182,7 +182,7 @@ final class WooEmbedLoginTest extends TestCase
             'wp_user_email' => 'colleague@embed-team.example.com',
         ])->json('url'));
 
-        $this->get('/embed/woocommerce/'.$token)->assertRedirect(HomeDashboard::getUrl());
+        $this->get('/embed/woocommerce/'.$token)->assertRedirect(Joins::getUrl());
         $this->assertAuthenticatedAs($member);
     }
 
@@ -196,7 +196,7 @@ final class WooEmbedLoginTest extends TestCase
             'wp_user_name' => 'New Owner',
         ])->json('url'));
 
-        $this->get('/embed/woocommerce/'.$token)->assertRedirect(HomeDashboard::getUrl());
+        $this->get('/embed/woocommerce/'.$token)->assertRedirect(Joins::getUrl());
 
         $created = User::query()->where('shop_id', $shop->getKey())->firstOrFail();
         $this->assertSame('new-owner@embed-fresh.example.com', $created->email);
@@ -224,7 +224,7 @@ final class WooEmbedLoginTest extends TestCase
             'wp_user_email' => 'owner@lets.co.il', // the admin's address, by name
         ])->json('url'));
 
-        $this->get('/embed/woocommerce/'.$token)->assertRedirect(HomeDashboard::getUrl());
+        $this->get('/embed/woocommerce/'.$token)->assertRedirect(Joins::getUrl());
 
         $this->assertAuthenticatedAs($merchant);
         $this->assertNotSame((int) $admin->getKey(), (int) auth()->id());
@@ -258,7 +258,7 @@ final class WooEmbedLoginTest extends TestCase
             'locale' => 'klingon',
         ])->json('url'));
 
-        $this->get('/embed/woocommerce/'.$token)->assertRedirect(HomeDashboard::getUrl());
+        $this->get('/embed/woocommerce/'.$token)->assertRedirect(Joins::getUrl());
 
         $this->assertNull(session(EmbeddedSession::SESSION_RETURN_URL));
         $this->assertSame(SetAdminLocale::DEFAULT, session(SetAdminLocale::SESSION_KEY));

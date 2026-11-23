@@ -4,16 +4,11 @@ namespace Tests\Feature\Analytics;
 
 use App\Domain\Analytics\Filters;
 use App\Domain\Analytics\Payments\UpcomingPaymentsQuery;
-use App\Filament\Pages\Analytics;
-use App\Filament\Pages\Analytics\Screens\PaymentsUpcoming;
-use App\Livewire\Analytics\UpcomingPaymentsTable;
 use App\Models\Shop;
-use App\Models\User;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Livewire\Livewire;
 use Tests\Feature\Analytics\Concerns\BuildsPayments;
 use Tests\Feature\Analytics\Concerns\BuildsSubscriptions;
 use Tests\TestCase;
@@ -140,58 +135,5 @@ final class PaymentsUpcomingTest extends TestCase
             $this->assertSame(0, $q->page('nobody')['total']);
             $this->assertSame(0, $q->page('%')['total'], 'A LIKE wildcard is searched literally.');
         });
-    }
-
-    public function test_by_day_drill_down_link(): void
-    {
-        $this->upcomingPlan($this->shop, '1', '2026-09-30 09:00', 10);
-        $this->upcomingPlan($this->shop, '2', '2026-09-30 15:00', 20);
-
-        $days = Tenant::run($this->shop, fn () => PaymentsUpcoming::byDay($this->query()->byDay()));
-
-        $this->assertCount(1, $days);
-        $this->assertSame(2, $days[0]['n']);
-        $this->assertStringContainsString('tableFilters', urldecode($days[0]['url']));
-        $this->assertStringContainsString('[next_charge_at][from]=2026-09-30', urldecode($days[0]['url']));
-    }
-
-    public function test_screen_and_table_render(): void
-    {
-        Tenant::set($this->shop);
-        $this->actingAs(User::factory()->forShop($this->shop)->create());
-
-        Livewire::test(Analytics::class)->call('go', 'payments', 'upcoming')
-            ->assertOk()
-            ->assertSee(__('analytics/payments_upcoming.kpi.scheduled'))
-            ->assertSee(__('analytics/payments_upcoming.empty.title'));
-
-        $this->upcomingPlan($this->shop, '1', '2026-09-30 09:00', 10, 'active', null);
-        $this->upcomingPlan($this->other, '9', '2026-09-30 09:00', 10);
-
-        Livewire::test(UpcomingPaymentsTable::class, ['days' => 7, 'filters' => []])
-            ->assertOk()
-            ->assertSee('#SUB-1')
-            ->assertDontSee('#SUB-9')
-            ->assertSee(__('analytics/payments_upcoming.risk.high'))
-            ->set('search', 'nobody')
-            ->assertSee(__('analytics/payments_upcoming.search.none_title'))
-            ->set('search', '')
-            ->call('sortBy', 'risk')
-            ->assertSee('#SUB-1');
-
-        // The window and the chips come from the screen, never from the browser.
-        foreach (['days' => 90, 'filters' => ['plans' => ['1']]] as $prop => $value) {
-            try {
-                Livewire::test(UpcomingPaymentsTable::class, ['days' => 7, 'filters' => []])->set($prop, $value);
-                $this->fail("{$prop} must be #[Locked].");
-            } catch (\Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException) {
-                $this->addToAssertionCount(1);
-            }
-        }
-
-        Livewire::test(Analytics::class)->call('go', 'payments', 'upcoming')
-            ->assertOk()
-            ->call('setOption', 'days', '30')
-            ->assertOk();
     }
 }

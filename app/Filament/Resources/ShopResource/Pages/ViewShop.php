@@ -5,7 +5,7 @@ namespace App\Filament\Resources\ShopResource\Pages;
 use App\Domain\Tenancy\ShopHandle;
 use App\Domain\Tenancy\ShopHandleChanger;
 use App\Domain\Tenancy\ShopHosts;
-use App\Filament\Pages\HomeDashboard;
+use App\Filament\Pages\Insights\Joins;
 use App\Filament\Resources\ShopResource;
 use App\Models\ActivityEvent;
 use App\Models\Shop;
@@ -299,7 +299,7 @@ class ViewShop extends Page
                     ->success()
                     ->send();
 
-                return redirect(HomeDashboard::getUrl());
+                return redirect(Joins::getUrl());
             });
     }
 

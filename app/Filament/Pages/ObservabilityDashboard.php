@@ -24,7 +24,7 @@ use Illuminate\Contracts\Support\Htmlable;
  *     OWN metrics only (ObservabilityMetrics::forCurrentShop(), the BelongsToShop
  *     global scope). No bypass is reachable from this branch.
  *   - A shopless, non-platform user → denied (canAccess() fails closed), same gate
- *     as HomeDashboard.
+ *     as the shop-scoped screens.
  */
 class ObservabilityDashboard extends Page
 {
@@ -51,7 +51,7 @@ class ObservabilityDashboard extends Page
     public const SUCCESS_RATE_TARGET = 90.0;
 
     /**
-     * Same gate as the Home dashboard: a bound user (merchant / entered admin) or a
+     * Same gate the old Home dashboard had: a bound user (merchant / entered admin) or a
      * platform admin in platform mode may load it. A shopless non-platform user is
      * denied (fail closed). Inside the WordPress embed the platform owner's
      * per-shop allow-list applies as well (this page does not use the trait).

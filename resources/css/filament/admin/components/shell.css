@@ -21,13 +21,15 @@
 /* One white column top to bottom — Filament makes the aside transparent on
    desktop, which let the canvas show through behind the pinned foot. */
 .fi-body .fi-sidebar {
-    background-color: var(--rc-card);
+    background-color: var(--rc-sidebar-bg);
 }
 
+/* The logo's wordmark follows currentColor: on the ink column it turns white. */
 .fi-body .fi-sidebar-header {
-    block-size: var(--rc-topbar-h);
+    block-size: 72px;
     padding-inline: 22px;
-    background-color: var(--rc-card);
+    background-color: var(--rc-sidebar-bg);
+    color: var(--rc-sidebar-ink);
     border: 0;
     box-shadow: none;
 }
@@ -57,76 +59,87 @@
 
 .fi-body .fi-sidebar-group-label {
     font: var(--rc-type-label);
-    font-size: 11px;
+    font-size: 11.5px;
     line-height: 1.4;
+    color: var(--rc-sidebar-muted);
 }
 
 .fi-body .fi-sidebar-group-items {
-    row-gap: 2px;
+    row-gap: 3px;
 }
 
+/* Taller, roomier rows than the old 34px: the LETS panel's 44px pills. */
 .fi-body .fi-sidebar-item-button {
-    block-size: 34px;
-    padding: 0 10px;
-    column-gap: 10px;
+    block-size: 42px;
+    padding: 0 12px;
+    column-gap: 12px;
+    transition: background-color var(--rc-dur-hover) var(--rc-ease-out);
 }
 
 .fi-body .fi-sidebar-item-button:hover {
-    background-color: var(--rc-bg);
+    background-color: var(--rc-sidebar-hover);
 }
 
 .fi-body .fi-sidebar-item-icon {
-    inline-size: 18px;
-    block-size: 18px;
-    color: var(--rc-ink);
+    inline-size: 19px;
+    block-size: 19px;
+    color: var(--rc-sidebar-ink);
+    opacity: .85;
 }
 
 .fi-body .fi-sidebar-item-label {
     font: var(--rc-type-body);
-    color: var(--rc-ink);
+    font-size: 15px;
+    color: var(--rc-sidebar-ink);
 }
 
 .fi-body .fi-sidebar-item-active > .fi-sidebar-item-button {
-    background-color: var(--rc-blue-bg);
+    background-color: var(--rc-sidebar-active-bg);
 }
 
 .fi-body .fi-sidebar-item-active > .fi-sidebar-item-button .fi-sidebar-item-label {
-    font-weight: 600;
-    color: var(--rc-blue);
+    font-weight: 700;
+    color: var(--rc-sidebar-active-ink);
 }
 
 .fi-body .fi-sidebar-item-active > .fi-sidebar-item-button .fi-sidebar-item-icon {
-    color: var(--rc-blue);
+    color: var(--rc-sidebar-active-ink);
+    opacity: 1;
 }
 
-/* Count badges (failed charges, invoices) — the sketch's round pill. */
+/* Child items (a sub-list under a parent) sit dimmer until hovered or active. */
+.fi-body .fi-sidebar-sub-group-items .fi-sidebar-item-label {
+    color: var(--rc-sidebar-muted);
+}
+.fi-body .fi-sidebar-sub-group-items .fi-sidebar-item-button:hover .fi-sidebar-item-label {
+    color: var(--rc-sidebar-ink);
+}
+
+/* Count badges (failed charges, invoices): lime on the ink column, the panel's
+   one accent — a number that waits for the merchant. */
 .fi-body .fi-sidebar-item .fi-badge {
-    min-inline-size: 20px;
-    block-size: 20px;
-    padding: 0 6px;
+    min-inline-size: 22px;
+    block-size: 22px;
+    padding: 0 7px;
     border-radius: var(--rc-radius-pill);
-    font: 600 12px/1 var(--rc-font);
+    font: 700 12px/1 var(--rc-font-digits);
     box-shadow: none;
 }
 
-.fi-body .fi-sidebar-item .fi-badge.fi-color-danger {
-    background-color: var(--rc-red-bg);
-    color: var(--rc-red-ink);
-}
-
+.fi-body .fi-sidebar-item .fi-badge.fi-color-danger,
 .fi-body .fi-sidebar-item .fi-badge.fi-color-warning {
-    background-color: var(--rc-amber-bg);
-    color: var(--rc-amber-ink);
+    background-color: var(--rc-lime);
+    color: var(--rc-lime-ink);
 }
 
-/* The foot: a hairline, Settings, then the store card (filament/partials/sidebar-shop). */
+/* The foot: a quiet rule, Settings, then the store card (filament/partials/sidebar-shop). */
 .rc-sidebar-foot {
     display: flex;
     flex-direction: column;
     gap: 2px;
     margin-inline: var(--rc-space-3);
     padding-block: var(--rc-space-3) var(--rc-space-4);
-    border-block-start: 1px solid var(--rc-border);
+    border-block-start: 1px solid var(--rc-sidebar-rule);
 }
 
 .rc-sidebar-foot__nav {
@@ -171,11 +184,11 @@
     gap: var(--rc-space-2);
     inline-size: var(--rc-search-w);
     max-inline-size: 100%;
-    block-size: 36px;
-    padding-inline: var(--rc-space-3);
+    block-size: 40px;
+    padding-inline: var(--rc-space-4);
     border: 1px solid var(--rc-border);
-    border-radius: var(--rc-radius-control);
-    background-color: var(--rc-bg);
+    border-radius: var(--rc-radius-pill);
+    background-color: var(--rc-card);
     color: var(--rc-ink-muted);
     cursor: text;
     transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
@@ -508,9 +521,10 @@
 
 /* ------------------------------------------------------------ buttons --- */
 
-/* The sketch's buttons: 8px corners, a firm outline on the secondary ones. */
+/* The LETS panel's buttons: full pills, a firm outline on the secondary ones. */
 .fi-body .fi-btn {
-    border-radius: var(--rc-radius-control);
+    border-radius: var(--rc-radius-pill);
+    padding-inline: 16px;
 }
 
 .fi-body .fi-btn.fi-color-gray {

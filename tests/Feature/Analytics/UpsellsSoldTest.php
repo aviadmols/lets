@@ -4,14 +4,10 @@ namespace Tests\Feature\Analytics;
 
 use App\Domain\Analytics\Context;
 use App\Domain\Analytics\Upsells\UpsellsQuery;
-use App\Filament\Pages\Analytics;
 use App\Models\Shop;
-use App\Models\User;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
-use Livewire\Livewire;
 use Tests\Feature\Analytics\Concerns\UpsellFixture;
 use Tests\TestCase;
 
@@ -84,27 +80,5 @@ final class UpsellsSoldTest extends TestCase
         $this->assertSame(64.0, $this->sold($this->shop)['revenue']);
         $this->assertSame(264.0, $this->sold($this->shop)['collected']);
         $this->assertSame(564.0, $this->sold($this->other)['revenue']);
-    }
-
-    public function test_the_screen_renders_empty_and_with_data(): void
-    {
-        Tenant::set($this->shop);
-        $this->actingAs(User::factory()->forShop($this->shop)->create());
-
-        Livewire::test(Analytics::class)->call('go', 'upsells', 'sold')
-            ->assertOk()
-            ->assertSee(__('analytics/upsells_sold.kpi.contribution'))
-            ->assertSee(__('analytics.empty.no_data_title'));
-
-        $this->upsellStory($this->shop);
-        Cache::flush();
-
-        Livewire::test(Analytics::class)->call('go', 'upsells', 'sold')
-            ->assertOk()
-            ->assertSee('Mug')
-            ->assertSee('Bookmark set')
-            ->assertSee('24.2%')
-            ->call('setGrain', UpsellsQuery::CHART_SOLD, 'daily')
-            ->assertOk();
     }
 }

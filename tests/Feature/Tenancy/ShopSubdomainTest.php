@@ -123,7 +123,7 @@ final class ShopSubdomainTest extends TestCase
 
     public function test_a_merchant_on_their_own_real_admin_page_gets_it(): void
     {
-        $this->actingAs($this->merchant($this->shopA))
+        $this->actingAs($this->merchant($this->shopA))->followingRedirects()
             ->get($this->on('shop-a', '/admin'))
             ->assertOk();
     }
@@ -299,7 +299,7 @@ final class ShopSubdomainTest extends TestCase
             ->assertOk()
             ->assertJsonPath('bound_shop_id', $this->shopA->id);
 
-        $this->actingAs($merchant)->get($this->on(null, '/admin'))->assertOk();
+        $this->actingAs($merchant)->followingRedirects()->get($this->on(null, '/admin'))->assertOk();
         $this->assertAuthenticatedAs($merchant);
     }
 

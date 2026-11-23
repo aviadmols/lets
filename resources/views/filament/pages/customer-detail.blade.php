@@ -7,7 +7,7 @@
         {{-- MAIN COLUMN --}}
         <div class="rc-stack">
             {{-- KPIs --}}
-            <div class="rc-kpi-grid">
+            <div class="rc-kpi-grid rc-kpi-grid--hero">
                 <x-rc.kpi label="customers.detail.kpi.subscription_spend" :value="$this->subscriptionSpend()" />
                 <x-rc.kpi label="customers.detail.kpi.orders" :value="(string) $this->ordersCount()" />
                 <x-rc.kpi label="customers.detail.subscriptions_title" :value="(string) $this->activePlansCount()" />

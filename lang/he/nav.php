@@ -31,6 +31,7 @@ return [
     // כותרות קבוצה
     'group' => [
         'platform' => 'פלטפורמה',
+        'insights' => 'סקירה',
         'customers' => 'לקוחות',
         'products' => 'מוצרים',
         'payments' => 'תשלומים',

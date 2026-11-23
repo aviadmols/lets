@@ -6,7 +6,7 @@
 // English is the default; mirror EVERY key in lang/he/embedded.php.
 return [
     'areas' => [
-        'home' => 'Home',
+        'home' => 'Overview · Joins (home)',
         'customers' => 'Customers',
         'subscriptions' => 'Subscriptions',
         'loyalty' => 'Loyalty club',
@@ -18,7 +18,7 @@ return [
         'documents' => 'Invoices & documents',
         'upsell' => 'Post-purchase offers',
         'storefront' => 'Storefront elements',
-        'analytics' => 'Analytics',
+        'analytics' => 'Overview · Churn, carts, forecast',
         'observability' => 'System health',
         'settings_billing' => 'Settings · Billing',
         'settings_invoicing' => 'Settings · Invoicing',

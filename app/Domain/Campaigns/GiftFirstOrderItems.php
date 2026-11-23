@@ -58,13 +58,16 @@ final class GiftFirstOrderItems
      * @param  array{plans?: array<int, InstallmentPlan>, orders?: array<int, array<string, mixed>>}|null  $reads
      * @return array<int|string, string> the same keys
      */
-    public function forMany(Shop $shop, array $rows, ?array $reads = null): array
+    public function forMany(Shop $shop, array $rows, ?array $reads = null, bool $firstCycleOnly = true): array
     {
         $cells = array_map(static fn (): string => '', $rows);
 
+        // A gift list asks only about first-cycle members (their order ships with the gift);
+        // the Active subscriptions sheet asks about every subscription bought through the site.
         $planIds = [];
         foreach ($rows as $key => $row) {
-            if (self::isFirstCycle($row)) {
+            $isPlan = ($row['source_type'] ?? null) === GiftRecipient::SOURCE_PLAN;
+            if ($isPlan && (! $firstCycleOnly || self::isFirstCycle($row))) {
                 $planIds[$key] = (int) $row['source_id'];
             }
         }
@@ -73,8 +76,11 @@ final class GiftFirstOrderItems
             return $cells;
         }
 
-        // Tenant-scoped: a plan id from another shop resolves to nothing.
-        $plans = InstallmentPlan::query()->whereKey(array_values($planIds))->get()->keyBy('id');
+        // Tenant-scoped: a plan id from another shop resolves to nothing. An imported
+        // member did not buy through the site — their "order" is the old system's.
+        $plans = InstallmentPlan::query()->whereKey(array_values($planIds))->get()
+            ->reject(static fn (InstallmentPlan $p): bool => data_get($p->meta, 'import') !== null)
+            ->keyBy('id');
 
         $orderIds = [];
         foreach ($planIds as $planId) {

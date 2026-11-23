@@ -3,25 +3,17 @@
 namespace Tests\Feature\Analytics;
 
 use App\Domain\Analytics\Cancellations\RiskQuery;
-use App\Domain\Analytics\Context;
 use App\Domain\Analytics\Filters;
-use App\Filament\Pages\Analytics;
-use App\Filament\Pages\Analytics\Screens\CancellationsRisk;
-use App\Livewire\Analytics\RiskTable;
 use App\Models\InstallmentPaymentMethod;
 use App\Models\InstallmentPlan;
 use App\Models\PaymentLedger;
 use App\Models\Shop;
-use App\Models\User;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Livewire\Livewire;
 use Tests\Feature\Analytics\Concerns\BuildsLedger;
 use Tests\Feature\Analytics\Concerns\BuildsSubscriptions;
-use Tests\Feature\Analytics\Concerns\FollowsAnalyticsDownloads;
 use Tests\TestCase;
 
 /**
@@ -35,7 +27,6 @@ final class CancellationsRiskTest extends TestCase
 {
     use BuildsLedger;
     use BuildsSubscriptions;
-    use FollowsAnalyticsDownloads;
     use RefreshDatabase;
 
     private Shop $shop;
@@ -189,53 +180,5 @@ final class CancellationsRiskTest extends TestCase
         $this->assertSame(1, $t['live']);
         $this->assertSame(1, $t['at_risk']);
         $this->assertSame(0, $t['high']);
-
-        $export = Tenant::run($this->shop, fn () => (new CancellationsRisk())->export(Context::default()));
-        $this->assertCount(1, $export['rows']);
-
-        Tenant::set($this->shop);
-        $this->actingAs(User::factory()->forShop($this->shop)->create());
-        $csv = $this->fetchCsv($this->downloadLink(Livewire::test(RiskTable::class)->call('export')));
-        $this->assertStringNotContainsString('Dana Levi', $csv);
-    }
-
-    public function test_the_table_export_is_formula_safe(): void
-    {
-        $this->fixture($this->shop);
-        Tenant::set($this->shop);
-        $this->actingAs(User::factory()->forShop($this->shop)->create());
-
-        $csv = $this->fetchCsv($this->downloadLink(Livewire::test(RiskTable::class)->call('export')));
-
-        $this->assertStringContainsString("'=cmd|calc", $csv);
-        $this->assertStringContainsString('Dana Levi', $csv);
-    }
-
-    public function test_the_screen_and_its_live_table_render(): void
-    {
-        Tenant::set($this->shop);
-        $this->actingAs(User::factory()->forShop($this->shop)->create());
-
-        Livewire::test(Analytics::class)->call('go', 'cancellations', 'risk')
-            ->assertOk()
-            ->assertSee(__('analytics/cancellations_risk.kpi.at_risk'))
-            ->assertSee(__('analytics/cancellations_risk.empty.title'));
-
-        $this->fixture($this->shop);
-        Cache::flush(); // the scored book is cached for a few minutes
-
-        Livewire::test(RiskTable::class)
-            ->assertSee('Dana Levi')
-            ->assertSee(__('analytics/cancellations_risk.level.high'))
-            ->set('search', 'maya')
-            ->assertSee('Maya Shalev')
-            ->assertDontSee('Dana Levi')
-            ->set('search', '')
-            ->call('sortBy', 'success')
-            ->assertSet('sort', 'success')
-            ->call('sortBy', 'nonsense')
-            ->assertSet('sort', 'success')
-            ->set('level', 'bogus')
-            ->assertOk();
     }
 }

@@ -7,11 +7,13 @@ use App\Filament\Actions\NewSubscription;
 use App\Filament\Pages\BulkEditSubscriptions;
 use App\Filament\Pages\PaymentRecovery;
 use App\Filament\Resources\SubscriptionResource;
+use App\Filament\Resources\SubscriptionResource\Widgets\ActiveSubscriptionsOverview;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Support\Tenant;
 use Filament\Actions\Action;
 use Filament\Resources\Components\Tab;
 use Filament\Resources\Pages\ListRecords;
+use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Database\Eloquent\Builder;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -44,6 +46,26 @@ class ListSubscriptions extends ListRecords
      * needed counted. Counts above this show as "99+".
      */
     public const BADGE_CEILING = 99;
+
+    /**
+     * "Active subscriptions" (approved 2026-11-23): this list IS that screen. The hero,
+     * the growing-or-shrinking line and the product split sit above the same table,
+     * filters and tabs the merchant already used — one screen, not two.
+     */
+    public function getTitle(): string|Htmlable
+    {
+        return __('insights.active.nav');
+    }
+
+    protected function getHeaderWidgets(): array
+    {
+        return [ActiveSubscriptionsOverview::class];
+    }
+
+    public function getHeaderWidgetsColumns(): int|array
+    {
+        return 1;
+    }
 
     /**
      * Export WHAT THE SCREEN IS SHOWING.

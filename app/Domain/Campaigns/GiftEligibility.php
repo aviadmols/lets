@@ -110,6 +110,27 @@ final class GiftEligibility
     }
 
     /**
+     * EVERY active subscriber (both rails, free ones too), deduped to one row per person
+     * like a gift list — no paid-cycles threshold. The Active subscriptions screen's
+     * courier-sheet export reads this; a gift campaign never does (it must keep
+     * MIN_THRESHOLD so a first-time buyer is not "thanked for staying").
+     *
+     * @param  array<int, int>  $productIds  local Product ids; empty = every product
+     * @return Collection<int, array<string, mixed>>
+     */
+    public function active(array $productIds = []): Collection
+    {
+        $externalIds = $this->externalIds($productIds);
+        if ($productIds !== [] && $externalIds === []) {
+            return collect();
+        }
+
+        $rows = $this->fromPlans(0, $externalIds)->concat($this->fromContracts(0, $externalIds));
+
+        return $this->dedupeByEmail($rows)->sortByDesc('cycles')->values();
+    }
+
+    /**
      * The catalog products' platform ids. Tenant-scoped, so an id belonging to
      * another shop resolves to nothing rather than to their product.
      *

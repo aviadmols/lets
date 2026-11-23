@@ -74,6 +74,10 @@ final class GiftExportRunner
      */
     public function start(Shop $shop, int $minCycles, array $productIds, array $emails, bool $withFirstOrderItems = false): GiftExportRun
     {
+        // ALL_ACTIVE (0) is the Active subscriptions export: every active subscriber,
+        // no threshold. Anything else is a gift list, clamped as it always was.
+        $minCycles = $minCycles === GiftExportRun::ALL_ACTIVE ? GiftExportRun::ALL_ACTIVE : max(GiftEligibility::MIN_THRESHOLD, $minCycles);
+
         // The shop's previous file goes now: its lines are customers' addresses,
         // which this app keeps only for as long as a download needs them.
         GiftExportRow::query()->delete();
@@ -81,7 +85,7 @@ final class GiftExportRunner
         $run = new GiftExportRun;
         $run->forceFill([
             'shop_id' => $shop->getKey(),
-            'min_cycles' => max(GiftEligibility::MIN_THRESHOLD, $minCycles),
+            'min_cycles' => $minCycles,
             'product_ids' => $productIds !== [] ? array_values($productIds) : null,
             'emails' => $emails !== [] ? array_values($emails) : null,
             'status' => GiftExportRun::STATUS_QUEUED,
@@ -101,10 +105,14 @@ final class GiftExportRunner
      * The shop's most recent export still worth showing, with a dead one marked
      * as such first.
      */
-    public function latest(): ?GiftExportRun
+    public function latest(?bool $allActive = null): ?GiftExportRun
     {
+        // Each screen shows its own kind: the gift page its gift lists, Active
+        // subscriptions its subscriber sheets (null = either, for the "one at a time" check).
         $run = GiftExportRun::query()
             ->where('created_at', '>=', now()->subHours(GiftExportRun::VISIBLE_HOURS))
+            ->when($allActive === true, fn ($q) => $q->where('min_cycles', GiftExportRun::ALL_ACTIVE))
+            ->when($allActive === false, fn ($q) => $q->where('min_cycles', '>', GiftExportRun::ALL_ACTIVE))
             ->latest('id')
             ->first();
 
@@ -169,6 +177,9 @@ final class GiftExportRunner
                     $shop,
                     $rows->mapWithKeys(fn (GiftExportRow $row): array => [(int) $row->getKey() => (array) $row->recipient])->all(),
                     $withFirstOrderItems,
+                    // A gift list asks only about first-cycle members; the subscriber
+                    // sheet lists every site subscription's order extras.
+                    firstCycleOnly: ! $run->isAllActive(),
                 );
 
                 foreach ($lines as $rowId => $fields) {
@@ -200,12 +211,14 @@ final class GiftExportRunner
      */
     private function seed(GiftExportRun $run): void
     {
-        $recipients = $this->eligibility->qualifying(
-            (int) $run->min_cycles,
-            null,
-            $run->productIds(),
-            $run->emailList(),
-        );
+        $recipients = $run->isAllActive()
+            ? $this->eligibility->active($run->productIds())
+            : $this->eligibility->qualifying(
+                (int) $run->min_cycles,
+                null,
+                $run->productIds(),
+                $run->emailList(),
+            );
 
         DB::transaction(function () use ($run, $recipients): void {
             GiftExportRow::query()->where('run_id', $run->getKey())->delete();

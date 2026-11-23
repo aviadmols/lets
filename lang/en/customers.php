@@ -5,13 +5,39 @@ return [
     'list' => [
         'title' => 'Customers',
         'search_placeholder' => 'Search name or email',
+        'hero' => [
+            'eyebrow' => 'All customers',
+            'say' => ':active of them have an active subscription. Revenue from them: :revenue.',
+            'active' => 'Customers with an active subscription',
+            'problem' => 'Customers whose payment did not go through',
+            'revenue' => 'Revenue from all customers',
+        ],
+        'show' => [
+            'label' => 'Show',
+            'all' => 'All',
+            'active' => 'Active',
+            'problem' => 'Payment problem',
+            'inactive' => 'Inactive',
+        ],
         'col' => [
             'customer' => 'Customer',
             'email' => 'Email',
             'phone' => 'Phone',
             'active_subs' => 'Active subscriptions',
             'spend' => 'Total spend',
-            'payment_status' => 'Payment',
+            'payment_status' => 'Status',
+        ],
+        // The customer's subscriptions, in words. Someone whose only plan is an
+        // unfinished first payment (an abandoned checkout) is not listed at all.
+        'status' => [
+            'awaiting_payment' => 'Charge failed, retrying',
+            'failed' => 'Payment failed',
+            'active' => 'Active',
+            'awaiting_activation' => 'Paid, awaiting activation',
+            'paused' => 'Paused',
+            'awaiting_first_payment' => 'Awaiting first payment',
+            'draft' => 'Not charged yet',
+            'inactive' => 'Inactive',
         ],
         'empty' => [
             'first_run' => 'No customers yet. They appear after your store takes its first order.',

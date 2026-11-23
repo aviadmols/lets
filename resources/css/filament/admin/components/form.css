@@ -106,3 +106,68 @@
     color: var(--rc-ink);
 }
 .rc-summary__label { font: var(--rc-type-body); color: var(--rc-ink-muted); }
+
+/* =============================================================================
+   Filament forms in the LETS panel language (every form and modal in the admin):
+   rounded 12px fields on a white ground, a firm ink focus, quiet labels, and each
+   group of fields in a soft rounded frame. Skin only — the layout (how many fields
+   share a row) is declared on each form with columns()/columnSpan().
+   ========================================================================== */
+.fi-body .fi-input-wrp {
+    border-radius: var(--rc-radius-control);
+    background-color: var(--rc-card);
+    box-shadow: inset 0 0 0 1px var(--rc-border-strong);
+    transition: box-shadow var(--rc-dur-hover) var(--rc-ease-out);
+}
+.fi-body .fi-input-wrp:focus-within {
+    box-shadow: inset 0 0 0 1.5px var(--rc-ink), var(--rc-ring);
+}
+.fi-body .fi-input-wrp .fi-input {
+    min-block-size: 42px;
+    font-size: 15px;
+}
+.fi-body .fi-fo-field-wrp-label {
+    font-size: 13.5px;
+}
+.fi-body .fi-fo-field-wrp-label span {
+    font-weight: 600;
+    color: var(--rc-ink);
+}
+.fi-body .fi-fo-field-wrp-hint,
+.fi-body .fi-fo-field-wrp-helper-text {
+    color: var(--rc-ink-muted);
+}
+
+/* A group of fields (Fieldset): a soft rounded frame with its title on the line. */
+.fi-body .fi-fieldset {
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-tile);
+    padding: var(--rc-space-5) var(--rc-space-5) var(--rc-space-4);
+    background-color: var(--rc-card);
+}
+.fi-body .fi-fieldset > legend {
+    padding-inline: var(--rc-space-2);
+    font: 700 14px/1.3 var(--rc-font);
+    color: var(--rc-ink);
+}
+
+/* Modals: the LETS card — large radius, generous padding. */
+.fi-body .fi-modal-window {
+    border-radius: var(--rc-radius-hero);
+}
+.fi-body .fi-modal-heading {
+    font: 700 20px/1.3 var(--rc-font);
+}
+
+/* Bigger fields everywhere (merchant request 2026-11-23): 48px rows, 16px text,
+   14px labels — comfortable to read and to tap, on a laptop and on a phone. */
+.fi-body .fi-input-wrp .fi-input,
+.fi-body .fi-input-wrp .fi-select-input {
+    min-block-size: 48px;
+    padding-inline: 14px;
+    font-size: 16px;
+}
+.fi-body .fi-input-wrp textarea.fi-input { padding-block: 12px; }
+.fi-body .fi-fo-field-wrp-label { font-size: 14px; }
+.fi-body .fi-input-wrp-prefix,
+.fi-body .fi-input-wrp-suffix { padding-inline: 12px; }

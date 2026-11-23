@@ -5,14 +5,10 @@ namespace Tests\Feature\Analytics;
 use App\Domain\Analytics\Context;
 use App\Domain\Analytics\Products\ProductMovements;
 use App\Domain\Analytics\Products\ProductsOverviewQuery;
-use App\Filament\Pages\Analytics;
 use App\Models\Shop;
-use App\Models\User;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Livewire\Livewire;
 use Tests\Feature\Analytics\Concerns\BuildsProductsAndUpsells;
 use Tests\Feature\Analytics\Concerns\BuildsSubscriptions;
 use Tests\TestCase;
@@ -131,27 +127,5 @@ final class ProductsOverviewTest extends TestCase
 
         $this->assertSame([], $q['table']);
         $this->assertFalse($q['has_data']);
-    }
-
-    public function test_the_screen_renders_empty_and_with_data(): void
-    {
-        Tenant::set($this->shop);
-        $this->actingAs(User::factory()->forShop($this->shop)->create());
-
-        Livewire::test(Analytics::class)->call('go', 'products', 'overview')
-            ->assertOk()
-            ->assertSee(__('analytics/products_overview.by_product.title'))
-            ->assertSee(__('analytics.empty.no_data_title'));
-
-        $this->fixture($this->shop);
-        Cache::flush(); // the first render cached the empty shop's numbers
-
-        Livewire::test(Analytics::class)->call('go', 'products', 'overview')
-            ->assertOk()
-            ->assertSee('Monthly novel')
-            ->assertSee('rc-donut__slice', false)
-            ->assertSee(__('analytics/products_overview.status.swapped'))
-            ->call('setOption', 'acquisition', 'quantity')
-            ->assertOk();
     }
 }

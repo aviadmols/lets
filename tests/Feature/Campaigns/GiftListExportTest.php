@@ -485,6 +485,32 @@ final class GiftListExportTest extends TestCase
         $this->assertSame('', end($rows[1]));
     }
 
+    /**
+     * The Active subscriptions sheet (ALL_ACTIVE): every active subscriber — no paid-cycles
+     * threshold — and the order extras of ANY site subscription, not only first-cycle ones.
+     */
+    public function test_the_active_subscriptions_sheet_lists_everyone_with_their_order_extras(): void
+    {
+        Http::fake([
+            '*/wp-json/wc/v3/orders?*include=900*' => Http::response([[
+                'id' => 900,
+                'line_items' => [
+                    ['name' => 'מנוי ספרים', 'product_id' => 77, 'quantity' => 1],
+                    ['name' => 'ספר א', 'product_id' => 10, 'quantity' => 2],
+                ],
+            ]], 200),
+            '*' => Http::response([], 200),
+        ]);
+        $this->subscriber('Veteran', succeeded: 6, customerId: '0', orderId: '900', productId: '77');
+        $this->subscriber('Unpaid Yet', succeeded: 0, customerId: '0', email: 'new@example.com');
+
+        $rows = $this->rows($this->export(GiftExportRun::ALL_ACTIVE, withFirstOrderItems: true));
+
+        $this->assertCount(3, $rows, 'header + both active subscribers, the one with no paid cycle too');
+        $veteran = collect($rows)->first(fn (array $r): bool => $r[0] === 'Veteran');
+        $this->assertSame('ספר א × 2', end($veteran));
+    }
+
     /** Unticked, the sheet is exactly what it was: no extra column. */
     public function test_without_the_checkbox_there_is_no_products_column(): void
     {

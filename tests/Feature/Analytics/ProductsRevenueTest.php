@@ -4,15 +4,11 @@ namespace Tests\Feature\Analytics;
 
 use App\Domain\Analytics\Context;
 use App\Domain\Analytics\Products\ProductsRevenueQuery;
-use App\Filament\Pages\Analytics;
 use App\Models\PaymentLedger;
 use App\Models\Shop;
-use App\Models\User;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
-use Livewire\Livewire;
 use Tests\Feature\Analytics\Concerns\BuildsProductsAndUpsells;
 use Tests\Feature\Analytics\Concerns\BuildsSubscriptions;
 use Tests\TestCase;
@@ -121,27 +117,5 @@ final class ProductsRevenueTest extends TestCase
         $q = Tenant::run($this->shop, fn (): array => (new ProductsRevenueQuery($context))->get());
 
         $this->assertSame(140.0, $q['kpis']['revenue']['value']);
-    }
-
-    public function test_the_screen_renders_empty_and_with_data(): void
-    {
-        Tenant::set($this->shop);
-        $this->actingAs(User::factory()->forShop($this->shop)->create());
-
-        Livewire::test(Analytics::class)->call('go', 'products', 'revenue')
-            ->assertOk()
-            ->assertSee(__('analytics/products_revenue.trend.title'))
-            ->assertSee(__('analytics.empty.no_data_title'));
-
-        $this->fixture($this->shop);
-        Cache::flush();
-
-        Livewire::test(Analytics::class)->call('go', 'products', 'revenue')
-            ->assertOk()
-            ->assertSee('Monthly novel')
-            ->assertSee('rc-chart__line', false)
-            ->assertSee(__('analytics/products_revenue.type.checkout'))
-            ->call('setGrain', ProductsRevenueQuery::CHART_TREND, 'daily')
-            ->assertOk();
     }
 }

@@ -88,3 +88,20 @@
     0%   { background-position: 100% 0; }
     100% { background-position: 0 0; }
 }
+
+/* The hero band (customer page): the KPI row on the LETS panel's black card —
+   dark tiles, white figures, the first (the money) in the lime accent. */
+.rc-kpi-grid--hero {
+    padding: 16px;
+    border-radius: var(--rc-radius-hero);
+    background: var(--rc-hero);
+}
+.rc-kpi-grid--hero .rc-kpi {
+    border: 0;
+    border-radius: var(--rc-radius-tile);
+    background: var(--rc-hero-raised);
+    box-shadow: none;
+}
+.rc-kpi-grid--hero .rc-kpi__label { color: var(--rc-hero-muted); }
+.rc-kpi-grid--hero .rc-kpi__value { color: var(--rc-hero-ink); font-family: var(--rc-font-digits); font-weight: 500; }
+.rc-kpi-grid--hero .rc-kpi:first-child .rc-kpi__value { color: var(--rc-lime); }

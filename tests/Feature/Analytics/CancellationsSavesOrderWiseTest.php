@@ -5,18 +5,12 @@ namespace Tests\Feature\Analytics;
 use App\Domain\Analytics\Cancellations\OrderWiseChurnQuery;
 use App\Domain\Analytics\Cancellations\SavesQuery;
 use App\Domain\Analytics\Context;
-use App\Filament\Pages\Analytics;
-use App\Filament\Pages\Analytics\Screens\CancellationsOrderWise;
-use App\Filament\Pages\Analytics\Screens\CancellationsSaves;
 use App\Models\ActivityEvent;
 use App\Models\InstallmentPlan;
 use App\Models\Shop;
-use App\Models\User;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
-use Livewire\Livewire;
 use Tests\Feature\Analytics\Concerns\BuildsLedger;
 use Tests\Feature\Analytics\Concerns\BuildsSubscriptions;
 use Tests\TestCase;
@@ -101,29 +95,6 @@ final class CancellationsSavesOrderWiseTest extends TestCase
 
         $q = Tenant::run($this->shop, fn () => (new SavesQuery(Context::default()))->get());
         $this->assertSame(0, $q['totals']['reactivated'] + $q['totals']['returned']);
-
-        $export = Tenant::run($this->shop, fn () => (new CancellationsSaves())->export(Context::default()));
-        $this->assertSame([], $export['rows']);
-    }
-
-    public function test_the_saves_screen_renders_the_flow_as_not_tracked(): void
-    {
-        Tenant::set($this->shop);
-        $this->actingAs(User::factory()->forShop($this->shop)->create());
-
-        Livewire::test(Analytics::class)->call('go', 'cancellations', 'saves')
-            ->assertOk()
-            ->assertSee(__('analytics/cancellations_saves.flow.empty_title'))
-            ->assertSee(__('analytics/cancellations_saves.kpi.save_rate'))
-            ->assertSee('rc-an-empty--not-tracked', false);
-
-        $this->savesFixture($this->shop);
-        Cache::flush();
-
-        Livewire::test(Analytics::class)->call('go', 'cancellations', 'saves')
-            ->assertOk()
-            ->assertSee(__('analytics/cancellations_saves.type.returned'))
-            ->assertSee('rc-chart__stack--pos', false);
     }
 
     private function orderFixture(Shop $shop): void
@@ -178,32 +149,5 @@ final class CancellationsSavesOrderWiseTest extends TestCase
         $q = Tenant::run($this->shop, fn () => (new OrderWiseChurnQuery(Context::default()))->get('all', 'all'));
         $this->assertSame(0, $q['totals']['churned']);
         $this->assertSame(0, $q['totals']['subscriptions']);
-
-        $export = Tenant::run($this->shop, fn () => (new CancellationsOrderWise())->export(Context::default()));
-        $this->assertSame(0, array_sum(array_column($export['rows'], 2)));
-    }
-
-    public function test_the_order_wise_screen_renders_and_its_options_toggle(): void
-    {
-        Tenant::set($this->shop);
-        $this->actingAs(User::factory()->forShop($this->shop)->create());
-
-        Livewire::test(Analytics::class)->call('go', 'cancellations', 'order_wise')
-            ->assertOk()
-            ->assertSee(__('analytics/cancellations_order_wise.by_orders.title'));
-
-        $this->orderFixture($this->shop);
-        Cache::flush();
-
-        Livewire::test(Analytics::class)->call('go', 'cancellations', 'order_wise')
-            ->assertOk()
-            ->assertSee('Moving abroad')
-            ->call('setOption', 'source', 'payment_failed')
-            ->assertSet('options.source', 'payment_failed')
-            ->assertDontSee('Moving abroad')
-            ->call('setOption', 'orders', '1')
-            ->assertSet('options.orders', '1')
-            ->call('setOption', 'source', 'nonsense')
-            ->assertSet('options.source', 'payment_failed');
     }
 }

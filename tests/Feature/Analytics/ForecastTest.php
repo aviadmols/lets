@@ -5,17 +5,12 @@ namespace Tests\Feature\Analytics;
 use App\Domain\Analytics\Context;
 use App\Domain\Analytics\Forecast\ForecastQuery;
 use App\Domain\Analytics\Support\Sql;
-use App\Filament\Pages\Analytics;
-use App\Filament\Pages\Analytics\Screens\Forecast;
 use App\Models\PaymentLedger;
 use App\Models\Shop;
-use App\Models\User;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Livewire\Livewire;
 use Tests\Feature\Analytics\Concerns\BuildsLedger;
 use Tests\Feature\Analytics\Concerns\BuildsSubscriptions;
 use Tests\TestCase;
@@ -181,27 +176,5 @@ final class ForecastTest extends TestCase
         $this->assertSame(0.0, $f['horizons'][90]['scheduled']);
         $this->assertNull($f['rates']['pooled']);
         $this->assertFalse($f['has_data']);
-
-        $export = Tenant::run($this->shop, fn () => (new Forecast())->export(Context::default()));
-        $this->assertSame(0.0, array_sum(array_map('floatval', array_column($export['rows'], 3))));
-    }
-
-    public function test_the_screen_renders_with_data_and_for_an_empty_shop(): void
-    {
-        Tenant::set($this->shop);
-        $this->actingAs(User::factory()->forShop($this->shop)->create());
-
-        Livewire::test(Analytics::class)->call('go', 'forecast')
-            ->assertOk()
-            ->assertSee(__('analytics/forecast_overview.empty.title'));
-
-        $this->fixture($this->shop);
-        Cache::flush();
-
-        Livewire::test(Analytics::class)->call('go', 'forecast')
-            ->assertOk()
-            ->assertSee(__('analytics/forecast_overview.chart.title'))
-            ->assertSee('rc-chart__stack--pos', false)
-            ->assertSee('₪240');
     }
 }

@@ -4,16 +4,12 @@ namespace Tests\Feature\Analytics;
 
 use App\Domain\Analytics\Context;
 use App\Domain\Analytics\Subscribers\RevenueQuery;
-use App\Filament\Pages\Analytics;
 use App\Models\PaymentLedger;
 use App\Models\Shop;
 use App\Models\SubscriptionBillingAttempt;
-use App\Models\User;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
-use Livewire\Livewire;
 use Tests\Feature\Analytics\Concerns\BuildsLedger;
 use Tests\Feature\Analytics\Concerns\BuildsSubscriptions;
 use Tests\TestCase;
@@ -100,25 +96,5 @@ final class SubscribersRevenueTest extends TestCase
 
         $this->assertSame(['orders' => 1, 'revenue' => 10.0], $q['totals']['all']);
         $this->assertSame(220.0, $this->query($this->other)['totals']['all']['revenue']);
-    }
-
-    public function test_the_screen_renders_empty_and_with_data(): void
-    {
-        Tenant::set($this->shop);
-        $this->actingAs(User::factory()->forShop($this->shop)->create());
-
-        Livewire::test(Analytics::class)->call('go', 'subscribers', 'revenue')
-            ->assertOk()
-            ->assertSee(__('analytics/subscribers_revenue.customers.not_tracked'))
-            ->assertSee(__('analytics.empty.no_data_title'));
-
-        $this->fixture($this->shop);
-        Cache::flush();
-
-        Livewire::test(Analytics::class)->call('go', 'subscribers', 'revenue')
-            ->assertOk()
-            ->assertSee('rc-chart__line', false)
-            ->assertSee(__('analytics/subscribers_revenue.chart.aov'))
-            ->assertSee('220');
     }
 }

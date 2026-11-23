@@ -1,6 +1,6 @@
 <?php
 
-use App\Filament\Pages\HomeDashboard;
+use App\Filament\Pages\Insights\Joins;
 use App\Filament\Resources\ShopResource;
 use App\Http\Controllers\WooCommerce\EmbedLoginController;
 use App\Models\Shop;
@@ -96,7 +96,7 @@ Route::post('/admin/platform/exit', function () {
 /*
  * Platform-admin "Enter shop" — the top-bar shop switcher (W12). POST, gated to a
  * platform admin; parks the shop selection in the session (PlatformContext) and lands
- * on the per-shop Home. Mirrors platform.exit. A merchant is DENIED (403), and the
+ * on the per-shop home (the first Overview screen). Mirrors platform.exit. A merchant is DENIED (403), and the
  * binding middleware ignores a non-admin's session key anyway, so a merchant can never
  * escape their own shop through this seam. {shop} is route-model-bound (404 if missing).
  */
@@ -105,7 +105,7 @@ Route::post('/admin/platform/enter/{shop}', function (Shop $shop) {
 
     PlatformContext::enter($shop->getKey());
 
-    return redirect(HomeDashboard::getUrl());
+    return redirect(Joins::getUrl());
 })->middleware(['web', 'auth'])->name('platform.enter');
 
 /*

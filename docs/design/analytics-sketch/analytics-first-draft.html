@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>אנליטיקה — סקיצה</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f6f6f4;
+  --surface: #fcfcfb;
+  --border: #e6e5e0;
+  --text: #0b0b0b;
+  --text-2: #52514e;
+  --muted: #8a8984;
+  --grid: #ecebe7;
+  --series: #2a78d6;      /* joins, forecast */
+  --series-out: #eb6834;  /* leaving */
+  --good-ink: #116b2f; --good-bg: #e3f4e8;
+  --warn-ink: #8a5a00; --warn-bg: #fdf1d6;
+  --bad-ink: #a32222;  --bad-bg: #fbe4e3;
+  --gray-ink: #52514e; --gray-bg: #efeeea;
+  --accent: #2a78d6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #121211; --surface: #1a1a19; --border: #2c2c2a;
+    --text: #f0efec; --text-2: #c3c2b7; --muted: #8f8e86; --grid: #262624;
+    --series: #3987e5; --series-out: #d95926;
+    --good-ink: #7fd69a; --good-bg: #183322; --warn-ink: #f0c060; --warn-bg: #3a2c10;
+    --bad-ink: #f19a99; --bad-bg: #3d1a1a; --gray-ink: #c3c2b7; --gray-bg: #2a2a28; --accent: #3987e5;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #121211; --surface: #1a1a19; --border: #2c2c2a;
+  --text: #f0efec; --text-2: #c3c2b7; --muted: #8f8e86; --grid: #262624;
+  --series: #3987e5; --series-out: #d95926;
+  --good-ink: #7fd69a; --good-bg: #183322; --warn-ink: #f0c060; --warn-bg: #3a2c10;
+  --bad-ink: #f19a99; --bad-bg: #3d1a1a; --gray-ink: #c3c2b7; --gray-bg: #2a2a28; --accent: #3987e5;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--text); font-family: Heebo, system-ui, sans-serif; font-size: 15px; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 24px 16px 64px; }
+header h1 { margin: 0; font-size: 28px; font-weight: 800; }
+header p { margin: 4px 0 0; color: var(--text-2); }
+.sketch-note { margin-top: 10px; display: inline-block; font-size: 13px; color: var(--warn-ink); background: var(--warn-bg); padding: 4px 10px; border-radius: 6px; }
+
+.tabs { display: flex; gap: 4px; margin: 24px 0 16px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+.tab { background: none; border: 0; border-bottom: 2px solid transparent; padding: 10px 14px; font: inherit; font-weight: 500; color: var(--text-2); cursor: pointer; white-space: nowrap; }
+.tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 700; }
+.tab .count { font-size: 12px; margin-inline-start: 6px; padding: 1px 7px; border-radius: 10px; background: var(--bad-bg); color: var(--bad-ink); }
+
+.panel { display: none; }
+.panel.on { display: block; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 16px; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.seg button { border: 0; background: none; font: inherit; font-size: 14px; padding: 7px 12px; color: var(--text-2); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--text); color: var(--surface); }
+.controls .label { color: var(--muted); font-size: 13px; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+.tile .k { color: var(--text-2); font-size: 14px; }
+.tile .v { font-size: 32px; font-weight: 800; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.tile .s { color: var(--muted); font-size: 13px; margin-top: 2px; }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+.card h2 { margin: 0 0 4px; font-size: 18px; font-weight: 700; }
+.card .sub { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: 240px; overflow: visible; }
+.chart .axis { fill: var(--muted); font-size: 11px; }
+.chart .gridline { stroke: var(--grid); stroke-width: 1; }
+.tip { position: absolute; pointer-events: none; background: var(--text); color: var(--surface); padding: 6px 10px; border-radius: 8px; font-size: 13px; white-space: nowrap; transform: translate(50%, -110%); display: none; z-index: 2; }
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: start; font-weight: 500; color: var(--muted); font-size: 13px; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+td { padding: 9px 6px; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
+tr:last-child td { border-bottom: 0; }
+.num { text-align: end; }
+.scroll { max-height: 420px; overflow: auto; }
+.empty { color: var(--muted); padding: 12px 0; }
+
+.badge { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 12.5px; font-weight: 500; }
+.b-good { color: var(--good-ink); background: var(--good-bg); }
+.b-warn { color: var(--warn-ink); background: var(--warn-bg); }
+.b-bad { color: var(--bad-ink); background: var(--bad-bg); }
+.b-gray { color: var(--gray-ink); background: var(--gray-bg); }
+
+.hbar { display: grid; grid-template-columns: minmax(120px, 34%) 1fr auto; gap: 10px; align-items: center; padding: 6px 0; }
+.hbar .track { height: 10px; background: var(--grid); border-radius: 5px; overflow: hidden; }
+.hbar .fill { height: 100%; border-radius: 5px; background: var(--series); }
+.hbar .fill.out { background: var(--series-out); }
+.hbar .val { font-variant-numeric: tabular-nums; color: var(--text-2); font-size: 14px; min-width: 120px; text-align: end; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.headline p { margin: 0; font-size: 20px; line-height: 1.5; font-weight: 400; }
+.headline b { font-weight: 800; }
+.ladder-row { padding: 12px 0; border-bottom: 1px solid var(--grid); }
+.ladder-row:last-child { border-bottom: 0; }
+.ladder-row .t { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.ladder-row .big { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.ladder-row .say { color: var(--text-2); font-size: 14px; margin: 2px 0 8px; }
+@media (max-width: 760px) { .two { grid-template-columns: 1fr; } .tile .v { font-size: 26px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>אנליטיקה</h1>
+    <p id="asof"></p>
+    <span class="sketch-note">סקיצה לאישור, עם הנתונים האמיתיים של סלע מאיר. עוד לא מחוברת למערכת.</span>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" data-tab="joins" aria-selected="true">מצטרפים</button>
+    <button class="tab" role="tab" data-tab="active">מנויים פעילים</button>
+    <button class="tab" role="tab" data-tab="churn">עזיבות</button>
+    <button class="tab" role="tab" data-tab="forecast">צפי הכנסות</button>
+    <button class="tab" role="tab" data-tab="payments">בעיות תשלום <span class="count" id="unpaidCount"></span></button>
+  </nav>
+
+  <!-- 1. JOINS -->
+  <section class="panel on" id="joins">
+    <div class="controls">
+      <span class="label">תקופה</span>
+      <div class="seg" data-ctl="joinsRange">
+        <button data-v="7">7 ימים</button><button data-v="30" aria-pressed="true">30 ימים</button><button data-v="90">3 חודשים</button><button data-v="365">שנה</button>
+      </div>
+      <span class="label">הצגה</span>
+      <div class="seg" data-ctl="joinsGrain">
+        <button data-v="day" aria-pressed="true">לפי יום</button><button data-v="month">לפי חודש</button>
+      </div>
+    </div>
+    <div class="tiles" id="joinsTiles"></div>
+    <div class="card">
+      <h2>כמה מנויים חדשים הצטרפו</h2>
+      <p class="sub" id="joinsSub"></p>
+      <div class="chart" id="joinsChart"></div>
+    </div>
+    <div class="card"><h2>פירוט</h2><div class="scroll" id="joinsTable"></div></div>
+  </section>
+
+  <!-- 2. ACTIVE -->
+  <section class="panel" id="active">
+    <div class="tiles" id="activeTiles"></div>
+    <div class="two">
+      <div class="card"><h2>מצב כל המנויים</h2><p class="sub">כמה מנויים יש בכל מצב, נכון לעכשיו</p><div id="activeStatuses"></div></div>
+      <div class="card"><h2>מנויים פעילים לפי מוצר</h2><p class="sub">כמה מנויים פעילים יש בכל מוצר, וכמה הם משלמים בכל חיוב</p><div id="activeProducts"></div></div>
+    </div>
+  </section>
+
+  <!-- 3. CHURN -->
+  <section class="panel" id="churn">
+    <div class="controls">
+      <span class="label">תקופה</span>
+      <div class="seg" data-ctl="churnRange">
+        <button data-v="7">7 ימים</button><button data-v="30" aria-pressed="true">30 ימים</button><button data-v="90">3 חודשים</button><button data-v="365">שנה</button>
+      </div>
+      <span class="label">הצגה</span>
+      <div class="seg" data-ctl="churnGrain">
+        <button data-v="day" aria-pressed="true">לפי יום</button><button data-v="month">לפי חודש</button>
+      </div>
+    </div>
+    <div class="card headline"><p id="churnHeadline"></p></div>
+    <div class="tiles" id="churnTiles"></div>
+    <div class="card">
+      <h2>מתי עזבו</h2>
+      <p class="sub">כל עמודה היא יום (או חודש). בריחוף: כמה עזבו ובכמה כסף בחודש</p>
+      <div class="chart" id="churnChart"></div>
+    </div>
+    <div class="two">
+      <div class="card"><h2>למה ביטלו</h2><p class="sub" id="reasonsSub"></p><div id="churnReasons"></div></div>
+      <div class="card"><h2>כמה ממשיכים לשלם</h2><p class="sub" id="ladderSub"></p><div id="ladder"></div></div>
+    </div>
+    <div class="card"><h2 id="churnTableTitle">מי עזב</h2><div class="scroll" id="churnTable"></div></div>
+  </section>
+
+  <!-- 4. FORECAST -->
+  <section class="panel" id="forecast">
+    <div class="controls">
+      <span class="label">כמה קדימה</span>
+      <div class="seg" data-ctl="fcRange">
+        <button data-v="7">שבוע</button><button data-v="30" aria-pressed="true">חודש</button><button data-v="90">3 חודשים</button><button data-v="180">6 חודשים</button>
+      </div>
+    </div>
+    <div class="tiles" id="fcTiles"></div>
+    <div class="card">
+      <h2>צפי הכנסות לכל יום</h2>
+      <p class="sub">כמה צפוי להיגבות בכל יום, לפי המנויים הפעילים היום. בריחוף מעל עמודה מופיע גם מספר המנויים שיחויבו</p>
+      <div class="chart" id="fcChart"></div>
+    </div>
+    <div class="card"><h2>פירוט לפי יום</h2><div class="scroll" id="fcTable"></div></div>
+  </section>
+
+  <!-- 5. PAYMENT PROBLEMS -->
+  <section class="panel" id="payments">
+    <div class="card headline"><p id="payHeadline"></p></div>
+    <div class="tiles" id="payTiles"></div>
+    <div class="card">
+      <h2>לקוחות שהתשלום שלהם לא עבר</h2>
+      <p class="sub">כל מנוי שהחיוב האחרון שלו נכשל ועוד לא שולם, כולל מנויים שהמערכת השהתה בגלל זה. המנויים הוותיקים ביותר למעלה</p>
+      <div class="scroll" id="unpaidTable"></div>
+    </div>
+    <div class="card">
+      <h2>באיזה ימים חיובים נכשלו</h2>
+      <p class="sub">ב־120 הימים האחרונים. כל עמודה היא יום שבו חיוב אחד או יותר לא עבר</p>
+      <div class="chart" id="failChart"></div>
+    </div>
+  </section>
+</div>
+
+<script>
+const DATA = /*DATA*/null;
+
+// ---------- helpers ----------
+const $ = (s) => document.querySelector(s);
+const nf = new Intl.NumberFormat('he-IL');
+const money = (v) => '₪' + nf.format(Math.round(v));
+const pct = (a, b) => b > 0 ? Math.round((a / b) * 100) + '%' : '—';
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const today = new Date(); today.setHours(0, 0, 0, 0);
+const iso = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const dayLabel = (s) => { const [y, m, d] = s.split('-'); return d + '/' + m; };
+const monthNames = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+const monthLabel = (s) => { const [y, m] = s.split('-'); return monthNames[+m - 1] + ' ' + y.slice(2); };
+const weekday = (s) => ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'][new Date(s + 'T00:00:00').getDay()];
+const fullDate = (s) => s ? s.split('-').reverse().join('/') : '—';
+const state = { joinsRange: '30', joinsGrain: 'day', churnRange: '30', churnGrain: 'day', fcRange: '30', payRange: '120' };
+
+// Every day (or month) of a window, with zeros where nothing happened — a gap must read as zero, not vanish.
+function buckets(rows, days, grain, valueKeys) {
+  const from = addDays(today, -(days - 1));
+  const map = new Map();
+  if (grain === 'month') {
+    const d = new Date(from.getFullYear(), from.getMonth(), 1);
+    while (d <= today) { map.set(iso(d).slice(0, 7), {}); d.setMonth(d.getMonth() + 1); }
+  } else {
+    for (let d = new Date(from); d <= today; d = addDays(d, 1)) map.set(iso(d), {});
+  }
+  for (const r of rows) {
+    if (r.day < iso(from) || r.day > iso(today)) continue;
+    const k = grain === 'month' ? r.day.slice(0, 7) : r.day;
+    const b = map.get(k); if (!b) continue;
+    for (const v of valueKeys) b[v] = (b[v] || 0) + (typeof r[v] === 'number' ? r[v] : 1);
+  }
+  return [...map.entries()].map(([k, b]) => ({ key: k, ...Object.fromEntries(valueKeys.map((v) => [v, b[v] || 0])) }));
+}
+
+// One series, vertical bars, rounded data-end, 2px gap, hover tooltip. RTL: time runs right→left like the page.
+function barChart(el, items, { value, label, tip, cls = 'series' }) {
+  const W = 1000, H = 240, padL = 8, padR = 44, padT = 10, padB = 28;
+  const max = Math.max(1, ...items.map((i) => i[value]));
+  const nice = niceMax(max);
+  const n = Math.max(1, items.length);
+  const slot = (W - padL - padR) / n;
+  const bw = Math.max(2, Math.min(36, slot - 2));
+  const y = (v) => padT + (H - padT - padB) * (1 - v / nice);
+  let g = '';
+  for (let t = 0; t <= 4; t++) {
+    const v = (nice / 4) * t, yy = y(v);
+    g += `<line class="gridline" x1="${padL}" x2="${W - padR}" y1="${yy}" y2="${yy}"/>`;
+    g += `<text class="axis" x="${W - padR + 6}" y="${yy + 4}">${nf.format(Math.round(v))}</text>`;
+  }
+  const every = Math.ceil(n / 12);
+  items.forEach((it, i) => {
+    const x = W - padR - (i + 1) * slot + (slot - bw) / 2; // RTL
+    const v = it[value];
+    if (v > 0) {
+      const top = y(v), h = (H - padB) - top, r = Math.min(4, bw / 2, h);
+      g += `<path fill="var(--${cls})" d="M${x},${H - padB} V${top + r} Q${x},${top} ${x + r},${top} H${x + bw - r} Q${x + bw},${top} ${x + bw},${top + r} V${H - padB} Z"/>`;
+    }
+    g += `<rect data-i="${i}" x="${W - padR - (i + 1) * slot}" y="${padT}" width="${slot}" height="${H - padT - padB}" fill="transparent"/>`;
+    if (i % every === 0) g += `<text class="axis" text-anchor="middle" x="${x + bw / 2}" y="${H - 8}">${label(it)}</text>`;
+  });
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img">${g}</svg><div class="tip"></div>`;
+  const tipEl = el.querySelector('.tip'), svg = el.querySelector('svg');
+  svg.addEventListener('mousemove', (e) => {
+    const i = e.target.dataset?.i; if (i === undefined) { tipEl.style.display = 'none'; return; }
+    const box = el.getBoundingClientRect();
+    tipEl.innerHTML = tip(items[+i]); tipEl.style.display = 'block';
+    tipEl.style.left = (e.clientX - box.left) + 'px'; tipEl.style.top = (e.clientY - box.top) + 'px';
+  });
+  svg.addEventListener('mouseleave', () => { tipEl.style.display = 'none'; });
+}
+// A top whose four gridlines all land on round numbers (never "38" or "13").
+function niceMax(v) {
+  const raw = Math.max(1, v / 4), p = Math.pow(10, Math.floor(Math.log10(raw)));
+  for (const m of [1, 2, 5, 10]) if (m * p >= raw) return Math.max(4, m * p * 4);
+  return v;
+}
+function hbars(el, rows, { cls = '' } = {}) {
+  if (!rows.length) { el.innerHTML = '<div class="empty">אין נתונים בתקופה הזו</div>'; return; }
+  const max = Math.max(...rows.map((r) => r.n));
+  el.innerHTML = rows.map((r) => `<div class="hbar"><div>${r.label}</div><div class="track"><div class="fill ${cls}" style="width:${(r.n / max) * 100}%"></div></div><div class="val">${r.text}</div></div>`).join('');
+}
+function table(el, head, rows) {
+  if (!rows.length) { el.innerHTML = '<div class="empty">אין נתונים בתקופה הזו</div>'; return; }
+  el.innerHTML = `<table><thead><tr>${head.map((h) => `<th class="${h.num ? 'num' : ''}">${h.t}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c, i) => `<td class="${head[i].num ? 'num' : ''}">${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+const tile = (k, v, s = '') => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div>${s ? `<div class="s">${s}</div>` : ''}</div>`;
+const sumWhere = (rows, from, key) => rows.filter((r) => r.day >= from && r.day <= iso(today)).reduce((a, r) => a + (key ? r[key] : 1), 0);
+
+// ---------- 1. joins ----------
+function renderJoins() {
+  const days = +state.joinsRange, grain = state.joinsGrain;
+  // Only people who joined THROUGH the system, on the day they first paid. Imported members
+  // joined somewhere else, years ago; counting them made the first day a spike of a thousand.
+  const rows = DATA.cohort.map((c) => ({ day: c.joined, count: 1 }));
+  const b = buckets(rows, days, grain, ['count']);
+  const total = b.reduce((a, r) => a + r.count, 0);
+  $('#joinsTiles').innerHTML =
+    tile('הצטרפו היום', nf.format(sumWhere(rows, iso(today), 'count'))) +
+    tile('ב־7 הימים האחרונים', nf.format(sumWhere(rows, iso(addDays(today, -6)), 'count'))) +
+    tile('מתחילת החודש', nf.format(sumWhere(rows, iso(new Date(today.getFullYear(), today.getMonth(), 1)), 'count'))) +
+    tile('בתקופה שנבחרה', nf.format(total), 'ממוצע ' + (Math.round((total / days) * 10) / 10) + ' ביום');
+  $('#joinsSub').textContent = (grain === 'month' ? 'כל עמודה היא חודש' : 'כל עמודה היא יום')
+    + `. נספרים רק מי שהצטרפו דרך האתר ושילמו, החל מ־${fullDate(DATA.go_live)}. מנויים שיובאו מהמערכת הקודמת לא נספרים כאן`;
+  barChart($('#joinsChart'), b, {
+    value: 'count', label: (it) => grain === 'month' ? monthLabel(it.key) : dayLabel(it.key),
+    tip: (it) => `${grain === 'month' ? monthLabel(it.key) : fullDate(it.key) + ', יום ' + weekday(it.key)}<br><b>${it.count}</b> הצטרפו`,
+  });
+  table($('#joinsTable'), [{ t: grain === 'month' ? 'חודש' : 'תאריך' }, { t: 'הצטרפו', num: true }],
+    b.filter((r) => r.count > 0).reverse().map((r) => [grain === 'month' ? monthLabel(r.key) : fullDate(r.key) + ' · ' + weekday(r.key), nf.format(r.count)]));
+}
+
+// ---------- 2. active ----------
+const STATUS = {
+  active: ['פעיל', 'b-good'], awaiting_payment: ['חיוב נכשל, מנסים שוב', 'b-warn'], failed: ['תשלום נכשל', 'b-bad'],
+  paused: ['מושהה', 'b-gray'], awaiting_activation: ['שולם, ממתין להפעלה', 'b-gray'], awaiting_first_payment: ['ממתין לתשלום ראשון (מיובא)', 'b-gray'],
+  draft: ['טרם חויב', 'b-gray'], cancelled: ['בוטל', 'b-gray'], completed: ['הסתיים', 'b-gray'],
+};
+const badge = (s) => { const [t, c] = STATUS[s] || [s, 'b-gray']; return `<span class="badge ${c}">${t}</span>`; };
+function renderActive() {
+  const a = DATA.active, st = a.statuses || {};
+  const live = (st.active || 0) + (st.awaiting_payment || 0) + (st.paused || 0);
+  $('#activeTiles').innerHTML =
+    tile('מנויים פעילים', nf.format(a.count), 'משלמים כרגיל') +
+    tile('הכנסה חודשית מהפעילים', money(a.amount), 'סכום החיוב של כל המנויים הפעילים') +
+    tile('התשלום לא עבר', nf.format(DATA.unpaid.length), 'ראו בטאב "בעיות תשלום"') +
+    tile('מושהים', nf.format(st.paused || 0));
+  const order = ['active', 'awaiting_payment', 'failed', 'paused', 'awaiting_activation', 'awaiting_first_payment', 'draft', 'cancelled', 'completed'];
+  table($('#activeStatuses'), [{ t: 'מצב' }, { t: 'מנויים', num: true }],
+    order.filter((s) => st[s]).map((s) => [badge(s), nf.format(st[s])]));
+  hbars($('#activeProducts'), a.by_product.map((p) => ({ label: esc(p.title), n: p.count, text: `${nf.format(p.count)} · ${money(p.amount)}` })));
+}
+
+// ---------- 3. churn ----------
+// Days after the cycle date before a missing payment counts as "did not pay": retries take a few days.
+const LADDER_GRACE_DAYS = 5;
+const periodWords = (days) => ({ 7: 'ב־7 הימים האחרונים', 30: 'ב־30 הימים האחרונים', 90: 'ב־3 החודשים האחרונים', 365: 'בשנה האחרונה' }[days]);
+function renderChurn() {
+  const days = +state.churnRange, grain = state.churnGrain;
+  const from = iso(addDays(today, -(days - 1)));
+  // From the system's first billing on — nothing before it is a movement we saw happen.
+  const all = DATA.cancellations.filter((c) => c.day >= DATA.first_charge);
+  const rows = all.filter((c) => c.day >= from);
+  const quit = rows.filter((r) => r.to === 'cancelled');
+  const lapsed = rows.filter((r) => r.to !== 'cancelled');
+  const lost = rows.reduce((a, r) => a + r.mrr, 0);
+  const book = DATA.active.count + rows.length;
+
+  $('#churnHeadline').innerHTML = rows.length
+    ? `${periodWords(days)} עזבו <b>${nf.format(rows.length)}</b> מנויים, שהיו משלמים יחד <b>${money(lost)}</b> בחודש. `
+      + `<b>${nf.format(quit.length)}</b> ביטלו בעצמם, ו־<b>${nf.format(lapsed.length)}</b> הפסיקו לשלם.`
+    : `${periodWords(days)} אף מנוי לא עזב.`;
+  $('#churnTiles').innerHTML =
+    tile('ביטלו בעצמם', nf.format(quit.length), money(quit.reduce((a, r) => a + r.mrr, 0)) + ' בחודש') +
+    tile('הפסיקו לשלם', nf.format(lapsed.length), money(lapsed.reduce((a, r) => a + r.mrr, 0)) + ' בחודש · החיוב נכשל ולא חזר') +
+    tile('אחוז העזיבה', pct(rows.length, book), `${nf.format(rows.length)} מתוך כ־${nf.format(book)} מנויים`);
+
+  barChart($('#churnChart'), buckets(all, days, grain, ['n', 'mrr']), {
+    value: 'n', cls: 'series-out', label: (it) => grain === 'month' ? monthLabel(it.key) : dayLabel(it.key),
+    tip: (it) => `${grain === 'month' ? monthLabel(it.key) : fullDate(it.key) + ', יום ' + weekday(it.key)}<br><b>${it.n}</b> עזבו · ${money(it.mrr)} בחודש`,
+  });
+
+  // Reasons belong to people who CHOSE to leave; "stopped paying" is its own tile above.
+  const reasons = {};
+  for (const r of quit) { const k = reasonText(r); reasons[k] = (reasons[k] || 0) + 1; }
+  const rr = Object.entries(reasons).sort((a, b) => b[1] - a[1]);
+  $('#reasonsSub').textContent = quit.length ? `מתוך ${quit.length} שביטלו בעצמם בתקופה` : '';
+  hbars($('#churnReasons'), rr.map(([k, n]) => ({ label: esc(k), n, text: `${n} · ${pct(n, quit.length)}` })), { cls: 'out' });
+
+  renderLadder();
+
+  $('#churnTableTitle').textContent = `מי עזב (${rows.length})`;
+  table($('#churnTable'), [{ t: 'תאריך' }, { t: 'לקוח' }, { t: 'מוצר' }, { t: 'איך עזב' }, { t: 'סיבה' }, { t: 'בחודש', num: true }],
+    [...rows].sort((a, b) => b.day.localeCompare(a.day)).map((r) => [
+      fullDate(r.day), esc(r.name || '—'), esc(r.product || '—'),
+      r.to === 'cancelled' ? '<span class="badge b-gray">ביטל</span>' : '<span class="badge b-bad">הפסיק לשלם</span>',
+      r.to === 'cancelled' ? esc(reasonText(r)) : '—', money(r.mrr)]));
+}
+
+// "Passed month N" = paid for month N+1 too. Only people who joined through the system: an
+// imported member's first months happened in the old system, where we never saw them.
+function renderLadder() {
+  const c = DATA.cohort;
+  const out = [];
+  for (let n = 1; n <= 12; n++) {
+    const eligible = c.filter((p) => {
+      const due = new Date(p.joined + 'T00:00:00'); due.setMonth(due.getMonth() + n);
+      return addDays(due, LADDER_GRACE_DAYS) <= today;
+    });
+    if (!eligible.length) break;
+    const passed = eligible.filter((p) => p.paid >= n + 1).length;
+    out.push({ n, eligible: eligible.length, passed });
+  }
+  $('#ladderSub').textContent = `רק מי שהצטרף דרך האתר מאז ${fullDate(DATA.go_live)} (${nf.format(c.length)} מנויים). "עבר את החודש" = שילם גם על החודש שאחריו`;
+  if (!out.length) { $('#ladder').innerHTML = '<div class="empty">עוד לא עבר חודש מאז שהמערכת התחילה לגבות</div>'; return; }
+  $('#ladder').innerHTML = out.map((l) => `
+    <div class="ladder-row">
+      <div class="t"><span>עברו את החודש ${ORDINAL[l.n] || l.n}</span><span class="big">${pct(l.passed, l.eligible)}</span></div>
+      <div class="say">מתוך ${nf.format(l.eligible)} שהצטרפו לפני יותר מ־${l.n === 1 ? 'חודש' : l.n + ' חודשים'}, ${nf.format(l.passed)} שילמו גם על החודש ה${ORDINAL[l.n + 1] || l.n + 1}</div>
+      <div class="track"><div class="fill" style="width:${(l.passed / l.eligible) * 100}%"></div></div>
+    </div>`).join('');
+}
+const ORDINAL = { 1: 'ראשון', 2: 'שני', 3: 'שלישי', 4: 'רביעי', 5: 'חמישי', 6: 'שישי', 7: 'שביעי', 8: 'שמיני', 9: 'תשיעי', 10: 'עשירי', 11: 'אחד עשר', 12: 'שנים עשר', 13: 'שלושה עשר' };
+const REASON_FALLBACK = (r) => r.to === 'cancelled' ? 'לא נמסרה סיבה' : 'החיוב נכשל ולא חזר';
+// System codes the engine writes as a "reason" — said in words, never shown raw.
+const reasonText = (r) => {
+  const s = (r.reason || '').trim();
+  if (s === '') return REASON_FALLBACK(r);
+  if (s.startsWith('account_offer')) return 'עבר למנוי אחר (הצעה באזור החשבון)';
+  if (s === 'order_refunded') return 'ההזמנה זוכתה';
+  return s;
+};
+
+// ---------- 4. forecast ----------
+function renderForecast() {
+  const days = +state.fcRange;
+  const until = iso(addDays(today, days - 1));
+  const map = new Map(DATA.forecast.map((r) => [r.day, r]));
+  const items = [];
+  for (let d = new Date(today); iso(d) <= until; d = addDays(d, 1)) {
+    const r = map.get(iso(d)) || { day: iso(d), count: 0, amount: 0 }; items.push({ key: iso(d), ...r });
+  }
+  const total = items.reduce((a, r) => a + r.amount, 0), charges = items.reduce((a, r) => a + r.count, 0);
+  const busiest = [...items].sort((a, b) => b.amount - a.amount)[0];
+  $('#fcTiles').innerHTML =
+    tile('צפי הכנסות בתקופה', money(total)) +
+    tile('חיובים צפויים', nf.format(charges)) +
+    tile('ממוצע ליום', money(total / days)) +
+    tile('היום העמוס ביותר', busiest && busiest.amount > 0 ? fullDate(busiest.key) : '—', busiest && busiest.amount > 0 ? `${money(busiest.amount)} · ${busiest.count} חיובים` : '');
+  barChart($('#fcChart'), items, {
+    value: 'amount', label: (it) => dayLabel(it.key),
+    tip: (it) => `${fullDate(it.key)}, יום ${weekday(it.key)}<br><b>${money(it.amount)}</b> · ${it.count} מנויים יחויבו`,
+  });
+  table($('#fcTable'), [{ t: 'תאריך' }, { t: 'יום' }, { t: 'מנויים שיחויבו', num: true }, { t: 'צפי הכנסה', num: true }],
+    items.filter((r) => r.count > 0).map((r) => [fullDate(r.key), weekday(r.key), nf.format(r.count), money(r.amount)]));
+}
+
+// ---------- 5. payments ----------
+// The gateway's own words, said plainly. "this-token-not-exist" is not a declined card:
+// PayPlus holds no saved card for this customer — a different problem with a different fix.
+const failText = (m) => {
+  const s = (m || '').trim();
+  if (s === '') return 'לא נמסרה סיבה';
+  if (s.includes('token-not-exist') || s.includes('token not exist')) return 'אין כרטיס שמור ב־PayPlus';
+  return s;
+};
+// Only customers whose payment did NOT go through and is still unpaid — nobody else.
+const PAY_STATUS = {
+  awaiting_payment: '<span class="badge b-warn">נכשל, המערכת מנסה שוב</span>',
+  held_for_payment: '<span class="badge b-bad">הושהה כי לא שילם</span>',
+  failed: '<span class="badge b-bad">נכשל, הניסיונות נגמרו</span>',
+};
+function renderPayments() {
+  const u = DATA.unpaid;
+  const f = DATA.failures;
+  // The reason each customer failed: their most recent failed charge.
+  const lastFail = new Map();
+  for (const r of f) lastFail.set(r.plan, r);
+  const owed = u.reduce((a, r) => a + r.amount, 0);
+  const noCard = u.filter((r) => failText(lastFail.get(r.plan)?.message) === 'אין כרטיס שמור ב־PayPlus').length;
+
+  $('#unpaidCount').textContent = u.length || '';
+  $('#payHeadline').innerHTML = u.length
+    ? `כרגע יש <b>${nf.format(u.length)}</b> לקוחות שהתשלום שלהם לא עבר, ויחד הם חייבים <b>${money(owed)}</b>.`
+    : 'כרגע אין אף לקוח שהתשלום שלו לא עבר.';
+  $('#payTiles').innerHTML =
+    tile('לקוחות שהתשלום לא עבר', nf.format(u.length)) +
+    tile('סכום שלא נגבה', money(owed), 'החיוב האחרון של כל אחד') +
+    tile('מתוכם המערכת עוד מנסה', nf.format(u.filter((r) => r.status === 'awaiting_payment').length)) +
+    tile('מתוכם בלי כרטיס שמור', nf.format(noCard), 'צריך לבקש מהם לעדכן כרטיס');
+
+  table($('#unpaidTable'), [{ t: 'לקוח' }, { t: 'מוצר' }, { t: 'מצב' }, { t: 'לא שילם מאז' }, { t: 'למה נכשל' }, { t: 'סכום', num: true }],
+    [...u].sort((a, b) => (a.since || '9').localeCompare(b.since || '9')).map((r) => [
+      esc(r.name || '—'), esc(r.product), PAY_STATUS[r.status] || badge(r.status), fullDate(r.since),
+      esc(failText(lastFail.get(r.plan)?.message)), money(r.amount)]));
+
+  barChart($('#failChart'), buckets(f, 120, 'day', ['n', 'amount']), {
+    value: 'n', cls: 'series-out', label: (it) => dayLabel(it.key),
+    tip: (it) => `${fullDate(it.key)}, יום ${weekday(it.key)}<br><b>${it.n}</b> חיובים נכשלו · ${money(it.amount)}`,
+  });
+}
+
+// ---------- wiring ----------
+const RENDER = { joins: renderJoins, active: renderActive, churn: renderChurn, forecast: renderForecast, payments: renderPayments };
+document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach((x) => x.setAttribute('aria-selected', x === t));
+  document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('on', p.id === t.dataset.tab));
+  RENDER[t.dataset.tab]();
+}));
+document.querySelectorAll('.seg').forEach((seg) => seg.addEventListener('click', (e) => {
+  const btn = e.target.closest('button'); if (!btn) return;
+  seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', b === btn));
+  state[seg.dataset.ctl] = btn.dataset.v;
+  RENDER[seg.closest('.panel').id]();
+}));
+$('#asof').textContent = `${DATA.shop} · הנתונים נכונים ל־${DATA.generated_at.slice(0, 16).replace(' ', ' בשעה ')}`;
+renderPayments(); renderJoins();
+</script>
+</body>
+</html>

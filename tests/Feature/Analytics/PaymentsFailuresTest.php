@@ -6,14 +6,10 @@ use App\Domain\Analytics\Context;
 use App\Domain\Analytics\Payments\DeclineReason;
 use App\Domain\Analytics\Payments\PaymentJourneys;
 use App\Domain\Analytics\Payments\PaymentsFailuresQuery;
-use App\Filament\Pages\Analytics;
 use App\Models\Shop;
-use App\Models\User;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
-use Livewire\Livewire;
 use Tests\Feature\Analytics\Concerns\BuildsPayments;
 use Tests\Feature\Analytics\Concerns\BuildsSubscriptions;
 use Tests\TestCase;
@@ -93,26 +89,5 @@ final class PaymentsFailuresTest extends TestCase
 
         $this->assertFalse($q['has_data']);
         $this->assertSame(0, $q['failures']['failures']);
-    }
-
-    public function test_screen_renders_empty_and_with_data(): void
-    {
-        Tenant::set($this->shop);
-        $this->actingAs(User::factory()->forShop($this->shop)->create());
-
-        Livewire::test(Analytics::class)->call('go', 'payments', 'failures')
-            ->assertOk()
-            ->assertSee(__('analytics/payments_failures.total.title'))
-            ->assertSee(__('analytics.empty.no_data_title'));
-
-        Cache::flush();
-        $this->septemberStory($this->shop);
-
-        Livewire::test(Analytics::class)->call('go', 'payments', 'failures')
-            ->assertOk()
-            ->assertSee(__('analytics/payments_failures.reason.insufficient_funds'))
-            ->assertSee(__('analytics/payments_overview.source.shopify'))
-            ->call('setGrain', 'failures_over_time', 'daily')
-            ->assertOk();
     }
 }

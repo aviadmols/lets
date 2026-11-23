@@ -1,0 +1,358 @@
+/* =============================================================================
+   insights.css — the merchant analytics screens (Filament/Pages/Insights + the
+   headers of Active subscriptions and Payment problems), in the LETS Agent panel
+   language: a black hero card per screen with the headline number, lime as the
+   only accent, white cards with large radii, gray pill switches.
+
+   TOKENS: --rc-hero* --rc-lime* --rc-card --rc-bg --rc-border* --rc-ink* --rc-green*
+           --rc-red* --rc-amber* --rc-gray* --rc-radius-* --rc-shadow-* --rc-font*
+           --rc-chart-text --rc-ease-out --rc-dur-hover --rc-space-*
+   Logical properties only — the screens mirror under dir="rtl". ZERO raw hex.
+   ========================================================================== */
+
+.rc-ins {
+    display: flex;
+    flex-direction: column;
+    gap: var(--rc-space-5);
+    max-inline-size: 1180px;
+}
+
+.rc-ins-lead {
+    margin: 0;
+    color: var(--rc-ink-muted);
+    font-size: 15px;
+    max-inline-size: 72ch;
+}
+
+/* The assessment beside the lead: a quiet word, coloured only by its meaning. */
+.rc-ins-mood {
+    display: inline-flex;
+    align-items: center;
+    margin-inline-end: var(--rc-space-2);
+    padding: 2px 10px;
+    border-radius: var(--rc-radius-pill);
+    font: 600 13px/1.5 var(--rc-font);
+}
+.rc-ins-mood--up { background: var(--rc-green-bg); color: var(--rc-green-ink); }
+.rc-ins-mood--down { background: var(--rc-red-bg); color: var(--rc-red-ink); }
+.rc-ins-mood--flat { background: var(--rc-gray-bg); color: var(--rc-gray-ink); }
+
+/* ---------------------------------------------------------- controls --- */
+
+.rc-ins-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.rc-ins-seg {
+    display: inline-flex;
+    padding: 4px;
+    border-radius: var(--rc-radius-pill);
+    background: var(--rc-gray-bg);
+}
+.rc-ins-seg button {
+    padding: 8px 16px;
+    border: 0;
+    border-radius: var(--rc-radius-pill);
+    background: transparent;
+    color: var(--rc-ink-muted);
+    font: 500 14px/1.3 var(--rc-font);
+    cursor: pointer;
+    transition: background-color var(--rc-dur-hover) var(--rc-ease-out), color var(--rc-dur-hover);
+}
+.rc-ins-seg button:hover { color: var(--rc-ink); }
+.rc-ins-seg button[aria-pressed="true"] {
+    background: var(--rc-card);
+    color: var(--rc-ink);
+    font-weight: 700;
+    box-shadow: var(--rc-shadow-thumb);
+}
+.rc-ins-seg button:focus-visible { outline: none; box-shadow: var(--rc-ring); }
+
+.rc-ins-dates {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--rc-space-2);
+    padding: 4px 6px 4px 14px;
+    border-radius: var(--rc-radius-pill);
+    background: var(--rc-card);
+    box-shadow: inset 0 0 0 1px var(--rc-border-strong);
+}
+.rc-ins-dates label { font-size: 13px; color: var(--rc-ink-muted); }
+.fi-body .rc-ins-dates input {
+    padding: 6px 12px;
+    border: 0;
+    border-radius: var(--rc-radius-pill);
+    background: var(--rc-gray-bg);
+    font: 500 14px/1.2 var(--rc-font-digits);
+    color: var(--rc-ink);
+}
+
+.rc-ins-spacer { flex: 1; }
+
+/* -------------------------------------------------------------- hero --- */
+
+.rc-ins-hero {
+    position: relative;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) minmax(260px, 1fr);
+    gap: var(--rc-space-5);
+    padding: 28px;
+    border-radius: var(--rc-radius-hero);
+    background: var(--rc-hero);
+    color: var(--rc-hero-ink);
+}
+/* The panel's faint grid behind the number. */
+.rc-ins-hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+        linear-gradient(var(--rc-hero-grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--rc-hero-grid) 1px, transparent 1px);
+    background-size: 44px 44px;
+}
+.rc-ins-hero > * { position: relative; min-inline-size: 0; }
+
+.rc-ins-hero__eyebrow {
+    display: flex;
+    align-items: center;
+    gap: var(--rc-space-2);
+    color: var(--rc-hero-muted);
+    font-size: 14px;
+}
+.rc-ins-hero__eyebrow svg { inline-size: 16px; block-size: 16px; fill: var(--rc-lime); flex: none; }
+
+.rc-ins-hero__big {
+    margin: 16px 0 10px;
+    font: var(--rc-type-hero);
+    letter-spacing: -.04em;
+    font-variant-numeric: tabular-nums;
+}
+
+.rc-ins-hero__say { margin: 0; font-size: 16px; color: var(--rc-hero-ink); }
+.rc-ins-hero__say b { color: var(--rc-lime); font-weight: 700; }
+
+.rc-ins-hero__tiles { display: flex; flex-direction: column; gap: 12px; }
+
+/* --------------------------------------------------------- hero tiles --- */
+
+.rc-ins-tile {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px;
+    border-radius: var(--rc-radius-tile);
+    background: var(--rc-hero-raised);
+}
+.rc-ins-tile__icon {
+    display: grid;
+    place-items: center;
+    flex: none;
+    inline-size: 44px;
+    block-size: 44px;
+    border-radius: var(--rc-radius-control);
+    background: var(--rc-hero-raised-2);
+    color: var(--rc-hero-ink);
+}
+.rc-ins-tile__icon--accent { background: var(--rc-lime); color: var(--rc-lime-ink); }
+.rc-ins-tile__glyph { inline-size: 20px; block-size: 20px; }
+.rc-ins-tile__text { display: flex; flex-direction: column; min-inline-size: 0; }
+.rc-ins-tile__value {
+    font: var(--rc-type-kpi);
+    letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
+    color: var(--rc-hero-ink);
+}
+.rc-ins-tile__label { font-size: 13.5px; color: var(--rc-hero-muted); }
+
+/* ------------------------------------------------------------- cards --- */
+
+.rc-ins-card {
+    min-inline-size: 0;
+    padding: 24px;
+    border-radius: var(--rc-radius-hero);
+    background: var(--rc-card);
+    box-shadow: var(--rc-shadow-card);
+}
+.rc-ins-card__head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--rc-space-3); }
+.rc-ins-card__title { margin: 0; font: var(--rc-type-h); }
+.rc-ins-card__sub { margin: 4px 0 16px; font-size: 13.5px; color: var(--rc-ink-muted); }
+.rc-ins-two { display: grid; grid-template-columns: 1fr 1fr; gap: var(--rc-space-5); }
+.rc-ins-empty { margin: 0; padding: var(--rc-space-3) 0; color: var(--rc-ink-muted); }
+.rc-ins-note { margin: var(--rc-space-3) 0 0; font-size: 13px; color: var(--rc-ink-muted); }
+
+/* ------------------------------------------------------------ tables --- */
+
+.rc-ins-scroll { max-block-size: 480px; overflow: auto; }
+.rc-ins-table { inline-size: 100%; border-collapse: collapse; font-size: 14px; }
+.rc-ins-table th {
+    position: sticky;
+    inset-block-start: 0;
+    padding: 10px 8px;
+    border-block-end: 1px solid var(--rc-border);
+    background: var(--rc-card);
+    color: var(--rc-ink-muted);
+    font-weight: 500;
+    font-size: 13px;
+    text-align: start;
+}
+.rc-ins-table td { padding: 13px 8px; border-block-end: 1px solid var(--rc-border-soft); vertical-align: middle; }
+.rc-ins-table tr:last-child td { border-block-end: 0; }
+.rc-ins-table small { display: block; color: var(--rc-ink-muted); font-size: 12.5px; }
+.rc-ins-num { text-align: end; font-variant-numeric: tabular-nums; }
+.rc-ins-table th.rc-ins-num { text-align: end; }
+.rc-ins-strong { font-weight: 600; }
+
+/* Every person's name opens their subscription page. */
+.rc-ins-who {
+    color: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    text-decoration-color: var(--rc-border-strong);
+    text-underline-offset: 4px;
+    transition: text-decoration-color var(--rc-dur-hover);
+}
+.rc-ins-who:hover { text-decoration-color: var(--rc-ink); }
+
+.rc-ins-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 11px;
+    border-radius: var(--rc-radius-pill);
+    font: 600 12.5px/1.4 var(--rc-font);
+    white-space: nowrap;
+}
+.rc-ins-pill::before { content: ""; inline-size: 6px; block-size: 6px; border-radius: 50%; background: currentColor; }
+.rc-ins-pill--good { background: var(--rc-green-bg); color: var(--rc-green-ink); }
+.rc-ins-pill--bad { background: var(--rc-red-bg); color: var(--rc-red-ink); }
+.rc-ins-pill--warn { background: var(--rc-amber-bg); color: var(--rc-amber-ink); }
+.rc-ins-pill--muted { background: var(--rc-gray-bg); color: var(--rc-gray-ink); }
+
+/* ---------------------------------------------- horizontal bars (no inline width:
+   a fill's width is a 5%-step class, so the template stays free of style="") --- */
+
+.rc-ins-hbar { display: grid; grid-template-columns: minmax(120px, 36%) 1fr auto; align-items: center; gap: 12px; padding: 8px 0; }
+.rc-ins-hbar__val { min-inline-size: 110px; text-align: end; color: var(--rc-gray-ink); font-size: 14px; font-variant-numeric: tabular-nums; }
+.rc-ins-track { block-size: 8px; border-radius: var(--rc-radius-pill); background: var(--rc-gray-bg); overflow: hidden; }
+.rc-ins-fill { block-size: 100%; border-radius: var(--rc-radius-pill); background: var(--rc-ink); }
+.rc-ins-fill--0 { inline-size: 0; }      .rc-ins-fill--5 { inline-size: 5%; }    .rc-ins-fill--10 { inline-size: 10%; }
+.rc-ins-fill--15 { inline-size: 15%; }   .rc-ins-fill--20 { inline-size: 20%; }  .rc-ins-fill--25 { inline-size: 25%; }
+.rc-ins-fill--30 { inline-size: 30%; }   .rc-ins-fill--35 { inline-size: 35%; }  .rc-ins-fill--40 { inline-size: 40%; }
+.rc-ins-fill--45 { inline-size: 45%; }   .rc-ins-fill--50 { inline-size: 50%; }  .rc-ins-fill--55 { inline-size: 55%; }
+.rc-ins-fill--60 { inline-size: 60%; }   .rc-ins-fill--65 { inline-size: 65%; }  .rc-ins-fill--70 { inline-size: 70%; }
+.rc-ins-fill--75 { inline-size: 75%; }   .rc-ins-fill--80 { inline-size: 80%; }  .rc-ins-fill--85 { inline-size: 85%; }
+.rc-ins-fill--90 { inline-size: 90%; }   .rc-ins-fill--95 { inline-size: 95%; }  .rc-ins-fill--100 { inline-size: 100%; }
+
+/* Retention ladder steps. */
+.rc-ins-step { padding: 16px 0; border-block-end: 1px solid var(--rc-border-soft); }
+.rc-ins-step:last-child { border-block-end: 0; }
+.rc-ins-step__head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.rc-ins-step__head span { font-weight: 600; }
+.rc-ins-step__head b { font: 500 26px/1.1 var(--rc-font-digits); letter-spacing: -.02em; }
+.rc-ins-step p { margin: 2px 0 10px; font-size: 14px; color: var(--rc-ink-muted); }
+
+/* Pace: now → in a month → in two. */
+.rc-ins-pace { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.rc-ins-pace__col { padding: 18px; border-radius: var(--rc-radius-tile); background: var(--rc-gray-bg); }
+.rc-ins-pace__col--now { background: var(--rc-hero); color: var(--rc-hero-ink); }
+.rc-ins-pace__k { font-size: 13px; color: var(--rc-ink-muted); }
+.rc-ins-pace__col--now .rc-ins-pace__k { color: var(--rc-hero-muted); }
+.rc-ins-pace__v { margin-block-start: 6px; font: 500 34px/1.15 var(--rc-font-digits); letter-spacing: -.02em; }
+.rc-ins-pace__r { margin-block-start: 2px; font: 400 15px/1.4 var(--rc-font-digits); }
+
+.rc-ins-trend { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: var(--rc-radius-pill); font: 700 15px/1.4 var(--rc-font-digits); }
+.rc-ins-trend--up { background: var(--rc-green-bg); color: var(--rc-green-ink); }
+.rc-ins-trend--down { background: var(--rc-red-bg); color: var(--rc-red-ink); }
+.rc-ins-trend--flat { background: var(--rc-gray-bg); color: var(--rc-gray-ink); }
+
+/* Dark export button beside the controls. */
+.rc-ins-export {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--rc-space-2);
+    min-block-size: 40px;
+    padding: 0 18px;
+    border: 0;
+    border-radius: var(--rc-radius-pill);
+    background: var(--rc-hero);
+    color: var(--rc-hero-ink);
+    font: 600 14px/1 var(--rc-font);
+    cursor: pointer;
+}
+.rc-ins-export:focus-visible { outline: none; box-shadow: var(--rc-ring); }
+.rc-ins-export svg { inline-size: 16px; block-size: 16px; }
+
+/* ------------------------------------------------------------ charts --- */
+
+.rc-ins-chart { position: relative; margin-block-start: 18px; }
+.rc-ins-svg { display: block; inline-size: 100%; overflow: visible; }
+.rc-ins-axis { fill: var(--rc-ink-muted); font: 400 var(--rc-chart-text) var(--rc-font-digits); }
+.rc-ins-grid { stroke: var(--rc-border); stroke-width: 1; }
+.rc-ins-bar { fill: var(--rc-ink); }
+.rc-ins-hit { fill: transparent; }
+.rc-ins-svg--hero .rc-ins-axis { fill: var(--rc-hero-muted); }
+.rc-ins-svg--hero .rc-ins-grid { stroke: var(--rc-hero-line); }
+.rc-ins-svg--hero .rc-ins-bar { fill: var(--rc-lime); }
+.rc-ins-line { fill: none; stroke: var(--rc-ink); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.rc-ins-area { fill: var(--rc-ink); opacity: .07; }
+.rc-ins-dot { fill: var(--rc-card); stroke: var(--rc-ink); stroke-width: 2.5; }
+.rc-ins-cross { stroke: var(--rc-border-strong); stroke-width: 1; }
+
+.rc-ins-tip {
+    position: absolute;
+    z-index: 3;
+    padding: 9px 13px;
+    border-radius: var(--rc-radius-control);
+    background: var(--rc-card);
+    color: var(--rc-ink);
+    box-shadow: var(--rc-shadow-hover);
+    font-size: 14px;
+    white-space: nowrap;
+    pointer-events: none;
+    transform: translate(-50%, -112%);
+}
+[dir="rtl"] .rc-ins-tip { transform: translate(50%, -112%); }
+.rc-ins-tip strong { display: block; font: 700 14px/1.4 var(--rc-font-digits); }
+
+@media (max-width: 1000px) {
+    .rc-ins-hero, .rc-ins-two, .rc-ins-pace { grid-template-columns: 1fr; }
+    .rc-ins-hero__big { font-size: 56px; }
+}
+
+/* An analytics widget (Active subscriptions' header) draws its own hero and cards:
+   Filament's widget frame (.fi-wi, carded in theme.css) must not wrap them in a
+   second white box. */
+.fi-body .fi-wi:has(.rc-ins),
+.fi-body .fi-wi-widget:has(.rc-ins) {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+/* Choice chips (the export's subscription products): white pills, ink when chosen. */
+.rc-ins-chips { display: flex; flex-wrap: wrap; gap: var(--rc-space-2); margin-block-end: var(--rc-space-4); }
+.rc-ins-chip {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: 36px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: var(--rc-radius-pill);
+    background: var(--rc-card);
+    box-shadow: inset 0 0 0 1px var(--rc-border-strong);
+    color: var(--rc-ink);
+    font: 500 14px/1.2 var(--rc-font);
+    cursor: pointer;
+    transition: background-color var(--rc-dur-hover) var(--rc-ease-out), color var(--rc-dur-hover);
+}
+.rc-ins-chip[aria-pressed="true"] { background: var(--rc-ink); color: var(--rc-card); box-shadow: none; }
+.rc-ins-chip:focus-visible { outline: none; box-shadow: var(--rc-ring); }
+.rc-ins-export-check { margin-block-end: var(--rc-space-4); }
+.rc-ins-export[disabled] { opacity: .55; cursor: default; }

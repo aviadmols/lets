@@ -6,7 +6,6 @@ use App\Domain\Analytics\Filters;
 use App\Domain\Analytics\Subscribers\ActiveBook;
 use App\Domain\Installments\CardUpdateService;
 use App\Domain\Lifecycle\SubscriptionLifecycleService;
-use App\Filament\Pages\HomeDashboard;
 use App\Models\CustomerConsent;
 use App\Models\InstallmentPaymentMethod;
 use App\Models\InstallmentPlan;
@@ -25,7 +24,6 @@ use App\Support\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
-use Livewire\Livewire;
 use Tests\TestCase;
 
 /**
@@ -285,26 +283,6 @@ final class NoChargePlanTest extends TestCase
             SendReminderEmailJob::class,
             fn (SendReminderEmailJob $job): bool => $job->planId === (int) $paying->getKey(),
         );
-    }
-
-    /** Nor does the merchant's home screen count it as money coming in. */
-    public function test_it_is_not_listed_as_an_upcoming_charge(): void
-    {
-        $comped = $this->plan(noCharge: true, withCard: false, withConsent: false, due: false, amount: 80);
-        Tenant::run($this->shop, fn () => $comped->forceFill(['next_charge_at' => now()->addDay()])->save());
-
-        $paying = $this->plan(noCharge: false, withCard: true, withConsent: true, due: false);
-        Tenant::run($this->shop, fn () => $paying->forceFill(['next_charge_at' => now()->addDay()])->save());
-
-        Tenant::run($this->shop, function () use ($paying): void {
-            $rows = Livewire::test(HomeDashboard::class)->instance()->upcomingCharges();
-
-            $this->assertCount(1, $rows);
-            $this->assertStringContainsString(
-                (string) $paying->customer_name,
-                $rows[0]['customer'],
-            );
-        });
     }
 
     /** Asking a comped member to keep a card current is collecting one for nothing. */
