@@ -70,8 +70,9 @@ final class GiftExportRunner
      *
      * @param  array<int, int>  $productIds
      * @param  array<int, string>  $emails
+     * @param  bool  $withFirstOrderItems  add a column with a first-cycle member's other products from their first order
      */
-    public function start(Shop $shop, int $minCycles, array $productIds, array $emails): GiftExportRun
+    public function start(Shop $shop, int $minCycles, array $productIds, array $emails, bool $withFirstOrderItems = false): GiftExportRun
     {
         // The shop's previous file goes now: its lines are customers' addresses,
         // which this app keeps only for as long as a download needs them.
@@ -89,7 +90,9 @@ final class GiftExportRunner
 
         Log::info('gift_export.started', ['run_id' => $run->getKey(), 'shop_id' => $shop->getKey()]);
 
-        RunGiftExportJob::dispatch((int) $shop->getKey(), (int) $run->getKey());
+        // The tick travels with the job, not on the run row (no schema change); the
+        // file later reads it back from the rows' shape (GiftListExporter::file).
+        RunGiftExportJob::dispatch((int) $shop->getKey(), (int) $run->getKey(), $withFirstOrderItems);
 
         return $run->refresh();
     }
@@ -126,6 +129,7 @@ final class GiftExportRunner
         int $runId,
         int $maxRows = self::ROWS_PER_JOB,
         int $seconds = self::SECONDS_PER_JOB,
+        bool $withFirstOrderItems = false,
     ): bool {
         // Tenant-scoped: another shop's run id resolves to nothing.
         $run = GiftExportRun::query()->find($runId);
@@ -164,6 +168,7 @@ final class GiftExportRunner
                 $lines = $this->exporter->fieldsForMany(
                     $shop,
                     $rows->mapWithKeys(fn (GiftExportRow $row): array => [(int) $row->getKey() => (array) $row->recipient])->all(),
+                    $withFirstOrderItems,
                 );
 
                 foreach ($lines as $rowId => $fields) {

@@ -85,12 +85,17 @@ return [
             'note' => 'Notes to write on the delivery',
             'joined_at' => 'Joined on',
             'subscription' => 'Subscription',
+            'first_order_items' => 'Products from the first order',
             // Labels of the address form on the customer screen.
             'address1' => 'Street address',
             'address2' => 'Address line 2',
             'zip' => 'Postal code',
             'country' => 'Country',
         ],
+        // The export's checkbox, and how each product is written in that one column.
+        'first_order_items_toggle' => 'Also export the products from the first order',
+        'first_order_items_hint' => 'For subscribers still in their first cycle: the other products they bought in the order they subscribed through, with the quantity of each, in one column.',
+        'first_order_item' => ':name × :qty',
     ],
 
     // The export runs in the background: every line is a store read, and a real

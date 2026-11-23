@@ -203,6 +203,39 @@ final class GiftListExportTest extends TestCase
         $this->assertSame('להשאיר אצל השומר', $rows[1][9]);
     }
 
+    /**
+     * A long-standing member: the address comes from their store PROFILE (no note field),
+     * the plan never kept a copy of the note, and the store creates no renewal orders —
+     * so the order they subscribed through is the ONLY place the note lives. It must
+     * still reach the sheet, read off that order, in whatever cycle they are.
+     */
+    public function test_the_first_orders_note_reaches_the_sheet_when_the_address_comes_from_the_profile(): void
+    {
+        Http::fake([
+            '*/wp-json/wc/v3/customers?*include=55*' => Http::response([[
+                'id' => 55,
+                'shipping' => ['first_name' => 'דנה', 'last_name' => 'קונה', 'address_1' => 'הרצל', 'city' => 'תל אביב', 'country' => 'IL'],
+                'billing' => ['phone' => '0501234567'],
+                'meta_data' => [['id' => 1, 'key' => 'shipping_building_number', 'value' => '12']],
+            ]], 200),
+            '*/wp-json/wc/v3/orders?*include=900*' => Http::response([[
+                'id' => 900,
+                // An address since moved away from — only the note is taken from here.
+                'shipping' => ['first_name' => 'דנה', 'address_1' => 'יפו 3', 'city' => 'ירושלים'],
+                'customer_note' => 'להשאיר אצל השומר',
+            ]], 200),
+            '*' => Http::response([], 200),
+        ]);
+
+        $this->subscriber('דנה קונה', succeeded: 5, customerId: '55', orderId: '900');
+
+        $row = $this->rows($this->export(1))[1];
+
+        $this->assertSame('תל אביב', $row[3]);
+        $this->assertSame('הרצל', $row[4]);
+        $this->assertSame('להשאיר אצל השומר', $row[9]);
+    }
+
     public function test_the_merchants_corrected_note_wins_and_nothing_is_said_twice(): void
     {
         Http::fake([
@@ -399,13 +432,78 @@ final class GiftListExportTest extends TestCase
         $this->assertStringNotContainsString('Newcomer', $csv);
     }
 
+    /**
+     * The checkbox: a member still in their first cycle gets the OTHER products from the
+     * order they subscribed through — every name and quantity, in one cell — and the
+     * subscription's own line is not one of them.
+     */
+    public function test_a_first_cycle_member_gets_the_other_products_of_their_first_order(): void
+    {
+        Http::fake([
+            '*/wp-json/wc/v3/orders?*include=900*' => Http::response([[
+                'id' => 900,
+                'shipping' => ['first_name' => 'Dana', 'last_name' => 'K', 'address_1' => 'הרצל 1', 'city' => 'חיפה'],
+                'line_items' => [
+                    ['name' => 'מנוי ספרים', 'product_id' => 77, 'variation_id' => 0, 'quantity' => 1],
+                    ['name' => 'ספר א', 'product_id' => 10, 'variation_id' => 0, 'quantity' => 2],
+                    ['name' => 'חולצה - L', 'product_id' => 20, 'variation_id' => 21, 'quantity' => 1],
+                ],
+            ]], 200),
+            '*' => Http::response([], 200),
+        ]);
+
+        $this->subscriber('Dana', succeeded: 1, customerId: '0', orderId: '900', productId: '77');
+
+        $rows = $this->rows($this->export(1, withFirstOrderItems: true));
+
+        $this->assertSame(__('gifts.export.col.first_order_items'), end($rows[0]));
+        $this->assertCount(count(GiftListExporter::COLUMNS) + 1, $rows[1]);
+        $this->assertSame('ספר א × 2 | חולצה - L × 1', end($rows[1]));
+
+        // The SAME read that brought the address and the courier note: the order is
+        // fetched once, not a second time for its products.
+        $orderReads = collect(Http::recorded())->filter(fn (array $pair): bool => str_contains($pair[0]->url(), '/orders'));
+        $this->assertCount(1, $orderReads);
+    }
+
+    /** From the second cycle on, that order shipped long ago — the cell stays empty. */
+    public function test_a_member_past_the_first_cycle_gets_no_first_order_products(): void
+    {
+        Http::fake([
+            '*/wp-json/wc/v3/orders?*include=900*' => Http::response([[
+                'id' => 900,
+                'line_items' => [['name' => 'ספר א', 'product_id' => 10, 'quantity' => 2]],
+            ]], 200),
+            '*' => Http::response([], 200),
+        ]);
+
+        $this->subscriber('Dana', succeeded: 2, customerId: '0', orderId: '900', productId: '77');
+
+        $rows = $this->rows($this->export(1, withFirstOrderItems: true));
+
+        $this->assertCount(count(GiftListExporter::COLUMNS) + 1, $rows[1]);
+        $this->assertSame('', end($rows[1]));
+    }
+
+    /** Unticked, the sheet is exactly what it was: no extra column. */
+    public function test_without_the_checkbox_there_is_no_products_column(): void
+    {
+        Http::fake(['*' => Http::response([], 200)]);
+        $this->subscriber('Dana', succeeded: 1, customerId: '0', orderId: '900', productId: '77');
+
+        $rows = $this->rows($this->export(1));
+
+        $this->assertCount(count(GiftListExporter::COLUMNS), $rows[0]);
+        $this->assertNotContains(__('gifts.export.col.first_order_items'), $rows[0]);
+    }
+
     // === Helpers ===
 
     /** An export end to end on the sync queue, returned as the file. */
-    private function export(int $minCycles): string
+    private function export(int $minCycles, bool $withFirstOrderItems = false): string
     {
-        return Tenant::run($this->shop, function () use ($minCycles): string {
-            $run = app(GiftExportRunner::class)->start($this->shop, $minCycles, [], []);
+        return Tenant::run($this->shop, function () use ($minCycles, $withFirstOrderItems): string {
+            $run = app(GiftExportRunner::class)->start($this->shop, $minCycles, [], [], $withFirstOrderItems);
             $this->assertSame(GiftExportRun::STATUS_COMPLETED, $run->status);
 
             return app(GiftListExporter::class)->file($run);
@@ -476,8 +574,9 @@ final class GiftListExportTest extends TestCase
         string $email = 'dana@example.com',
         ?string $orderId = null,
         array $meta = [],
+        ?string $productId = null,
     ): void {
-        Tenant::run($this->shop, function () use ($name, $succeeded, $customerId, $email, $orderId, $meta): void {
+        Tenant::run($this->shop, function () use ($name, $succeeded, $customerId, $email, $orderId, $meta, $productId): void {
             $plan = new InstallmentPlan;
             $plan->fill([
                 'plan_kind' => PlanKind::RECURRING->value,
@@ -494,6 +593,7 @@ final class GiftListExportTest extends TestCase
                 'shop_id' => (int) $this->shop->getKey(),
                 'status' => PlanStatus::ACTIVE->value,
                 'external_order_id' => $orderId,
+                'external_product_id' => $productId,
                 'meta' => $meta,
             ])->save();
 

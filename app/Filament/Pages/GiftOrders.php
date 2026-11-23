@@ -135,6 +135,12 @@ class GiftOrders extends Page
      */
     public bool $exportWatching = false;
 
+    /**
+     * The export's checkbox: also list what a FIRST-CYCLE member bought beside the
+     * subscription in the order they subscribed through, in one extra column.
+     */
+    public bool $exportFirstOrderItems = false;
+
     /** Per-request memo of exportRun(); never serialised to the browser. */
     private ?GiftExportRun $exportMemo = null;
 
@@ -397,7 +403,7 @@ class GiftOrders extends Page
 
         // The same rule the preview above it is showing — a file that disagreed
         // with the list on screen would be worse than no file.
-        $run = $runner->start($shop, $this->minCycles, $this->sourceProductIds, $this->sourceEmailList());
+        $run = $runner->start($shop, $this->minCycles, $this->sourceProductIds, $this->sourceEmailList(), $this->exportFirstOrderItems);
 
         $this->exportRunId = (int) $run->getKey();
         $this->exportWatching = true;

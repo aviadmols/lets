@@ -47,11 +47,22 @@ final class RunGiftExportJob implements ShouldBeUniqueUntilProcessing, ShouldQue
     /** Well above one slice's clock, well under the queue's retry_after. */
     public int $timeout = 300;
 
+    /**
+     * The merchant's "also list the first order's products" tick. Carried by the job
+     * (and by every re-dispatch) rather than stored on the run, so the feature needed
+     * no schema change. A plain property with its own default, not a promoted one: a
+     * job queued by the previous build unserializes without it and must read false,
+     * not crash on an uninitialised property.
+     */
+    public bool $withFirstOrderItems = false;
+
     public function __construct(
         /** The tenant, carried explicitly — never inferred from global state. */
         public readonly int $shopId,
         public readonly int $runId,
+        bool $withFirstOrderItems = false,
     ) {
+        $this->withFirstOrderItems = $withFirstOrderItems;
         $this->onQueue(self::QUEUE);
     }
 
@@ -74,8 +85,8 @@ final class RunGiftExportJob implements ShouldBeUniqueUntilProcessing, ShouldQue
             return;
         }
 
-        if (! $runner->advance($shop, $this->runId)) {
-            self::dispatch($this->shopId, $this->runId);
+        if (! $runner->advance($shop, $this->runId, withFirstOrderItems: $this->withFirstOrderItems)) {
+            self::dispatch($this->shopId, $this->runId, $this->withFirstOrderItems);
         }
     }
 

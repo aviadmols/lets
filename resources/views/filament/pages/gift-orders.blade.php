@@ -253,6 +253,16 @@
                         </span>
                     @endif
 
+                    {{-- The export's one option: a first-cycle member's other products from
+                         the order they subscribed through, in one extra column. --}}
+                    <label class="rc-check">
+                        <input type="checkbox" wire:model="exportFirstOrderItems">
+                        <span class="rc-check__body">
+                            <span class="rc-check__title">{{ __('gifts.export.first_order_items_toggle') }}</span>
+                            <span class="rc-check__hint">{{ __('gifts.export.first_order_items_hint') }}</span>
+                        </span>
+                    </label>
+
                     <div class="rc-row">
                         @if($ready > 0)
                             <button type="button" class="rc-cta rc-cta--primary" wire:click="generate"

@@ -81,12 +81,17 @@ final class GiftAddressResolver
      * bulk read cannot serve — a Shopify recipient, a failed bulk read — is resolved one at a
      * time as before. Never throws.
      *
+     * `$reads` lets a caller that needs the same store reads for something else (the
+     * export's first-order products, which sit on the very origin orders read here) do
+     * them once via readInBulk() and hand them in, instead of reading the store twice.
+     *
      * @param  array<int|string, GiftRecipient>  $recipients
+     * @param  array{plans: array<int, InstallmentPlan>, customers: array<int, array<string, mixed>>, byEmail: array<string, array<string, mixed>>, orders: array<int, array<string, mixed>>}|null  $reads  from readInBulk()
      * @return array<int|string, array{address: ?GiftShippingAddress, source: ?string, reason: ?string}> the same keys
      */
-    public function resolveMany(Shop $shop, array $recipients): array
+    public function resolveMany(Shop $shop, array $recipients, ?array $reads = null): array
     {
-        $reads = $this->bulkWooReads($shop, $recipients);
+        $reads ??= $this->readInBulk($shop, $recipients);
 
         $resolved = [];
         foreach ($recipients as $key => $recipient) {
@@ -110,10 +115,13 @@ final class GiftAddressResolver
      * (so every recipient resolves one at a time) when the shop is not WooCommerce or a bulk
      * read failed.
      *
+     * The origin orders read here carry the courier note AND the products the member
+     * bought; the export reads both off this one read.
+     *
      * @param  array<int|string, GiftRecipient>  $recipients
      * @return array{plans: array<int, InstallmentPlan>, customers: array<int, array<string, mixed>>, byEmail: array<string, array<string, mixed>>, orders: array<int, array<string, mixed>>}
      */
-    private function bulkWooReads(Shop $shop, array $recipients): array
+    public function readInBulk(Shop $shop, array $recipients): array
     {
         $none = ['plans' => [], 'customers' => [], 'byEmail' => [], 'orders' => []];
 
@@ -262,7 +270,7 @@ final class GiftAddressResolver
         if ($customerId > 0) {
             $address = $this->pickWooBlock($customer($customerId));
             if ($address !== null) {
-                return $this->found($address, GiftRecipient::ADDRESS_FROM_PROFILE);
+                return $this->found($this->withOriginOrderNote($plan, $address, $order), GiftRecipient::ADDRESS_FROM_PROFILE);
             }
         }
 
@@ -273,7 +281,7 @@ final class GiftAddressResolver
         if ($customerId <= 0 && $email !== '') {
             $address = $this->pickWooBlock($byEmail($email));
             if ($address !== null) {
-                return $this->found($address, GiftRecipient::ADDRESS_FROM_PROFILE);
+                return $this->found($this->withOriginOrderNote($plan, $address, $order), GiftRecipient::ADDRESS_FROM_PROFILE);
             }
         }
 
@@ -288,6 +296,31 @@ final class GiftAddressResolver
         }
 
         return $this->nothing(GiftRecipient::REASON_NO_ADDRESS);
+    }
+
+    /**
+     * A store PROFILE has no field for a courier note — the note lives on the order the
+     * member subscribed through. The plan normally keeps a copy (CheckoutAddressCapture),
+     * and that copy wins in withPlanFallback(). But a plan that never got one — bought
+     * before the note was captured, or never backfilled — lost the note from the sheet
+     * the moment the address came from the profile instead of the order.
+     *
+     * So when the plan holds no note, the origin order's own customer_note rides along.
+     * Only the note: the order's address may be years old, the profile's is current.
+     * In the export the order was already read in bulk, so this costs no request.
+     *
+     * @param  callable(string): ?array<string, mixed>  $order
+     */
+    private function withOriginOrderNote(InstallmentPlan $plan, GiftShippingAddress $address, callable $order): GiftShippingAddress
+    {
+        $orderId = trim((string) $plan->externalOrderId());
+        if ($orderId === '' || trim((string) $plan->deliveryNote()) !== '') {
+            return $address;
+        }
+
+        $note = trim((string) (($order($orderId) ?? [])['customer_note'] ?? ''));
+
+        return $note !== '' ? $address->withNote($note) : $address;
     }
 
     /**

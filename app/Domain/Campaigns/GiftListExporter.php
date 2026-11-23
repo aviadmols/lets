@@ -42,6 +42,12 @@ final class GiftListExporter
         'joined_at', 'subscription',
     ];
 
+    /**
+     * The optional last column: what else a first-cycle member bought in the order they
+     * subscribed through (GiftFirstOrderItems). Only on a run that asked for it.
+     */
+    public const FIRST_ORDER_ITEMS_COLUMN = 'first_order_items';
+
     /** A row finished before the name was split carried one name column and this many fields. */
     private const LEGACY_FIELD_COUNT = 9;
 
@@ -65,6 +71,7 @@ final class GiftListExporter
 
     public function __construct(
         private readonly GiftAddressResolver $addresses,
+        private readonly GiftFirstOrderItems $firstOrderItems,
     ) {}
 
     /**
@@ -82,16 +89,29 @@ final class GiftListExporter
      * Many recipients' lines at once — the export's path. The store is read in bulk
      * (GiftAddressResolver::resolveMany) instead of once per person.
      *
+     * With `$withFirstOrderItems`, each line gains one more field at the end — a
+     * first-cycle member's other products from their first order ('' for everyone else).
+     *
      * @param  array<int|string, array<string, mixed>>  $rows  GiftEligibility::qualifying() rows
      * @return array<int|string, list<string>> the same keys, each in COLUMNS order
      */
-    public function fieldsForMany(Shop $shop, array $rows): array
+    public function fieldsForMany(Shop $shop, array $rows, bool $withFirstOrderItems = false): array
     {
-        $resolved = $this->addresses->resolveMany($shop, array_map(fn (array $row): GiftRecipient => $this->recipientFor($shop, $row), $rows));
+        $recipients = array_map(fn (array $row): GiftRecipient => $this->recipientFor($shop, $row), $rows);
+
+        // ONE store read serves both: the origin orders it brings back carry the
+        // address and courier note AND the products the member bought.
+        $reads = $this->addresses->readInBulk($shop, $recipients);
+        $resolved = $this->addresses->resolveMany($shop, $recipients, $reads);
+        $items = $withFirstOrderItems ? $this->firstOrderItems->forMany($shop, $rows, $reads) : [];
 
         $lines = [];
         foreach ($rows as $key => $row) {
             $lines[$key] = $this->line($row, $resolved[$key]);
+
+            if ($withFirstOrderItems) {
+                $lines[$key][] = (string) ($items[$key] ?? '');
+            }
         }
 
         return $lines;
@@ -166,14 +186,22 @@ final class GiftListExporter
     {
         $handle = fopen('php://temp', 'r+');
         fwrite($handle, self::BOM);
-        $this->put($handle, $this->headers());
+        $withItems = $this->runHasFirstOrderItems($run);
+        $this->put($handle, $this->headers($withItems));
 
         GiftExportRow::query()
             ->where('run_id', $run->getKey())
             ->orderBy('position')
             ->lazy(self::FILE_CHUNK)
-            ->each(function (GiftExportRow $row) use ($handle): void {
+            ->each(function (GiftExportRow $row) use ($handle, $withItems): void {
                 $fields = $row->fields;
+
+                // The optional last field comes off first, so the layout repairs below
+                // only ever see the base columns.
+                $items = '';
+                if ($withItems && is_array($fields) && count($fields) === count(self::COLUMNS) + 1) {
+                    $items = (string) array_pop($fields);
+                }
 
                 // Never happens on a completed run; if it ever does, the person
                 // is still on the sheet rather than silently missing from it.
@@ -194,7 +222,12 @@ final class GiftListExporter
                     ];
                 }
 
-                $this->put($handle, array_map('strval', $fields));
+                $fields = array_map('strval', array_values($fields));
+                if ($withItems) {
+                    $fields[] = $items;
+                }
+
+                $this->put($handle, $fields);
             });
 
         rewind($handle);
@@ -204,17 +237,35 @@ final class GiftListExporter
         return $csv;
     }
 
+    /**
+     * Did this run ask for the first-order products? Read from the rows' SHAPE, not a
+     * column: a run that asked writes one field more than COLUMNS on every line, and
+     * no other build ever wrote that many. That is what spared the feature a migration.
+     */
+    private function runHasFirstOrderItems(GiftExportRun $run): bool
+    {
+        $first = GiftExportRow::query()
+            ->where('run_id', $run->getKey())
+            ->whereNotNull('fields')
+            ->orderBy('position')
+            ->first();
+
+        return is_array($first?->fields) && count($first->fields) === count(self::COLUMNS) + 1;
+    }
+
     public function filename(): string
     {
         return 'gift-recipients-'.now()->format('Y-m-d').'.csv';
     }
 
     /** @return list<string> */
-    public function headers(): array
+    public function headers(bool $withFirstOrderItems = false): array
     {
+        $columns = $withFirstOrderItems ? [...self::COLUMNS, self::FIRST_ORDER_ITEMS_COLUMN] : self::COLUMNS;
+
         return array_map(
             static fn (string $column): string => (string) __('gifts.export.col.'.$column),
-            self::COLUMNS,
+            $columns,
         );
     }
 
