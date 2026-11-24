@@ -6,6 +6,7 @@ use App\Domain\Campaigns\GiftExportRunner;
 use App\Domain\Campaigns\Jobs\GiftOrderJob;
 use App\Domain\Campaigns\Jobs\RunGiftExportJob;
 use App\Domain\Campaigns\Models\GiftCampaign;
+use App\Domain\Campaigns\Models\GiftExportRun;
 use App\Domain\Campaigns\Models\GiftRecipient;
 use App\Filament\Pages\GiftOrders;
 use App\Models\InstallmentPayment;
@@ -590,5 +591,19 @@ final class GiftOrdersPageTest extends TestCase
         }
 
         return $plan;
+    }
+
+    public function test_the_active_export_carries_who_gets_the_order_products(): void
+    {
+        Queue::fake();
+
+        // Ticked, "only those still on their first order": the job is told so.
+        app(GiftExportRunner::class)->start($this->shop, GiftExportRun::ALL_ACTIVE, [], [], true, true);
+        Queue::assertPushed(RunGiftExportJob::class, fn (RunGiftExportJob $job): bool => $job->withFirstOrderItems && $job->itemsFirstCycleOnly === true);
+
+        // Not chosen: null, so the kind decides (the Active sheet: everyone).
+        Queue::fake();
+        app(GiftExportRunner::class)->start($this->shop, GiftExportRun::ALL_ACTIVE, [], [], true);
+        Queue::assertPushed(RunGiftExportJob::class, fn (RunGiftExportJob $job): bool => $job->itemsFirstCycleOnly === null);
     }
 }

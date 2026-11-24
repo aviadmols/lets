@@ -71,8 +71,9 @@ final class GiftExportRunner
      * @param  array<int, int>  $productIds
      * @param  array<int, string>  $emails
      * @param  bool  $withFirstOrderItems  add a column with a first-cycle member's other products from their first order
+     * @param  bool|null  $itemsFirstCycleOnly  who that column covers (null = the kind's default)
      */
-    public function start(Shop $shop, int $minCycles, array $productIds, array $emails, bool $withFirstOrderItems = false): GiftExportRun
+    public function start(Shop $shop, int $minCycles, array $productIds, array $emails, bool $withFirstOrderItems = false, ?bool $itemsFirstCycleOnly = null): GiftExportRun
     {
         // ALL_ACTIVE (0) is the Active subscriptions export: every active subscriber,
         // no threshold. Anything else is a gift list, clamped as it always was.
@@ -96,7 +97,7 @@ final class GiftExportRunner
 
         // The tick travels with the job, not on the run row (no schema change); the
         // file later reads it back from the rows' shape (GiftListExporter::file).
-        RunGiftExportJob::dispatch((int) $shop->getKey(), (int) $run->getKey(), $withFirstOrderItems);
+        RunGiftExportJob::dispatch((int) $shop->getKey(), (int) $run->getKey(), $withFirstOrderItems, $itemsFirstCycleOnly);
 
         return $run->refresh();
     }
@@ -138,6 +139,7 @@ final class GiftExportRunner
         int $maxRows = self::ROWS_PER_JOB,
         int $seconds = self::SECONDS_PER_JOB,
         bool $withFirstOrderItems = false,
+        ?bool $itemsFirstCycleOnly = null,
     ): bool {
         // Tenant-scoped: another shop's run id resolves to nothing.
         $run = GiftExportRun::query()->find($runId);
@@ -179,7 +181,7 @@ final class GiftExportRunner
                     $withFirstOrderItems,
                     // A gift list asks only about first-cycle members; the subscriber
                     // sheet lists every site subscription's order extras.
-                    firstCycleOnly: ! $run->isAllActive(),
+                    firstCycleOnly: $itemsFirstCycleOnly ?? ! $run->isAllActive(),
                 );
 
                 foreach ($lines as $rowId => $fields) {

@@ -56,13 +56,22 @@ final class RunGiftExportJob implements ShouldBeUniqueUntilProcessing, ShouldQue
      */
     public bool $withFirstOrderItems = false;
 
+    /**
+     * WHO gets that column: true = only members still on their first order, false =
+     * every site subscriber, null = the kind's default (gift list first-only, the
+     * Active sheet everyone). Same no-schema, own-default rule as the tick above.
+     */
+    public ?bool $itemsFirstCycleOnly = null;
+
     public function __construct(
         /** The tenant, carried explicitly — never inferred from global state. */
         public readonly int $shopId,
         public readonly int $runId,
         bool $withFirstOrderItems = false,
+        ?bool $itemsFirstCycleOnly = null,
     ) {
         $this->withFirstOrderItems = $withFirstOrderItems;
+        $this->itemsFirstCycleOnly = $itemsFirstCycleOnly;
         $this->onQueue(self::QUEUE);
     }
 
@@ -85,8 +94,8 @@ final class RunGiftExportJob implements ShouldBeUniqueUntilProcessing, ShouldQue
             return;
         }
 
-        if (! $runner->advance($shop, $this->runId, withFirstOrderItems: $this->withFirstOrderItems)) {
-            self::dispatch($this->shopId, $this->runId, $this->withFirstOrderItems);
+        if (! $runner->advance($shop, $this->runId, withFirstOrderItems: $this->withFirstOrderItems, itemsFirstCycleOnly: $this->itemsFirstCycleOnly)) {
+            self::dispatch($this->shopId, $this->runId, $this->withFirstOrderItems, $this->itemsFirstCycleOnly);
         }
     }
 

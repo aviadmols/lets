@@ -36,25 +36,48 @@
         </div>
 
         <label class="rc-check rc-ins-export-check">
-            <input type="checkbox" wire:model="exportWithItems">
+            <input type="checkbox" wire:model.live="exportWithItems">
             <span class="rc-check__body">
                 <span class="rc-check__title">{{ __('insights.active.export_items') }}</span>
                 <span class="rc-check__hint">{{ __('insights.active.export_items_hint') }}</span>
             </span>
         </label>
 
+        {{-- Whose order extras: everyone bought through the site, or only those still on
+             their first order (the gift list's rule). --}}
+        @if ($exportWithItems)
+            <div class="rc-ins-chips rc-ins-export-scope" role="radiogroup" aria-label="{{ __('insights.active.export_items_for') }}">
+                <span class="rc-ins-note">{{ __('insights.active.export_items_for') }}</span>
+                <button type="button" class="rc-ins-chip" role="radio" wire:click="$set('exportItemsFor', '{{ W::ITEMS_FOR_ALL }}')" aria-checked="{{ $exportItemsFor === W::ITEMS_FOR_ALL ? 'true' : 'false' }}" aria-pressed="{{ $exportItemsFor === W::ITEMS_FOR_ALL ? 'true' : 'false' }}">{{ __('insights.active.export_items_all') }}</button>
+                <button type="button" class="rc-ins-chip" role="radio" wire:click="$set('exportItemsFor', '{{ W::ITEMS_FOR_FIRST }}')" aria-checked="{{ $exportItemsFor === W::ITEMS_FOR_FIRST ? 'true' : 'false' }}" aria-pressed="{{ $exportItemsFor === W::ITEMS_FOR_FIRST ? 'true' : 'false' }}">{{ __('insights.active.export_items_first') }}</button>
+            </div>
+        @endif
+
         <div class="rc-ins-controls">
             <button type="button" class="rc-ins-export" wire:click="startExport" wire:loading.attr="disabled" wire:target="startExport" @disabled($busy)>
                 <x-filament::icon icon="heroicon-o-arrow-down-tray" />
                 {{ $busy ? __('gifts.export_run.busy') : __('insights.active.export_button') }}
             </button>
-            @if ($run !== null && $run->isCompleted() && ! $exportWatching)
-                <button type="button" class="rc-ins-chip" wire:click="downloadExport">{{ __('gifts.export_run.download') }}</button>
-                <span class="rc-ins-note">{{ __('gifts.export_run.ready', ['count' => number_format($run->total), 'time' => optional($run->finished_at)->format('H:i') ?? '']) }}</span>
-            @elseif ($busy)
+            @if ($busy)
                 <span class="rc-ins-note">{{ (int) $run->total > 0 ? number_format($run->processed).' / '.number_format($run->total).' · '.__('gifts.export_run.working') : __('gifts.export_run.counting') }}</span>
             @endif
         </div>
+
+        {{-- The file itself: ONE row, because a new export replaces it (the runner deletes
+             the previous lines when it starts). When it was made, how many, download. --}}
+        @if ($run !== null && $run->isCompleted())
+            <div class="rc-ins-file">
+                <x-filament::icon icon="heroicon-o-document-text" class="rc-ins-file__icon" />
+                <div class="rc-ins-file__body">
+                    <span class="rc-ins-file__title">{{ __('insights.active.export_file', ['date' => optional($run->finished_at)->timezone(\App\Domain\Insights\InsightsClock::TIMEZONE)->format('d/m/Y H:i') ?? '']) }}</span>
+                    <span class="rc-ins-file__meta">{{ __('insights.active.export_file_meta', ['count' => number_format($run->total), 'hours' => \App\Domain\Campaigns\Models\GiftExportRun::VISIBLE_HOURS]) }}</span>
+                </div>
+                <button type="button" class="rc-ins-file__link" wire:click="downloadExport">
+                    <x-filament::icon icon="heroicon-o-arrow-down-tray" />
+                    {{ __('gifts.export_run.download') }}
+                </button>
+            </div>
+        @endif
     </section>
 
     <section class="rc-ins-card">
@@ -69,6 +92,12 @@
              wire:ignore
              wire:key="net-{{ md5(json_encode($s['net'])) }}"
              data-rc-chart="{{ json_encode(['type' => 'line'] + $s['net'], JSON_UNESCAPED_UNICODE) }}"></div>
+
+        <h3 class="rc-ins-card__subhead">{{ __('insights.active.left_title', ['count' => number_format(array_sum(array_column($s['left']['points'], 'value')))]) }}</h3>
+        <div class="rc-ins-chart"
+             wire:ignore
+             wire:key="left-{{ md5(json_encode($s['left'])) }}"
+             data-rc-chart="{{ json_encode(['type' => 'bar', 'height' => W::LEFT_CHART_HEIGHT] + $s['left'], JSON_UNESCAPED_UNICODE) }}"></div>
     </section>
 
 

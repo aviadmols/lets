@@ -36,12 +36,24 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 trait ActiveOverview
 {
+    // === CONSTANTS ===
+    /** Who the "products bought together" column covers. */
+    public const ITEMS_FOR_ALL = 'all';
+
+    public const ITEMS_FOR_FIRST = 'first';
+
+    /** The departures chart under the book line: a companion, so shorter (px). */
+    public const LEFT_CHART_HEIGHT = 150;
+
     // --- The courier-sheet export (the gift list's own pipeline, ALL_ACTIVE mode) ---
 
     /** @var list<int> local Product ids; empty = every active subscriber */
     public array $exportProductIds = [];
 
     public bool $exportWithItems = false;
+
+    /** ITEMS_FOR_ALL: every site subscriber, also those charged again; ITEMS_FOR_FIRST: first order only. */
+    public string $exportItemsFor = self::ITEMS_FOR_ALL;
 
     public ?int $exportRunId = null;
 
@@ -105,7 +117,14 @@ trait ActiveOverview
             return null;
         }
 
-        $run = $runner->start($shop, GiftExportRun::ALL_ACTIVE, $this->exportProductIds, [], $this->exportWithItems);
+        $run = $runner->start(
+            $shop,
+            GiftExportRun::ALL_ACTIVE,
+            $this->exportProductIds,
+            [],
+            $this->exportWithItems,
+            $this->exportWithItems ? $this->exportItemsFor === self::ITEMS_FOR_FIRST : null,
+        );
         $this->exportRunId = (int) $run->getKey();
         $this->exportWatching = true;
 
@@ -173,6 +192,18 @@ trait ActiveOverview
                     'tip' => [
                         CarbonImmutable::parse($d['day'])->locale(App::getLocale())->translatedFormat('l, d/m/Y'),
                         (string) __('insights.active.net_tip', ['count' => number_format($d['count']), 'joined' => $d['joined'], 'left' => $d['left']]),
+                    ],
+                ], $book),
+            ],
+            // Who left, day by day — under the line on the SAME days, as its own chart:
+            // a dozen departures and a book of ~800 cannot share one axis.
+            'left' => [
+                'points' => array_map(fn (array $d): array => [
+                    'label' => CarbonImmutable::parse($d['day'])->format('d/m'),
+                    'value' => (int) $d['left'],
+                    'tip' => [
+                        CarbonImmutable::parse($d['day'])->locale(App::getLocale())->translatedFormat('l, d/m/Y'),
+                        (string) __('insights.active.left_tip', ['count' => number_format((int) $d['left'])]),
                     ],
                 ], $book),
             ],

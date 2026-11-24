@@ -356,3 +356,38 @@
 .rc-ins-chip:focus-visible { outline: none; box-shadow: var(--rc-ring); }
 .rc-ins-export-check { margin-block-end: var(--rc-space-4); }
 .rc-ins-export[disabled] { opacity: .55; cursor: default; }
+
+/* "Add them for:" — the scope pills under the products tick. */
+.rc-ins-export-scope { align-items: center; margin-block: calc(-1 * var(--rc-space-2)) var(--rc-space-4); }
+.rc-ins-export-scope .rc-ins-note { margin: 0; }
+
+/* The export's one file: when it was made, how many, and its download link. */
+.rc-ins-file {
+    display: flex;
+    align-items: center;
+    gap: var(--rc-space-3);
+    margin-block-start: var(--rc-space-4);
+    padding: var(--rc-space-3) var(--rc-space-4);
+    border: 1px solid var(--rc-border);
+    border-radius: var(--rc-radius-tile);
+    background: var(--rc-surface-sunk);
+}
+.rc-ins-file__icon { inline-size: 22px; block-size: 22px; flex: none; color: var(--rc-ink-muted); }
+.rc-ins-file__body { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.rc-ins-file__title { font: 600 14px/1.3 var(--rc-font); color: var(--rc-ink); }
+.rc-ins-file__meta { font-size: 13px; color: var(--rc-ink-muted); }
+.rc-ins-file__link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--rc-space-2);
+    flex: none;
+    padding: var(--rc-space-2) var(--rc-space-4);
+    border: 0;
+    border-radius: var(--rc-radius-pill);
+    background: var(--rc-ink);
+    color: var(--rc-card);
+    font: 600 14px/1 var(--rc-font);
+    cursor: pointer;
+}
+.rc-ins-file__link svg { inline-size: 16px; block-size: 16px; }
+.rc-ins-file__link:focus-visible { outline: none; box-shadow: var(--rc-ring); }

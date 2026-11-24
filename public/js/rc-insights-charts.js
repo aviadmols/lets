@@ -97,7 +97,7 @@
     function bar(host, payload) {
         var points = payload.points || [];
         var tone = payload.tone === 'hero' ? 'hero' : 'card';
-        var height = HEIGHT[tone];
+        var height = payload.height || HEIGHT[tone]; // a companion chart may ask to be shorter
         var c = setup(host, tone, height);
         var max = Math.max.apply(null, [1].concat(points.map(function (p) { return p.value; })));
         var y = grid(c.svg, c.width, height, max);
