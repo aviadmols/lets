@@ -23,6 +23,6 @@
     </svg>
 
     @unless($mark)
-        <span class="rc-logo__word" aria-hidden="true">let&rsquo;s</span>
+        <span class="rc-logo__word" aria-hidden="true">let&rsquo;s subscribe</span>
     @endunless
 </span>

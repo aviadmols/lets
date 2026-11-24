@@ -57,7 +57,7 @@ return [
         'card_update_started' => 'הלקוח פתח את דף עדכון הכרטיס',
         'card_update_link_sent' => 'נוצר קישור לעדכון כרטיס',
         'charge_repeat_blocked' => 'חיוב נעצר — המנוי כבר חויב ביממה האחרונה',
-        'invoicing_report_refused' => 'לא הופק מסמך להזמנה מהחנות — הדיווח לא תאם את החנות המחוברת או את הסכום ש-LETS רשם',
+        'invoicing_report_refused' => 'לא הופק מסמך להזמנה מהחנות — הדיווח לא תאם את החנות המחוברת או את הסכום ש-Let’s Subscribe רשם',
         'charge_above_consent' => 'חיוב נעצר — מעל הסכום או התדירות שהלקוח הסכים להם',
         'consent_override_approved' => 'חיוב מעל הסכמת הלקוח אושר על ידי בית העסק',
         'consent_recorded' => 'נרשמה הסכמה לחיוב הכרטיס השמור',
@@ -193,7 +193,7 @@ return [
         'sent_to_gateway' => 'נשלח ל-PayPlus',
         'resolved_as' => 'התברר כ',
         'reported_total' => 'החנות דיווחה',
-        'recorded_total' => 'LETS רשם',
+        'recorded_total' => 'Let’s Subscribe רשם',
         'price' => 'מחיר',
         'coupon' => 'קופון',
         'deposit' => 'מקדמה',
@@ -260,7 +260,7 @@ return [
         'link_revoked' => 'הקישור בוטל קודם לכן',
         'site_required' => 'הדיווח לא ציין מאיזו חנות נשלח',
         'site_mismatch' => 'הדיווח הגיע מחנות אחרת',
-        'total_exceeds_recorded' => 'הסכום גבוה ממה ש-LETS רשם',
+        'total_exceeds_recorded' => 'הסכום גבוה ממה ש-Let’s Subscribe רשם',
     ],
 
     // סטטוסים של מבצע לאחר רכישה / מסלול מוצר.

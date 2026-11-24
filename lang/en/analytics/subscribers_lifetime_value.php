@@ -7,13 +7,13 @@ return [
         'lead_before' => 'Aggregate subscriber LTV is',
         'lead_after' => 'across :n subscriber, as of :date|across :n subscribers, as of :date',
         'empty' => 'No subscriber has been billed yet, so there is no lifetime value to show.',
-        'note' => 'LTV = subscription revenue realised (net of refunds) ÷ customers who ever subscribed. The comparison with non-subscriber LTV needs the store\'s other orders, which LETS does not ingest yet.',
+        'note' => 'LTV = subscription revenue realised (net of refunds) ÷ customers who ever subscribed. The comparison with non-subscriber LTV needs the store\'s other orders, which Let’s Subscribe does not ingest yet.',
     ],
 
     'segments' => [
         'title' => 'LTV by segment',
         'subtitle' => 'By the order at which a customer subscribed',
-        'not_tracked' => 'Segments by order number (#1, #2, #3, #3+) and non-subscriber LTV need every customer\'s order history. LETS does not ingest store orders yet.',
+        'not_tracked' => 'Segments by order number (#1, #2, #3, #3+) and non-subscriber LTV need every customer\'s order history. Let’s Subscribe does not ingest store orders yet.',
     ],
 
     'distribution' => [
@@ -35,7 +35,7 @@ return [
         'revenue' => 'Total revenue',
         'per_customer' => 'Orders per customer',
         'ltv' => 'LTV',
-        'note' => 'Orders are subscription charges LETS billed; a Shopify subscription\'s checkout order lives in Shopify. A dash means not tracked yet.',
+        'note' => 'Orders are subscription charges Let’s Subscribe billed; a Shopify subscription\'s checkout order lives in Shopify. A dash means not tracked yet.',
     ],
 
     'trend' => [

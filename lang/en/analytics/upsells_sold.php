@@ -42,5 +42,5 @@ return [
         'unnamed' => 'Unnamed item',
     ],
 
-    'note' => 'Net of refunds. Revenue contribution = upsell revenue ÷ all money collected through LETS in the period (:collected). Shopify\'s post-purchase step is charged by Shopify and not confirmed back to LETS, so it appears under Added only.',
+    'note' => 'Net of refunds. Revenue contribution = upsell revenue ÷ all money collected through Let’s Subscribe in the period (:collected). Shopify\'s post-purchase step is charged by Shopify and not confirmed back to Let’s Subscribe, so it appears under Added only.',
 ];

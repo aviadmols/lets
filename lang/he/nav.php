@@ -72,7 +72,7 @@ return [
         'invoices' => 'חשבוניות שדורשות טיפול',
         'empty' => 'אין כרגע משהו שדורש טיפול.',
     ],
-    'help' => 'עזרה — מייל לתמיכה של LETS',
+    'help' => 'עזרה — מייל לתמיכה של Let’s Subscribe',
     'language' => 'שפה',
     'locale_short' => [
         'en' => 'EN',

@@ -34,7 +34,7 @@ return [
     'no_such_store' => [
         'title' => 'No such store',
         'body' => 'There is no store at :host. Check the address you were given.',
-        'hint' => 'Go to the LETS sign-in page',
+        'hint' => 'Go to the Let’s Subscribe sign-in page',
     ],
     'onboarding' => [
         'admin_url_intro' => "Your store's admin address:",

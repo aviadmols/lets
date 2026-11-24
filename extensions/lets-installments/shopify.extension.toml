@@ -20,6 +20,6 @@ api_version = "2026-04"
 uid = "45589920-e4d0-8f01-8480-f6f7aafb8f530dfd0fcc"
 
 [[extensions]]
-name = "LETS installments button"
+name = "Installments button"
 handle = "lets-installments"
 type = "theme"

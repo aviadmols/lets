@@ -25,7 +25,7 @@ final class PrivacyNoticeTest extends TestCase
         $response->assertSee('Privacy &amp; data protection', false);
         // The claims a reviewer checks for must actually be on the page.
         $response->assertSee('data processor', false);
-        $response->assertSee('Card numbers never reach LETS', false);
+        $response->assertSee('Card numbers never reach Let’s Subscribe', false);
     }
 
     public function test_hebrew_renders_rtl(): void

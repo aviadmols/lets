@@ -28,13 +28,13 @@ return [
         'payment_failed' => 'Payment failed',
         'customer_portal' => 'Customer cancelled (portal)',
         'customer_area' => 'Customer cancelled (account area)',
-        'note' => 'Reasons are the text written on the cancellation; LETS has no fixed reason list yet.',
+        'note' => 'Reasons are the text written on the cancellation; Let’s Subscribe has no fixed reason list yet.',
     ],
 
     'flow' => [
         'title' => 'Cancellation flow effectiveness · top products',
         'subtitle' => 'Subscribed quantity against cancellation attempts, with each product\'s save rate',
-        'body' => 'LETS has no cancellation flow, so attempts and saves are not recorded. A customer who cancels is cancelled.',
+        'body' => 'Let’s Subscribe has no cancellation flow, so attempts and saves are not recorded. A customer who cancels is cancelled.',
     ],
 
     'table' => [

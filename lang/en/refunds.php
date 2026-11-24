@@ -66,7 +66,7 @@ return [
         'payplus' => 'PayPlus',
         'shopify_native' => 'Shopify Payments',
         'woo_gateway' => "the order's own payment gateway",
-        'external' => 'a refund made outside LETS',
+        'external' => 'a refund made outside Let’s Subscribe',
         'none' => 'no payment rail',
     ],
 
@@ -101,7 +101,7 @@ return [
 
     'store' => [
         // The note the merchant reads inside their own store admin.
-        'woo_note' => 'LETS refund: :amount :currency. Reason: :reason',
+        'woo_note' => 'Let’s Subscribe refund: :amount :currency. Reason: :reason',
     ],
 
     'failure' => [

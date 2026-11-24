@@ -167,9 +167,9 @@ function lets_payplus_impersonate_maybe_redeem()
 
     lets_payplus_log_event(
         LETS_IMPERSONATE_MODE_CUSTOMER === $mode
-            ? sprintf('Customer #%d signed in from a LETS email link.', (int) $user->ID)
+            ? sprintf('Customer #%d signed in from a Let’s Subscribe email link.', (int) $user->ID)
             : sprintf(
-                'A LETS admin signed in as customer #%d (%s).',
+                'A Let’s Subscribe admin signed in as customer #%d (%s).',
                 (int) $user->ID,
                 isset($result['customer_ref']) ? (string) $result['customer_ref'] : ''
             ),

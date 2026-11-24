@@ -233,7 +233,7 @@ final class WooGatewayFinalizer
 
         try {
             $client->addOrderNote($orderId, sprintf(
-                'LETS did NOT mark this order paid: PayPlus confirmed %s %s, the order total is %s %s.',
+                'Let’s Subscribe did NOT mark this order paid: PayPlus confirmed %s %s, the order total is %s %s.',
                 $paid !== '' ? $paid : '?', $paidCurrency, number_format($total, 2, '.', ''), $orderCurrency,
             ), false);
         } catch (\Throwable) {
@@ -276,7 +276,7 @@ final class WooGatewayFinalizer
         try {
             WooClientFactory::for($shop)->addOrderNote(
                 $orderId,
-                'LETS did NOT complete this order: the first cycle is free, and PayPlus verified the card but returned no saved card to charge the next cycle to.',
+                'Let’s Subscribe did NOT complete this order: the first cycle is free, and PayPlus verified the card but returned no saved card to charge the next cycle to.',
                 false,
             );
         } catch (\Throwable) {

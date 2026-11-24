@@ -67,7 +67,7 @@ return [
     'reasons' => [
         'title' => 'Reason-wise cancellations',
         'caption' => 'cancelled',
-        'note' => 'The reason typed when the subscription was cancelled. LETS has no reason list on its cancel flow yet, so most cancellations carry none.',
+        'note' => 'The reason typed when the subscription was cancelled. Let’s Subscribe has no reason list on its cancel flow yet, so most cancellations carry none.',
     ],
 
     'channels' => [
@@ -93,7 +93,7 @@ return [
         'customer_portal' => 'Customer portal',
         'customer' => 'Customer',
         'admin' => 'Admin',
-        'platform' => 'LETS support',
+        'platform' => 'Let’s Subscribe support',
         'payment_failed' => 'Payment failed',
         'plan_switch' => 'Switched plan',
         'refund' => 'Order refunded',

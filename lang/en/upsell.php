@@ -490,10 +490,10 @@ return [
                     'unknown' => 'We cannot see this from here. Run `shopify app deploy --config subscriptions` and confirm the version shows as active.',
                 ],
                 'selected' => [
-                    'title' => 'LETS is selected as your post-purchase page',
+                    'title' => 'Let’s Subscribe is selected as your post-purchase page',
                     'ok' => '',
                     'problem' => '',
-                    'unknown' => 'Shopify shows only ONE post-purchase app per store. In Shopify admin go to Settings → Checkout → “Post-purchase page” and choose LETS — until then nothing appears, however complete the flow is.',
+                    'unknown' => 'Shopify shows only ONE post-purchase app per store. In Shopify admin go to Settings → Checkout → “Post-purchase page” and choose Let’s Subscribe — until then nothing appears, however complete the flow is.',
                 ],
             ],
         ],

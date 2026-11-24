@@ -477,10 +477,10 @@ return [
                     'unknown' => 'לא ניתן לבדוק מכאן. הריצו `shopify app deploy --config subscriptions` וודאו שהגרסה מסומנת כפעילה.',
                 ],
                 'selected' => [
-                    'title' => 'LETS נבחרה כעמוד הפוסט-פרצ\'ס שלכם',
+                    'title' => 'Let’s Subscribe נבחרה כעמוד הפוסט-פרצ\'ס שלכם',
                     'ok' => '',
                     'problem' => '',
-                    'unknown' => 'Shopify מציגה אפליקציית פוסט-פרצ\'ס אחת בלבד לכל חנות. במנהל Shopify גשו ל-Settings ← Checkout ← "Post-purchase page" ובחרו ב-LETS — עד אז שום דבר לא יופיע, כמה שהזרימה תהיה שלמה.',
+                    'unknown' => 'Shopify מציגה אפליקציית פוסט-פרצ\'ס אחת בלבד לכל חנות. במנהל Shopify גשו ל-Settings ← Checkout ← "Post-purchase page" ובחרו ב-Let’s Subscribe — עד אז שום דבר לא יופיע, כמה שהזרימה תהיה שלמה.',
                 ],
             ],
         ],

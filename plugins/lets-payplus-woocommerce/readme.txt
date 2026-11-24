@@ -1,4 +1,4 @@
-=== LETS — PayPlus Subscriptions & Installments for WooCommerce ===
+=== Let’s Subscribe — PayPlus Subscriptions & Installments for WooCommerce ===
 Contributors: lets
 Tags: payplus, subscriptions, installments, deposit, upsell, woocommerce
 Requires at least: 5.8
@@ -6,26 +6,26 @@ Tested up to: 6.6
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.1
-Stable tag: 0.66.0
+Stable tag: 0.67.0
 License: Proprietary
 
-Connect your WooCommerce store to LETS for PayPlus deposits + installments, recurring
+Connect your WooCommerce store to Let’s Subscribe for PayPlus deposits + installments, recurring
 subscriptions, one-click post-purchase upsells, and optional full PayPlus checkout.
 
 == Description ==
 
-LETS lets Israeli WooCommerce merchants on PayPlus:
+Let’s Subscribe lets Israeli WooCommerce merchants on PayPlus:
 
 * Take a **deposit + installments** until an item is fully paid, then release fulfillment.
 * Run open-ended **recurring subscriptions** (billed automatically until cancelled).
 * Offer **one-click post-purchase upsells** on the saved card (no card re-entry).
 * Optionally accept **normal checkout through PayPlus** (the "PayPlus" gateway).
 
-Everything is managed from the LETS dashboard at https://app.lets.co.il. The plugin links
-your store to LETS and renders the storefront surfaces; the money, schedules, retries, and
-documents run on the LETS engine.
+Everything is managed from the Let’s Subscribe dashboard at https://app.lets.co.il. The plugin links
+your store to Let’s Subscribe and renders the storefront surfaces; the money, schedules, retries, and
+documents run on the Let’s Subscribe engine.
 
-This plugin links your store to LETS. You generate a one-time connection token in the LETS
+This plugin links your store to Let’s Subscribe. You generate a one-time connection token in the Let’s Subscribe
 dashboard (Shops → your store → "Add WooCommerce store") and paste it here. The token is
 decoded on your server and used to HMAC-sign the connection request; the api secret never
 reaches the browser.
@@ -44,8 +44,8 @@ or stores card data.
 
 1. In WordPress, go to Plugins → Add New → Upload Plugin and choose this zip (or extract it
    into wp-content/plugins/).
-2. Activate "LETS — PayPlus Subscriptions & Installments for WooCommerce".
-3. Go to Settings → LETS and paste your connection token, then click "Connect to LETS".
+2. Activate "Let’s Subscribe — PayPlus Subscriptions & Installments for WooCommerce".
+3. Go to Settings → Let’s Subscribe and paste your connection token, then click "Connect to Let’s Subscribe".
 4. (Optional) To accept normal checkout through PayPlus, enable "PayPlus" under
    WooCommerce → Settings → Payments.
 
@@ -57,7 +57,7 @@ records the result.
 
 = Is Hebrew / RTL supported? =
 Yes. The storefront surfaces are RTL-aware and ship with he_IL translations; strings load
-from the LETS dashboard locale for server-rendered copy and from the plugin text domain
+from the Let’s Subscribe dashboard locale for server-rendered copy and from the plugin text domain
 (lets-payplus) for the storefront widgets.
 
 = Which WordPress / WooCommerce versions are supported? =
@@ -68,7 +68,7 @@ WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 = 0.66.0 =
 * An outside app can send its users to the checkout with its own reference for them
   (?lets_ref=…). The reference is written on the order and kept on the subscription
-  the order starts, and every LETS webhook about that subscription hands it back.
+  the order starts, and every Let’s Subscribe webhook about that subscription hands it back.
 
 = 0.65.0 =
 * Subscribers' discount: categories can be excluded. A product in (or under) an excluded
@@ -76,7 +76,7 @@ WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 = 0.64.0 =
 * Subscribers' discount: customers with a paid, running subscription get the percent set in
-  LETS → Settings → Billing off products in the chosen categories. Checked against the email
+  Let’s Subscribe → Settings → Billing off products in the chosen categories. Checked against the email
   typed at checkout (guests too); subscription products are never discounted.
 
 = 0.63.0 =
@@ -148,7 +148,7 @@ WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
   screen at once in rows (no slider), the headline beside a large countdown, and the price
   and button in a bar underneath. No box and no shadows — it sits on the store's own page
   in the store's own font when the shop chooses so. Its words (the countdown label and
-  note, a facts line, the heading and hint over the products) are edited in LETS →
+  note, a facts line, the heading and hint over the products) are edited in Let’s Subscribe →
   Settings → Upsell card design, with a live preview.
 
 = 0.53.0 =
@@ -173,11 +173,11 @@ WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 = 0.50.0 =
 * Every order this plugin reports for invoicing now says which site it came from,
-  and LETS refuses a report from any site other than the connected store. A
+  and Let’s Subscribe refuses a report from any site other than the connected store. A
   staging or development copy of a shop carries a copy of the connection key, so
   a test order on the copy could mint a real tax document — addressed to a real
   customer — against the live shop's accounting. The live store is unaffected; a
-  copy that is meant to talk to LETS needs its own connection.
+  copy that is meant to talk to Let’s Subscribe needs its own connection.
 
 = 0.49.0 =
 * A renewal can skip creating a store order (LETS → Settings → Billing →
@@ -207,7 +207,7 @@ WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
   the credit note keep up with it.
 * The word "LETS" is gone from the order screen, the payment-methods list and
   the checkout messages a shopper reads. It stays only where it names the
-  connection itself (Settings → LETS and the management panel).
+  connection itself (Settings → Let’s Subscribe and the management panel).
 
 = 0.46.0 =
 * Settings → LETS → "Password fields": hide WooCommerce's "Password change"
@@ -236,7 +236,7 @@ WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 * The address moves into My Account → account details, saved by the same button
   as the name and the email. The addresses tab is left with the separate
   shipping address alone, and disappears entirely in a store that has none.
-  Switch it off under Settings → LETS → "Address in account details".
+  Switch it off under Settings → Let’s Subscribe → "Address in account details".
 
 = 0.44.0 =
 * The account TABS are now their own setting (LETS dashboard → Customer area →
@@ -249,12 +249,12 @@ WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 * The members club gets its own My Account tab — the FULL club page (points,
   status, rewards, referral), not the summary card. It appears while the
   merchant's loyalty section is on and is named by the programme's own name,
-  so switching the section off in the LETS dashboard removes the tab too.
+  so switching the section off in the Let’s Subscribe dashboard removes the tab too.
 
 = 0.42.0 =
 * The gifts shelf gets its own My Account tab, shown while the merchant's
   gifts section is on. The tab (and the shelf) are named by the merchant's own
-  gifts heading, set in the LETS dashboard under Customer area → Wording.
+  gifts heading, set in the Let’s Subscribe dashboard under Customer area → Wording.
 
 = 0.41.0 =
 * Checkout addresses take the Israeli shape: city first (and it must be a real
@@ -263,7 +263,7 @@ WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
   floor / entrance fields, folded back into the standard WooCommerce address on
   the order.
 * Saving an address in My Account now leaves a dated line on the customer's
-  LETS timeline.
+  Let’s Subscribe timeline.
 
 = 0.40.0 =
 * Passwordless arrivals now carry a MODE: campaign-email sign-in links land the
@@ -272,7 +272,7 @@ WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
   customer" flow is unchanged.
 * Israeli GOV address autocomplete at checkout: city + street suggestions from
   the data.gov.il registry, proxied through the plugin (toggle on Settings →
-  LETS; the shopper still types the house number).
+  Let’s Subscribe; the shopper still types the house number).
 * Personal area: welcome greeting, per-cycle pricing, a toggleable quick-stats
   strip and "gifts from us" list, no visible internal subscription id,
   cancel-via-support contact popup, and a secure PayPlus card-update page from
@@ -308,7 +308,7 @@ WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 = 0.35.0 =
 * A verified sign-in code that finds no WordPress user now asks LETS whether it
   already knows the address. A member the store imported — a year of
-  subscriptions, no WP account — gets their account opened FROM what LETS knows
+  subscriptions, no WP account — gets their account opened FROM what Let’s Subscribe knows
   (name + email) and is signed straight in, instead of being asked to introduce
   themselves on a store that has been charging them. The panel says "setting up
   your account…" while it happens. Strangers still get the quick-registration
@@ -319,7 +319,7 @@ WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 * A custom-HTML offer card can now carry its own CSS. The merchant defines the
   classes their markup uses in a new CSS tab beside the HTML editor, so the card
   looks designed on any theme instead of only on one that happens to define
-  those classes. The stylesheet is cleaned on the LETS server (no @import, no
+  those classes. The stylesheet is cleaned on the Let’s Subscribe server (no @import, no
   hostile url() schemes, no markup) and injected on the page as inert text —
   once per offer, however many plans it renders under. The admin preview shows
   the styled card, exactly as the shopper will get it.
@@ -347,7 +347,7 @@ WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
   The shopper is shown what will be charged and when, and must confirm it; a
   switch can charge today or wait for the current plan's renewal date instead.
 * The merchant may design the card in LETS or write their own HTML. Custom
-  markup is sanitized on the LETS server against an allow-list — scripts,
+  markup is sanitized on the Let’s Subscribe server against an allow-list — scripts,
   frames, forms and event handlers are removed — and the accept button is put
   back by the plugin, never taken from the merchant's markup.
 
@@ -360,15 +360,15 @@ WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
   worth two minutes, WordPress resolves it to one of its OWN users, and an
   account that can edit the site is refused outright — so this can never become a
   way into a store's back office. Every attempt, granted or refused, is written
-  to the activity log on Settings → LETS, and to the customer's timeline.
+  to the activity log on Settings → Let’s Subscribe, and to the customer's timeline.
 
 = 0.30.0 =
 * A subscription purchase can no longer produce TWO tax invoices. Stores that
   invoice every order reported a subscription order as a plain order the instant
-  WooCommerce marked it paid — a moment before LETS linked that order to the
+  WooCommerce marked it paid — a moment before Let’s Subscribe linked that order to the
   plan — so the same payment was declared once by the order pipeline and once by
   the subscription pipeline. The order is now recognised as a subscription from
-  its own cart line, which is true from checkout, and LETS refuses the second
+  its own cart line, which is true from checkout, and Let’s Subscribe refuses the second
   document as well.
 
 = 0.29.0 =
@@ -466,8 +466,8 @@ WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 = 0.23.0 =
 * Your banners, colours, section order and wording are now edited inside
-  WordPress, under the new LETS menu — no second tab, no second login. They are
-  still stored in your LETS account, so the preview there and the page your
+  WordPress, under the new Let’s Subscribe menu — no second tab, no second login. They are
+  still stored in your Let’s Subscribe account, so the preview there and the page your
   shoppers get can never drift apart.
 * A shopper looking for last month's receipt no longer has to open the order:
   the invoice sits in the actions column of the order history, on every order
@@ -501,22 +501,22 @@ WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
   cancel, skip a delivery, move its date or change what arrives next time.
   Rendered into the theme rather than an iframe, so it inherits your fonts.
 * Sign in with a one-time code by email or SMS, without a password. The code is
-  issued and checked by LETS; WordPress still performs the login itself.
+  issued and checked by Let’s Subscribe; WordPress still performs the login itself.
 * WooCommerce's own account tabs (orders, addresses, account details) are restyled
   with the same tokens, so the whole area reads as one screen.
 * The merchant chooses which sections appear, in what order, adds up to three side
-  banners, and tunes colours from Settings → Customer area in the LETS dashboard.
+  banners, and tunes colours from Settings → Customer area in the Let’s Subscribe dashboard.
 
 = 0.20.0 =
 * FIX (critical): reading the invoicing settings crashed the site on PHP 8. Two callers
   pass an empty array for "no query" and the helper handed it straight to ltrim(), which is a
   warning on PHP 7 and a fatal on PHP 8 — so on a PHP 8 host every order status change and
-  every thank-you page returned a 500, and orders LETS created came back as failures after
+  every thank-you page returned a 500, and orders Let’s Subscribe created came back as failures after
   WooCommerce had already created them. The helper now accepts both shapes, and reading the
   settings can no longer throw into a WooCommerce hook at all.
 * A "LETS" column and filter on WooCommerce → Orders, showing which orders LETS
   created and which kind each is (subscription cycle, upsell, gift, installments).
-  WooCommerce has no order tags of its own, so the mark LETS stamps on the order is
+  WooCommerce has no order tags of its own, so the mark Let’s Subscribe stamps on the order is
   surfaced here. Works on both the HPOS orders screen and the classic list.
 
 = 0.19.0 =
@@ -527,16 +527,16 @@ WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 = 0.18.0 =
 * Invoices & receipts on the order: an order-screen box (classic and HPOS) listing the
   Green Invoice documents issued for that order, with open links — including documents
-  issued through LETS plans (deposits, subscription cycles), fetched from LETS when the
+  issued through Let’s Subscribe plans (deposits, subscription cycles), fetched from Let’s Subscribe when the
   order was never stamped. A document link also renders on the customer's order page,
-  honouring the "attach to order" setting in the LETS dashboard.
+  honouring the "attach to order" setting in the Let’s Subscribe dashboard.
 * Declares WooCommerce HPOS (custom order tables) compatibility.
 
 
 = 0.16.0 =
 * Access to the LETS management dashboard from inside WordPress: a "LETS" shortcut in the
   admin bar (reachable from any screen), "Settings" + "Dashboard" quick links on the Plugins
-  list, and an "Open LETS dashboard" button on Settings → LETS. The link follows the
+  list, and an "Open Let’s Subscribe dashboard" button on Settings → Let’s Subscribe. The link follows the
   environment the store was connected to.
 
 = 0.2.0 =
@@ -554,4 +554,4 @@ WordPress 5.8+ (tested to 6.6), WooCommerce 6.0+ (tested to 9.1), PHP 7.4+.
 
 = 0.2.0 =
 Adds the deposit/installments, subscription, upsell, and optional PayPlus-gateway
-storefront surfaces. Reconnect from Settings → LETS if product sync hasn't run.
+storefront surfaces. Reconnect from Settings → Let’s Subscribe if product sync hasn't run.

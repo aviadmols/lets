@@ -58,7 +58,7 @@ return [
     ],
 
     'cumulative_note' => 'Averages grow month by month, so they show as values; the shading compares every cell with the largest one.',
-    'contracts_note' => 'Shopify-Payments subscriptions start counting at their first renewal: their checkout order is Shopify\'s and never reaches LETS.',
+    'contracts_note' => 'Shopify-Payments subscriptions start counting at their first renewal: their checkout order is Shopify\'s and never reaches Let’s Subscribe.',
 
     'churn' => [
         'insight' => [

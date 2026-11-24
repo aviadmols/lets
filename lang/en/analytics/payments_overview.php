@@ -39,7 +39,7 @@ return [
     'backup' => [
         'title' => 'Backup payment metrics',
         'subtitle' => 'Backup card, charged before the recovery cycle',
-        'not_tracked' => 'LETS charges one saved card per subscription — there is no backup card to try, so there is nothing to measure.',
+        'not_tracked' => 'Let’s Subscribe charges one saved card per subscription — there is no backup card to try, so there is nothing to measure.',
     ],
 
     'cycle' => [

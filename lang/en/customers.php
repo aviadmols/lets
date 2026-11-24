@@ -123,7 +123,7 @@ return [
     'orders' => [
         'title' => 'Orders',
         'empty' => 'This customer has no orders in your store yet.',
-        'from_lets' => 'LETS',
+        'from_lets' => 'Let’s Subscribe',
         'from_store' => 'Store',
         'col' => [
             'date' => 'Date',

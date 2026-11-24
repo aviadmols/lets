@@ -129,7 +129,7 @@ final class WooUpsellChildOrderService
             $client->addOrderNote(
                 $parentOrderId,
                 sprintf(
-                    'LETS one-click upsell added: %s — %s charged to the saved card (no card re-entry).',
+                    'Let’s Subscribe one-click upsell added: %s — %s charged to the saved card (no card re-entry).',
                     implode(' · ', array_column($lines, 'name')),
                     number_format(round($amount, 2), 2, '.', ''),
                 ),

@@ -140,7 +140,7 @@ return [
     ],
 
     'reason' => [
-        'no_address' => 'No shipping address anywhere — not on the store profile, not on the origin order, not on the subscription in LETS. Add one on the subscription screen and retry.',
+        'no_address' => 'No shipping address anywhere — not on the store profile, not on the origin order, not on the subscription in Let’s Subscribe. Add one on the subscription screen and retry.',
         'address_access_pending' => 'Shopify has not granted this app access to customer addresses. Select the Address field in the Partner Dashboard under Protected customer data, then retry.',
         'no_price' => 'The gift has no price, so its value could not be shown on the order.',
         'api_error' => 'The store refused the order. Retry once the cause is fixed.',
@@ -155,5 +155,5 @@ return [
 
     'default_shipping_label' => 'Gift shipping — free',
     'default_line_name' => 'Gift',
-    'order_note' => 'LETS gift order — campaign ":campaign". Value :value, discounted 100%.',
+    'order_note' => 'Let’s Subscribe gift order — campaign ":campaign". Value :value, discounted 100%.',
 ];

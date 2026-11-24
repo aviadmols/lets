@@ -70,7 +70,7 @@ return [
         'paused' => 'Paused',
         'expired' => 'Expired',
         'net' => 'Net quantity change · :units subscribed units',
-        'note' => 'A dash means LETS does not record that movement yet (upsells into a subscription, quantity edits).',
+        'note' => 'A dash means Let’s Subscribe does not record that movement yet (upsells into a subscription, quantity edits).',
     ],
 
     'churn' => [

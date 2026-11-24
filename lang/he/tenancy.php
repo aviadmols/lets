@@ -33,7 +33,7 @@ return [
     'no_such_store' => [
         'title' => 'החנות לא נמצאה',
         'body' => 'אין חנות בכתובת :host. כדאי לבדוק את הכתובת שקיבלת.',
-        'hint' => 'למסך הכניסה של LETS',
+        'hint' => 'למסך הכניסה של Let’s Subscribe',
     ],
     'onboarding' => [
         'admin_url_intro' => 'כתובת ממשק הניהול של החנות שלך:',

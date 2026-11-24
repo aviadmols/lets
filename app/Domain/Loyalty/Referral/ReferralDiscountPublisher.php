@@ -88,7 +88,7 @@ class ReferralDiscountPublisher
         try {
             $body = ShopifyClientFactory::for($shop)->graphql(self::SHOPIFY_MUTATION, [
                 'basicCodeDiscount' => [
-                    'title' => 'LETS referral '.$code,
+                    'title' => 'Let’s Subscribe referral '.$code,
                     'code' => $code,
                     'startsAt' => now()->toIso8601String(),
                     'endsAt' => now()->addYears(self::EXPIRES_YEARS)->toIso8601String(),
@@ -146,7 +146,7 @@ class ReferralDiscountPublisher
                 'individual_use' => false,
                 'usage_limit_per_user' => 1,
                 'date_expires' => now()->addYears(self::EXPIRES_YEARS)->toDateString(),
-                'description' => 'LETS referral code',
+                'description' => 'Let’s Subscribe referral code',
             ]);
         } catch (\Throwable $e) {
             // WooCommerce answers 400 "coupon_exists" for a code already there,

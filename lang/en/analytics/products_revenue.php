@@ -46,5 +46,5 @@ return [
         'units' => 'Subscription quantity sold',
     ],
 
-    'note' => 'Revenue collected through LETS, net of refunds; upsell and add-on charges are excluded (see Upsells). Checkout = a subscription\'s first charge collected here (an imported subscription\'s first charge in LETS counts too). Shopify-Payments contracts appear as recurring only — Shopify takes their checkout — and a contract\'s amount is split across its lines by units.',
+    'note' => 'Revenue collected through Let’s Subscribe, net of refunds; upsell and add-on charges are excluded (see Upsells). Checkout = a subscription\'s first charge collected here (an imported subscription\'s first charge in Let’s Subscribe counts too). Shopify-Payments contracts appear as recurring only — Shopify takes their checkout — and a contract\'s amount is split across its lines by units.',
 ];

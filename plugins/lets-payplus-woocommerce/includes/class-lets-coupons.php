@@ -101,13 +101,13 @@ function lets_payplus_coupon_scope_field($coupon_id, $coupon)
 
     woocommerce_wp_select(array(
         'id'          => LETS_COUPON_SCOPE_META,
-        'label'       => $he ? 'תחולה על מנויים (LETS)' : 'Subscription scope (LETS)',
+        'label'       => $he ? 'תחולה על מנויים (Let’s Subscribe)' : 'Subscription scope (Let’s Subscribe)',
         'options'     => lets_payplus_coupon_scopes(),
         'value'       => $current,
         'desc_tip'    => true,
         'description' => $he
-            ? 'מה הקופון עושה למנוי שנרכש איתו: הנחה על התשלום הראשון בלבד; המחיר ששולם נשמר לכל חיוב בשנה הראשונה ואז חוזר למחיר הרגיל; או שהמחיר ששולם נשמר לכל מחזור. חל רק על מוצרים עם תוכנית מנוי של LETS.'
-            : 'What the coupon does to a subscription bought with it: discount the first payment only; keep the price paid for every charge in the first year, then return to the regular price; or keep the price paid for every cycle. Applies only to products with a LETS subscription plan.',
+            ? 'מה הקופון עושה למנוי שנרכש איתו: הנחה על התשלום הראשון בלבד; המחיר ששולם נשמר לכל חיוב בשנה הראשונה ואז חוזר למחיר הרגיל; או שהמחיר ששולם נשמר לכל מחזור. חל רק על מוצרים עם תוכנית מנוי של Let’s Subscribe.'
+            : 'What the coupon does to a subscription bought with it: discount the first payment only; keep the price paid for every charge in the first year, then return to the regular price; or keep the price paid for every cycle. Applies only to products with a Let’s Subscribe subscription plan.',
     ));
 }
 

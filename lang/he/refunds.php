@@ -65,7 +65,7 @@ return [
         'payplus' => 'PayPlus',
         'shopify_native' => 'Shopify Payments',
         'woo_gateway' => 'אמצעי הסליקה של ההזמנה',
-        'external' => 'זיכוי שבוצע מחוץ ל-LETS',
+        'external' => 'זיכוי שבוצע מחוץ ל-Let’s Subscribe',
         'none' => 'ללא מסלול תשלום',
     ],
 
@@ -100,7 +100,7 @@ return [
 
     'store' => [
         // ההערה שהסוחר קורא בתוך האדמין של החנות שלו.
-        'woo_note' => 'זיכוי LETS: :amount :currency. סיבה: :reason',
+        'woo_note' => 'זיכוי Let’s Subscribe: :amount :currency. סיבה: :reason',
     ],
 
     'failure' => [

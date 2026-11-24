@@ -20,7 +20,7 @@ return [
         'default_item' => 'Item',
         // Product name on the "Test payment page" PROBE page (never paid) — named so the
         // merchant can recognise it in their PayPlus dashboard.
-        'probe_item' => 'LETS connection test',
+        'probe_item' => 'Let’s Subscribe connection test',
 
         // Controls.
         'down_payment' => 'Down payment',
@@ -51,7 +51,7 @@ return [
         'close' => 'Close',
 
         // The note written onto the deposit draft/order (links it to the plan).
-        'deposit_note' => 'LETS installments deposit — plan :plan',
+        'deposit_note' => 'Let’s Subscribe installments deposit — plan :plan',
 
         // The line-item title on a recurring subscription cycle's WC order.
         'recurring_line' => 'Subscription cycle — plan :plan',

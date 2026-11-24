@@ -20,7 +20,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ __('privacy.title') }} · LETS</title>
+    <title>{{ __('privacy.title') }} · Let’s Subscribe</title>
     <meta name="robots" content="index,follow">
     <link rel="icon" href="{{ asset(\App\Providers\Filament\AdminPanelProvider::MARK_PATH) }}">
     <link rel="stylesheet" href="{{ asset(\App\Providers\Filament\AdminPanelProvider::THEME_ASSET_PATH) }}">

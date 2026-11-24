@@ -16,7 +16,7 @@ return [
         'title' => 'Acquisition trend',
         'subtitle' => 'New subscribers per period',
         'series' => 'Acquired subscribers',
-        'note' => 'The acquisition rate needs customers who never subscribed, which LETS does not record — the line shows acquired subscribers.',
+        'note' => 'The acquisition rate needs customers who never subscribed, which Let’s Subscribe does not record — the line shows acquired subscribers.',
     ],
 
     'product' => [
@@ -33,7 +33,7 @@ return [
     'order_number' => [
         'title' => 'Subscriber acquisition by order number',
         'subtitle' => 'At which order customers subscribed',
-        'not_tracked' => 'This needs every customer\'s order history, including customers who never subscribed. LETS does not ingest store orders yet.',
+        'not_tracked' => 'This needs every customer\'s order history, including customers who never subscribed. Let’s Subscribe does not ingest store orders yet.',
     ],
 
     'order_rate' => [

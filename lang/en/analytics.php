@@ -98,7 +98,7 @@ return [
         'products' => 'Products',
         'plans' => 'Selling plans',
         'frequencies' => 'Frequencies',
-        'country_hint' => 'LETS stores no customer country — every shop sells in Israel today.',
+        'country_hint' => 'Let’s Subscribe stores no customer country — every shop sells in Israel today.',
         'n_selected' => ':count selected',
         'clear' => 'Clear :filter',
         'none_available' => 'Nothing to filter by yet.',
@@ -159,7 +159,7 @@ return [
         'no_data_title' => 'No data in this period',
         'no_data_body' => 'Nothing happened here in the selected dates. Try a longer range.',
         'not_tracked_title' => 'Not tracked yet',
-        'not_tracked_body' => 'LETS does not record what this needs yet, so it shows nothing rather than a guess.',
+        'not_tracked_body' => 'Let’s Subscribe does not record what this needs yet, so it shows nothing rather than a guess.',
     ],
 
     'table' => [

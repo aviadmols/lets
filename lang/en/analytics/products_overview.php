@@ -38,7 +38,7 @@ return [
         'toggle' => 'Unit',
         'revenue' => 'Revenue',
         'quantity' => 'Quantity',
-        'note' => 'Checkout = a subscription\'s first charge collected through LETS (for an imported subscription, its first charge here). Shopify-Payments contracts take their checkout in Shopify and are not counted.',
+        'note' => 'Checkout = a subscription\'s first charge collected through Let’s Subscribe (for an imported subscription, its first charge here). Shopify-Payments contracts take their checkout in Shopify and are not counted.',
     ],
 
     'table' => [

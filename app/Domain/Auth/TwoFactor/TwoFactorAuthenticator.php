@@ -28,7 +28,7 @@ final class TwoFactorAuthenticator
 {
     // === CONSTANTS ===
     /** The account name the authenticator app shows above the code. */
-    public const ISSUER = 'LETS';
+    public const ISSUER = 'Let’s Subscribe';
 
     /** Steps of 30s either side of now that still count (drift tolerance). */
     public const WINDOW = 1;

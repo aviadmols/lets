@@ -57,7 +57,7 @@ return [
             'step_shopify_3' => 'Save, then open the product in your store to try it.',
 
             'hint_woo_auto' => 'The plugin renders this on every product page once the store is connected — nothing to place.',
-            'step_woo_1' => 'Make sure the plugin shows "connected" in WooCommerce → Settings → LETS.',
+            'step_woo_1' => 'Make sure the plugin shows "connected" in WooCommerce → Settings → Let’s Subscribe.',
             'step_woo_2' => 'Open any product page — the button sits under Add to cart.',
         ],
 
@@ -86,7 +86,7 @@ return [
             'description' => 'Subscriptions, what is coming and when, rewards and order history — inside My Account.',
 
             'hint_woo_auto' => 'The plugin adds this to My Account by itself. There is nothing to place — but you choose what appears in it.',
-            'step_woo_1' => 'Make sure the plugin shows "connected" in WooCommerce → Settings → LETS.',
+            'step_woo_1' => 'Make sure the plugin shows "connected" in WooCommerce → Settings → Let’s Subscribe.',
             'step_woo_2' => 'Open Settings → Customer area here to choose which sections show, reorder them, add side banners and set your colours.',
             'step_woo_3' => 'Visit My Account on your store — the new tab sits right under Dashboard.',
         ],

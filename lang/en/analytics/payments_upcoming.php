@@ -20,7 +20,7 @@ return [
     'table' => [
         'title' => 'Scheduled payments',
         'subtitle' => 'Every charge due in the window, with the risk that it fails',
-        'note' => 'Risk: high = no usable card, a card that expires before the date, or the last charge failed; medium = the card expires that month or the last charge is still retrying. The amount is the full charge — LETS does not store delivery separately.',
+        'note' => 'Risk: high = no usable card, a card that expires before the date, or the last charge failed; medium = the card expires that month or the last charge is still retrying. The amount is the full charge — Let’s Subscribe does not store delivery separately.',
     ],
 
     'search' => [

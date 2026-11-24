@@ -121,7 +121,7 @@ return [
     'orders' => [
         'title' => 'הזמנות',
         'empty' => 'ללקוח הזה עדיין אין הזמנות בחנות שלכם.',
-        'from_lets' => 'LETS',
+        'from_lets' => 'Let’s Subscribe',
         'from_store' => 'החנות',
         'col' => [
             'date' => 'תאריך',

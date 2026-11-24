@@ -13,7 +13,7 @@
 #   Dashboard: https://dev.shopify.com/dashboard/128972608/apps/382947852289/settings
 #   Org 128972608 · App id 382947852289
 
-name = "LETS"
+name = "Let’s Subscribe"
 handle = "lets"
 client_id = "2d6bb06891707fcc4471a1f4d710d3e7"  # API key for app 382947852289 (org 128972608) — public, not a secret
 application_url = "https://app.lets.co.il"

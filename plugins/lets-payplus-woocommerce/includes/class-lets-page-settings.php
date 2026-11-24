@@ -164,7 +164,7 @@ function lets_payplus_render_page_settings()
     if (null === $s) {
         echo '<hr><h2>' . esc_html__('Payment page', 'lets-payplus') . '</h2>';
         echo '<div class="notice notice-warning"><p>'
-            . esc_html__('Could not load the payment-page settings from LETS. Use “Test connection” above to see why.', 'lets-payplus')
+            . esc_html__('Could not load the payment-page settings from Let’s Subscribe. Use “Test connection” above to see why.', 'lets-payplus')
             . '</p></div>';
 
         return;
@@ -427,7 +427,7 @@ function lets_payplus_render_page_settings()
                 <td>
                     <label>
                         <input type="checkbox" name="lets_subscription_gateway_lock" value="1" <?php checked(lets_payplus_subscription_gateway_lock_enabled()); ?>>
-                        <?php esc_html_e('A basket holding a subscription can only be paid on this store’s LETS payment method', 'lets-payplus'); ?>
+                        <?php esc_html_e('A basket holding a subscription can only be paid on this store’s Let’s Subscribe payment method', 'lets-payplus'); ?>
                     </label>
                     <p class="description">
                         <?php esc_html_e('PayPal, Bit, bank transfer and cash on delivery all take the first payment perfectly well and leave nothing to charge the next cycle with — the subscription goes live and fails at its first renewal, while the shopper believes they subscribed. Leave this on unless you know otherwise.', 'lets-payplus'); ?>

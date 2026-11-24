@@ -87,11 +87,11 @@ function lets_payplus_reason_text($reason)
 {
     switch ($reason) {
         case 'payplus_not_connected':
-            return __('PayPlus is not connected. Enter the PayPlus API key and secret in your LETS dashboard (Settings → PayPlus Connection).', 'lets-payplus');
+            return __('PayPlus is not connected. Enter the PayPlus API key and secret in your Let’s Subscribe dashboard (Settings → PayPlus Connection).', 'lets-payplus');
         case 'payplus_no_terminal':
-            return __('No PayPlus terminal is selected in your LETS dashboard.', 'lets-payplus');
+            return __('No PayPlus terminal is selected in your Let’s Subscribe dashboard.', 'lets-payplus');
         case 'payplus_no_payment_page':
-            return __('No PayPlus PAYMENT PAGE is selected. PayPlus cannot create a credit-card page without one — choose a Payment Page in your LETS dashboard. If the list is empty, create a payment page in your PayPlus dashboard first.', 'lets-payplus');
+            return __('No PayPlus PAYMENT PAGE is selected. PayPlus cannot create a credit-card page without one — choose a Payment Page in your Let’s Subscribe dashboard. If the list is empty, create a payment page in your PayPlus dashboard first.', 'lets-payplus');
         default:
             return (string) $reason;
     }
@@ -231,7 +231,7 @@ function lets_payplus_render_diag_result($diag)
 
     echo '<table class="widefat striped" style="max-width:760px;margin-top:12px"><tbody>';
     // Reaching the SaaS at all proves the HMAC auth — that is what this row means.
-    lets_payplus_diag_row(__('LETS connection (authentication)', 'lets-payplus'), true);
+    lets_payplus_diag_row(__('Let’s Subscribe connection (authentication)', 'lets-payplus'), true);
     lets_payplus_diag_row(__('WooCommerce API', 'lets-payplus'), ! empty($wc['ok']), $wc_note);
     lets_payplus_diag_row(__('PayPlus API key + secret', 'lets-payplus'), ! empty($pp['has_api_key']) && ! empty($pp['has_secret_key']));
     lets_payplus_diag_row(__('PayPlus terminal', 'lets-payplus'), ! empty($pp['has_terminal_uid']));

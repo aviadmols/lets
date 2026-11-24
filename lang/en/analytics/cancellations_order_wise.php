@@ -43,6 +43,6 @@ return [
         'mrr' => 'Churned MRR',
         'orders' => 'Orders before',
         'channel' => 'Most common channel',
-        'note' => 'Attempts, saves, save rate, saved MRR and the top retention action need a cancellation flow, which LETS does not have yet — those columns are left out rather than shown as zeros.',
+        'note' => 'Attempts, saves, save rate, saved MRR and the top retention action need a cancellation flow, which Let’s Subscribe does not have yet — those columns are left out rather than shown as zeros.',
     ],
 ];

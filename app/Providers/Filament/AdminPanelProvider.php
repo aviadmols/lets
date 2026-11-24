@@ -65,7 +65,7 @@ class AdminPanelProvider extends PanelProvider
 {
     // === CONSTANTS ===
     /** The app ships as LETS; this is the accessible name behind the logo lockup. */
-    public const BRAND_NAME = 'LETS';
+    public const BRAND_NAME = 'Let’s Subscribe';
 
     public const THEME_ASSET_ID = 'rc-admin-theme';
 

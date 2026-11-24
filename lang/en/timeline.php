@@ -57,7 +57,7 @@ return [
         'card_update_started' => 'The customer opened the card-update page',
         'card_update_link_sent' => 'A card-update link was created',
         'charge_repeat_blocked' => 'Charge stopped — this subscription was already charged in the last 24 hours',
-        'invoicing_report_refused' => 'A store order was not invoiced — the report did not match the connected store or the money LETS recorded',
+        'invoicing_report_refused' => 'A store order was not invoiced — the report did not match the connected store or the money Let’s Subscribe recorded',
         'charge_above_consent' => 'Charge stopped — above the amount or frequency the customer agreed to',
         'consent_override_approved' => 'Charge above the customer’s consent approved by the merchant',
         'consent_recorded' => 'Consent to charge the saved card recorded',
@@ -197,7 +197,7 @@ return [
         'sent_to_gateway' => 'Sent to PayPlus',
         'resolved_as' => 'Resolved as',
         'reported_total' => 'Store reported',
-        'recorded_total' => 'LETS recorded',
+        'recorded_total' => 'Let’s Subscribe recorded',
         'price' => 'Price',
         'coupon' => 'Coupon',
         'deposit' => 'Deposit',
@@ -264,7 +264,7 @@ return [
         'link_revoked' => 'the link had been revoked',
         'site_required' => 'the report did not say which store sent it',
         'site_mismatch' => 'the report came from a different store',
-        'total_exceeds_recorded' => 'the total is above what LETS recorded',
+        'total_exceeds_recorded' => 'the total is above what Let’s Subscribe recorded',
     ],
 
     // Post-purchase flow / product plan statuses.

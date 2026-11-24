@@ -15,7 +15,7 @@ return [
         'subscription.status_changed' => 'Subscription status changed',
     ],
     'topic_help' => [
-        'order.paid' => 'WooCommerce: every order on the site, once it is paid (processing / completed), whatever the payment method. Shopify: every order paid through LETS — a deposit, a thank-you upsell, an add-on from the account area.',
+        'order.paid' => 'WooCommerce: every order on the site, once it is paid (processing / completed), whatever the payment method. Shopify: every order paid through Let’s Subscribe — a deposit, a thank-you upsell, an add-on from the account area.',
         'recurring_charge.succeeded' => 'A subscription cycle or an installment was charged.',
         'recurring_charge.failed' => 'A subscription cycle or an installment was declined — including whether and when we will retry.',
         'subscription.activated' => 'A subscription became active for the first time: its first payment landed, the merchant activated it, or a plan switch created it. Sent once per subscription: the moment to open access.',

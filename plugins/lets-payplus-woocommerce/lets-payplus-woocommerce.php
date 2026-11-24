@@ -1,10 +1,10 @@
 <?php
 /**
- * Plugin Name: LETS — PayPlus Subscriptions & Installments for WooCommerce
+ * Plugin Name: Let’s Subscribe — PayPlus Subscriptions & Installments for WooCommerce
  * Plugin URI: https://app.lets.co.il
- * Description: Connect your WooCommerce store to LETS to offer PayPlus deposits + installments, recurring subscriptions, one-click post-purchase upsells, and optional full PayPlus checkout. Paste the connection token from your LETS dashboard to link this store.
- * Version: 0.66.0
- * Author: LETS
+ * Description: Connect your WooCommerce store to Let’s Subscribe to offer PayPlus deposits + installments, recurring subscriptions, one-click post-purchase upsells, and optional full PayPlus checkout. Paste the connection token from your Let’s Subscribe dashboard to link this store.
+ * Version: 0.67.0
+ * Author: Let’s Subscribe
  * Author URI: https://app.lets.co.il
  * Text Domain: lets-payplus
  * Requires at least: 5.8
@@ -24,7 +24,7 @@ if (! defined('ABSPATH')) {
     exit; // never run outside WordPress
 }
 
-define('LETS_PAYPLUS_VERSION', '0.66.0');
+define('LETS_PAYPLUS_VERSION', '0.67.0');
 define('LETS_PAYPLUS_OPT', 'lets_payplus_connection'); // wp_option holding the decoded token
 define('LETS_PAYPLUS_FILE', __FILE__);
 define('LETS_PAYPLUS_URL', plugin_dir_url(__FILE__)); // base URL for assets
@@ -103,8 +103,8 @@ function lets_payplus_dashboard_url()
 /** Admin menu: Settings → LETS. */
 add_action('admin_menu', function () {
     add_options_page(
-        'LETS — PayPlus',
-        'LETS',
+        'Let’s Subscribe — PayPlus',
+        'Let’s Subscribe',
         'manage_options',
         'lets-payplus',
         'lets_payplus_render_settings'
@@ -128,10 +128,10 @@ add_action('admin_bar_menu', function ($bar) {
 
     $bar->add_node(array(
         'id'    => 'lets-payplus-dashboard',
-        'title' => 'LETS',
+        'title' => 'Let’s Subscribe',
         'href'  => admin_url('admin.php?page=lets-payplus-portal'),
         'meta'  => array(
-            'title' => __('LETS — the customer personal area', 'lets-payplus'),
+            'title' => __('Let’s Subscribe — the customer personal area', 'lets-payplus'),
         ),
     ));
 
@@ -171,7 +171,7 @@ add_action('admin_post_lets_payplus_connect', function () {
 
     $decoded = lets_payplus_decode_token(isset($_POST['lets_token']) ? wp_unslash($_POST['lets_token']) : '');
     if ($decoded === null) {
-        update_option('lets_payplus_last_error', 'Invalid connection token. Copy it again from the LETS dashboard.');
+        update_option('lets_payplus_last_error', 'Invalid connection token. Copy it again from the Let’s Subscribe dashboard.');
         wp_safe_redirect(admin_url('options-general.php?page=lets-payplus&status=invalid'));
         exit;
     }
@@ -217,7 +217,7 @@ function lets_payplus_ensure_wc_keys()
         $wpdb->prefix . 'woocommerce_api_keys',
         array(
             'user_id' => get_current_user_id(),
-            'description' => 'LETS — PayPlus',
+            'description' => 'Let’s Subscribe — PayPlus',
             // READ/WRITE is REQUIRED: LETS must WRITE to mark orders paid (set_paid) after a
             // PayPlus charge. A read-only key reads products fine but 401s on the paid update,
             // so the order stays "pending" even though the card was charged.
@@ -306,7 +306,7 @@ function lets_payplus_call_install($conn)
     if ($code < 200 || $code >= 300) {
         $msg = is_array($json) && ! empty($json['error']) ? $json['error'] : ('HTTP ' . $code);
 
-        return new WP_Error('lets_install_failed', 'LETS connection failed: ' . $msg);
+        return new WP_Error('lets_install_failed', 'Let’s Subscribe connection failed: ' . $msg);
     }
 
     return is_array($json) ? $json : array();
@@ -320,12 +320,12 @@ function lets_payplus_render_settings()
     $error = get_option('lets_payplus_last_error', '');
     ?>
     <div class="wrap">
-        <h1>LETS — PayPlus Subscriptions &amp; Installments</h1>
+        <h1>Let’s Subscribe — PayPlus Subscriptions &amp; Installments</h1>
 
         <?php if ($status === 'connected') : ?>
-            <div class="notice notice-success"><p>Connected to LETS.</p></div>
+            <div class="notice notice-success"><p>Connected to Let’s Subscribe.</p></div>
         <?php elseif ($status === 'invalid') : ?>
-            <div class="notice notice-error"><p>That connection token wasn’t valid. Copy it again from your LETS dashboard.</p></div>
+            <div class="notice notice-error"><p>That connection token wasn’t valid. Copy it again from your Let’s Subscribe dashboard.</p></div>
         <?php elseif ($status === 'error' && $error) : ?>
             <div class="notice notice-error"><p><?php echo esc_html($error); ?></p></div>
         <?php endif; ?>
@@ -336,7 +336,7 @@ function lets_payplus_render_settings()
             </p>
             <p><strong>Store:</strong> <?php echo esc_html($conn['domain'] ?: home_url()); ?></p>
         <?php else : ?>
-            <p>Paste the <strong>connection token</strong> from your LETS dashboard
+            <p>Paste the <strong>connection token</strong> from your Let’s Subscribe dashboard
                (Shops → your store → Add WooCommerce store) to link this store.</p>
         <?php endif; ?>
 
@@ -354,11 +354,11 @@ function lets_payplus_render_settings()
                 <?php
                 echo $conn
                     ? esc_html__('Reports & advanced settings', 'lets-payplus')
-                    : esc_html__('Open LETS dashboard to get your token', 'lets-payplus');
+                    : esc_html__('Open Let’s Subscribe dashboard to get your token', 'lets-payplus');
                 ?>
             </a>
             <span class="description" style="margin-inline-start:8px">
-                <?php esc_html_e('Manage subscriptions, payments, upsells and settings in the LETS management system.', 'lets-payplus'); ?>
+                <?php esc_html_e('Manage subscriptions, payments, upsells and settings in the Let’s Subscribe management system.', 'lets-payplus'); ?>
             </span>
         </p>
 
@@ -371,11 +371,11 @@ function lets_payplus_render_settings()
                     <td>
                         <textarea name="lets_token" id="lets_token" rows="4" class="large-text code"
                                   placeholder="Paste the connection token here"></textarea>
-                        <p class="description">Shown once in your LETS dashboard. Keep it secret.</p>
+                        <p class="description">Shown once in your Let’s Subscribe dashboard. Keep it secret.</p>
                     </td>
                 </tr>
             </table>
-            <?php submit_button($conn ? 'Reconnect' : 'Connect to LETS'); ?>
+            <?php submit_button($conn ? 'Reconnect' : 'Connect to Let’s Subscribe'); ?>
         </form>
 
         <?php

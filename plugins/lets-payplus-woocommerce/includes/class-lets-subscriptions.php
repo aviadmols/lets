@@ -543,7 +543,7 @@ function lets_payplus_render_product_metabox($post)
     if (lets_payplus_connection() === null) {
         echo lets_payplus_mb_card('neutral', '🔌',
             $he ? 'לא מחובר' : 'Not connected',
-            $he ? 'חבר את החנות ל-LETS כדי למכור מנויים.' : 'Connect this store to LETS to sell subscriptions.'
+            $he ? 'חבר את החנות ל-Let’s Subscribe כדי למכור מנויים.' : 'Connect this store to Let’s Subscribe to sell subscriptions.'
         );
 
         return;
@@ -558,9 +558,9 @@ function lets_payplus_render_product_metabox($post)
         echo lets_payplus_mb_card('warn', '⚠️',
             $he ? 'סוג מוצר לא נתמך' : "Can’t be sold as a subscription",
             $he
-                ? 'מוצר מסוג חיצוני/שותפים או מקובץ אין לו מחיר, מלאי או כפתור הוספה לסל. החלף ל״מוצר פשוט״ (בתיבת נתוני המוצר) ואז הגדר תוכנית ב-LETS.'
-                : 'External/Affiliate & Grouped products have no price, stock or add-to-cart button. Switch it to a “Simple product” (in the Product data box), then define a plan in LETS.',
-            lets_payplus_mb_app_link($he ? 'פתח מוצרים ב-LETS →' : 'Open LETS products →')
+                ? 'מוצר מסוג חיצוני/שותפים או מקובץ אין לו מחיר, מלאי או כפתור הוספה לסל. החלף ל״מוצר פשוט״ (בתיבת נתוני המוצר) ואז הגדר תוכנית ב-Let’s Subscribe.'
+                : 'External/Affiliate & Grouped products have no price, stock or add-to-cart button. Switch it to a “Simple product” (in the Product data box), then define a plan in Let’s Subscribe.',
+            lets_payplus_mb_app_link($he ? 'פתח מוצרים ב-Let’s Subscribe →' : 'Open Let’s Subscribe products →')
         );
 
         return;
@@ -592,7 +592,7 @@ function lets_payplus_render_product_metabox($post)
         echo lets_payplus_mb_card('ok', '✓',
             $he ? 'מנוי פעיל' : 'Active subscription',
             $body,
-            lets_payplus_mb_app_link($he ? 'ערוך ב-LETS →' : 'Edit in LETS →'),
+            lets_payplus_mb_app_link($he ? 'ערוך ב-Let’s Subscribe →' : 'Edit in Let’s Subscribe →'),
             true // body is pre-built HTML
         );
 
@@ -604,9 +604,9 @@ function lets_payplus_render_product_metabox($post)
         echo lets_payplus_mb_card('draft', '⏳',
             $he ? 'כמעט מוכן' : 'Almost ready',
             $he
-                ? 'הגדרת תוכנית מנוי, אבל היא עדיין בטיוטה. הפעל אותה ב-LETS כדי שהמוצר יימכר כמנוי.'
-                : 'A subscription plan is defined, but it’s still a Draft. Activate it in LETS to start selling this as a subscription.',
-            lets_payplus_mb_app_link($he ? 'הפעל את התוכנית ב-LETS →' : 'Activate the plan in LETS →')
+                ? 'הגדרת תוכנית מנוי, אבל היא עדיין בטיוטה. הפעל אותה ב-Let’s Subscribe כדי שהמוצר יימכר כמנוי.'
+                : 'A subscription plan is defined, but it’s still a Draft. Activate it in Let’s Subscribe to start selling this as a subscription.',
+            lets_payplus_mb_app_link($he ? 'הפעל את התוכנית ב-Let’s Subscribe →' : 'Activate the plan in Let’s Subscribe →')
         );
 
         return;
@@ -616,9 +616,9 @@ function lets_payplus_render_product_metabox($post)
     echo lets_payplus_mb_card('neutral', '↻',
         $he ? 'לא מוגדר כמנוי' : 'Not a subscription yet',
         $he
-            ? 'כדי למכור אותו כמנוי: ודא שהמוצר מסונכרן ל-LETS, ואז הגדר והפעל עבורו תוכנית מנוי באפליקציה.'
-            : 'To sell it as a subscription: make sure it’s synced to LETS, then define and activate a plan for it in the app.',
-        lets_payplus_mb_app_link($he ? 'פתח מוצרים ב-LETS →' : 'Open LETS products →')
+            ? 'כדי למכור אותו כמנוי: ודא שהמוצר מסונכרן ל-Let’s Subscribe, ואז הגדר והפעל עבורו תוכנית מנוי באפליקציה.'
+            : 'To sell it as a subscription: make sure it’s synced to Let’s Subscribe, then define and activate a plan for it in the app.',
+        lets_payplus_mb_app_link($he ? 'פתח מוצרים ב-Let’s Subscribe →' : 'Open Let’s Subscribe products →')
     );
 }
 

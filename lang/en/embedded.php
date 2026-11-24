@@ -30,7 +30,7 @@ return [
     // The 410 page shown when the one-shot sign-in link is spent or expired.
     'expired' => [
         'title' => 'This link has already been used',
-        'body' => 'For security, the link that opens LETS inside WordPress works once and only for a minute.',
-        'hint' => 'Go back to WordPress and click LETS again.',
+        'body' => 'For security, the link that opens Let’s Subscribe inside WordPress works once and only for a minute.',
+        'hint' => 'Go back to WordPress and click Let’s Subscribe again.',
     ],
 ];

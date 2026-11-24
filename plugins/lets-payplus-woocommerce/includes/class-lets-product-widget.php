@@ -34,13 +34,13 @@ function lets_payplus_signed_post($path, $body)
 {
     $conn = lets_payplus_connection();
     if ($conn === null) {
-        return new WP_Error('lets_not_connected', 'This store is not connected to LETS.');
+        return new WP_Error('lets_not_connected', 'This store is not connected to Let’s Subscribe.');
     }
 
     // Derive the SaaS origin from the stored install_url; swap its path for $path.
     $origin = lets_payplus_saas_origin($conn);
     if ($origin === '') {
-        return new WP_Error('lets_bad_origin', 'Could not resolve the LETS endpoint.');
+        return new WP_Error('lets_bad_origin', 'Could not resolve the Let’s Subscribe endpoint.');
     }
 
     $json = wp_json_encode($body);
@@ -117,11 +117,11 @@ function lets_payplus_signed_get($path, $query)
 {
     $conn = lets_payplus_connection();
     if ($conn === null) {
-        return new WP_Error('lets_not_connected', 'This store is not connected to LETS.');
+        return new WP_Error('lets_not_connected', 'This store is not connected to Let’s Subscribe.');
     }
     $origin = lets_payplus_saas_origin($conn);
     if ($origin === '') {
-        return new WP_Error('lets_bad_origin', 'Could not resolve the LETS endpoint.');
+        return new WP_Error('lets_bad_origin', 'Could not resolve the Let’s Subscribe endpoint.');
     }
 
     $ts = (string) time();

@@ -57,7 +57,7 @@ return [
     ],
 
     'cumulative_note' => 'ממוצעים גדלים מחודש לחודש, ולכן מוצגים כערכים; ההצללה משווה כל תא לגדול שבהם.',
-    'contracts_note' => 'מינויי Shopify Payments נספרים מהחידוש הראשון: הזמנת הקופה שלהם שייכת ל-Shopify ואינה מגיעה ל-LETS.',
+    'contracts_note' => 'מינויי Shopify Payments נספרים מהחידוש הראשון: הזמנת הקופה שלהם שייכת ל-Shopify ואינה מגיעה ל-Let’s Subscribe.',
 
     'churn' => [
         'insight' => [

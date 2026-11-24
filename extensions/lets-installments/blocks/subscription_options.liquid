@@ -1,7 +1,7 @@
 {%- comment -%}
-  LETS purchase options app block — the storefront BUY area for a product page.
+  Let’s Subscribe purchase options app block — the storefront BUY area for a product page.
 
-  The merchant drops "LETS Subscribe & Save" onto the product page in the theme
+  The merchant drops "Subscribe & Save" onto the product page in the theme
   editor and it ALWAYS renders a working buy area, in one of two shapes:
 
     - the product HAS published subscription plans → the two-card chooser:
@@ -11,7 +11,7 @@
     - the product has NO subscription plans → the one-time card alone.
 
   So the block can be placed on every product page once and it never leaves a
-  page with a dead area: publishing a plan later (LETS admin → Products → a plan
+  page with a dead area: publishing a plan later (Let’s Subscribe admin → Products → a plan
   → "Publish to Shopify") turns the same block into the chooser, with no theme
   edit.
 
@@ -27,7 +27,7 @@
   and are NOT editable — they are what the shopper will actually be charged.
 
   For DEPOSIT + installments (the PayPlus rail) use the sibling block
-  "LETS Deposit Plan" (blocks/installments_button.liquid) instead — that rail
+  "Deposit Plan" (blocks/installments_button.liquid) instead — that rail
   charges a PayPlus token and has its own App-Proxy-signed flow.
 {%- endcomment -%}
 
@@ -211,7 +211,7 @@
       {%- if request.design_mode and has_plans == false -%}
         {%- comment -%} Theme-editor-only hint; shoppers never see this. {%- endcomment -%}
         <p class="lets-po__hint">
-          {{ 'LETS: no subscription plan is published for this product yet, so this block shows a one-time purchase only. In the LETS app: Products → this product → a subscription plan → "Publish to Shopify".' }}
+          {{ 'Let’s Subscribe: no subscription plan is published for this product yet, so this block shows a one-time purchase only. In the Let’s Subscribe app: Products → this product → a subscription plan → "Publish to Shopify".' }}
         </p>
       {%- endif -%}
     </form>
@@ -515,13 +515,13 @@
     the editor instead of rendering nothing, which a merchant reads as "broken".
   {%- endcomment -%}
   <p class="lets-po__hint">
-    {{ 'LETS purchase options: this block only renders on a product page. Move it into the product template.' }}
+    {{ 'Let’s Subscribe purchase options: this block only renders on a product page. Move it into the product template.' }}
   </p>
 {%- endif -%}
 
 {% schema %}
 {
-  "name": "LETS Subscribe & Save",
+  "name": "Subscribe & Save",
   "target": "section",
   "settings": [
     {

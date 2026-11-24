@@ -237,7 +237,7 @@ add_action('plugins_loaded', function () {
                 if (function_exists('wc_get_logger')) {
                     wc_get_logger()->error(
                         sprintf(
-                            'LETS gateway: could not start payment for order %d — code=%s status=%d detail=%s',
+                            'Let’s Subscribe gateway: could not start payment for order %d — code=%s status=%d detail=%s',
                             (int) $order->get_id(),
                             (string) $code,
                             $status,

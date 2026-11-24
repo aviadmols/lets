@@ -10,13 +10,13 @@
 return [
 
     'title' => 'Privacy & data protection',
-    'subtitle' => 'How the LETS app handles personal data on behalf of the merchants who install it.',
+    'subtitle' => 'How the Let’s Subscribe app handles personal data on behalf of the merchants who install it.',
     'updated' => 'Last updated: :date',
-    'intro' => 'LETS is a Shopify app that runs subscriptions, deposits with installments, and post-purchase offers for merchants. To do that it must read and store some personal data belonging to the merchant’s customers. This page explains exactly what, why, for how long, and who else can see it.',
+    'intro' => 'Let’s Subscribe is a Shopify app that runs subscriptions, deposits with installments, and post-purchase offers for merchants. To do that it must read and store some personal data belonging to the merchant’s customers. This page explains exactly what, why, for how long, and who else can see it.',
 
     'roles' => [
         'heading' => 'Who is responsible for the data',
-        'body' => 'The merchant who installs LETS is the **data controller**: it is their store, their customers, and their decision what to sell and how to bill it. LETS is a **data processor** acting on the merchant’s instructions — we process personal data only to provide the app’s functions, never for our own purposes.',
+        'body' => 'The merchant who installs Let’s Subscribe is the **data controller**: it is their store, their customers, and their decision what to sell and how to bill it. Let’s Subscribe is a **data processor** acting on the merchant’s instructions — we process personal data only to provide the app’s functions, never for our own purposes.',
     ],
 
     'collect' => [
@@ -26,7 +26,7 @@ return [
             'Store details — the myshopify domain, store name, and the access token Shopify issues at install (stored encrypted).',
             'Customer identity — name, email, phone and address, taken from the order. Used to bill the right person, send them receipts and payment notices, and let them manage their own subscription.',
             'Order and plan data — line items, amounts, currency, billing schedule, charge history, and the resulting invoices.',
-            'Payment references — a gateway token or a Shopify subscription contract id. **Card numbers never reach LETS**; they stay with the payment provider.',
+            'Payment references — a gateway token or a Shopify subscription contract id. **Card numbers never reach Let’s Subscribe**; they stay with the payment provider.',
             'Consent records — when and on what terms a customer agreed to future charges, because a recurring charge without a recorded consent is not permitted by this app.',
         ],
     ],

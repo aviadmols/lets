@@ -4,7 +4,14 @@
  * LETS — the personal area's settings, INSIDE WordPress.
  *
  * The merchant asked to stop leaving their own admin to configure their own
- * shop. So the banners, the appearance, the section order and the copy are
+ * shop. So the banners
+// The menu icon: the Let's Subscribe hourglass (the app's mark, public/images/lets-mark.svg),
+// as a single-colour SVG data URI. WordPress repaints a data-URI SVG's fill to the admin
+// colour scheme, so it reads like every other menu icon, idle or hovered.
+define('LETS_ADMIN_MENU_ICON', 'data:image/svg+xml;base64,' . base64_encode(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 222 232"><path fill="black" d="M0 0 H222 A111 111 0 0 1 0 0 Z"/><path fill="black" d="M0 232 H222 A111 111 0 0 0 0 232 Z"/></svg>'
+));
+, the appearance, the section order and the copy are
  * edited here, on a normal WordPress screen, with WordPress's own form styles.
  *
  * What this file is NOT is a second source of truth. Every screen reads and
@@ -51,12 +58,12 @@ add_action('admin_menu', 'lets_payplus_admin_menu', 9);
 function lets_payplus_admin_menu()
 {
     add_menu_page(
-        lets_payplus_admin_text('LETS — מערכת הניהול', 'LETS — Management panel'),
-        'LETS',
+        lets_payplus_admin_text('Let’s Subscribe — מערכת הניהול', 'Let’s Subscribe — Management panel'),
+        'Let’s Subscribe',
         LETS_ADMIN_CAPABILITY,
         LETS_EMBED_SLUG,
         'lets_payplus_embed_render',
-        'dashicons-id-alt',
+        LETS_ADMIN_MENU_ICON,
         56
     );
 
@@ -64,7 +71,7 @@ function lets_payplus_admin_menu()
     // submenu row; left alone it repeats the menu title verbatim.
     add_submenu_page(
         LETS_EMBED_SLUG,
-        lets_payplus_admin_text('LETS — מערכת הניהול', 'LETS — Management panel'),
+        lets_payplus_admin_text('Let’s Subscribe — מערכת הניהול', 'Let’s Subscribe — Management panel'),
         lets_payplus_admin_text('ראשי', 'Home'),
         LETS_ADMIN_CAPABILITY,
         LETS_EMBED_SLUG,
@@ -115,8 +122,8 @@ function lets_payplus_admin_render()
     if (null === lets_payplus_connection()) {
         echo '<div class="notice notice-warning"><p>'
             . esc_html(lets_payplus_admin_text(
-                'החנות עדיין לא מחוברת ל-LETS. חברו אותה כדי לערוך את האזור האישי.',
-                'This store is not connected to LETS yet. Connect it to edit the personal area.'
+                'החנות עדיין לא מחוברת ל-Let’s Subscribe. חברו אותה כדי לערוך את האזור האישי.',
+                'This store is not connected to Let’s Subscribe yet. Connect it to edit the personal area.'
             ))
             . ' <a href="' . esc_url(admin_url('options-general.php?page=lets-payplus')) . '">'
             . esc_html(lets_payplus_admin_text('למסך החיבור', 'Go to the connect screen'))
@@ -133,7 +140,7 @@ function lets_payplus_admin_render()
         $message = is_wp_error($settings) ? $settings->get_error_message() : 'unexpected response';
 
         echo '<div class="notice notice-error"><p>'
-            . esc_html(lets_payplus_admin_text('לא הצלחנו לקרוא את ההגדרות מ-LETS: ', 'Could not read the settings from LETS: '))
+            . esc_html(lets_payplus_admin_text('לא הצלחנו לקרוא את ההגדרות מ-Let’s Subscribe: ', 'Could not read the settings from Let’s Subscribe: '))
             . esc_html($message)
             . '</p></div></div>';
 
@@ -411,8 +418,8 @@ function lets_payplus_admin_banners($s, $he)
 function lets_payplus_admin_copy($s, $he)
 {
     echo '<p class="description">' . esc_html($he
-        ? 'השאירו ריק כדי להשתמש בנוסח ברירת המחדל של LETS בשפת הלקוח.'
-        : "Leave blank to use LETS's default wording in the shopper's language.") . '</p>';
+        ? 'השאירו ריק כדי להשתמש בנוסח ברירת המחדל של Let’s Subscribe בשפת הלקוח.'
+        : "Leave blank to use Let’s Subscribe's default wording in the shopper's language.") . '</p>';
 
     echo '<table class="form-table" role="presentation"><tbody>';
 

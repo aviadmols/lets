@@ -57,7 +57,7 @@ final class WooCouponIssuer implements CreditIssuer
                 'usage_limit_per_user' => 1,
                 'email_restrictions' => [$email],
                 'date_expires' => now()->addDays(self::EXPIRES_DAYS)->toDateString(),
-                'description' => 'LETS loyalty redemption',
+                'description' => 'Let’s Subscribe loyalty redemption',
             ]);
         } catch (\Throwable $e) {
             Log::warning('loyalty.credit.woo_coupon_failed', [

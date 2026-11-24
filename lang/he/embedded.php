@@ -27,7 +27,7 @@ return [
 
     'expired' => [
         'title' => 'הקישור הזה כבר נוצל',
-        'body' => 'מטעמי אבטחה, הקישור שפותח את LETS בתוך WordPress תקף לשימוש אחד ולדקה אחת בלבד.',
-        'hint' => 'חזרו ל-WordPress ולחצו שוב על LETS.',
+        'body' => 'מטעמי אבטחה, הקישור שפותח את Let’s Subscribe בתוך WordPress תקף לשימוש אחד ולדקה אחת בלבד.',
+        'hint' => 'חזרו ל-WordPress ולחצו שוב על Let’s Subscribe.',
     ],
 ];

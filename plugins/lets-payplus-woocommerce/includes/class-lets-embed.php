@@ -84,12 +84,12 @@ function lets_payplus_embed_render()
     }
 
     echo '<div class="wrap lets-embed">';
-    echo '<h1>LETS</h1>';
+    echo '<h1>Let’s Subscribe</h1>';
 
     if (null === lets_payplus_connection()) {
         lets_payplus_embed_connect_notice(lets_payplus_admin_text(
-            'החנות עדיין לא מחוברת ל-LETS. חברו אותה כדי לפתוח את מערכת הניהול כאן.',
-            'This store is not connected to LETS yet. Connect it to open the management panel here.'
+            'החנות עדיין לא מחוברת ל-Let’s Subscribe. חברו אותה כדי לפתוח את מערכת הניהול כאן.',
+            'This store is not connected to Let’s Subscribe yet. Connect it to open the management panel here.'
         ));
         echo '</div>';
 
@@ -104,8 +104,8 @@ function lets_payplus_embed_render()
     if (is_wp_error($url)) {
         lets_payplus_embed_connect_notice(
             lets_payplus_admin_text(
-                'לא הצלחנו לפתוח את מערכת הניהול של LETS: ',
-                'Could not open the LETS management panel: '
+                'לא הצלחנו לפתוח את מערכת הניהול של Let’s Subscribe: ',
+                'Could not open the Let’s Subscribe management panel: '
             ) . $url->get_error_message()
         );
         echo '</div>';
@@ -114,7 +114,7 @@ function lets_payplus_embed_render()
     }
 
     printf(
-        '<iframe class="lets-embed-frame" src="%s" title="LETS" allow="clipboard-write" referrerpolicy="strict-origin-when-cross-origin"></iframe>',
+        '<iframe class="lets-embed-frame" src="%s" title="Let’s Subscribe" allow="clipboard-write" referrerpolicy="strict-origin-when-cross-origin"></iframe>',
         esc_url($url)
     );
 

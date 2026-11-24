@@ -44,6 +44,6 @@ return [
         'subtitle' => 'Outcome of attempted orders, by the subscription\'s order number',
         'order' => 'Order number',
         'all' => 'All orders',
-        'note' => 'Scheduled, rescheduled, skipped, paused and cancelled columns are not tracked yet — LETS records an order only once it is attempted. Percentages are of each row\'s attempted orders.',
+        'note' => 'Scheduled, rescheduled, skipped, paused and cancelled columns are not tracked yet — Let’s Subscribe records an order only once it is attempted. Percentages are of each row\'s attempted orders.',
     ],
 ];

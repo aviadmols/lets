@@ -159,14 +159,14 @@ return [
     // signed as the shop's own domain.
     'sender' => [
         'heading' => 'The domain your email is sent from',
-        'intro' => 'By default your email leaves from a LETS address. You can have it signed as your own domain instead — your customers see your name, and the mail lands in the inbox rather than in spam. You do not need an email service of your own: sending still goes through our account; you only add a few DNS records.',
+        'intro' => 'By default your email leaves from a Let’s Subscribe address. You can have it signed as your own domain instead — your customers see your name, and the mail lands in the inbox rather than in spam. You do not need an email service of your own: sending still goes through our account; you only add a few DNS records.',
         'platform_off' => 'The platform sending service is not connected yet. Talk to us and we will set it up — until then your email keeps going out as before.',
 
         'domain' => 'Your domain',
         'domain_help' => 'The bare domain, no https and no www — for example example.co.il. We sign the mail under mail.example.co.il.',
 
         'none' => 'No domain set yet. Type your domain and press "Create records" — we will hand you the DNS records to add.',
-        'pending_body' => 'Add the records below at your DNS provider (your registrar or DNS host — Cloudflare, GoDaddy, Namecheap and so on), then press "Check records". Until it verifies, your email keeps going out from the LETS address as before.',
+        'pending_body' => 'Add the records below at your DNS provider (your registrar or DNS host — Cloudflare, GoDaddy, Namecheap and so on), then press "Check records". Until it verifies, your email keeps going out from the Let’s Subscribe address as before.',
         'verified_body' => 'Verified. Your shop\'s email is sent and signed as :domain.',
 
         'records_help' => 'Add these as CNAME records. Paste the middle column into "Name"/Host — some providers want only the part before your domain (em1234 rather than em1234.example.co.il). Paste the last column into "Value"/Points to. Do not proxy them (on Cloudflare the cloud must be grey, not orange).',
@@ -196,7 +196,7 @@ return [
             'rerequest' => 'Change the domain',
             'check' => 'Check records',
             'remove' => 'Remove the domain',
-            'remove_confirm' => 'Remove the domain? Your email goes back to leaving from the LETS address.',
+            'remove_confirm' => 'Remove the domain? Your email goes back to leaving from the Let’s Subscribe address.',
         ],
 
         'requested' => 'Records created. Add them to your DNS, then press "Check records".',

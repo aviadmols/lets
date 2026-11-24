@@ -72,7 +72,7 @@ return [
         'invoices' => 'Invoices that need attention',
         'empty' => 'Nothing needs your attention.',
     ],
-    'help' => 'Help — email LETS support',
+    'help' => 'Help — email Let’s Subscribe support',
     'language' => 'Language',
     'locale_short' => [
         'en' => 'EN',

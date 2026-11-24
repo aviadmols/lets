@@ -205,7 +205,7 @@ return [
             'heading' => 'Activation links',
             'intro' => 'For subscriptions the customer starts themselves: where the link in their email opens.',
             'opens' => 'The activation link opens',
-            'opens_lets' => 'The LETS activation page',
+            'opens_lets' => 'The Let’s Subscribe activation page',
             'opens_lets_help' => 'A simple page with your store name and one button. Nothing to set up.',
             'opens_store' => 'A page in my store',
             'opens_store_help' => 'The customer lands in your store, where the "Subscription activation" block shows the button. Add that block to the page in the theme editor. It stays invisible to anyone who did not arrive from an activation link.',

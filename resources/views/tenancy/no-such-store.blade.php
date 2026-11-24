@@ -19,7 +19,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex,nofollow">
-    <title>{{ __('tenancy.no_such_store.title') }} · LETS</title>
+    <title>{{ __('tenancy.no_such_store.title') }} · Let’s Subscribe</title>
     <link rel="icon" href="{{ asset(\App\Providers\Filament\AdminPanelProvider::MARK_PATH) }}">
     <link rel="stylesheet" href="{{ asset(\App\Providers\Filament\AdminPanelProvider::THEME_ASSET_PATH) }}">
 </head>

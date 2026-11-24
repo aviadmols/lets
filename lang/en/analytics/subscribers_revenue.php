@@ -6,7 +6,7 @@ return [
     'customers' => [
         'title' => 'Subscriber vs non-subscriber revenue',
         'subtitle' => 'Revenue from all orders of subscriber customers vs customers who never subscribed',
-        'not_tracked' => 'This needs every order the store takes, including customers who never subscribed. LETS records only the charges it bills, so it shows nothing rather than a guess.',
+        'not_tracked' => 'This needs every order the store takes, including customers who never subscribed. Let’s Subscribe records only the charges it bills, so it shows nothing rather than a guess.',
     ],
 
     'orders' => [
@@ -15,7 +15,7 @@ return [
         'overall' => 'Overall revenue',
         'subscription' => 'Subscription revenue',
         'share' => 'Subscription revenue share',
-        'note' => 'Overall revenue and the share need the store\'s one-time orders, which LETS does not ingest yet. Subscription revenue is real — see the split below.',
+        'note' => 'Overall revenue and the share need the store\'s one-time orders, which Let’s Subscribe does not ingest yet. Subscription revenue is real — see the split below.',
     ],
 
     'split' => [
@@ -24,7 +24,7 @@ return [
         'total' => 'Total subscription revenue',
         'recurring' => 'Recurring revenue · :share',
         'checkout' => 'Checkout subscription revenue · :share',
-        'note' => 'Net of refunds. Checkout = a subscription\'s first charge in LETS. Shopify-Payments renewals count as recurring; their checkout order lives in Shopify.',
+        'note' => 'Net of refunds. Checkout = a subscription\'s first charge in Let’s Subscribe. Shopify-Payments renewals count as recurring; their checkout order lives in Shopify.',
     ],
 
     'series' => [
