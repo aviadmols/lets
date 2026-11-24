@@ -89,6 +89,9 @@
             <section class="rc-ins-card">
                 <h2 class="rc-ins-card__title">{{ __('insights.promotions.after_sell_title', ['count' => count($s['after_sell'])]) }}</h2>
                 <p class="rc-ins-card__sub">{{ __('insights.promotions.after_sell_sub') }} · {{ $this->windowWords() }}</p>
+                @if ($s['card_orders'] > 0)
+                    <p class="rc-ins-note">{{ __('insights.promotions.after_sell_reach', ['seen' => number_format(min($s['seen_orders'], $s['card_orders'])), 'orders' => number_format($s['card_orders'])]) }}</p>
+                @endif
                 @if ($s['after_sell'] === [])
                     <p class="rc-ins-empty">{{ __('insights.empty') }}</p>
                 @else
@@ -100,6 +103,8 @@
                                 <th class="rc-ins-num">{{ __('insights.promotions.col_taken') }}</th>
                                 <th class="rc-ins-num">{{ __('insights.promotions.col_sold') }}</th>
                                 <th class="rc-ins-num">{{ __('insights.promotions.col_rate') }}</th>
+                                <th class="rc-ins-num">{{ __('insights.promotions.col_gross') }}</th>
+                                <th class="rc-ins-num">{{ __('insights.promotions.col_refunded') }}</th>
                                 <th class="rc-ins-num">{{ __('insights.promotions.col_revenue') }}</th>
                             </tr></thead>
                             <tbody>
@@ -110,6 +115,8 @@
                                         <td class="rc-ins-num">{{ number_format($row['taken']) }}</td>
                                         <td class="rc-ins-num">{{ number_format($row['sold']) }}</td>
                                         <td class="rc-ins-num">{{ $pct($row['sold'], $row['seen']) }}</td>
+                                        <td class="rc-ins-num">{{ P::money($row['gross']) }}</td>
+                                        <td class="rc-ins-num">{{ $row['refunded'] > 0 ? '−'.P::money($row['refunded']) : '—' }}</td>
                                         <td class="rc-ins-num">{{ P::money($row['revenue']) }}</td>
                                     </tr>
                                 @endforeach

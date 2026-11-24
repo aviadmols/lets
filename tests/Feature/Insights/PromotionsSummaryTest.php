@@ -83,6 +83,14 @@ final class PromotionsSummaryTest extends TestCase
         $this->assertSame(1, $row['taken']);
         $this->assertSame(1, $row['sold']);
         $this->assertEqualsWithDelta(30.0, $row['revenue'], 0.001);
+        $this->assertEqualsWithDelta(50.0, $row['gross'], 0.001);
+        $this->assertEqualsWithDelta(20.0, $row['refunded'], 0.001);
+
+        // Only an order paid by card at checkout could see it; a failed one never reached the page.
+        $this->ledger(PaymentLedger::CONTEXT_GATEWAY, 120);
+        $failed = $this->ledger(PaymentLedger::CONTEXT_GATEWAY, 90);
+        $failed->forceFill(['status' => PaymentLedger::STATUS_FAILED])->save();
+        $this->assertSame(1, $this->summary()->cardOrders(...$this->window()));
     }
 
     public function test_a_switch_written_on_both_plans_counts_once(): void

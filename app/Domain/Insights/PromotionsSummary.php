@@ -125,7 +125,7 @@ final class PromotionsSummary
      * Seen/taken count each ORDER once — a refreshed thank-you page writes a second
      * impression and a double tap a second acceptance.
      *
-     * @return list<array{title: string, seen: int, taken: int, sold: int, revenue: float}>
+     * @return list<array{title: string, seen: int, taken: int, sold: int, gross: float, refunded: float, revenue: float}>
      */
     public function afterSell(CarbonImmutable $from, CarbonImmutable $to): array
     {
@@ -145,10 +145,11 @@ final class PromotionsSummary
                 $once('impression').' as seen',
                 $once('accepted').' as taken',
                 "SUM(CASE WHEN upsell_offer_events.event_type = 'charge_succeeded' THEN 1 ELSE 0 END) as sold",
-                "COALESCE(SUM(CASE WHEN upsell_offer_events.event_type = 'charge_succeeded' THEN upsell_offer_events.revenue_amount - COALESCE(pl.refunded_amount, 0) ELSE 0 END), 0) as revenue",
+                "COALESCE(SUM(CASE WHEN upsell_offer_events.event_type = 'charge_succeeded' THEN upsell_offer_events.revenue_amount ELSE 0 END), 0) as gross",
+                "COALESCE(SUM(CASE WHEN upsell_offer_events.event_type = 'charge_succeeded' THEN COALESCE(pl.refunded_amount, 0) ELSE 0 END), 0) as refunded",
             ]))
             ->groupBy('upsell_offer_events.offer_id')
-            ->orderByDesc('revenue')
+            ->orderByDesc('gross')
             ->toBase()
             ->get()
             ->map(static fn (object $r): array => [
@@ -156,9 +157,27 @@ final class PromotionsSummary
                 'seen' => (int) $r->seen,
                 'taken' => (int) $r->taken,
                 'sold' => (int) $r->sold,
-                'revenue' => max(0.0, (float) $r->revenue),
+                'gross' => (float) $r->gross,
+                'refunded' => (float) $r->refunded,
+                'revenue' => max(0.0, (float) $r->gross - (float) $r->refunded),
             ])
             ->all();
+    }
+
+    /**
+     * How many orders COULD have seen an After Sell offer: those paid by card through
+     * PayPlus at checkout. The one-click charge reuses that card, so an order paid any
+     * other way (or whose payment failed, and never reached the thank-you page) is never
+     * shown one. Counted from the checkout's own ledger row; 0 where the store's checkout
+     * does not run through it (Shopify's post-purchase page).
+     */
+    public function cardOrders(CarbonImmutable $from, CarbonImmutable $to): int
+    {
+        return PaymentLedger::query()
+            ->where('charge_context', PaymentLedger::CONTEXT_GATEWAY)
+            ->whereIn('status', self::MONEY_MOVED)
+            ->whereBetween('created_at', [$from, $to])
+            ->count();
     }
 
     /**

@@ -85,6 +85,9 @@ class Promotions extends Page
             'coupons' => $coupons,
             'club' => $club,
             'after_sell' => $afterSell,
+            // "41 of 42 card-paid orders saw it": only those COULD see an After Sell offer.
+            'card_orders' => $summary->cardOrders($from, $to),
+            'seen_orders' => array_sum(array_column($afterSell, 'seen')),
             'account' => $account,
         ];
     }
