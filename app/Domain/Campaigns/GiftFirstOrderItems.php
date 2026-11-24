@@ -4,7 +4,9 @@ namespace App\Domain\Campaigns;
 
 use App\Domain\Campaigns\Models\GiftRecipient;
 use App\Models\InstallmentPlan;
+use App\Models\Product;
 use App\Models\Shop;
+use App\Modules\PayPlusShopifyInstallments\Enums\PlanKind;
 use App\Services\Shopify\ShopifyClientFactory;
 use App\Services\WooCommerce\WooClientFactory;
 use Illuminate\Support\Facades\Log;
@@ -44,6 +46,9 @@ final class GiftFirstOrderItems
     /** Order lines one Shopify read asks for — far beyond any real checkout. */
     private const SHOPIFY_LINE_LIMIT = 100;
 
+    /** How many of a customer's newest orders to look through for one with a subscription. */
+    public const RECENT_ORDERS_PER_CUSTOMER = 20;
+
     /**
      * The cell for each row: the first order's other products, or '' for a row that is
      * past its first cycle, has no order, or bought nothing else.
@@ -78,9 +83,8 @@ final class GiftFirstOrderItems
 
         // Tenant-scoped: a plan id from another shop resolves to nothing. An imported
         // member did not buy through the site — their "order" is the old system's.
-        $plans = InstallmentPlan::query()->whereKey(array_values($planIds))->get()
-            ->reject(static fn (InstallmentPlan $p): bool => data_get($p->meta, 'import') !== null)
-            ->keyBy('id');
+        $allPlans = InstallmentPlan::query()->whereKey(array_values($planIds))->get()->keyBy('id');
+        $plans = $allPlans->reject(static fn (InstallmentPlan $p): bool => data_get($p->meta, 'import') !== null);
 
         $orderIds = [];
         foreach ($planIds as $planId) {
@@ -107,7 +111,96 @@ final class GiftFirstOrderItems
             }
         }
 
+        // The Active sheet, "every subscriber": a subscriber with NO opening order here (an
+        // imported member) gets the books of their latest store order that had a subscription.
+        if (! $firstCycleOnly && $shop->platform === Shop::PLATFORM_WOOCOMMERCE) {
+            $orphans = [];
+            foreach ($planIds as $key => $planId) {
+                $plan = $allPlans->get($planId);
+                if ($plan !== null && ! isset($orderIds[$planId])) {
+                    $orphans[$key] = $plan;
+                }
+            }
+            foreach ($this->latestSubscriptionOrderCells($shop, $orphans) as $key => $cell) {
+                $cells[$key] = $cell;
+            }
+        }
+
         return $cells;
+    }
+
+    /**
+     * For subscribers with no opening order on our side: the other products of the
+     * customer's NEWEST store order that contained a subscription product — any date
+     * (approved 2026-11-24). Orders without a subscription product are one-off purchases
+     * and never count. The customer is found by store id, or by email for a guest or a
+     * member imported from another system.
+     *
+     * @param  array<int|string, InstallmentPlan>  $plans  row key → plan
+     * @return array<int|string, string> row key → cell (only rows that found one)
+     */
+    private function latestSubscriptionOrderCells(Shop $shop, array $plans): array
+    {
+        if ($plans === [] || ! $shop->hasWooConnection()) {
+            return [];
+        }
+
+        $who = array_map(static fn (InstallmentPlan $p): array => [
+            'customer' => ctype_digit(trim((string) $p->externalCustomerId())) ? (int) $p->externalCustomerId() : 0,
+            'email' => (string) ($p->customer_email ?? ''),
+        ], $plans);
+
+        try {
+            $ordersByRow = WooClientFactory::for($shop)->fetchRecentOrdersFor($who, self::RECENT_ORDERS_PER_CUSTOMER);
+        } catch (\Throwable $e) {
+            Log::warning('campaigns.gift.subscription_orders_read_failed', ['shop_id' => $shop->getKey(), 'customers' => count($who), 'error' => $e->getMessage()]);
+
+            return [];
+        }
+
+        $subscriptionIds = $this->subscriptionProductIds();
+        $cells = [];
+
+        foreach ($ordersByRow as $key => $orders) {
+            // Newest first: the first order holding a subscription line is the one.
+            foreach (self::wooLinesOf(array_values($orders)) as $lines) {
+                $hasSubscription = array_filter($lines, static fn (array $l): bool => array_intersect($l['product_ids'], $subscriptionIds) !== []) !== [];
+                if (! $hasSubscription) {
+                    continue;
+                }
+
+                $items = [];
+                foreach ($lines as $line) {
+                    if (array_intersect($line['product_ids'], $subscriptionIds) !== [] || $line['name'] === '' || $line['quantity'] <= 0) {
+                        continue;
+                    }
+                    $items[] = (string) __('gifts.export.first_order_item', ['name' => $line['name'], 'qty' => $line['quantity']]);
+                }
+                $cells[$key] = implode(self::ITEM_SEPARATOR, $items);
+                break;
+            }
+        }
+
+        return $cells;
+    }
+
+    /**
+     * The store's subscription products: everything a subscription in this shop renews,
+     * plus every catalog product that carries a subscription plan.
+     *
+     * @return list<string> store product ids
+     */
+    private function subscriptionProductIds(): array
+    {
+        $fromPlans = InstallmentPlan::query()
+            ->where('plan_kind', PlanKind::RECURRING->value)
+            ->get(['id', 'shop_id', 'external_product_id', 'shopify_product_id'])
+            ->map(static fn (InstallmentPlan $p): string => trim((string) $p->externalProductId()));
+
+        $fromCatalog = Product::query()->whereHas('subscriptionPlans')->pluck('external_id')
+            ->map(static fn ($id): string => trim((string) $id));
+
+        return $fromPlans->merge($fromCatalog)->filter()->unique()->values()->all();
     }
 
     /**

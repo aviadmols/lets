@@ -88,7 +88,7 @@ return [
         'export_products' => 'Subscription types',
         'export_all' => 'All active subscriptions',
         'export_items' => 'Also include the products bought together with the subscription',
-        'export_items_hint' => 'For subscriptions created through the site whose order had other products: each product and its quantity, in one column.',
+        'export_items_hint' => 'Each product and its quantity, in one column: from the order the subscription was opened with on the site. For a member imported from the previous system (who has no such order), from their latest store order that had a subscription product.',
         'export_items_for' => 'Add them for:',
         'export_items_all' => 'Every subscriber, also those already charged again',
         'export_items_first' => 'Only those still on their first order',

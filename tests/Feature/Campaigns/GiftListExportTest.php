@@ -511,6 +511,29 @@ final class GiftListExportTest extends TestCase
         $this->assertSame('ספר א × 2', end($veteran));
     }
 
+    /**
+     * An imported member has no opening order here: the sheet takes the books of their
+     * NEWEST store order that had a subscription product — any date — skipping a newer
+     * one-off order, and another person's order the loose email search also returned.
+     */
+    public function test_an_imported_member_gets_the_books_of_their_latest_subscription_order(): void
+    {
+        Http::fake([
+            '*/wp-json/wc/v3/orders?*search=imp%40example.com*' => Http::response([
+                ['id' => 503, 'billing' => ['email' => 'imp@example.com'], 'line_items' => [['name' => 'ספר חד־פעמי', 'product_id' => 30, 'quantity' => 1]]],
+                ['id' => 502, 'billing' => ['email' => 'someone-else@example.com'], 'line_items' => [['name' => 'מנוי ספרים', 'product_id' => 77, 'quantity' => 1], ['name' => 'לא שלו', 'product_id' => 31, 'quantity' => 1]]],
+                ['id' => 501, 'billing' => ['email' => 'IMP@example.com'], 'line_items' => [['name' => 'מנוי ספרים', 'product_id' => 77, 'quantity' => 1], ['name' => 'ספר ב', 'product_id' => 11, 'quantity' => 1]]],
+            ], 200),
+            '*' => Http::response([], 200),
+        ]);
+        $this->subscriber('Imported', succeeded: 0, customerId: '3640cea8-a4b7-43e1-9c09-e09234cfb0ce', email: 'imp@example.com', productId: '77', meta: ['import' => ['history' => ['charges_succeeded' => 7]]]);
+
+        $rows = $this->rows($this->export(GiftExportRun::ALL_ACTIVE, withFirstOrderItems: true));
+
+        $imported = collect($rows)->first(fn (array $r): bool => $r[0] === 'Imported');
+        $this->assertSame('ספר ב × 1', end($imported));
+    }
+
     /** Unticked, the sheet is exactly what it was: no extra column. */
     public function test_without_the_checkbox_there_is_no_products_column(): void
     {

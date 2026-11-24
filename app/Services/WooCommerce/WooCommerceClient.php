@@ -26,6 +26,9 @@ final class WooCommerceClient
      */
     private const EMAIL_LOOKUPS_AT_ONCE = 8;
 
+    /** Order statuses whose goods were (or will be) sent — not pending, failed, cancelled or refunded. */
+    private const ORDERS_THAT_WENT_THROUGH = 'processing,completed,on-hold';
+
     /**
      * The walled endpoint (canonical base + pinning options), judged once per
      * client — see WooStoreEndpoint.
@@ -201,6 +204,57 @@ final class WooCommerceClient
     public function fetchOrdersByIds(array $ids): array
     {
         return $this->bulkById('orders', $ids);
+    }
+
+    /**
+     * The newest orders of many customers at once, EMAIL_LOOKUPS_AT_ONCE in flight together:
+     * by store customer id when there is one, otherwise by billing email (a guest checkout
+     * has no customer id). Only orders that went through — processing, completed, on hold.
+     * Fail-soft per customer: a lookup that fails is a customer with no orders found.
+     *
+     * An email search in WooCommerce matches loosely (any field, any part), so its answers
+     * are kept only when the order's billing email IS that email.
+     *
+     * @param  array<int|string, array{customer?: int, email?: string}>  $who
+     * @return array<int|string, list<array<string, mixed>>> the same keys → orders, newest first
+     */
+    public function fetchRecentOrdersFor(array $who, int $perCustomer): array
+    {
+        $query = static fn (array $c): array => (int) ($c['customer'] ?? 0) > 0
+            ? ['customer' => (int) $c['customer']]
+            : ['search' => strtolower(trim((string) ($c['email'] ?? '')))];
+
+        $who = array_filter($who, static fn (array $c): bool => (int) ($c['customer'] ?? 0) > 0 || trim((string) ($c['email'] ?? '')) !== '');
+
+        $found = [];
+        foreach (array_chunk($who, self::EMAIL_LOOKUPS_AT_ONCE, true) as $chunk) {
+            $responses = Http::pool(fn (Pool $pool): array => array_map(
+                fn ($key) => $pool->as((string) $key)
+                    ->withOptions($this->endpoint()['options'])
+                    ->withBasicAuth($this->consumerKey, $this->consumerSecret)
+                    ->timeout($this->timeout)
+                    ->acceptJson()
+                    ->get($this->url('orders'), $query($chunk[$key]) + [
+                        'per_page' => max(1, min(100, $perCustomer)),
+                        'orderby' => 'date',
+                        'order' => 'desc',
+                        'status' => self::ORDERS_THAT_WENT_THROUGH,
+                    ]),
+                array_keys($chunk),
+            ));
+
+            foreach ($chunk as $key => $c) {
+                $response = $responses[(string) $key] ?? null;
+                $orders = $response instanceof Response && $response->successful() ? (array) ($response->json() ?? []) : [];
+                $email = strtolower(trim((string) ($c['email'] ?? '')));
+                $byEmail = (int) ($c['customer'] ?? 0) <= 0;
+
+                $found[$key] = array_values(array_filter($orders, static fn ($o): bool => is_array($o)
+                    && (! $byEmail || strtolower(trim((string) data_get($o, 'billing.email', ''))) === $email)));
+            }
+        }
+
+        return $found;
     }
 
     /**
