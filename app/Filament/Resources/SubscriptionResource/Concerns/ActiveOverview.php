@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Filament\Resources\SubscriptionResource\Widgets;
+namespace App\Filament\Resources\SubscriptionResource\Concerns;
 
 use App\Domain\Campaigns\GiftExportRunner;
 use App\Domain\Campaigns\GiftListExporter;
@@ -19,28 +19,23 @@ use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Filament\Notifications\Notification;
-use Filament\Widgets\Widget;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\App;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * The top of "Active subscriptions": who is subscribed now (free ones counted and named),
- * whether the book is growing or shrinking, and the split by product — above the full,
- * filterable list of every subscription (ListSubscriptions' own table).
+ * The top of "Active subscriptions", living ON the list page itself: who is subscribed
+ * now (free ones counted and named), whether the book is growing or shrinking, the split
+ * by product, and the shipping-list export.
+ *
+ * NOT a header widget. As a separate Livewire widget, drawing its chart broke the
+ * page's own Filament table in the browser ("table is not defined"): the list, its
+ * filters and the header buttons (New subscription) stopped responding. Inside the
+ * page's component — as on Payment problems, where a chart sits above a table — they
+ * coexist.
  */
-class ActiveSubscriptionsOverview extends Widget
+trait ActiveOverview
 {
-    // === CONSTANTS ===
-    protected static string $view = 'filament.resources.subscription.widgets.active-overview';
-
-    protected int|string|array $columnSpan = 'full';
-
-    protected static bool $isLazy = false;
-
-    /** How often the card asks a running export how far it got. */
-    public const EXPORT_POLL = '2s';
-
     // --- The courier-sheet export (the gift list's own pipeline, ALL_ACTIVE mode) ---
 
     /** @var list<int> local Product ids; empty = every active subscriber */
@@ -52,7 +47,8 @@ class ActiveSubscriptionsOverview extends Widget
 
     public bool $exportWatching = false;
 
-    public function mount(): void
+    /** Livewire runs mount{TraitName} with the page's own mount. */
+    public function mountActiveOverview(): void
     {
         $latest = app(GiftExportRunner::class)->latest(allActive: true);
         $this->exportRunId = $latest?->getKey();
@@ -146,16 +142,15 @@ class ActiveSubscriptionsOverview extends Widget
             return null;
         }
 
-        $exporter = app(GiftListExporter::class);
-        $csv = $exporter->file($run);
+        $csv = app(GiftListExporter::class)->file($run);
 
         return response()->streamDownload(static function () use ($csv): void {
             echo $csv;
         }, 'active-subscribers-'.now()->format('Y-m-d').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
-    /** @return array<string, mixed> */
-    public function screen(): array
+    /** @return array<string, mixed> everything the overview draws */
+    public function activeOverview(): array
     {
         $shop = Tenant::current();
         $today = InsightsClock::today();
@@ -165,13 +160,12 @@ class ActiveSubscriptionsOverview extends Widget
         $joinDays = array_column((new PaidSubscriptions)->all(false), 'day');
         $leaveDays = array_column((new Departures)->between($start, $today), 'day');
         $book = GrowthMath::book($active['count'], $joinDays, $leaveDays, $start, $today);
-        $pace = GrowthMath::pace($joinDays, $leaveDays, $active['count'], $active['amount'], $today, $start);
 
         return [
             'active' => $active,
             'unpaid' => count((new UnpaidSubscribers)->all()),
             'start' => $start,
-            'pace' => $pace,
+            'pace' => GrowthMath::pace($joinDays, $leaveDays, $active['count'], $active['amount'], $today, $start),
             'net' => [
                 'points' => array_map(fn (array $d): array => [
                     'label' => CarbonImmutable::parse($d['day'])->format('d/m'),

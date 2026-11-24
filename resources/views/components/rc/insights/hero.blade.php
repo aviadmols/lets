@@ -17,11 +17,12 @@
         <div class="rc-ins-hero__big">{{ $big }}</div>
         <p class="rc-ins-hero__say">{{ $slot }}</p>
         @if ($chart !== null)
+            {{-- Drawn by rc-insights-charts.js from data-rc-chart — never from an Alpine
+                 x-init, which broke the Filament table on the same page. --}}
             <div class="rc-ins-chart rc-ins-chart--hero"
                  wire:ignore
                  wire:key="hero-chart-{{ md5(json_encode($chart)) }}"
-                 x-data
-                 x-init="window.rcInsights && window.rcInsights.bar($el, @js($chart))"></div>
+                 data-rc-chart="{{ json_encode(['type' => 'bar'] + $chart, JSON_UNESCAPED_UNICODE) }}"></div>
         @endif
     </div>
     @isset($tiles)

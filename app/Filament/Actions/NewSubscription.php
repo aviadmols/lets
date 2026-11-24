@@ -92,8 +92,18 @@ final class NewSubscription
         InstallmentPlan::ADDRESS_DELIVERY_NOTE => 'delivery_note',
     ];
 
-    /** The new-subscription modal: two columns of fields need the room. */
-    public const MODAL_WIDTH = '2xl';
+    /** The new-subscription modal: rows of three and four fields need the room. */
+    public const MODAL_WIDTH = '4xl';
+
+    /**
+     * Every section is a 6-column grid on a laptop and one column on a phone: short
+     * fields (house, floor, postcode) share a row, long ones (street, city, product)
+     * take half, free text takes the whole line.
+     */
+    public const GRID = ['default' => 1, 'sm' => 6, 'lg' => 6];
+
+    /** How many of the 6 columns each address field takes (the rest: 1). */
+    public const ADDRESS_SPANS = ['street' => 3, 'city' => 3];
 
     /**
      * The whole action — label, modal, form and write — so the two subscription
@@ -152,12 +162,13 @@ final class NewSubscription
     {
         return [
             Section::make(__('subscriptions.action.create.section.customer'))
-                ->columns(2)
+                ->columns(self::GRID)
                 ->schema([
                     TextInput::make('customer_name')
                         ->label(__('subscriptions.action.create.field.name'))
                         ->required()
-                        ->maxLength(self::MAX_CONTACT_LENGTH),
+                        ->maxLength(self::MAX_CONTACT_LENGTH)
+                        ->columnSpan(self::span(2)),
 
                     /*
                      * Required, and not merely for tidiness. With no customers
@@ -172,12 +183,14 @@ final class NewSubscription
                         ->helperText(__('subscriptions.action.create.field.email_help'))
                         ->email()
                         ->required()
-                        ->maxLength(self::MAX_CONTACT_LENGTH),
+                        ->maxLength(self::MAX_CONTACT_LENGTH)
+                        ->columnSpan(self::span(2)),
 
                     TextInput::make('customer_phone')
                         ->label(__('subscriptions.action.create.field.phone'))
                         ->tel()
-                        ->maxLength(self::MAX_CONTACT_LENGTH),
+                        ->maxLength(self::MAX_CONTACT_LENGTH)
+                        ->columnSpan(self::span(2)),
                 ]),
 
             /*
@@ -196,12 +209,12 @@ final class NewSubscription
              */
             Section::make(__('subscriptions.action.create.section.address'))
                 ->description(__('subscriptions.action.create.section.address_help'))
-                ->columns(2)
+                ->columns(self::GRID)
                 ->collapsible()
                 ->schema(self::addressFields()),
 
             Section::make(__('subscriptions.action.create.section.plan'))
-                ->columns(2)
+                ->columns(self::GRID)
                 ->schema([
                     /*
                      * Optional: a comped membership does not always map onto a
@@ -223,20 +236,21 @@ final class NewSubscription
                                 $set('item_title', $title);
                             }
                         })
-                        ->columnSpan(2),
+                        ->columnSpan(self::span(3)),
 
                     TextInput::make('item_title')
                         ->label(__('subscriptions.action.create.field.title'))
                         ->helperText(__('subscriptions.action.create.field.title_help'))
                         ->required()
                         ->maxLength(self::MAX_TITLE_LENGTH)
-                        ->columnSpan(2),
+                        ->columnSpan(self::span(3)),
 
                     Select::make('frequency')
                         ->label(__('subscriptions.action.create.field.frequency'))
                         ->options(self::frequencyOptions())
                         ->default(self::DEFAULT_FREQUENCY->value)
-                        ->required(),
+                        ->required()
+                        ->columnSpan(self::span(2)),
 
                     TextInput::make('interval_count')
                         ->label(__('subscriptions.action.create.field.interval'))
@@ -245,7 +259,8 @@ final class NewSubscription
                         ->minValue(1)
                         ->maxValue(self::MAX_INTERVAL)
                         ->default(1)
-                        ->required(),
+                        ->required()
+                        ->columnSpan(self::span(2)),
 
                     TextInput::make('amount')
                         ->label(__('subscriptions.action.create.field.amount', [
@@ -255,7 +270,8 @@ final class NewSubscription
                         ->numeric()
                         ->minValue(0)
                         ->default(0)
-                        ->required(),
+                        ->required()
+                        ->columnSpan(self::span(2)),
 
                     /*
                      * A Radio, not a Select: there are two of them, they are a
@@ -268,16 +284,26 @@ final class NewSubscription
                         ->descriptions(self::statusDescriptions())
                         ->default(PlanStatus::ACTIVE->value)
                         ->required()
-                        ->columnSpan(2),
+                        ->columnSpanFull(),
 
                     Textarea::make('note')
                         ->label(__('subscriptions.action.create.field.note'))
                         ->helperText(__('subscriptions.action.create.field.note_help'))
                         ->rows(2)
                         ->maxLength(self::MAX_NOTE_LENGTH)
-                        ->columnSpan(2),
+                        ->columnSpanFull(),
                 ]),
         ];
+    }
+
+    /**
+     * A field's width: $columns of the 6 on a laptop, the full line on a phone.
+     *
+     * @return array<string, int>
+     */
+    public static function span(int $columns): array
+    {
+        return ['default' => 1, 'sm' => $columns, 'lg' => $columns];
     }
 
     /**
@@ -295,8 +321,10 @@ final class NewSubscription
      */
     public static function addressFields(): array
     {
-        $wide = ['street', 'city'];
         $cities = AddressRegistry::cities();
+        // Street and city take half the row each; house, apartment, floor, entrance,
+        // postcode and country share the rest — read like an address is written.
+        $span = static fn (string $field): array => self::span(self::ADDRESS_SPANS[$field] ?? 1);
 
         return array_map(
             static fn (string $field): object => match (true) {
@@ -321,7 +349,7 @@ final class NewSubscription
                     // street from the previous one would be worse than an empty
                     // field, because it looks like an answer.
                     ->afterStateUpdated(static fn (Set $set): mixed => $set('address.street', null))
-                    ->columnSpan(2),
+                    ->columnSpan($span('city')),
 
                 $field === 'street' && $cities !== null => Select::make('address.street')
                     ->label(__(self::ADDRESS_LABEL_PREFIX.'street'))
@@ -335,19 +363,19 @@ final class NewSubscription
                     ->helperText(static fn (Get $get): ?string => trim((string) $get('address.city')) === ''
                         ? __('subscriptions.action.create.field.street_needs_city')
                         : null)
-                    ->columnSpan(2),
+                    ->columnSpan($span('street')),
 
                 $field === InstallmentPlan::ADDRESS_DELIVERY_NOTE => Textarea::make('address.'.$field)
                     ->label(__(self::ADDRESS_LABEL_PREFIX.self::ADDRESS_LABEL_KEYS[$field]))
                     ->placeholder(__('subscriptions.detail.contact.delivery_note_placeholder'))
                     ->rows(2)
                     ->maxLength(InstallmentPlan::MAX_DELIVERY_NOTE)
-                    ->columnSpan(2),
+                    ->columnSpanFull(),
 
                 default => TextInput::make('address.'.$field)
                     ->label(__(self::ADDRESS_LABEL_PREFIX.self::ADDRESS_LABEL_KEYS[$field]))
                     ->maxLength(ManualSubscriptionService::MAX_ADDRESS_LENGTH)
-                    ->columnSpan(in_array($field, $wide, true) ? 2 : 1),
+                    ->columnSpan($span($field)),
             },
             InstallmentPlan::ADDRESS_FIELDS,
         );

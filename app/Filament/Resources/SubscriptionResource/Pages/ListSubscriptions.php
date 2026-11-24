@@ -7,7 +7,7 @@ use App\Filament\Actions\NewSubscription;
 use App\Filament\Pages\BulkEditSubscriptions;
 use App\Filament\Pages\PaymentRecovery;
 use App\Filament\Resources\SubscriptionResource;
-use App\Filament\Resources\SubscriptionResource\Widgets\ActiveSubscriptionsOverview;
+use App\Filament\Resources\SubscriptionResource\Concerns\ActiveOverview;
 use App\Modules\PayPlusShopifyInstallments\Enums\PlanStatus;
 use App\Support\Tenant;
 use Filament\Actions\Action;
@@ -35,8 +35,16 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class ListSubscriptions extends ListRecords
 {
+    use ActiveOverview;
+
     // === CONSTANTS ===
     protected static string $resource = SubscriptionResource::class;
+
+    /** Filament's list layout with the overview drawn inside the page (ActiveOverview). */
+    protected static string $view = 'filament.resources.subscription.pages.list-subscriptions';
+
+    /** How often the export card asks a running export how far it got. */
+    public const EXPORT_POLL = '2s';
 
     /** How far ahead "upcoming" looks. A fortnight is the next two cycles of a weekly plan. */
     public const UPCOMING_DAYS = 14;
@@ -55,16 +63,6 @@ class ListSubscriptions extends ListRecords
     public function getTitle(): string|Htmlable
     {
         return __('insights.active.nav');
-    }
-
-    protected function getHeaderWidgets(): array
-    {
-        return [ActiveSubscriptionsOverview::class];
-    }
-
-    public function getHeaderWidgetsColumns(): int|array
-    {
-        return 1;
     }
 
     /**

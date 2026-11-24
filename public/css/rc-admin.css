@@ -1905,6 +1905,14 @@ html:has(meta[name="lets-embedded"]) .rc-lang-switch {
 .fi-body .fi-input-wrp-prefix,
 .fi-body .fi-input-wrp-suffix { padding-inline: 12px; }
 
+/* Searchable selects (Choices.js) match the 48px fields beside them. */
+.fi-body .fi-input-wrp .choices__inner {
+    min-block-size: 48px;
+    display: flex;
+    align-items: center;
+    font-size: 16px;
+}
+
 /* =============================================================================
    home.css — shared card rules born on the old Home board (the board itself
    was replaced by the Overview screens, 2026-11-23): the KPI card foot

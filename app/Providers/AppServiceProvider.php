@@ -5,10 +5,15 @@ namespace App\Providers;
 use App\Domain\Installments\Contracts\DepositTokenResolver;
 use App\Domain\OutboundWebhooks\Listeners\PublishChargeFailedWebhook;
 use App\Domain\OutboundWebhooks\Listeners\PublishLedgerSucceededWebhook;
+use App\Domain\Tenancy\ShopHosts;
 use App\Events\ChargeFailed;
 use App\Events\ChargeSucceeded;
 use App\Events\LedgerRowRefunded;
 use App\Events\LedgerRowSucceeded;
+use App\Http\Middleware\BindDevTenant;
+use App\Http\Middleware\BindTenantFromUser;
+use App\Http\Middleware\ResolveShopFromHost;
+use App\Http\Responses\HostAwareLoginResponse;
 use App\Listeners\Loyalty\AccruePointsFromLedger;
 use App\Listeners\Loyalty\AccruePointsFromShopifyOrder;
 use App\Listeners\Loyalty\ClawbackPointsOnRefund;
@@ -17,19 +22,18 @@ use App\Listeners\SendChargeSucceededNotification;
 use App\Services\Orders\PlatformDepositTokenResolver;
 use App\Services\Shopify\Orders\DefaultShopifyOrderStrategy;
 use App\Services\Shopify\Orders\ShopifyOrderStrategy;
-use App\Domain\Tenancy\ShopHosts;
-use App\Http\Middleware\BindDevTenant;
-use App\Http\Middleware\BindTenantFromUser;
-use App\Http\Middleware\ResolveShopFromHost;
-use App\Http\Responses\HostAwareLoginResponse;
 use App\Support\DestructiveCommandGuard;
+use App\Support\PublicRouteLimits;
 use App\Support\RequestedShop;
 use Filament\Http\Responses\Auth\Contracts\LoginResponse as LoginResponseContract;
-use App\Support\PublicRouteLimits;
 use Illuminate\Console\Events\CommandStarting;
+use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Validation\Rules\Password;
 use Livewire\Livewire;
 
 class AppServiceProvider extends ServiceProvider
@@ -70,6 +74,19 @@ class AppServiceProvider extends ServiceProvider
             DestructiveCommandGuard::assertSafe($event->command, $event->input);
         });
 
+        // FILAMENT TABLES LOAD EAGERLY, NOT "WHEN VISIBLE".
+        // In SPA mode Filament marks a table x-load="visible": its Alpine component
+        // is fetched only once the table scrolls into view. A table that starts
+        // BELOW THE FOLD (Active subscriptions, under its hero and export card) was
+        // initialised before that fetch — "table is not defined" — and the list, its
+        // filters and the page's header buttons (New subscription) stopped responding.
+        // The component is a few KB, so it is loaded at once instead. A literal
+        // rewrite at compile time: if Filament ever changes the attribute, this is a
+        // no-op, never a breakage.
+        Blade::precompiler(
+            static fn (string $template): string => str_replace('x-load="visible"', 'x-load', $template),
+        );
+
         // Throttles for the public routes that do real work per hit (plugin zip,
         // OAuth install) — see PublicRouteLimits.
         PublicRouteLimits::register();
@@ -80,7 +97,7 @@ class AppServiceProvider extends ServiceProvider
         // and numbers, and must not appear in known breach corpora (k-anonymity
         // check; skipped silently offline). Filament's reset/profile forms
         // validate with Password::default(), so this single default IS the rule.
-        \Illuminate\Validation\Rules\Password::defaults(fn () => \Illuminate\Validation\Rules\Password::min(12)
+        Password::defaults(fn () => Password::min(12)
             ->letters()
             ->mixedCase()
             ->numbers()
@@ -166,7 +183,7 @@ class AppServiceProvider extends ServiceProvider
             $start = defined('LARAVEL_START') ? LARAVEL_START : microtime(true);
             $queries = 0;
             $queryMs = 0.0;
-            \Illuminate\Support\Facades\DB::listen(function ($q) use (&$queries, &$queryMs): void {
+            DB::listen(function ($q) use (&$queries, &$queryMs): void {
                 $queries++;
                 $queryMs += (float) $q->time;
             });
@@ -176,7 +193,7 @@ class AppServiceProvider extends ServiceProvider
                     $st = @opcache_get_status(false);
                     $ocOn = is_array($st) && ! empty($st['opcache_enabled']);
                 }
-                \Illuminate\Support\Facades\Log::channel('stderr')->info('perf.request', [
+                Log::channel('stderr')->info('perf.request', [
                     'path' => request()->path(),
                     'total_ms' => round((microtime(true) - $start) * 1000),
                     'db_queries' => $queries,

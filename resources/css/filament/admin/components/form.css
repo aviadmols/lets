@@ -171,3 +171,11 @@
 .fi-body .fi-fo-field-wrp-label { font-size: 14px; }
 .fi-body .fi-input-wrp-prefix,
 .fi-body .fi-input-wrp-suffix { padding-inline: 12px; }
+
+/* Searchable selects (Choices.js) match the 48px fields beside them. */
+.fi-body .fi-input-wrp .choices__inner {
+    min-block-size: 48px;
+    display: flex;
+    align-items: center;
+    font-size: 16px;
+}

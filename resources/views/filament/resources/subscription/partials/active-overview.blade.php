@@ -1,11 +1,12 @@
 {{--
-    The top of "Active subscriptions" (ActiveSubscriptionsOverview): the hero, the
-    growing-or-shrinking line, the split by product. The full list follows below it.
+    The top of "Active subscriptions", drawn inside ListSubscriptions (trait ActiveOverview):
+    the hero, the shipping-list export, the growing-or-shrinking line, the split by
+    product. The full list follows below it.
     TOKENS: .rc-ins-* (components/insights.css). ZERO inline CSS. EN/HE via __().
 --}}
 @php
-    use App\Filament\Resources\SubscriptionResource\Widgets\ActiveSubscriptionsOverview as W;
-    $s = $this->screen();
+    use App\Filament\Resources\SubscriptionResource\Pages\ListSubscriptions as W;
+    $s = $this->activeOverview();
     $a = $s['active'];
     $net = $s['pace']['net'];
     $dir = $net > 0 ? 'up' : ($net < 0 ? 'down' : 'flat');
@@ -67,8 +68,7 @@
         <div class="rc-ins-chart"
              wire:ignore
              wire:key="net-{{ md5(json_encode($s['net'])) }}"
-             x-data
-             x-init="window.rcInsights && window.rcInsights.line($el, @js($s['net']))"></div>
+             data-rc-chart="{{ json_encode(['type' => 'line'] + $s['net'], JSON_UNESCAPED_UNICODE) }}"></div>
     </section>
 
 

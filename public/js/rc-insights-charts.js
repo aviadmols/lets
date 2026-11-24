@@ -187,4 +187,41 @@
     }
 
     window.rcInsights = { bar: register(bar), line: register(line) };
+
+    /*
+     * Self-start, OUTSIDE Alpine. A chart is any element carrying data-rc-chart (its
+     * payload as JSON, "type" = bar | line). Drawing from an Alpine x-init broke the
+     * pages that also hold a Filament table: the chart's init ran inside Alpine's
+     * first pass and the table's lazily-loaded component ("table is not defined")
+     * never registered — the list, its filters and the header buttons went dead.
+     * So charts are found by a MutationObserver instead: on first load, after a
+     * wire:navigate swap, and whenever Livewire morphs a new chart element in.
+     */
+    var drawn = new WeakSet();
+    function scan() {
+        document.querySelectorAll('[data-rc-chart]').forEach(function (node) {
+            if (drawn.has(node)) { return; }
+            var payload;
+            try { payload = JSON.parse(node.getAttribute('data-rc-chart')); } catch (e) { return; }
+            drawn.add(node);
+            (payload.type === 'line' ? window.rcInsights.line : window.rcInsights.bar)(node, payload);
+        });
+    }
+    var queued = false;
+    function schedule() {
+        if (queued) { return; }
+        queued = true;
+        requestAnimationFrame(function () { queued = false; scan(); });
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', schedule);
+    } else {
+        schedule();
+    }
+    document.addEventListener('livewire:navigated', schedule);
+    new MutationObserver(function (records) {
+        for (var i = 0; i < records.length; i++) {
+            if (records[i].addedNodes.length) { schedule(); return; }
+        }
+    }).observe(document.documentElement, { childList: true, subtree: true });
 })();
