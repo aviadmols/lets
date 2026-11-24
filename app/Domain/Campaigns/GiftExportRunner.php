@@ -45,6 +45,15 @@ final class GiftExportRunner
     public const ROWS_PER_BATCH = 100;
 
     /**
+     * The batch when every row may cost an order SEARCH of its own (the Active sheet with
+     * "products, every subscriber": an imported member's orders are looked up by email,
+     * eight at a time). A hundred of those outlived the queue's 90-second hand-back, so
+     * the batch — committed only at its end — restarted forever at the same row (live,
+     * 2026-11-24, stuck at 300). Two rounds of eight commit well inside it.
+     */
+    public const ROWS_PER_LOOKUP_BATCH = 16;
+
+    /**
      * And a clock on the same slice. A store that answers slowly must cost one
      * extra queue hop, not a job killed at its timeout mid-row.
      */
@@ -154,6 +163,9 @@ final class GiftExportRunner
             }
 
             $deadline = microtime(true) + $seconds;
+            $firstCycleOnly = $itemsFirstCycleOnly ?? ! $run->isAllActive();
+            // Products for every subscriber = a possible store search per row: small batches.
+            $batch = $withFirstOrderItems && ! $firstCycleOnly ? self::ROWS_PER_LOOKUP_BATCH : self::ROWS_PER_BATCH;
 
             for ($done = 0; $done < $maxRows;) {
                 if (microtime(true) > $deadline) {
@@ -164,7 +176,7 @@ final class GiftExportRunner
                     ->where('run_id', $runId)
                     ->whereNull('fields')
                     ->orderBy('position')
-                    ->limit(min(self::ROWS_PER_BATCH, $maxRows - $done))
+                    ->limit(min($batch, $maxRows - $done))
                     ->get();
 
                 if ($rows->isEmpty()) {
@@ -181,7 +193,7 @@ final class GiftExportRunner
                     $withFirstOrderItems,
                     // A gift list asks only about first-cycle members; the subscriber
                     // sheet lists every site subscription's order extras.
-                    firstCycleOnly: $itemsFirstCycleOnly ?? ! $run->isAllActive(),
+                    firstCycleOnly: $firstCycleOnly,
                 );
 
                 foreach ($lines as $rowId => $fields) {

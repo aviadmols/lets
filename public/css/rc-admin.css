@@ -2428,6 +2428,10 @@ html:has(meta[name="lets-embedded"]) .rc-lang-switch {
 .rc-ins-file__link svg { inline-size: 16px; block-size: 16px; }
 .rc-ins-file__link:focus-visible { outline: none; box-shadow: var(--rc-ring); }
 
+/* "This takes longer" — said under the scope pills once the products tick is on. */
+.rc-ins-export-slow { display: flex; align-items: center; gap: var(--rc-space-2); margin: 0 0 var(--rc-space-4); }
+.rc-ins-export-slow__icon { inline-size: 16px; block-size: 16px; flex: none; }
+
 /* kpi-card.css — KPI card (component §4.1)
    TOKENS: --rc-card --rc-border --rc-radius-card --rc-shadow-card --rc-shadow-hover
            --rc-type-kpi --rc-type-label --rc-ink --rc-ink-muted --rc-green --rc-red

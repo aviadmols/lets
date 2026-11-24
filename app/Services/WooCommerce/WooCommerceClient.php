@@ -30,6 +30,13 @@ final class WooCommerceClient
     private const ORDERS_THAT_WENT_THROUGH = 'processing,completed,on-hold';
 
     /**
+     * One customer's order lookup may take this long at most (seconds). An email search
+     * is a heavy query on a busy store; a slow one leaves that cell empty instead of
+     * holding the whole batch past the queue's hand-back.
+     */
+    private const ORDER_LOOKUP_TIMEOUT = 15;
+
+    /**
      * The walled endpoint (canonical base + pinning options), judged once per
      * client — see WooStoreEndpoint.
      *
@@ -232,7 +239,7 @@ final class WooCommerceClient
                 fn ($key) => $pool->as((string) $key)
                     ->withOptions($this->endpoint()['options'])
                     ->withBasicAuth($this->consumerKey, $this->consumerSecret)
-                    ->timeout($this->timeout)
+                    ->timeout(min($this->timeout, self::ORDER_LOOKUP_TIMEOUT))
                     ->acceptJson()
                     ->get($this->url('orders'), $query($chunk[$key]) + [
                         'per_page' => max(1, min(100, $perCustomer)),

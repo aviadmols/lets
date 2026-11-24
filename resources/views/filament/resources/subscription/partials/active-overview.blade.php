@@ -51,6 +51,12 @@
                 <button type="button" class="rc-ins-chip" role="radio" wire:click="$set('exportItemsFor', '{{ W::ITEMS_FOR_ALL }}')" aria-checked="{{ $exportItemsFor === W::ITEMS_FOR_ALL ? 'true' : 'false' }}" aria-pressed="{{ $exportItemsFor === W::ITEMS_FOR_ALL ? 'true' : 'false' }}">{{ __('insights.active.export_items_all') }}</button>
                 <button type="button" class="rc-ins-chip" role="radio" wire:click="$set('exportItemsFor', '{{ W::ITEMS_FOR_FIRST }}')" aria-checked="{{ $exportItemsFor === W::ITEMS_FOR_FIRST ? 'true' : 'false' }}" aria-pressed="{{ $exportItemsFor === W::ITEMS_FOR_FIRST ? 'true' : 'false' }}">{{ __('insights.active.export_items_first') }}</button>
             </div>
+            {{-- Said BEFORE the click: with the products, every subscriber's orders are read
+                 from the store, so the file takes noticeably longer. --}}
+            <p class="rc-ins-note rc-ins-export-slow">
+                <x-filament::icon icon="heroicon-o-clock" class="rc-ins-export-slow__icon" />
+                {{ __('insights.active.export_items_slow') }}
+            </p>
         @endif
 
         <div class="rc-ins-controls">

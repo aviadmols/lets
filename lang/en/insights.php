@@ -92,6 +92,7 @@ return [
         'export_items_for' => 'Add them for:',
         'export_items_all' => 'Every subscriber, also those already charged again',
         'export_items_first' => 'Only those still on their first order',
+        'export_items_slow' => 'Note: with the products the export takes longer, because each subscriber\x27s orders are checked against the store one by one. You can keep working meanwhile — the file downloads by itself when it is ready.',
         'export_file' => 'Latest file · made :date',
         'export_file_meta' => ':count subscribers · downloadable for :hours hours. A new export replaces it.',
         'export_button' => 'Export (CSV)',
