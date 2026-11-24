@@ -322,7 +322,7 @@ class ManageBillingSettings extends Page implements HasForms
                     ->minValue(0)
                     ->maxValue(60),
             ])
-            ->columns(2);
+            ->columns(3);
     }
 
     /** Installment rules — the server-side money wall the storefront is clamped to. */
@@ -353,13 +353,14 @@ class ManageBillingSettings extends Page implements HasForms
                     ->label(__('billing.settings.installments.allowed_frequencies'))
                     ->helperText(__('billing.settings.installments.allowed_frequencies_help'))
                     ->options($this->frequencyOptions())
+                    ->columns(3)
                     ->columnSpanFull(),
                 Toggle::make('lock_fulfillment_until_paid')
                     ->label(__('billing.settings.installments.lock_fulfillment'))
                     ->helperText(__('billing.settings.installments.lock_fulfillment_help'))
                     ->columnSpanFull(),
             ])
-            ->columns(2);
+            ->columns(3);
     }
 
     /**
@@ -381,14 +382,12 @@ class ManageBillingSettings extends Page implements HasForms
             ->schema([
                 Toggle::make('live_charging_enabled')
                     ->label(__('billing.settings.charging.live'))
-                    ->helperText(__('billing.settings.charging.live_help'))
-                    ->columnSpanFull(),
+                    ->helperText(__('billing.settings.charging.live_help')),
 
                 // Its own switch: live charging deliberately leaves upsells alone.
                 Toggle::make('upsell_charging_enabled')
                     ->label(__('billing.settings.charging.upsell'))
-                    ->helperText(__('billing.settings.charging.upsell_help'))
-                    ->columnSpanFull(),
+                    ->helperText(__('billing.settings.charging.upsell_help')),
 
                 // Only while it is OFF, and only when there is actually something
                 // overdue: a merchant who turns charging back on with dates that
@@ -399,7 +398,7 @@ class ManageBillingSettings extends Page implements HasForms
                     ->visible($overdue > 0)
                     ->columnSpanFull(),
             ])
-            ->columns(1);
+            ->columns(2);
     }
 
     /**
@@ -426,15 +425,13 @@ class ManageBillingSettings extends Page implements HasForms
             ->schema([
                 Toggle::make('recurring_creates_order')
                     ->label(__('billing.settings.recurring.creates_order'))
-                    ->helperText(__('billing.settings.recurring.creates_order_help'))
-                    ->columnSpanFull(),
+                    ->helperText(__('billing.settings.recurring.creates_order_help')),
 
                 // No automatic charge on a Saturday (ShabbatHold). Beside the
                 // renewal rules because it decides WHEN a renewal is taken.
                 Toggle::make('observes_shabbat')
                     ->label(__('billing.settings.recurring.observes_shabbat'))
-                    ->helperText(__('billing.settings.recurring.observes_shabbat_help'))
-                    ->columnSpanFull(),
+                    ->helperText(__('billing.settings.recurring.observes_shabbat_help')),
 
                 // What a renewal counts from when a charge lands late — the
                 // difference between collecting every month a dead card missed
@@ -476,7 +473,7 @@ class ManageBillingSettings extends Page implements HasForms
                     ->content(fn (Get $get): string => $this->describePreview($get('recurring_charge_description')))
                     ->columnSpanFull(),
             ])
-            ->columns(1);
+            ->columns(2);
     }
 
     /** "{plan} — the product · {cycle} — …", built from ChargeLineDescription's own table. */
@@ -537,6 +534,19 @@ class ManageBillingSettings extends Page implements HasForms
                     ->helperText(__('billing.settings.self_service.allow_cancel_help'))
                     ->live(),
 
+                Toggle::make('allow_customer_skip')
+                    ->label(__('billing.settings.self_service.allow_skip'))
+                    ->helperText(__('billing.settings.self_service.allow_skip_help')),
+                Toggle::make('allow_customer_reschedule')
+                    ->label(__('billing.settings.self_service.allow_reschedule'))
+                    ->helperText(__('billing.settings.self_service.allow_reschedule_help')),
+                Toggle::make('allow_customer_edit_items')
+                    ->label(__('billing.settings.self_service.allow_edit_items'))
+                    ->helperText(__('billing.settings.self_service.allow_edit_items_help')),
+                Toggle::make('single_active_subscription')
+                    ->label(__('billing.settings.self_service.single_subscription'))
+                    ->helperText(__('billing.settings.self_service.single_subscription_help')),
+
                 /*
                  * HOW they cancel, once they may. Self-service is the one-click
                  * verb; "through support" keeps the button but turns the click
@@ -551,6 +561,7 @@ class ManageBillingSettings extends Page implements HasForms
                     ->default(MerchantBillingSettings::CANCEL_SELF_SERVICE)
                     ->inline()
                     ->live()
+                    ->columnSpanFull()
                     ->visible(fn (Get $get): bool => (bool) $get('allow_customer_cancel')),
 
                 TextInput::make('cancel_contact_email')
@@ -574,20 +585,6 @@ class ManageBillingSettings extends Page implements HasForms
                     ->columnSpanFull()
                     ->visible(fn (Get $get): bool => (bool) $get('allow_customer_cancel')
                         && $get('customer_cancel_mode') === MerchantBillingSettings::CANCEL_CONTACT),
-
-                Toggle::make('allow_customer_skip')
-                    ->label(__('billing.settings.self_service.allow_skip'))
-                    ->helperText(__('billing.settings.self_service.allow_skip_help')),
-                Toggle::make('allow_customer_reschedule')
-                    ->label(__('billing.settings.self_service.allow_reschedule'))
-                    ->helperText(__('billing.settings.self_service.allow_reschedule_help')),
-                Toggle::make('allow_customer_edit_items')
-                    ->label(__('billing.settings.self_service.allow_edit_items'))
-                    ->helperText(__('billing.settings.self_service.allow_edit_items_help')),
-                Toggle::make('single_active_subscription')
-                    ->label(__('billing.settings.self_service.single_subscription'))
-                    ->helperText(__('billing.settings.self_service.single_subscription_help'))
-                    ->columnSpanFull(),
             ])
             ->columns(2);
     }

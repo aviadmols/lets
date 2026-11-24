@@ -53,11 +53,12 @@ class ManageCustomerArea extends Page implements HasForms
 
     protected static string $view = 'filament.pages.customer-area';
 
+    /** A reorderable on/off list drawn one line per item (components/form.css). */
+    public const ROWS_CLASS = 'rc-repeater-rows';
+
     protected static ?string $slug = 'customer-area';
 
-
     /** Behind the one Settings item: in-page left index, URL /admin/settings/{slug}. */
-
     protected static ?string $cluster = SettingsCluster::class;
 
     protected static ?int $navigationSort = 45;
@@ -146,18 +147,15 @@ class ManageCustomerArea extends Page implements HasForms
                     ->hiddenLabel()
                     ->schema([
                         Hidden::make('key'),
-                        Placeholder::make('label')
-                            ->hiddenLabel()
-                            ->content(fn (Get $get): string => __('account.admin.sections.label.'.$get('key'))),
+                        // The switch carries the item's own name, so each item is ONE line.
                         Toggle::make('enabled')
-                            ->label(__('account.admin.banners.enabled'))
-                            ->inline(false)
+                            ->label(fn (Get $get): string => __('account.admin.sections.label.'.$get('key')))
                             ->disabled(fn (Get $get): bool => $this->isLocked((string) $get('key')))
                             ->helperText(fn (Get $get): ?string => $this->isLocked((string) $get('key'))
                                 ? __('account.admin.sections.locked')
                                 : null),
                     ])
-                    ->columns(2)
+                    ->extraAttributes(['class' => self::ROWS_CLASS])
                     ->reorderable()
                     ->reorderableWithButtons()
                     ->deletable(false)
@@ -181,18 +179,15 @@ class ManageCustomerArea extends Page implements HasForms
                     ->hiddenLabel()
                     ->schema([
                         Hidden::make('key'),
-                        Placeholder::make('label')
-                            ->hiddenLabel()
-                            ->content(fn (Get $get): string => __('account.admin.tabs.label.'.$get('key'))),
+                        // The switch carries the item's own name, so each item is ONE line.
                         Toggle::make('enabled')
-                            ->label(__('account.admin.banners.enabled'))
-                            ->inline(false)
+                            ->label(fn (Get $get): string => __('account.admin.tabs.label.'.$get('key')))
                             ->disabled(fn (Get $get): bool => $this->isLockedTab((string) $get('key')))
                             ->helperText(fn (Get $get): ?string => $this->isLockedTab((string) $get('key'))
                                 ? __('account.admin.tabs.locked')
                                 : null),
                     ])
-                    ->columns(2)
+                    ->extraAttributes(['class' => self::ROWS_CLASS])
                     ->reorderable()
                     ->reorderableWithButtons()
                     ->deletable(false)

@@ -453,6 +453,7 @@ class ManageMailSettings extends Page implements HasForms
                         ->mapWithKeys(fn (string $t): array => [$t => __('mail.trigger.'.$t)])
                         ->all())
                     ->bulkToggleable()
+                    ->columns(2)
                     // Greyed out while the tap is closed: the list cannot mean
                     // anything then, and leaving it live invites a merchant to
                     // tick boxes that change nothing.
@@ -571,7 +572,7 @@ class ManageMailSettings extends Page implements HasForms
                         TextInput::make('from_address')->label(__('mail.smtp.from_address'))->email(),
                         TextInput::make('from_name')->label(__('mail.smtp.from_name')),
                     ])
-                    ->columns(2),
+                    ->columns(3),
 
                 TextInput::make('portal_store_page_url')
                     ->label(__('mail.portal.store_page_url'))

@@ -146,6 +146,8 @@ return [
         'plan_cancelled' => 'When a plan is cancelled, by you or by the customer',
         'login_code' => 'When a customer asks to sign in with a code',
         'plan_activation' => 'When a subscription that waits for activation is paid for',
+        'order_updated' => 'When a customer adds products to an order after checkout',
+        'card_update' => 'When a customer is sent a link to update their card',
     ],
 
     'state' => [

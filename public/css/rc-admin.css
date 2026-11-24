@@ -1913,6 +1913,33 @@ html:has(meta[name="lets-embedded"]) .rc-lang-switch {
     font-size: 16px;
 }
 
+/* A reorderable on/off list (ManageCustomerArea::ROWS_CLASS): each item is ONE line —
+   the switch carrying the item's name first, the move arrows at the line's end —
+   instead of a card with a header strip over a body. */
+.rc-repeater-rows .fi-fo-repeater-item {
+    display: flex;
+    align-items: center;
+}
+
+.rc-repeater-rows .fi-fo-repeater-item > * {
+    border-width: 0;
+}
+
+.rc-repeater-rows .fi-fo-repeater-item-content {
+    order: -1;
+    flex: 1 1 auto;
+    min-width: 0;
+    padding-block: var(--rc-space-3);
+}
+
+.rc-repeater-rows .fi-fo-repeater-item-header {
+    padding-block: 0;
+}
+
+.rc-repeater-rows ul {
+    gap: var(--rc-space-2);
+}
+
 /* =============================================================================
    home.css — shared card rules born on the old Home board (the board itself
    was replaced by the Overview screens, 2026-11-23): the KPI card foot
