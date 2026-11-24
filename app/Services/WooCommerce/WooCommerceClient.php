@@ -217,13 +217,13 @@ final class WooCommerceClient
      * The newest orders of many customers at once, EMAIL_LOOKUPS_AT_ONCE in flight together:
      * by store customer id when there is one, otherwise by billing email (a guest checkout
      * has no customer id). Only orders that went through — processing, completed, on hold.
-     * Fail-soft per customer: a lookup that fails is a customer with no orders found.
+     * Fail-soft per customer: a lookup that fails is left out of the answer (an empty list means the store answered: no orders).
      *
      * An email search in WooCommerce matches loosely (any field, any part), so its answers
      * are kept only when the order's billing email IS that email.
      *
      * @param  array<int|string, array{customer?: int, email?: string}>  $who
-     * @return array<int|string, list<array<string, mixed>>> the same keys → orders, newest first
+     * @return array<int|string, list<array<string, mixed>>> the same keys → orders, newest first; a failed lookup's key is absent
      */
     public function fetchRecentOrdersFor(array $who, int $perCustomer): array
     {
@@ -252,7 +252,12 @@ final class WooCommerceClient
 
             foreach ($chunk as $key => $c) {
                 $response = $responses[(string) $key] ?? null;
-                $orders = $response instanceof Response && $response->successful() ? (array) ($response->json() ?? []) : [];
+                // A lookup that FAILED is left out (absent key), so a caller can tell "the
+                // store did not answer" from "this customer has no orders" (an empty list).
+                if (! $response instanceof Response || ! $response->successful()) {
+                    continue;
+                }
+                $orders = (array) ($response->json() ?? []);
                 $email = strtolower(trim((string) ($c['email'] ?? '')));
                 $byEmail = (int) ($c['customer'] ?? 0) <= 0;
 

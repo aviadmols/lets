@@ -181,6 +181,18 @@ final class GiftFirstOrderItems
             }
         }
 
+        // One line per batch, so an empty column can be explained from the logs: did the
+        // store not answer, have no orders for these people, or orders without a subscription?
+        Log::info('campaigns.gift.subscription_orders_lookup', [
+            'shop_id' => $shop->getKey(),
+            'asked' => count($who),
+            'failed' => count($who) - count($ordersByRow),
+            'no_orders' => count(array_filter($ordersByRow, static fn (array $o): bool => $o === [])),
+            'with_orders' => count(array_filter($ordersByRow, static fn (array $o): bool => $o !== [])),
+            'with_subscription_order' => count($cells),
+            'with_books' => count(array_filter($cells, static fn (string $c): bool => $c !== '')),
+        ]);
+
         return $cells;
     }
 
