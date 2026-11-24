@@ -185,6 +185,12 @@ class ListSubscriptions extends ListRecords
         return [
             'all' => Tab::make(__('subscriptions.tab.all')),
 
+            // Only the live ones, one click away; the list still opens on "All".
+            'active' => Tab::make(__('subscriptions.tab.active'))
+                ->modifyQueryUsing(fn (Builder $query): Builder => $query->where('status', PlanStatus::ACTIVE->value))
+                // The full number, not "99+": here the count IS the answer.
+                ->badge(number_format(static::getResource()::getEloquentQuery()->where('status', PlanStatus::ACTIVE->value)->count())),
+
             'upcoming' => Tab::make(__('subscriptions.tab.upcoming'))
                 ->modifyQueryUsing(fn (Builder $query): Builder => self::upcomingQuery($query))
                 ->badge($this->countFor(self::upcomingQuery(...))),

@@ -20,6 +20,7 @@ return [
 
     'tab' => [
         'all' => 'All',
+        'active' => 'Active',
         'upcoming' => 'Upcoming',
         'failed' => 'Failed',
         'failing' => 'Could not charge',
