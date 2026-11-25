@@ -90,6 +90,31 @@ final class WooSubscriberStatusTest extends TestCase
             ->assertOk()->assertJson(['active' => false]);
     }
 
+    public function test_the_products_of_the_rewarded_plans_are_listed_and_no_others(): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop('status-products.example.com');
+        $email = 'plans@example.com';
+        $this->plan($shop, 'p1', $email, PlanKind::RECURRING, PlanStatus::ACTIVE, '2001', '2005');
+        $this->plan($shop, 'p2', $email, PlanKind::RECURRING, PlanStatus::AWAITING_ACTIVATION, '3001');
+        // Lapsed and installment plans give no product: they earn no reward.
+        $this->plan($shop, 'p3', $email, PlanKind::RECURRING, PlanStatus::PAUSED, '4001');
+        $this->plan($shop, 'p4', $email, PlanKind::INSTALLMENTS, PlanStatus::ACTIVE, '5001');
+        // A Shopify-style gid or an empty id is not a store product id.
+        $this->plan($shop, 'p5', $email, PlanKind::RECURRING, PlanStatus::ACTIVE, 'gid://shopify/Product/9', '');
+
+        $this->signedPost($key, $secret, ['customer_ref' => $email, 'email' => $email])
+            ->assertOk()->assertExactJson(['ok' => true, 'active' => true, 'product_ids' => [2001, 2005, 3001]]);
+    }
+
+    public function test_a_non_subscriber_has_no_products(): void
+    {
+        [$shop, $key, $secret] = $this->connectedShop('status-noproducts.example.com');
+        $this->plan($shop, 'n1', 'gone@example.com', PlanKind::RECURRING, PlanStatus::CANCELLED, '2001');
+
+        $this->signedPost($key, $secret, ['customer_ref' => 'gone@example.com', 'email' => 'gone@example.com'])
+            ->assertOk()->assertExactJson(['ok' => true, 'active' => false, 'product_ids' => []]);
+    }
+
     public function test_nobody_is_never_a_subscriber_and_an_unsigned_call_is_refused(): void
     {
         [$shop, $key, $secret] = $this->connectedShop('status-nobody.example.com');
@@ -111,14 +136,16 @@ final class WooSubscriberStatusTest extends TestCase
         return [$result['shop']->fresh(), (string) $data['k'], (string) $data['s']];
     }
 
-    private function plan(Shop $shop, string $ref, string $email, PlanKind $kind, PlanStatus $status): void
+    private function plan(Shop $shop, string $ref, string $email, PlanKind $kind, PlanStatus $status, ?string $productId = null, ?string $variantId = null): void
     {
-        Tenant::run($shop, function () use ($shop, $ref, $email, $kind, $status): void {
+        Tenant::run($shop, function () use ($shop, $ref, $email, $kind, $status, $productId, $variantId): void {
             (new InstallmentPlan)->forceFill([
                 'shop_id' => $shop->getKey(),
                 'public_id' => 'PLN-'.$ref.'-'.uniqid(),
                 'external_customer_id' => $ref,
                 'customer_email' => $email,
+                'external_product_id' => $productId,
+                'external_variant_id' => $variantId,
                 'plan_kind' => $kind->value,
                 'status' => $status->value,
                 'total_amount' => 0,
