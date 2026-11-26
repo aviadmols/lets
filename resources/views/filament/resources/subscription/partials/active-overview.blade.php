@@ -113,18 +113,17 @@
             id-prefix="rc-book"
             :min="$s['start']->format('Y-m-d')" />
 
-        {{-- Time runs left → right here, in Hebrew too (dir: ltr). --}}
         <div class="rc-ins-chart"
              wire:ignore
              wire:key="net-{{ md5(json_encode($s['net'])) }}"
-             data-rc-chart="{{ json_encode(['type' => 'line', 'dir' => 'ltr'] + $s['net'], JSON_UNESCAPED_UNICODE) }}"></div>
+             data-rc-chart="{{ json_encode(['type' => 'line'] + $s['net'], JSON_UNESCAPED_UNICODE) }}"></div>
 
         @php $leftCount = number_format(array_sum(array_column($s['left']['points'], 'value'))); @endphp
         <h3 class="rc-ins-card__subhead">{{ $bookRange === 'all' ? __('insights.active.left_title', ['count' => $leftCount]) : __('insights.active.left_title_window', ['count' => $leftCount]) }}</h3>
         <div class="rc-ins-chart"
              wire:ignore
              wire:key="left-{{ md5(json_encode($s['left'])) }}"
-             data-rc-chart="{{ json_encode(['type' => 'bar', 'dir' => 'ltr', 'height' => W::LEFT_CHART_HEIGHT] + $s['left'], JSON_UNESCAPED_UNICODE) }}"></div>
+             data-rc-chart="{{ json_encode(['type' => 'bar', 'height' => W::LEFT_CHART_HEIGHT] + $s['left'], JSON_UNESCAPED_UNICODE) }}"></div>
     </section>
 
 

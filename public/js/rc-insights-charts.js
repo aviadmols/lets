@@ -91,9 +91,8 @@
         svg.addEventListener('mouseleave', function () { tip.hidden = true; if (onLeave) { onLeave(); } });
     }
 
-    // Time runs right → left in Hebrew and left → right in English, with the page —
-    // unless the payload says otherwise (dir: 'ltr' | 'rtl').
-    function rtl(payload) { return (payload && payload.dir ? payload.dir : document.documentElement.dir) === 'rtl'; }
+    // Time runs right → left in Hebrew and left → right in English, with the page.
+    function rtl() { return document.documentElement.dir === 'rtl'; }
 
     function bar(host, payload) {
         var points = payload.points || [];
@@ -109,7 +108,7 @@
         var base = height - PAD.bottom;
 
         points.forEach(function (p, i) {
-            var slotX = rtl(payload) ? c.width - PAD.right - (i + 1) * slot : PAD.left + i * slot;
+            var slotX = rtl() ? c.width - PAD.right - (i + 1) * slot : PAD.left + i * slot;
             var x = slotX + (slot - bw) / 2;
             if (p.value > 0) {
                 var top = y(p.value), h = base - top, r = Math.min(RADIUS, bw / 2, h);
@@ -142,7 +141,7 @@
         var n = points.length;
         var x = function (i) {
             var t = n === 1 ? 0 : i / (n - 1);
-            return rtl(payload) ? c.width - PAD.right - t * (c.width - PAD.left - PAD.right) : PAD.left + t * (c.width - PAD.left - PAD.right);
+            return rtl() ? c.width - PAD.right - t * (c.width - PAD.left - PAD.right) : PAD.left + t * (c.width - PAD.left - PAD.right);
         };
         var base = height - PAD.bottom;
         var d = points.map(function (p, i) { return (i ? 'L' : 'M') + x(i) + ',' + y(p.value); }).join(' ');
