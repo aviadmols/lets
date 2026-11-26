@@ -90,20 +90,41 @@
         <div class="rc-ins-card__head">
             <div>
                 <h2 class="rc-ins-card__title">{{ __('insights.active.net_title') }}</h2>
-                <p class="rc-ins-card__sub">{{ __('insights.active.net_sub', ['date' => $s['start']->format('d/m/Y'), 'joined' => number_format($s['pace']['joined']), 'left' => number_format($s['pace']['left'])]) }}</p>
+                @php
+                    $wFrom = $s['window']['from'];
+                    $wTo = $s['window']['to'];
+                    $period = $wTo->equalTo($s['today'])
+                        ? __('insights.active.period_since', ['date' => $wFrom->format('d/m/Y')])
+                        : __('insights.active.period_between', ['from' => $wFrom->format('d/m/Y'), 'to' => $wTo->format('d/m/Y')]);
+                @endphp
+                <p class="rc-ins-card__sub">{{ __('insights.active.net_sub', ['period' => $period, 'joined' => number_format($s['pace']['joined']), 'left' => number_format($s['pace']['left'])]) }}</p>
             </div>
             <span class="rc-ins-trend rc-ins-trend--{{ $dir }}">{{ __('insights.active.net_trend', ['sign' => $net > 0 ? '▲ +' : ($net < 0 ? '▼ ' : ''), 'count' => number_format($net)]) }}</span>
         </div>
+
+        <x-rc.insights.controls
+            class="rc-ins-book-controls"
+            :range="$bookRange"
+            :ranges="W::BOOK_RANGES"
+            :grain-switch="false"
+            action="setBookRange"
+            from-model="bookFrom"
+            to-model="bookTo"
+            id-prefix="rc-book"
+            :min="$s['start']->format('Y-m-d')" />
+
+        {{-- Time runs left → right here, in Hebrew too (dir: ltr). --}}
         <div class="rc-ins-chart"
              wire:ignore
              wire:key="net-{{ md5(json_encode($s['net'])) }}"
-             data-rc-chart="{{ json_encode(['type' => 'line'] + $s['net'], JSON_UNESCAPED_UNICODE) }}"></div>
+             data-rc-chart="{{ json_encode(['type' => 'line', 'dir' => 'ltr'] + $s['net'], JSON_UNESCAPED_UNICODE) }}"></div>
 
-        <h3 class="rc-ins-card__subhead">{{ __('insights.active.left_title', ['count' => number_format(array_sum(array_column($s['left']['points'], 'value')))]) }}</h3>
+        @php $leftCount = number_format(array_sum(array_column($s['left']['points'], 'value'))); @endphp
+        <h3 class="rc-ins-card__subhead">{{ $bookRange === 'all' ? __('insights.active.left_title', ['count' => $leftCount]) : __('insights.active.left_title_window', ['count' => $leftCount]) }}</h3>
         <div class="rc-ins-chart"
              wire:ignore
              wire:key="left-{{ md5(json_encode($s['left'])) }}"
-             data-rc-chart="{{ json_encode(['type' => 'bar', 'height' => W::LEFT_CHART_HEIGHT] + $s['left'], JSON_UNESCAPED_UNICODE) }}"></div>
+             data-rc-chart="{{ json_encode(['type' => 'bar', 'dir' => 'ltr', 'height' => W::LEFT_CHART_HEIGHT] + $s['left'], JSON_UNESCAPED_UNICODE) }}"></div>
     </section>
 
 

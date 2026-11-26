@@ -355,6 +355,7 @@
 .rc-ins-chip[aria-pressed="true"] { background: var(--rc-ink); color: var(--rc-card); box-shadow: none; }
 .rc-ins-chip:focus-visible { outline: none; box-shadow: var(--rc-ring); }
 .rc-ins-export-check { margin-block-end: var(--rc-space-4); }
+.rc-ins-book-controls { margin-block-end: var(--rc-space-3); }
 .rc-ins-export[disabled] { opacity: .55; cursor: default; }
 
 /* "Add them for:" — the scope pills under the products tick. */

@@ -131,6 +131,36 @@ final class InsightsScreensTest extends TestCase
         }
     }
 
+    /** The growing-or-shrinking card shows only the chosen days, inside start..today. */
+    public function test_the_book_card_follows_the_chosen_period(): void
+    {
+        $plan = $this->plan('dana@example.com', PlanStatus::ACTIVE);
+        $this->payment($plan, PaymentStatus::SUCCEEDED, now()->subDays(100)->toDateTimeString());
+        $today = InsightsClock::today();
+        $days = fn ($page): array => array_column($page->instance()->activeOverview()['net']['points'], 'label');
+
+        $page = Livewire::test(ListSubscriptions::class);
+        $this->assertCount(101, $days($page)); // since the start, by default
+
+        $page->call('setBookRange', '30')->assertOk();
+        $this->assertCount(30, $days($page));
+        $this->assertSame($today->format('d/m'), last($days($page)));
+
+        $page->call('setBookRange', 'custom')
+            ->set('bookFrom', $today->subDays(20)->format('Y-m-d'))
+            ->set('bookTo', $today->subDays(11)->format('Y-m-d'))
+            ->assertOk()
+            ->assertSee(__('insights.active.left_title_window', ['count' => 0]));
+        $this->assertSame([$today->subDays(20)->format('d/m'), $today->subDays(11)->format('d/m')], [$days($page)[0], last($days($page))]);
+
+        // Before the start: clipped to it, never an empty chart.
+        $page->set('bookFrom', $today->subDays(400)->format('Y-m-d'))->set('bookTo', $today->subDays(90)->format('Y-m-d'));
+        $this->assertCount(11, $days($page));
+
+        $page->call('setBookRange', 'nonsense');
+        $this->assertSame(ListSubscriptions::BOOK_RANGE_DEFAULT, $page->get('bookRange'));
+    }
+
     /** The export is the list on screen: the dates AND the who-filter. */
     public function test_the_abandoned_export_follows_the_filter(): void
     {

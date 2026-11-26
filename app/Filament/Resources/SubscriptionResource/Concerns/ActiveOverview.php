@@ -21,6 +21,7 @@ use Carbon\CarbonImmutable;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\App;
+use Livewire\Attributes\Url;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -44,6 +45,22 @@ trait ActiveOverview
 
     /** The departures chart under the book line: a companion, so shorter (px). */
     public const LEFT_CHART_HEIGHT = 150;
+
+    /** The book card's periods: back from today, since the start, or the merchant's own dates. */
+    public const BOOK_RANGES = ['30' => 'insights.range.30', '90' => 'insights.range.90', '365' => 'insights.range.365', 'all' => 'insights.range.all', 'custom' => 'insights.range.custom'];
+
+    public const BOOK_RANGE_DEFAULT = 'all';
+
+    // --- The growing-or-shrinking card's period (in the URL, like the analytics screens) ---
+
+    #[Url(as: 'book')]
+    public string $bookRange = self::BOOK_RANGE_DEFAULT;
+
+    #[Url(as: 'book_from')]
+    public ?string $bookFrom = null;
+
+    #[Url(as: 'book_to')]
+    public ?string $bookTo = null;
 
     // --- The courier-sheet export (the gift list's own pipeline, ALL_ACTIVE mode) ---
 
@@ -168,6 +185,40 @@ trait ActiveOverview
         }, 'active-subscribers-'.now()->format('Y-m-d').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
+    public function setBookRange(string $range): void
+    {
+        $this->bookRange = array_key_exists($range, self::BOOK_RANGES) ? $range : self::BOOK_RANGE_DEFAULT;
+        if ($this->bookRange === 'custom' && ($this->bookFrom === null || $this->bookTo === null)) {
+            $this->bookFrom = InsightsClock::today()->subDays(29)->format(InsightsClock::DATE);
+            $this->bookTo = InsightsClock::today()->format(InsightsClock::DATE);
+        }
+    }
+
+    /**
+     * The days the book card shows, always inside start..today. Dates that fall wholly
+     * outside it show everything rather than an empty chart.
+     *
+     * @return array{from: CarbonImmutable, to: CarbonImmutable}
+     */
+    public function bookWindow(CarbonImmutable $start, CarbonImmutable $today): array
+    {
+        $from = $start;
+        $to = $today;
+
+        if ($this->bookRange === 'custom' && self::isDate($this->bookFrom) && self::isDate($this->bookTo)) {
+            $a = CarbonImmutable::parse($this->bookFrom, InsightsClock::TIMEZONE)->startOfDay();
+            $b = CarbonImmutable::parse($this->bookTo, InsightsClock::TIMEZONE)->startOfDay();
+            [$from, $to] = $a->lte($b) ? [$a, $b] : [$b, $a];
+        } elseif (in_array($this->bookRange, ['30', '90', '365'], true)) {
+            $from = $today->subDays((int) $this->bookRange - 1);
+        }
+
+        $from = $from->lt($start) ? $start : $from;
+        $to = $to->gt($today) ? $today : $to;
+
+        return $from->lte($to) ? ['from' => $from, 'to' => $to] : ['from' => $start, 'to' => $today];
+    }
+
     /** @return array<string, mixed> everything the overview draws */
     public function activeOverview(): array
     {
@@ -178,12 +229,22 @@ trait ActiveOverview
         $active = (new ActiveBookSummary)->get();
         $joinDays = array_column((new PaidSubscriptions)->all(false), 'day');
         $leaveDays = array_column((new Departures)->between($start, $today), 'day');
-        $book = GrowthMath::book($active['count'], $joinDays, $leaveDays, $start, $today);
+        // The book is counted back from today's count, so it is built whole, then cut to
+        // the chosen days.
+        $window = $this->bookWindow($start, $today);
+        $a = $window['from']->format(InsightsClock::DATE);
+        $b = $window['to']->format(InsightsClock::DATE);
+        $book = array_values(array_filter(
+            GrowthMath::book($active['count'], $joinDays, $leaveDays, $start, $today),
+            static fn (array $d): bool => $d['day'] >= $a && $d['day'] <= $b,
+        ));
 
         return [
             'active' => $active,
             'unpaid' => count((new UnpaidSubscribers)->all()),
             'start' => $start,
+            'window' => $window,
+            'today' => $today,
             'pace' => GrowthMath::pace($joinDays, $leaveDays, $active['count'], $active['amount'], $today, $start),
             'net' => [
                 'points' => array_map(fn (array $d): array => [
@@ -213,5 +274,10 @@ trait ActiveOverview
     public static function money(float $amount): string
     {
         return '₪'.number_format($amount, 0, '.', ',');
+    }
+
+    private static function isDate(?string $value): bool
+    {
+        return is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1;
     }
 }
